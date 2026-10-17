@@ -7,7 +7,7 @@ import { SEARCH_INDEX, visibleSections } from "../pages/settings/sections";
 // The command palette's brain, kept free of components so it can be tested on its own:
 // what this person may jump to (pages, settings cards, actions), how a query ranks it, how
 // the results group, and the recent picks. It loads with the palette's own chunk, never
-// with a requester's first load. The library rows come from GET /api/v1/search (staff) and
+// with a requester's first load. The library rows come from GET /api/v1/library/search (staff) and
 // the Discover rows from the Discover search; both are only shaped here.
 
 export type PaletteGroup = "recent" | "library" | "pages" | "actions" | "discover";
@@ -226,7 +226,7 @@ export function highlight(label: string, query: string): { text: string; hit: bo
 
 // ---- Library and Discover rows ----------------------------------------------------------
 
-/** One row of GET /api/v1/search. */
+/** One row of GET /api/v1/library/search. */
 export interface LibraryHit {
   kind: "movie" | "series" | "book" | "artist" | "album";
   id: number;

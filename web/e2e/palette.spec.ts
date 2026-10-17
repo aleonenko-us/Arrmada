@@ -16,7 +16,7 @@ test.describe("command palette (staff)", () => {
     await input.fill("cartog");
     const library = dialog.getByRole("group", { name: "Library" });
     await expect(library.getByRole("option", { name: /The Cartographer/ })).toBeVisible();
-    expect(api.callsTo("GET", "/api/v1/search").some((c) => c.path.includes("q=cartog"))).toBe(true);
+    expect(api.callsTo("GET", "/api/v1/library/search").some((c) => c.path.includes("q=cartog"))).toBe(true);
     // The best match is highlighted first; Enter opens it and the palette closes.
     await expect(dialog.getByRole("option", { selected: true })).toContainText("The Cartographer");
     await page.keyboard.press("Enter");
@@ -103,7 +103,7 @@ test.describe("command palette (requester)", () => {
     await expect(discover.getByRole("option").first()).toContainText("Search Discover for");
     await api.quiet();
     await expect(dialog.getByRole("group", { name: "Library" })).toHaveCount(0);
-    expect(api.callsTo("GET", "/api/v1/search")).toEqual([]);
+    expect(api.callsTo("GET", "/api/v1/library/search")).toEqual([]);
     // Their own pages only: no Settings, no console pages.
     await input.fill("settings");
     await expect(dialog.getByRole("group", { name: "Pages and settings" })).toHaveCount(0);

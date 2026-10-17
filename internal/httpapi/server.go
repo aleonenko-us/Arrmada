@@ -311,7 +311,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/searches", a.requireRole(auth.RoleManager, a.handleListSearches))
 	// The command palette's library lookup (search.go): titles, years and posters only.
 	// Staff only, like the libraries it reads, and not on the personal API key list.
-	mux.HandleFunc("GET /api/v1/search", a.requireRole(auth.RoleManager, a.handleLibrarySearch))
+	mux.HandleFunc("GET /api/v1/library/search", a.requireRole(auth.RoleManager, a.handleLibrarySearch))
 
 	// Audiobook server (listening apps): admin panel + each user's own connection card.
 	mux.HandleFunc("GET /api/v1/audioserver", a.requireRole(auth.RoleAdmin, a.handleAudioServer))

@@ -12,7 +12,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
-// The command palette's library lookup (GET /api/v1/search?q=, staff only): the titles in
+// The command palette's library lookup (GET /api/v1/library/search?q=, staff only): the titles in
 // Movies, Series, Books and Music that match what's typed, with just enough to draw a row
 // (kind, id, title, year, a poster) and nothing else. The palette asks on every pause in
 // typing, so the answer comes from a small in-memory index of every title rather than from

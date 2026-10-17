@@ -50,7 +50,7 @@ func searchAPI(t *testing.T) (*api, *router) {
 // searchAs calls the real route as role and decodes the answer.
 func searchAs(t *testing.T, rt *router, role auth.Role, q string) (int, []map[string]any) {
 	t.Helper()
-	r := asRole(httptest.NewRequest(http.MethodGet, "/api/v1/search?q="+url.QueryEscape(q), nil), role)
+	r := asRole(httptest.NewRequest(http.MethodGet, "/api/v1/library/search?q="+url.QueryEscape(q), nil), role)
 	rec := httptest.NewRecorder()
 	rt.ServeHTTP(rec, r)
 	if rec.Code != http.StatusOK {
@@ -94,7 +94,7 @@ func TestLibrarySearchIsStaffOnly(t *testing.T) {
 		t.Errorf("anonymous: HTTP %d, want 401", code)
 	}
 	for _, scope := range []auth.KeyScope{auth.KeyScopeRead, auth.KeyScopeFull} {
-		r := withKeyUse(httptest.NewRequest(http.MethodGet, "/api/v1/search?q=dune", nil),
+		r := withKeyUse(httptest.NewRequest(http.MethodGet, "/api/v1/library/search?q=dune", nil),
 			&auth.KeyUse{User: &auth.User{ID: 1, Username: "boss", Role: auth.RoleAdmin}, KeyID: 1, Scope: scope})
 		rec := httptest.NewRecorder()
 		rt.ServeHTTP(rec, r)
@@ -102,7 +102,7 @@ func TestLibrarySearchIsStaffOnly(t *testing.T) {
 			t.Errorf("admin's %s API key: HTTP %d, want 403", scope, rec.Code)
 		}
 	}
-	if apiKeyRoutes["GET /api/v1/search"] {
+	if apiKeyRoutes["GET /api/v1/library/search"] {
 		t.Error("the library search must stay off the personal API key list")
 	}
 }
@@ -201,7 +201,7 @@ func TestLibrarySearchLimit(t *testing.T) {
 		t.Errorf("star: %d rows, want %d", len(rows), searchLimit)
 	}
 	call := func(q string) int {
-		r := asRole(httptest.NewRequest(http.MethodGet, "/api/v1/search?"+q, nil), auth.RoleManager)
+		r := asRole(httptest.NewRequest(http.MethodGet, "/api/v1/library/search?"+q, nil), auth.RoleManager)
 		rec := httptest.NewRecorder()
 		rt.ServeHTTP(rec, r)
 		return strings.Count(rec.Body.String(), `"kind"`)

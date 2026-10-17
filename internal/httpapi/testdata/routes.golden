@@ -170,6 +170,7 @@ GET /api/v1/library/fit staff -
 GET /api/v1/library/fit/profiles staff -
 GET /api/v1/library/folders staff -
 GET /api/v1/library/folders/suggest staff -
+GET /api/v1/library/search staff -
 GET /api/v1/logs admin -
 GET /api/v1/logs/download admin -
 GET /api/v1/logs/level admin -
@@ -245,7 +246,6 @@ GET /api/v1/requests/{id} user ext key
 GET /api/v1/reviews staff -
 GET /api/v1/reviews/{id}/files staff -
 GET /api/v1/reviews/{id}/targets staff -
-GET /api/v1/search staff -
 GET /api/v1/searches staff -
 GET /api/v1/series staff -
 GET /api/v1/series/lookup staff -

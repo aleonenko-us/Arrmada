@@ -57,7 +57,7 @@ export function calendar(url: URL): { items: CalendarItem[]; start: string; end:
 }
 
 // The library list is slim summaries (MOV-10): no cast, overview or file paths.
-// librarySearch answers GET /api/v1/search from the movies and series above: every title
+// librarySearch answers GET /api/v1/library/search from the movies and series above: every title
 // containing what was typed (the server's own matching is tested in Go).
 export function librarySearch(url: URL): { results: LibraryHit[] } {
   const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
