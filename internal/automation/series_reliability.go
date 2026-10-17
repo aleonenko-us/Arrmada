@@ -45,8 +45,10 @@ func (c *Coordinator) RSSSyncSeries(ctx context.Context) {
 	// Match against the library snapshot first — List already carries each show's
 	// aliases, year and extra — and load a show in full only when the feed has something
 	// for it. It used to Get() every monitored show every cycle, almost always to find
-	// nothing.
-	matches := rssMatches(all, res.Releases)
+	// nothing. The grab step judges by the same SearchFit, over the same snapshot.
+	fit := c.series.SearchFitFor(all)
+	ctx = withFit(ctx, fit)
+	matches := rssMatchesFit(fit, all, res.Releases)
 	if len(matches) == 0 {
 		return
 	}
@@ -96,6 +98,14 @@ func (c *Coordinator) RSSSyncSeries(ctx context.Context) {
 // identity rule as every other series match (seriesIdentity) — an anime's romaji-named
 // uploads included, which is the RSS fast path's main catch. Each release is parsed once.
 func rssMatches(all []series.Series, releases []indexer.Release) map[int64][]indexer.Release {
+	return rssMatchesFit(nil, all, releases)
+}
+
+// rssMatchesFit is rssMatches by a search's rule (series.SearchFit), which also takes a
+// release named by a show's stored translated title. That tier only ever takes a name no
+// library show goes by and no other show's translated title shares, so a feed release it
+// gives to one show can't also go to another, and an ambiguous one goes to none.
+func rssMatchesFit(fit *series.SearchFit, all []series.Series, releases []indexer.Release) map[int64][]indexer.Release {
 	parsed := make([]parser.Release, len(releases))
 	for i, rel := range releases {
 		parsed[i] = parser.Parse(rel.Title)
@@ -106,7 +116,7 @@ func rssMatches(all []series.Series, releases []indexer.Release) map[int64][]ind
 			continue
 		}
 		for i, rel := range releases {
-			if ok, _ := seriesIdentity(parsed[i], s); ok {
+			if ok, _ := searchIdentity(fit, parsed[i], s); ok {
 				out[s.ID] = append(out[s.ID], rel)
 			}
 		}
@@ -285,6 +295,7 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 	}
 	byName := make(map[string]indexer.Release, len(releases))
 	droppedTitle := 0
+	fit := c.seriesFit(ctx)
 	for _, rel := range c.networks(ctx).usable(ctx, releases) {
 		// The candidate must actually BE this show. Nothing here checked, and matching on
 		// season/episode numbers alone is not a check: a search for "Goliath" returns
@@ -292,7 +303,7 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 		// word in an EPISODE title — and S01E07 lines up with Goliath's own S01E07, so it
 		// was grabbed as an upgrade and imported over the real episode. The missing-episode
 		// and interactive searches have always gated on this; the upgrade sweep didn't.
-		if !seriesTitleMatches(rel.Title, s) {
+		if !searchTitleMatches(fit, rel.Title, s) {
 			droppedTitle++
 			notes.mark(rel.Title, DropWrongTitle)
 			continue
