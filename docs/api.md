@@ -1,0 +1,174 @@
+# Calling Arrmada from scripts (personal API keys)
+
+A **personal API key** lets a script or another app — an [n8n](https://n8n.io) workflow,
+Home Assistant, a cron job with `curl` — call Arrmada as you: search for a title, request it,
+check on your requests, approve them if you're staff.
+
+These are *your* keys, made on your **Me** page. They're not the keys Arrmada itself uses
+for outside services such as TMDB (those are in Settings → Connections), and they're not
+the n8n webhook that Arrmada sends alerts to ([Alerts to n8n](n8n.md) covers that
+direction).
+
+## Make a key
+
+1. Open **Me** (your name in the sidebar, or the Me tab on a phone) → **Personal API keys**
+   → **New API key**.
+2. Give it a name that says what uses it ("n8n", "Home Assistant").
+3. Pick its **access**:
+   - **Read only** — `GET` requests only: it can look things up and read your requests,
+     never change anything.
+   - **Full** — whatever your account may do, on the routes keys can use (below).
+4. Pick when it **expires**: never, or in 30, 90 or 365 days.
+5. Type your password (accounts that only sign in with Plex or Jellyfin aren't asked).
+6. **Copy the key now.** It starts with `arrk_` and is shown this once: Arrmada keeps only a
+   fingerprint of it (a SHA-256 hash), so nobody — the admin included — can show it again.
+   Lost it? Revoke it and make another.
+
+The list shows each key's name, its start and last four characters (`arrk_…7f3q`), its
+access, when it was made, when it was last used and roughly from where, and when it
+expires. **Revoke** stops it on the very next request.
+
+An admin sees everyone's keys under **Settings → People & access → Personal API keys** —
+whose, what access and when last used, never from where — and can revoke any of them.
+
+## Send it
+
+Put the key in a header on every request:
+
+```
+X-Api-Key: arrk_…
+```
+
+or
+
+```
+Authorization: Bearer arrk_…
+```
+
+Never in the address. A request with a key in its query string (`?apikey=arrk_…`) is refused
+with `400`, whatever the parameter is called: addresses end up in proxy logs and browser
+history.
+
+## What a key may do
+
+A key acts as you, with two limits on top:
+
+- **Its access.** A read-only key gets `403` from anything but `GET`.
+- **The role you had when you made it.** If you're promoted later, old keys don't grow with
+  you; make a new one. If you're demoted, your keys follow the lower role at once. If your
+  account is disabled your keys stop working until it's turned back on, and if it's deleted
+  they go with it.
+
+What each route shows you is exactly what your signed-in browser would see: a requester's
+key lists only their own and followed requests, without other people's names or notes.
+
+### The routes keys can use
+
+Keys reach only the part of Arrmada built for callers from outside your home network, and of
+that only what a script has a use for. Everything else answers a key with `403` — including
+signing in and out, sessions, passwords and two-factor sign-in, making or revoking keys (a
+key can't make more keys), your account settings, the audiobook player, the support bundle,
+logs, outside services' API keys and every admin page.
+
+| What | Routes |
+|---|---|
+| Is it up, who am I | `GET /api/health`, `GET /api/v1/status`, `GET /api/v1/auth/me` |
+| Discover (movies and TV) | `GET /api/v1/discover/search?q=…`, `/discover/trending`, `/discover/popular`, `/discover/upcoming`, … and `GET /api/v1/media/{movie\|series}/{tmdb_id}` |
+| Discover (books) | `GET /api/v1/books/discover/search?q=…`, `/books/discover/trending`, … |
+| Requests | `GET /api/v1/requests`, `POST /api/v1/requests`, `GET` and `DELETE /api/v1/requests/{id}`, `DELETE /api/v1/requests/{id}/subscription` |
+| Requests (staff) | `POST /api/v1/requests/{id}/approve`, `/decline`, `/preview`, `POST /api/v1/requests/bulk` |
+| Your limits and shelf | `GET /api/v1/me/quota`, `GET /api/v1/me/books` |
+| Reporting a problem | `GET` and `POST /api/v1/issues` |
+| Your inbox | `GET /api/v1/me/notifications`, `POST /api/v1/me/notifications/read-all`, `POST /api/v1/me/notifications/{id}/read` |
+
+The exact list is the source of truth: routes marked `key` in
+[`internal/httpapi/testdata/routes.golden`](../internal/httpapi/testdata/routes.golden), which
+are the ones in [`internal/httpapi/apikey_routes.go`](../internal/httpapi/apikey_routes.go).
+The rule for adding one: it must already be open to callers from outside the home network
+(marked `ext` there), it must be something a script needs, and it must not be about signing
+in or account security. A test holds the list to that.
+
+There's no OpenAPI description yet; the golden file above lists every route and who may
+call it.
+
+### Mistakes and limits
+
+- A wrong, revoked or expired key gets `401`. After 10 wrong keys from one address in 15
+  minutes, that address gets `429` (with `Retry-After`) for a while, even with a right key —
+  the same rule as wrong passwords, counted separately so a broken script can't lock you
+  out of signing in.
+- A route keys can't use, or a read-only key on a change, gets `403`.
+- A key's last use is recorded at most every ten minutes (or when it's used from a different
+  network), so "last used" can be a few minutes behind.
+
+## Examples
+
+These use `curl` with Arrmada at `http://192.168.1.10:7878` and the key in `$ARRMADA_KEY`.
+
+**Search for a movie or show:**
+
+```sh
+curl -s -H "X-Api-Key: $ARRMADA_KEY" \
+  "http://192.168.1.10:7878/api/v1/discover/search?q=dune"
+```
+
+The answer is `{"items": [...], "page": 1, "total_pages": …}`; each item has `media_type`
+(`movie` or `series`), `tmdb_id`, `title` and `year`.
+
+**Request (add) a movie** — a full key; a staff account's request, or one from an account
+set to auto-approve, goes straight to downloading:
+
+```sh
+curl -s -X POST -H "X-Api-Key: $ARRMADA_KEY" -H "Content-Type: application/json" \
+  -d '{"media_type": "movie", "tmdb_id": 438631}' \
+  http://192.168.1.10:7878/api/v1/requests
+```
+
+For a show, use `"media_type": "series"` and optionally `"seasons": [1, 2]` (leave it out
+for the whole show). For a book, `"media_type": "book"` with the `ol_key` from the books
+search. If it was already requested you're added as a follower (`"subscribed": true`). Request
+limits apply as in the app (`429` with `"code": "quota"`).
+
+**List your requests:**
+
+```sh
+curl -s -H "Authorization: Bearer $ARRMADA_KEY" \
+  "http://192.168.1.10:7878/api/v1/requests?status=pending"
+```
+
+**Approve one** (a manager's or admin's full key):
+
+```sh
+curl -s -X POST -H "X-Api-Key: $ARRMADA_KEY" -H "Content-Type: application/json" \
+  -d '{}' http://192.168.1.10:7878/api/v1/requests/42/approve
+```
+
+### In n8n
+
+Use an **HTTP Request** node. For **Authentication** pick *Generic Credential Type* →
+*Header Auth*, with **Name** `X-Api-Key` and **Value** your key, so the key lives in n8n's
+credential store rather than in the workflow. Then set the method and URL as above (and, for
+a request, **Send Body** → JSON).
+
+### In Home Assistant
+
+A read-only key is enough for a sensor, e.g. how many of your requests are waiting:
+
+```yaml
+rest:
+  - resource: http://192.168.1.10:7878/api/v1/requests?status=pending
+    headers:
+      X-Api-Key: !secret arrmada_key
+    scan_interval: 600
+    sensor:
+      - name: Arrmada pending requests
+        value_template: "{{ value_json.total }}"
+```
+
+## Keeping keys safe
+
+- Treat a key like a password: anyone who has it can do what it allows, as you.
+- Prefer **Read only** and an expiry for anything that only reads.
+- One key per thing that uses it, so you can revoke one without breaking the others.
+- If a key may have leaked, revoke it. Keys never appear in Arrmada's logs, and the support
+  bundle blanks anything shaped like one.

@@ -12,6 +12,10 @@ shows the same delivery log.
 Only admins can add one, and only for admin alerts. Requesters' own notifications ("your
 request is ready") can't go to a webhook (see [Security](#security) for why).
 
+The other direction works too: an n8n workflow can **call Arrmada** — search, request a
+title, approve a request — with a personal API key from your Me page and an HTTP Request
+node. See [Calling Arrmada from scripts](api.md#in-n8n).
+
 ## Set it up
 
 ### 1. In n8n: a Webhook node
