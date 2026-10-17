@@ -193,6 +193,11 @@ func (s *Service) rootFor(m Movie) string {
 	return s.folders.Path(ctx, libfolders.MediaMovie, m.LibraryFolderID)
 }
 
+// RootFor is rootFor for other packages: the Movies folder film m's files import into
+// ("" = the default folder). A grab saves beside it when that folder has a downloads
+// folder of its own.
+func (s *Service) RootFor(m Movie) string { return s.rootFor(m) }
+
 // FactsOf is what the folder rules know about a film.
 func FactsOf(ex *MovieExtra) libfolders.Facts {
 	if ex == nil {

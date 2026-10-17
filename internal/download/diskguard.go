@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,6 +47,8 @@ type DiskGuard struct {
 	// dirFn is the live downloads folder (Settings → Library), read on every pass so a
 	// changed folder is watched from the next minute; nil = dir.
 	dirFn func() string
+	// dirsFn lists every downloads folder (SetDirsFunc); nil = the one above only.
+	dirsFn func() []string
 	// usage measures the volume. diskspace.Of in production; a test swaps it to put the
 	// guard on either side of its thresholds without filling a real disk.
 	usage func(path string) (diskspace.Usage, bool)
@@ -69,7 +72,13 @@ func NewDiskGuard(svc *Service, set *settings.Service, log *slog.Logger, dir str
 // first Check.
 func (g *DiskGuard) SetDirFunc(fn func() string) { g.dirFn = fn }
 
-// path is the folder being watched now.
+// SetDirsFunc makes the guard watch every downloads folder: the Downloads folder first,
+// then each library folder's own downloads folder (GitHub #11), read on every pass. With
+// more than one, each volume is judged on its own and only the downloads saving onto a
+// full one are held. Call it at startup, before the first Check.
+func (g *DiskGuard) SetDirsFunc(fn func() []string) { g.dirsFn = fn }
+
+// path is the folder being watched now (the Downloads folder).
 func (g *DiskGuard) path() string {
 	if g.dirFn != nil {
 		return strings.TrimSpace(g.dirFn())
@@ -77,7 +86,31 @@ func (g *DiskGuard) path() string {
 	return g.dir
 }
 
+// paths is every folder being watched now, the Downloads folder first, each once.
+func (g *DiskGuard) paths() []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		if p = strings.TrimSpace(p); p != "" && !seen[filepath.Clean(p)] {
+			seen[filepath.Clean(p)] = true
+			out = append(out, p)
+		}
+	}
+	add(g.path())
+	if g.dirsFn != nil {
+		for _, p := range g.dirsFn() {
+			add(p)
+		}
+	}
+	if len(out) == 0 {
+		return []string{""}
+	}
+	return out
+}
+
 // GuardStatus is what the guard is currently doing, for the API and the health panel.
+// With several downloads folders, Path and UsedPct are the fullest one's, and Volumes
+// lists each.
 type GuardStatus struct {
 	Enabled    bool    `json:"enabled"`
 	Measurable bool    `json:"measurable"` // false = this platform/path can't be measured
@@ -86,20 +119,40 @@ type GuardStatus struct {
 	PausePct   int     `json:"pause_pct"`
 	ResumePct  int     `json:"resume_pct"`
 	Holding    int     `json:"holding"` // torrents the guard has paused
+	// Volumes is each downloads folder watched, when there's more than one.
+	Volumes []GuardVolume `json:"volumes,omitempty"`
+}
+
+// GuardVolume is one watched downloads folder and how full its disk is.
+type GuardVolume struct {
+	Path       string  `json:"path"`
+	Measurable bool    `json:"measurable"`
+	UsedPct    float64 `json:"used_pct"`
 }
 
 // Status reports the guard's current view without changing anything.
 func (g *DiskGuard) Status(ctx context.Context) GuardStatus {
 	pause, resume := g.thresholds(ctx)
+	dirs := g.paths()
 	st := GuardStatus{
 		Enabled:   g.settings.GetBool(ctx, KeyDiskGuard, DefaultDiskGuard),
-		Path:      g.path(),
+		Path:      dirs[0],
 		PausePct:  pause,
 		ResumePct: resume,
 		Holding:   len(g.held(ctx)),
 	}
-	if u, ok := g.usage(st.Path); ok {
-		st.Measurable, st.UsedPct = true, u.UsedPct
+	for _, d := range dirs {
+		v := GuardVolume{Path: d}
+		if u, ok := g.usage(d); ok {
+			v.Measurable, v.UsedPct = true, u.UsedPct
+			// The fullest volume is the one that decides whether anything is held.
+			if !st.Measurable || u.UsedPct > st.UsedPct {
+				st.Measurable, st.UsedPct, st.Path = true, u.UsedPct, d
+			}
+		}
+		if len(dirs) > 1 {
+			st.Volumes = append(st.Volumes, v)
+		}
 	}
 	return st
 }
@@ -170,7 +223,12 @@ func (g *DiskGuard) Check(ctx context.Context) error {
 		return nil
 	}
 
-	dir := g.path()
+	dirs := g.paths()
+	if len(dirs) > 1 {
+		g.checkVolumes(ctx, held, dirs)
+		return nil
+	}
+	dir := dirs[0]
 	u, ok := g.usage(dir)
 	if !ok {
 		// Can't measure: do nothing at all. Guessing here would either pause a
@@ -351,3 +409,122 @@ func (g *DiskGuard) save(ctx context.Context, hashes []string) {
 }
 
 func round1(f float64) float64 { return float64(int(f*10+0.5)) / 10 }
+
+// checkVolumes is Check with several downloads folders (a library folder's own downloads
+// folder on another disk, GitHub #11). Each volume is judged on its own: a download is
+// held while the volume it saves onto is over the pause line, and released once that
+// volume — not the fullest one — has drained below the resume line. A download is placed
+// by its content path; one in none of the folders counts as the Downloads folder's, the
+// client's default. A volume that can't be measured holds nothing and releases nothing,
+// as with one folder.
+func (g *DiskGuard) checkVolumes(ctx context.Context, held, dirs []string) {
+	pause, resume := g.thresholds(ctx)
+	use := map[string]diskspace.Usage{}
+	full := false
+	for _, d := range dirs {
+		if u, ok := g.usage(d); ok {
+			use[d] = u
+			full = full || u.UsedPct >= float64(pause)
+		}
+	}
+	if len(use) == 0 || (!full && len(held) == 0) {
+		return
+	}
+	items, whole, err := g.svc.QueueComplete(ctx)
+	if err != nil {
+		if full {
+			g.log.Warn("disk guard: could not read the queue", "err", err)
+		}
+		return
+	}
+	kept, missed := prunedHeld(held, items, whole, g.missed)
+	g.missed = missed
+	owned := map[string]bool{}
+	for _, h := range kept {
+		owned[h] = true
+	}
+	byHash := map[string]Item{}
+	for _, it := range items {
+		byHash[strings.ToLower(it.Hash)] = it
+	}
+	volumeOf := func(it Item) (string, diskspace.Usage, bool) {
+		d := folderOf(it.ContentPath, dirs)
+		u, ok := use[d]
+		return d, u, ok
+	}
+
+	// Hold what is still pulling data onto a full volume. Seeding torrents are left alone,
+	// as with one folder: they write nothing.
+	pausedNow := map[string]bool{}
+	var newly []string
+	for _, it := range items {
+		if it.State != "downloading" {
+			continue
+		}
+		d, u, ok := volumeOf(it)
+		if !ok || u.UsedPct < float64(pause) {
+			continue
+		}
+		h := strings.ToLower(it.Hash)
+		if err := g.svc.Pause(ctx, it.Hash); err != nil {
+			g.log.Warn("disk guard: could not pause a download", "name", it.Name, "err", err)
+			continue
+		}
+		pausedNow[h] = true
+		if owned[h] {
+			g.log.Warn("disk guard: paused a download again that was resumed while its volume is still too full",
+				"name", it.Name, "used_pct", round1(u.UsedPct), "pause_at_pct", pause, "path", d)
+			continue
+		}
+		g.log.Warn("disk guard: paused a download — its volume is too full",
+			"name", it.Name, "used_pct", round1(u.UsedPct), "pause_at_pct", pause, "path", d)
+		newly = append(newly, h)
+		owned[h] = true
+	}
+
+	// Release what was held on a volume that has drained. One the queue doesn't list (a
+	// partial read, a client restarting) stays held until it's seen or pruned.
+	var still []string
+	released := 0
+	for _, h := range append(kept, newly...) {
+		it, listed := byHash[h]
+		if !listed || pausedNow[h] {
+			still = append(still, h)
+			continue
+		}
+		if _, u, ok := volumeOf(it); ok && u.UsedPct <= float64(resume) {
+			if err := g.svc.Resume(ctx, it.Hash); err != nil {
+				g.log.Debug("disk guard: could not resume a download", "hash", h, "err", err)
+			}
+			released++
+			continue
+		}
+		still = append(still, h)
+	}
+	if released > 0 {
+		g.log.Info("disk guard: space recovered, resuming downloads", "resume_at_pct", resume, "torrents", released)
+	}
+	if len(newly) > 0 || released > 0 || len(still) != len(held) {
+		g.save(ctx, still)
+	}
+}
+
+// folderOf is the watched folder a download's content path lies in (the longest that
+// holds it), else the first: the Downloads folder, where the client saves by default.
+func folderOf(content string, dirs []string) string {
+	best := dirs[0]
+	bestLen := -1
+	if content == "" || !filepath.IsAbs(content) {
+		return best
+	}
+	c := filepath.Clean(content)
+	for _, d := range dirs {
+		dc := filepath.Clean(d)
+		if c == dc || strings.HasPrefix(c, strings.TrimSuffix(dc, string(filepath.Separator))+string(filepath.Separator)) {
+			if len(dc) > bestLen {
+				best, bestLen = d, len(dc)
+			}
+		}
+	}
+	return best
+}

@@ -473,11 +473,15 @@ func (c *Coordinator) GrabForSeriesAuto(ctx context.Context, seriesID int64, ind
 }
 
 func (c *Coordinator) grabForSeries(ctx context.Context, seriesID int64, indexerName, downloadURL, title string, manual bool, scope GrabScope) error {
+	s, serr := c.series.Get(ctx, seriesID)
+	if serr == nil {
+		ctx = c.forSeries(ctx, s) // saved beside the show's folder when it has its own downloads folder
+	}
 	hash, err := c.grabTo(ctx, indexerName, downloadURL, title, seriesCategory)
 	if err != nil {
 		return err
 	}
-	if s, err := c.series.Get(ctx, seriesID); err == nil {
+	if serr == nil {
 		c.recordSeriesGrab(ctx, seriesID, title, indexerName, s.QualityProfile, hash)
 	}
 	// manual: picked out of the interactive search (or Replace), so the import gate must

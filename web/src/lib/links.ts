@@ -7,6 +7,8 @@ export const LINKS = {
   diskGuard: "/settings/downloads#disk-guard",
   recycleBin: "/settings/downloads#recycle-bin",
   libraryFolders: "/settings/library#media-folders",
+  // The extra Movies and TV folders, and each library folder's own downloads folder.
+  moreFolders: "/settings/library#more-folders",
   // The folders a library scan couldn't identify, under the folder rows.
   libraryReview: "/settings/library#needs-review",
   users: "/settings/users",

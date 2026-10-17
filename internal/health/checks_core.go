@@ -265,25 +265,94 @@ func DiskGuardCheck(state func(ctx context.Context) (DiskGuardState, bool)) Chec
 	}
 }
 
-// DiskFreeCheck warns when the downloads volume is nearly full.
-func DiskFreeCheck(dir func() string) Check {
-	return diskFreeCheck(dir, diskspace.FreeGB)
+// diskFreeCheck is DownloadsFreeCheck over the Downloads folder alone.
+func diskFreeCheck(dir func() string, free func(string) (float64, bool)) Check {
+	return downloadsFreeCheck(func() []Folder { return []Folder{{Role: "downloads", Label: "Downloads", Path: dir()}} }, free, nil)
 }
 
-func diskFreeCheck(dir func() string, free func(string) (float64, bool)) Check {
+// DownloadsFreeCheck warns when a downloads volume is nearly full: the Downloads folder's
+// and, when library folders have downloads folders of their own (DownloadFolders), each
+// of theirs on another filesystem — a torrent filling the TV disk is as stuck as one
+// filling the main downloads drive.
+func DownloadsFreeCheck(dirs func() []Folder) Check {
+	return downloadsFreeCheck(dirs, diskspace.FreeGB, diskspace.SameDevice)
+}
+
+func downloadsFreeCheck(dirs func() []Folder, free func(string) (float64, bool), same func(a, b string) (bool, bool)) Check {
 	return Check{
 		Key: "disk.free", Name: "Free space", Category: CategoryStorage,
 		Run: func(ctx context.Context) []Finding {
-			gb, ok := free(dir())
-			switch {
-			case !ok:
-				return nil
-			case gb < 2:
-				return []Finding{{Key: "disk.free", Level: LevelError, Message: fmt.Sprintf("Very low free disk space (%.1f GB) on the downloads volume.", gb)}}
-			case gb < 10:
-				return []Finding{{Key: "disk.free", Level: LevelWarning, Message: fmt.Sprintf("Low free disk space (%.1f GB) on the downloads volume.", gb)}}
+			var out []Finding
+			var measured []string
+			for _, f := range dirs() {
+				if strings.TrimSpace(f.Path) == "" {
+					continue
+				}
+				// One volume, one line: folders sharing a filesystem are the same space.
+				dup := false
+				for _, m := range measured {
+					if same != nil {
+						if s, ok := same(m, f.Path); ok && s {
+							dup = true
+							break
+						}
+					}
+				}
+				if dup {
+					continue
+				}
+				gb, ok := free(f.Path)
+				if !ok {
+					continue
+				}
+				measured = append(measured, f.Path)
+				key, where := "disk.free", "the downloads volume"
+				if f.Role != "downloads" {
+					key, where = "disk.free."+f.Role, fmt.Sprintf("the volume of %s (%s)", f.Label, f.Path)
+				}
+				switch {
+				case gb < 2:
+					out = append(out, Finding{Key: key, Level: LevelError, Message: fmt.Sprintf("Very low free disk space (%.1f GB) on %s.", gb, where)})
+				case gb < 10:
+					out = append(out, Finding{Key: key, Level: LevelWarning, Message: fmt.Sprintf("Low free disk space (%.1f GB) on %s.", gb, where)})
+				}
 			}
-			return nil
+			return out
+		},
+	}
+}
+
+// FolderDownloadsCheck flags a library folder whose own downloads folder (GitHub #11)
+// isn't on the same filesystem as the library folder: that's the whole point of one, and
+// with the two apart every import is a copy again. A hint, not a fault — a shared mount
+// can report one filesystem id for two disks and the reverse — so it's a warning. That
+// the folder is there and writable is the library-folders check's job.
+func FolderDownloadsCheck(src func(ctx context.Context) []libroots.FolderDownloads) Check {
+	return folderDownloadsCheck(src, diskspace.SameDevice)
+}
+
+func folderDownloadsCheck(src func(ctx context.Context) []libroots.FolderDownloads, same func(a, b string) (bool, bool)) Check {
+	return Check{
+		Key: "library.downloads", Name: "Library downloads folders", Category: CategoryStorage, Interval: folderCheckEvery, Timeout: 20 * time.Second,
+		Run: func(ctx context.Context) []Finding {
+			var out []Finding
+			for _, d := range src(ctx) {
+				if strings.TrimSpace(d.Path) == "" || strings.TrimSpace(d.Library) == "" {
+					continue
+				}
+				if s, ok := same(d.Path, d.Library); !ok || s {
+					continue
+				}
+				key := "library.downloads." + libroots.LibraryName(d.Media)
+				if d.ID != 0 {
+					key = fmt.Sprintf("%s-%d", key, d.ID)
+				}
+				out = append(out, Finding{
+					Key: key, Level: LevelWarning, Fix: FixMoreFolders,
+					Message: fmt.Sprintf("The downloads folder of %s (%s) isn't on the same filesystem as the library folder (%s), so its imports are copied, not hardlinked. Pick a downloads folder on the library's disk.", d.LibraryLabel, d.Path, d.Library),
+				})
+			}
+			return out
 		},
 	}
 }

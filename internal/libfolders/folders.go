@@ -47,6 +47,9 @@ type Folder struct {
 	Rule     string `json:"rule"`
 	Position int    `json:"position"`
 	Default  bool   `json:"default"`
+	// Downloads is the folder's own downloads folder ("" = the Downloads folder): torrent
+	// grabs for its titles save there, on the same disk, so imports hardlink (GitHub #11).
+	Downloads string `json:"downloads"`
 }
 
 // Errors the settings API turns into plain messages.
@@ -82,6 +85,8 @@ type Service struct {
 	roots   *libroots.Roots
 	dataDir string
 	now     func() time.Time
+	// set saves the default folders' downloads folders (settings); nil = can't.
+	set SettingWriter
 
 	mu     sync.RWMutex
 	loaded bool
@@ -171,7 +176,7 @@ func (s *Service) load(ctx context.Context) []Folder {
 }
 
 func (s *Service) reload(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, media, path, label, rule, position FROM library_folders ORDER BY media, position, id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, media, path, label, rule, position, downloads_path FROM library_folders ORDER BY media, position, id`)
 	if err != nil {
 		return err
 	}
@@ -179,7 +184,7 @@ func (s *Service) reload(ctx context.Context) error {
 	var out []Folder
 	for rows.Next() {
 		var f Folder
-		if err := rows.Scan(&f.ID, &f.Media, &f.Path, &f.Label, &f.Rule, &f.Position); err != nil {
+		if err := rows.Scan(&f.ID, &f.Media, &f.Path, &f.Label, &f.Rule, &f.Position, &f.Downloads); err != nil {
 			return err
 		}
 		out = append(out, f)
@@ -199,7 +204,7 @@ func (s *Service) reload(ctx context.Context) error {
 func (s *Service) Extras(ctx context.Context) []libroots.Extra {
 	var out []libroots.Extra
 	for _, f := range s.load(ctx) {
-		out = append(out, libroots.Extra{Media: f.Media, ID: f.ID, Path: f.Path, Label: s.labelOf(f)})
+		out = append(out, libroots.Extra{Media: f.Media, ID: f.ID, Path: f.Path, Label: s.labelOf(f), Downloads: f.Downloads})
 	}
 	return out
 }
@@ -235,7 +240,7 @@ func (s *Service) defaultPath(ctx context.Context, media string) string {
 // List is every folder of a library: the default first, then the extras in rule order.
 // The default is listed even when it resolves to nothing, so the UI can say so.
 func (s *Service) List(ctx context.Context, media string) []Folder {
-	out := []Folder{{ID: DefaultID, Media: media, Path: s.defaultPath(ctx, media), Default: true}}
+	out := []Folder{{ID: DefaultID, Media: media, Path: s.defaultPath(ctx, media), Default: true, Downloads: s.defaultDownloads(ctx, media)}}
 	out[0].Label = s.labelOf(out[0])
 	for _, f := range s.load(ctx) {
 		if f.Media == media {
@@ -449,6 +454,10 @@ func (s *Service) others(ctx context.Context, self int64) []namedPath {
 			out = append(out, namedPath{s.labelOf(f), f.Path})
 		}
 	}
+	// A library folder's own downloads folder is no place for another library either.
+	for _, d := range s.ownDownloads(ctx) {
+		out = append(out, namedPath{d.name, d.path})
+	}
 	return out
 }
 
@@ -463,6 +472,25 @@ func (s *Service) Conflict(ctx context.Context, p string) string {
 	for _, f := range s.load(ctx) {
 		if pathguard.Under(p, f.Path) || pathguard.Under(f.Path, p) {
 			return fmt.Sprintf("%s overlaps the extra library folder %q (%s) — library folders can't sit inside each other", p, s.labelOf(f), f.Path)
+		}
+	}
+	return ""
+}
+
+// LibraryConflict is Conflict for a library folder (not the Downloads folder): it also
+// can't land on, in or around a library folder's own downloads folder, where torrents
+// seed and the import scans of finished downloads look.
+func (s *Service) LibraryConflict(ctx context.Context, p string) string {
+	if msg := s.Conflict(ctx, p); msg != "" {
+		return msg
+	}
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	for _, d := range s.ownDownloads(ctx) {
+		if pathguard.Under(p, d.path) || pathguard.Under(d.path, p) {
+			return fmt.Sprintf("%s overlaps %s (%s) — a library folder can't sit inside or around a downloads folder", p, d.name, d.path)
 		}
 	}
 	return ""

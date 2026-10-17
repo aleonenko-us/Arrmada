@@ -546,6 +546,7 @@ PUT /api/v1/subtitles/profiles/{id} staff -
 PUT /api/v1/subtitles/settings staff -
 PUT /api/v1/system/backups/settings admin -
 PUT /api/v1/system/library admin -
+PUT /api/v1/system/library/folders/downloads admin -
 PUT /api/v1/system/library/folders/order admin -
 PUT /api/v1/system/library/folders/{id} admin -
 PUT /api/v1/system/update-check admin -

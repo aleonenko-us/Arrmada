@@ -2,6 +2,7 @@ package libroots
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 
@@ -17,6 +18,12 @@ const (
 	KeyAudiobooks = "lib_audiobooks_dir"
 	KeyMusic      = "lib_music_dir"
 	KeyDownloads  = "lib_downloads_dir"
+	// The default Movies and TV folders' own downloads folders (GitHub #11): grabs for a
+	// title in that folder save there, so they land on the library's disk and import as
+	// hardlinks. Blank (the default) means the Downloads folder above, and there is no
+	// environment fallback: it's an option, not a folder every install has.
+	KeyMoviesDownloads = "lib_movies_downloads_dir"
+	KeyTVDownloads     = "lib_tv_downloads_dir"
 )
 
 // Getter reads one setting (settings.Service.Get).
@@ -42,6 +49,8 @@ type Extra struct {
 	ID    int64
 	Path  string
 	Label string
+	// Downloads is the folder's own downloads folder ("" = the Downloads folder).
+	Downloads string
 }
 
 // The two libraries that can have more than one folder.
@@ -185,13 +194,103 @@ func (r *Roots) folders(ctx context.Context, media, def string) []string {
 	return out
 }
 
-// All is Libraries plus downloads, last.
-func (r *Roots) All(ctx context.Context) []Root {
-	out := r.Libraries(ctx)
-	if d := r.Downloads(ctx); d != "" {
-		out = append(out, Root{Name: "downloads", Path: d})
+// MoviesDownloads and TVDownloads are the default Movies and TV folders' own downloads
+// folders, "" when none is set (grabs then use Downloads).
+func (r *Roots) MoviesDownloads(ctx context.Context) string {
+	return r.resolve(ctx, KeyMoviesDownloads, "")
+}
+func (r *Roots) TVDownloads(ctx context.Context) string { return r.resolve(ctx, KeyTVDownloads, "") }
+
+// FolderDownloads is one library folder's own downloads folder: the library folder it
+// serves (ID 0 is the library's default folder) and where it is.
+type FolderDownloads struct {
+	Media string `json:"media"`
+	ID    int64  `json:"id"`
+	// Library is the library folder it serves, and LibraryLabel how the UI names that.
+	Library      string `json:"library"`
+	LibraryLabel string `json:"library_label"`
+	Path         string `json:"path"`
+}
+
+// PerFolderDownloads lists every library folder that has a downloads folder of its own:
+// the default Movies and TV folders first, then the extras in their order. Several
+// folders may share one downloads folder, so a path can repeat; DownloadFolders is the
+// distinct list.
+func (r *Roots) PerFolderDownloads(ctx context.Context) []FolderDownloads {
+	var out []FolderDownloads
+	if p := r.MoviesDownloads(ctx); p != "" {
+		out = append(out, FolderDownloads{Media: MediaMovie, Library: r.Movies(ctx), LibraryLabel: "Movies", Path: p})
+	}
+	if p := r.TVDownloads(ctx); p != "" {
+		out = append(out, FolderDownloads{Media: MediaSeries, Library: r.TV(ctx), LibraryLabel: "TV", Path: p})
+	}
+	for _, e := range r.extraList(ctx) {
+		if p := strings.TrimSpace(e.Downloads); p != "" {
+			label := strings.TrimSpace(e.Label)
+			if label == "" {
+				label = filepath.Base(filepath.Clean(e.Path))
+			}
+			out = append(out, FolderDownloads{Media: e.Media, ID: e.ID, Library: e.Path, LibraryLabel: label, Path: p})
+		}
 	}
 	return out
+}
+
+// DownloadFolders is every folder downloads can land in: the Downloads folder first, then
+// each library folder's own downloads folder once (named "downloads", labelled after the
+// first library folder using it). Everything that has to find, measure or check a finished
+// download — manual import, the disk guard, the health panel — reads this, so a torrent
+// saved next to its library is as much Arrmada's as one in the Downloads folder.
+func (r *Roots) DownloadFolders(ctx context.Context) []Root {
+	var out []Root
+	seen := map[string]bool{}
+	if d := r.Downloads(ctx); d != "" {
+		out = append(out, Root{Name: "downloads", Path: d})
+		seen[filepath.Clean(d)] = true
+	}
+	for _, f := range r.PerFolderDownloads(ctx) {
+		key := filepath.Clean(f.Path)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, Root{Name: "downloads", Path: f.Path, Label: "Downloads for " + f.LibraryLabel})
+	}
+	return out
+}
+
+// DownloadsFor is where a grab for a title living in library folder root of media saves:
+// that folder's own downloads folder, else the Downloads folder. root "" is the library's
+// default folder.
+func (r *Roots) DownloadsFor(ctx context.Context, media, root string) string {
+	if p := r.OwnDownloads(ctx, media, root); p != "" {
+		return p
+	}
+	return r.Downloads(ctx)
+}
+
+// OwnDownloads is the downloads folder of library folder root of media, "" when it has
+// none or root isn't one of the library's folders. root "" is the default folder.
+func (r *Roots) OwnDownloads(ctx context.Context, media, root string) string {
+	def, own := r.Movies(ctx), r.MoviesDownloads(ctx)
+	if media == MediaSeries {
+		def, own = r.TV(ctx), r.TVDownloads(ctx)
+	}
+	root = strings.TrimSpace(root)
+	if root == "" || (def != "" && filepath.Clean(root) == filepath.Clean(def)) {
+		return own
+	}
+	for _, e := range r.extraList(ctx) {
+		if e.Media == media && strings.TrimSpace(e.Path) != "" && filepath.Clean(e.Path) == filepath.Clean(root) {
+			return strings.TrimSpace(e.Downloads)
+		}
+	}
+	return ""
+}
+
+// All is Libraries plus every downloads folder (DownloadFolders), last.
+func (r *Roots) All(ctx context.Context) []Root {
+	return append(r.Libraries(ctx), r.DownloadFolders(ctx)...)
 }
 
 // Config is the environment's config with every folder replaced by the resolved one,
