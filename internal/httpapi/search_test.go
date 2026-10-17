@@ -166,14 +166,14 @@ func TestLibrarySearchRanking(t *testing.T) {
 func TestLibrarySearchNormalises(t *testing.T) {
 	_, rt := searchAPI(t)
 	for q, want := range map[string]string{
-		"pokemon":          "movie:Pokémon: The First Movie",
+		"pokemon":           "movie:Pokémon: The First Movie",
 		"POKÉMON the first": "movie:Pokémon: The First Movie",
-		"amelie":           "movie:Amélie",
-		"fast and furious": "movie:Fast & Furious",
-		"fast & furious":   "movie:Fast & Furious",
-		"fast furious":     "movie:Fast & Furious",
-		"the office":       "series:The Office",
-		"office":           "series:The Office",
+		"amelie":            "movie:Amélie",
+		"fast and furious":  "movie:Fast & Furious",
+		"fast & furious":    "movie:Fast & Furious",
+		"fast furious":      "movie:Fast & Furious",
+		"the office":        "series:The Office",
+		"office":            "series:The Office",
 	} {
 		_, rows := searchAs(t, rt, auth.RoleManager, q)
 		if len(rows) == 0 || titles(rows)[0] != want {
