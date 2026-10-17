@@ -203,6 +203,12 @@ func (s *Service) SearchAlbums(ctx context.Context, q string, limit int) ([]Albu
 	return s.repo.SearchAlbums(ctx, q, limit)
 }
 
+// FilePaths lists every track file the library has on record, for checks that ask
+// whether a missing folder used to hold anything (a share that isn't mounted).
+func (s *Service) FilePaths(ctx context.Context) ([]string, error) {
+	return s.repo.FilePaths(ctx)
+}
+
 // Tracks returns an album's tracks.
 func (s *Service) Tracks(ctx context.Context, albumID int64) ([]Track, error) {
 	return s.repo.TracksFor(ctx, albumID)

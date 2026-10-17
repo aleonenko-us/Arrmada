@@ -32,6 +32,7 @@ var samples = map[string]map[string]any{
 	EventDownloadStalled:    {"count": 1, "title": "Dune has stalled", "link": "/activity/queue?filter=problems"},
 	EventHealthProblem:      {"count": 1, "title": "qBittorrent is unreachable", "level": "error", "link": "/settings/status"},
 	EventHealthResolved:     {"count": 1, "title": "qBittorrent is unreachable", "link": "/settings/status"},
+	EventTwoFactorFailures:  {"count": 5},
 	EventConvertFailed:      {"title": "Dune (2021)", "key": "movie:12", "note": "ffmpeg exited with status 1", "count": 3, "at": int64(1_800_000_000)},
 	EventConvertStalled:     {"count": 1, "title": "Convert is stuck: the scratch folder is full", "detail": "Dune (2021): needs ~91 GB of scratch", "link": "/convert?tab=problems"},
 	EventConvertSummary:     {"files": 7, "saved_bytes": int64(312) << 30, "problems": 2},

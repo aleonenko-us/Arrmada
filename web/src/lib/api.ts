@@ -870,6 +870,8 @@ export interface SetupState {
   restart_needed: boolean;
   can_restart: boolean;
   mounts: string[];
+  /** /media is a folder of the owner's (ARRMADA_MEDIA_HOST), not Arrmada's managed volume. */
+  media_host_folder?: boolean;
   suggestions: Partial<LibraryPaths>;
   /** The Media server step: Plex is connected (address and token saved), and its name. */
   plex_connected?: boolean;
@@ -1127,6 +1129,8 @@ export interface AppSettings {
   plex_login_enabled: boolean;
   /** Sign in with Plex may open an admin or manager account linked to that Plex account. */
   plex_signin_staff: boolean;
+  /** Admins signing in with a password must use two-factor sign-in (set up at sign-in). */
+  two_factor_admins: boolean;
   /** Legacy: true when a new Plex sign-in auto-approves every type. */
   plex_login_auto_approve: boolean;
   /** The types a new Plex sign-in auto-approves, "movie,series,book" (any subset). */
@@ -1912,6 +1916,9 @@ export interface UpdateStatus {
  * One person on Settings → People & access (GET /people, admin). Times are unix ms, 0 =
  * never. Listening is when, never what: there is no book in here.
  */
+/** POST /auth/login: a session (user), or the two-factor step's ticket (never a session). */
+export type LoginAnswer = { user: AuthUser; two_factor?: undefined } | { two_factor: "code" | "setup"; ticket: string; user?: undefined };
+
 export interface Person {
   id: number;
   username: string;
@@ -1942,6 +1949,8 @@ export interface Person {
   audio_allowed: boolean;
   audio_password_set: boolean;
   audio_devices: number;
+  /** Their password sign-in asks for an authenticator code too. */
+  two_factor?: boolean;
 }
 
 /** One kind of request limit: limit 0 is unlimited; resets_at is when the oldest use frees up. */
@@ -2880,8 +2889,10 @@ export const api = {
     signedOut = true;
     return req<unknown>("/api/v1/auth/logout", { method: "POST" });
   },
+  /** With two-factor sign-in on (or required of an admin who hasn't set it up), the answer
+   * is a ticket for the code step instead of a session: see components/TwoFactorLogin. */
   login: (username: string, password: string) =>
-    req<{ user: AuthUser }>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+    req<LoginAnswer>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   setupAdmin: (username: string, password: string) =>
     req<{ user: AuthUser }>("/api/v1/auth/setup", { method: "POST", body: JSON.stringify({ username, password }) }),
   activity: () => req<ActivityFeed>("/api/v1/downloads"),

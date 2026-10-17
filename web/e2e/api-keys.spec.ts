@@ -15,7 +15,7 @@ interface Key {
 
 // keyServer stands in for the server's keys: a list that POST adds to (only with the right
 // password) and DELETE removes from, recording every call like the default fixtures.
-async function keyServer(page: Page, api: MockedApi, start: Key[] = []) {
+async function keyServer(page: Page, api: MockedApi, start: Key[] = [], flags: { code_required?: boolean; reauth_required?: boolean } = {}) {
   const keys = [...start];
   await page.route((u) => u.pathname.startsWith("/api/v1/me/api-keys"), async (route) => {
     const req = route.request();
@@ -24,9 +24,10 @@ async function keyServer(page: Page, api: MockedApi, start: Key[] = []) {
     try { body = req.postDataJSON(); } catch { body = undefined; }
     api.calls.push({ method: req.method(), path: url.pathname, body });
     const json = (status: number, out: unknown) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(out) });
-    if (req.method() === "GET") return json(200, { keys, expiry_days: [0, 30, 90, 365], max: 25, password_required: true });
+    if (req.method() === "GET") return json(200, { keys, expiry_days: [0, 30, 90, 365], max: 25, password_required: !flags.reauth_required, ...flags });
     if (req.method() === "POST") {
       if (body?.password !== "password123") return json(400, { status: "error", message: "Your password is wrong" });
+      if (flags.code_required && body?.code !== "123456") return json(400, { status: "error", message: "That code isn't right" });
       const days = Number(body.expires_in_days);
       const k: Key = {
         id: keys.length + 10, name: String(body.name), hint: "arrk_…" + KEY.slice(-4), scope: body.scope as Key["scope"], role: "requester",
@@ -99,6 +100,34 @@ test.describe("Me → Personal API keys", () => {
     await dialog.getByRole("button", { name: "Revoke key" }).click();
     await expect(card(page).getByRole("listitem")).toHaveCount(0);
     expect(api.callsTo("DELETE", "/api/v1/me/api-keys/").map((c) => c.path)).toEqual(["/api/v1/me/api-keys/10"]);
+  });
+});
+
+test.describe("Me → Personal API keys, stepping up", () => {
+  test.use({ persona: "requester" });
+
+  test("with two-factor on, making a key asks for a code as well", async ({ page, api }) => {
+    await keyServer(page, api, [], { code_required: true });
+    await page.goto("/me");
+    await card(page).getByRole("button", { name: "New API key" }).click();
+    const form = card(page).getByRole("form", { name: "New API key" });
+    await form.getByLabel("Name").fill("n8n");
+    await form.getByLabel("Your password").fill("password123");
+    await form.getByLabel("Two-factor code").fill("654321");
+    await form.getByRole("button", { name: "Make key" }).click();
+    await expect(form.getByRole("alert")).toHaveText("That code isn't right");
+    await form.getByLabel("Two-factor code").fill("123456");
+    await form.getByRole("button", { name: "Make key" }).click();
+    await expect(card(page).getByRole("textbox", { name: "API key" })).toHaveValue(KEY);
+    expect(api.callsTo("POST", "/api/v1/me/api-keys").at(-1)?.body).toMatchObject({ password: "password123", code: "123456" });
+  });
+
+  test("a Plex-only account signed in a while ago is asked to sign in again", async ({ page, api }) => {
+    await keyServer(page, api, [], { reauth_required: true });
+    await page.goto("/me");
+    await expect(card(page).getByText("keys can only be made within 15 minutes of signing in", { exact: false })).toBeVisible();
+    await expect(card(page).getByRole("button", { name: "New API key" })).toHaveCount(0);
+    await expect(card(page).getByRole("button", { name: "Sign out to sign in again" })).toBeVisible();
   });
 });
 

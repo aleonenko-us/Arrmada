@@ -106,15 +106,24 @@ type Service struct {
 	sessionTTL time.Duration
 	log        *slog.Logger
 	now        func() time.Time // time.Now; a fake clock in tests
+	tickets    *tickets         // two-factor sign-in tickets (ticket.go)
 }
 
 // NewService builds an auth service over the given database pool.
 func NewService(db *sql.DB) *Service {
-	return &Service{db: db, sessionTTL: 30 * 24 * time.Hour, log: slog.New(slog.DiscardHandler), now: time.Now}
+	return &Service{db: db, sessionTTL: 30 * 24 * time.Hour, log: slog.New(slog.DiscardHandler), now: time.Now, tickets: newTickets()}
 }
 
 // SessionTTL is how long a session lasts from its last extension.
 func (s *Service) SessionTTL() time.Duration { return s.sessionTTL }
+
+// SetClock replaces the service's clock. Tests outside this package use it to step
+// through two-factor codes 30 seconds at a time; the server never calls it.
+func (s *Service) SetClock(now func() time.Time) {
+	if now != nil {
+		s.now = now
+	}
+}
 
 // SetLogger sets where the service reports things the owner should fix (e.g. two accounts
 // that differ only by case). Without one those warnings are dropped.
@@ -470,8 +479,12 @@ func (s *Service) SetPassword(ctx context.Context, id int64, password string) er
 	}
 	// Invalidate every existing session for this user: a password change (often a
 	// response to a suspected compromise) must log out any hijacked session, not
-	// leave 30-day tokens valid.
+	// leave 30-day tokens valid. Devices trusted to skip the two-factor code are
+	// forgotten for the same reason, and so are personal API keys: a key minted by
+	// whoever had the old password must not outlive it.
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, id)
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM user_trusted_devices WHERE user_id = ?`, id)
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ?`, id)
 	return nil
 }
 
@@ -495,20 +508,33 @@ func (s *Service) SetDisabled(ctx context.Context, id int64, disabled bool) erro
 			if _, err := tx.ExecContext(ctx, `UPDATE audio_tokens SET revoked = 1 WHERE user_id = ?`, id); err != nil {
 				return err
 			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM user_trusted_devices WHERE user_id = ?`, id); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
 }
 
 // RevokeUserSessions logs a user out of every browser (an admin's "Sign out everywhere")
-// and says how many sessions ended.
+// and says how many sessions ended. Devices trusted to skip the two-factor code are
+// forgotten too, so every browser needs the code again.
 func (s *Service) RevokeUserSessions(ctx context.Context, id int64) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, id)
-	if err != nil {
-		return 0, err
-	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	var n int64
+	err := store.WithTx(ctx, s.db, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, id)
+		if err != nil {
+			return err
+		}
+		n, _ = res.RowsAffected()
+		if _, err = tx.ExecContext(ctx, `DELETE FROM user_trusted_devices WHERE user_id = ?`, id); err != nil {
+			return err
+		}
+		// "Everywhere" includes the scripts holding their personal API keys.
+		_, err = tx.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ?`, id)
+		return err
+	})
+	return n, err
 }
 
 // Authenticate verifies a username/password and returns the user on success. The exact

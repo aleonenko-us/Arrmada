@@ -5,7 +5,8 @@ Home Assistant, a cron job with `curl` — call Arrmada as you: search for a tit
 check on your requests, approve them if you're staff.
 
 These are *your* keys, made on your **Me** page. They're not the keys Arrmada itself uses
-for outside services such as TMDB (those are in Settings → Connections), and they're not
+for outside services such as TMDB (those are in Settings → Connections), not the
+dashboard widget's own key (`arrw_…`, see [Homepage dashboard](homepage.md)), and not
 the n8n webhook that Arrmada sends alerts to ([Alerts to n8n](n8n.md) covers that
 direction).
 
@@ -19,7 +20,10 @@ direction).
      never change anything.
    - **Full** — whatever your account may do, on the routes keys can use (below).
 4. Pick when it **expires**: never, or in 30, 90 or 365 days.
-5. Type your password (accounts that only sign in with Plex or Jellyfin aren't asked).
+5. Prove it's you. Type your password, and with two-factor sign-in on, a current code from
+   your authenticator app (or a recovery code) too. An account that only signs in with Plex
+   or Jellyfin has no password to ask for, so it can make a key only within 15 minutes of
+   signing in; after that, the card asks you to sign out and sign in again first.
 6. **Copy the key now.** It starts with `arrk_` and is shown this once: Arrmada keeps only a
    fingerprint of it (a SHA-256 hash), so nobody — the admin included — can show it again.
    Lost it? Revoke it and make another.
@@ -55,9 +59,18 @@ A key acts as you, with two limits on top:
 
 - **Its access.** A read-only key gets `403` from anything but `GET`.
 - **The role you had when you made it.** If you're promoted later, old keys don't grow with
-  you; make a new one. If you're demoted, your keys follow the lower role at once. If your
-  account is disabled your keys stop working until it's turned back on, and if it's deleted
-  they go with it.
+  you; make a new one. If you're demoted, your keys follow the lower role at once.
+
+Some things end your keys for good:
+
+- **Changing your password** (or an admin setting a new one for you) revokes every key you
+  hold, as well as signing out your other devices: a new password is what you do when you
+  think someone else knew the old one.
+- **"Sign out everywhere"** in People & access (an admin) revokes them too.
+- **Deleting the account** deletes its keys; merging a duplicate account revokes its keys.
+
+Disabling an account only pauses its keys: they're refused while it's disabled and work
+again if it's turned back on, like the rest of what the account had.
 
 What each route shows you is exactly what your signed-in browser would see: a requester's
 key lists only their own and followed requests, without other people's names or notes.
@@ -93,13 +106,23 @@ call it.
 
 ### Mistakes and limits
 
-- A wrong, revoked or expired key gets `401`. After 10 wrong keys from one address in 15
-  minutes, that address gets `429` (with `Retry-After`) for a while, even with a right key —
-  the same rule as wrong passwords, counted separately so a broken script can't lock you
-  out of signing in.
+- A wrong, revoked or expired key gets `401`. The same wrong key tried 10 times from one
+  address in 15 minutes then gets `429` (with `Retry-After`) for a while; only that key is
+  slowed, so a stale key in one script doesn't stop the other keys behind the same address
+  (your n8n host, a shared connection). Fifty wrong keys of any kind from one address in 15
+  minutes and every wrong key from there gets `429`. A right key always works. None of this
+  touches signing in with a password.
 - A route keys can't use, or a read-only key on a change, gets `403`.
-- A key's last use is recorded at most every ten minutes (or when it's used from a different
-  network), so "last used" can be a few minutes behind.
+- A key's last use is recorded at most every ten minutes, or after a minute when it's used
+  from a different network, so "last used" can be a few minutes behind.
+
+### Planned
+
+The owner has deferred an **Admin** access level: a staff account's key that also reaches
+the staff library routes — adding and searching titles, the queue, wanted — the way a
+script drives Radarr's or Sonarr's API. It would never reach security or settings (sign-in,
+sessions, passwords, two-factor, keys, people, outside services' keys, folders, backups,
+logs). Until then, keys reach only the routes above.
 
 ## Examples
 

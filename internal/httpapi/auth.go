@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -81,36 +83,61 @@ func (a *api) authenticate(next http.Handler) http.Handler {
 	})
 }
 
-// apiKeyFails is the limiter key for wrong personal API keys from one address. It has its
-// own count, so a misconfigured script can't lock its owner out of signing in.
-func apiKeyFails(ip string) string { return "apikey:" + ip }
+// Wrong personal API keys are counted two ways, both apart from wrong passwords so a broken
+// script can't lock its owner out of signing in:
+//   - per address and key (apiKeyFails, on loginLimiter: 10 in 15 minutes), so one stale
+//     key in a script only slows itself down — every other key behind the same address
+//     (a shared NAT, the n8n host) keeps working;
+//   - per address over every key (apiKeySpray, on keySprayLimiter: keySprayMax in 15
+//     minutes), the ceiling for something trying key after key.
+//
+// Neither ever stops a key that validates: a key is 256 random bits, so guessing one isn't
+// the risk the counts are for, and refusing a right key would only break its owner. The
+// counts shape the answer to wrong ones (429 instead of 401).
+const keySprayMax = 50 // under the limiter's maxFailsKept, which bounds one key's record
+
+func apiKeyFails(ip, key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return "apikey:" + ip + ":" + hex.EncodeToString(sum[:8])
+}
+
+func apiKeySpray(ip string) string { return "apikey-any:" + ip }
 
 // checkAPIKey validates a presented key, answering 429 or 401 itself when it can't be
-// used. Wrong keys count against the address like wrong passwords (10 in 15 minutes);
-// a right one doesn't clear the count, so holding one key can't wipe out guesses.
+// used. A right key always passes; a right one doesn't clear any count either, so holding
+// one key can't wipe out the record of wrong ones.
 func (a *api) checkAPIKey(w http.ResponseWriter, r *http.Request, key string) (*auth.KeyUse, bool) {
 	ip := netutil.ClientIP(r)
-	l := a.loginLimiter
-	if l != nil {
-		if blocked, retry := l.blocked(apiKeyFails(ip)); blocked {
-			a.tooManyAttempts(w, retry)
-			return nil, false
-		}
-	}
 	use, err := a.deps.Auth.ValidateAPIKey(r.Context(), key, ip)
-	if err != nil {
-		if errors.Is(err, auth.ErrNotFound) {
-			if l != nil {
-				l.fail(apiKeyFails(ip), "")
-			}
-			a.writeError(w, http.StatusUnauthorized, "this API key isn't valid: it may have been revoked or have expired")
-			return nil, false
-		}
+	if err == nil {
+		return use, true
+	}
+	if !errors.Is(err, auth.ErrNotFound) {
 		a.deps.Log.Error("auth: could not check an API key", "err", err)
 		a.writeError(w, http.StatusInternalServerError, "could not check the API key")
 		return nil, false
 	}
-	return use, true
+	perKey, spray := apiKeyFails(ip, key), apiKeySpray(ip)
+	for _, c := range []struct {
+		l   *loginLimiter
+		key string
+	}{{a.loginLimiter, perKey}, {a.keySprayLimiter, spray}} {
+		if c.l == nil {
+			continue
+		}
+		if blocked, retry := c.l.blocked(c.key); blocked {
+			a.tooManyAttempts(w, retry)
+			return nil, false
+		}
+	}
+	if a.loginLimiter != nil {
+		a.loginLimiter.fail(perKey, "")
+	}
+	if a.keySprayLimiter != nil {
+		a.keySprayLimiter.fail(spray, "")
+	}
+	a.writeError(w, http.StatusUnauthorized, "this API key isn't valid: it may have been revoked or have expired")
+	return nil, false
 }
 
 // keyInQuery reports whether the address carries something shaped like a personal API
@@ -250,7 +277,8 @@ func (a *api) handleLogin(w http.ResponseWriter, r *http.Request) {
 		l.reset(userKey, "")
 		l.reset(ipKey, name)
 	}
-	a.startSession(w, r, u, http.StatusOK)
+	// A session, or first the two-factor code (twofactor.go).
+	a.finishPasswordSignIn(w, r, u)
 }
 
 // loginAlertAt is how many wrong passwords for one username within an hour raise a

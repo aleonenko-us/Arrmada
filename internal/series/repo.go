@@ -1766,19 +1766,31 @@ func (r *Repo) SeasonEpisodeNumbers(ctx context.Context, seriesID int64, season 
 // AliasTitlesFor returns every series' alias keys in one query, so listing series
 // doesn't cost a lookup per row.
 func (r *Repo) AliasTitlesFor(ctx context.Context) map[int64][]Alias {
+	out, _ := r.aliasTitles(ctx)
+	return out
+}
+
+// aliasTitles is AliasTitlesFor that says when the aliases couldn't be read (out then
+// holds what was).
+func (r *Repo) aliasTitles(ctx context.Context) (map[int64][]Alias, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT series_id, id, title, tmdb_season, source FROM series_aliases WHERE disabled = 0 ORDER BY series_id, id`)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer rows.Close()
 	out := map[int64][]Alias{}
+	var scanErr error
 	for rows.Next() {
 		var sid int64
 		var a Alias
 		if err := rows.Scan(&sid, &a.ID, &a.Title, &a.TMDBSeason, &a.Source); err != nil {
+			scanErr = err
 			continue
 		}
 		out[sid] = append(out[sid], a)
 	}
-	return out
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	return out, scanErr
 }

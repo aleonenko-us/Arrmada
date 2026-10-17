@@ -575,5 +575,27 @@
       "version": "0.0.0-dev",
       "url": "https://arrmada.example.com"
     }
+  },
+  "security.two_factor_failures": {
+    "version": 1,
+    "event": "security.two_factor_failures",
+    "event_label": "Wrong two-factor codes",
+    "group": "needs_you",
+    "severity": "warning",
+    "occurred_at": "2026-10-16T09:30:00Z",
+    "test": false,
+    "title": "Wrong two-factor codes",
+    "message": "🔐 5 wrong two-factor codes for one account in the last hour, each after the right password. The password is likely known to someone else: the log names the account; have its owner change the password.",
+    "url": "https://arrmada.example.com/settings/users",
+    "path": "/settings/users",
+    "image_url": null,
+    "data": {
+      "count": 5
+    },
+    "instance": {
+      "name": "Arrmada",
+      "version": "0.0.0-dev",
+      "url": "https://arrmada.example.com"
+    }
   }
 }

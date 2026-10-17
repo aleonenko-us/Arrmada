@@ -3,7 +3,6 @@ package httpapi
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/tristenlammi/arrmada/internal/auth"
 )
@@ -28,7 +27,7 @@ func (a *api) handleMyAPIKeys(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "could not list your API keys")
 		return
 	}
-	has, err := a.deps.Auth.HasPassword(r.Context(), u.ID)
+	need, err := a.keyStepUp(r, u)
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not list your API keys")
 		return
@@ -37,19 +36,49 @@ func (a *api) handleMyAPIKeys(w http.ResponseWriter, r *http.Request) {
 		"keys":        keys,
 		"expiry_days": auth.APIKeyExpiryDays,
 		"max":         auth.MaxAPIKeysPerUser,
-		// Making a key asks for the account's password when it has one (see below).
-		"password_required": has,
+		// What making a key will ask for (see handleCreateMyAPIKey).
+		"password_required": need.password,
+		"code_required":     need.code,
+		"reauth_required":   need.reauth,
 	})
 }
 
+// keyStepUp is what making a key asks of the caller beyond being signed in.
+type keyStepUp struct {
+	password bool // the account has a password: type it
+	code     bool // two-factor sign-in is on: a current code too
+	reauth   bool // no password to ask for, and this session wasn't signed in recently
+}
+
+func (a *api) keyStepUp(r *http.Request, u *auth.User) (keyStepUp, error) {
+	var s keyStepUp
+	var err error
+	if s.password, err = a.deps.Auth.HasPassword(r.Context(), u.ID); err != nil {
+		return s, err
+	}
+	if s.code, err = a.deps.Auth.TwoFactorEnabled(r.Context(), u.ID); err != nil {
+		return s, err
+	}
+	if !s.password {
+		recent, err := a.deps.Auth.SessionSignedInRecently(r.Context(), u.ID, sessionToken(r))
+		if err != nil {
+			return s, err
+		}
+		s.reauth = !recent
+	}
+	return s, nil
+}
+
 // handleCreateMyAPIKey makes a key for the caller: {name, scope: "read"|"full",
-// expires_in_days: 0|30|90|365, password}. It answers 201 with the key, once.
+// expires_in_days: 0|30|90|365, password, code}. It answers 201 with the key, once.
 //
-// The account's password is asked for when it has one. A key outlives the session that
-// made it, so a borrowed or hijacked browser session (or a script injected into the page)
-// must not be enough to mint a lasting way in. A Plex- or Jellyfin-only account has no
-// password to ask for; its session is all there is. Wrong passwords are throttled like
-// the password change's.
+// A key outlives the session that made it, so a borrowed or hijacked browser session (or
+// a script injected into the page) must not be enough to mint a lasting way in:
+//   - an account with a password types it (throttled like the password change's);
+//   - with two-factor sign-in on, a current code too (under the sign-in code limits);
+//   - an account with no password (Plex or Jellyfin sign-in only) can only make a key from
+//     a session signed in within auth.KeyMintWindow; otherwise it's asked to sign in again
+//     (403, code "reauth"). Signing in through Plex or Jellyfin is its step-up.
 func (a *api) handleCreateMyAPIKey(w http.ResponseWriter, r *http.Request) {
 	u, ok := userFrom(r)
 	if !ok || u == nil {
@@ -61,32 +90,36 @@ func (a *api) handleCreateMyAPIKey(w http.ResponseWriter, r *http.Request) {
 		Scope         string `json:"scope"`
 		ExpiresInDays int    `json:"expires_in_days"`
 		Password      string `json:"password"`
+		Code          string `json:"code"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
 	}
-	pwKey := "pw:" + strconv.FormatInt(u.ID, 10)
-	if l := a.loginLimiter; l != nil {
-		if blocked, retry := l.blocked(pwKey); blocked {
-			a.tooManyAttempts(w, retry)
-			return
-		}
+	n := auth.NewAPIKey{Name: req.Name, Scope: auth.KeyScope(req.Scope), ExpiresInDays: req.ExpiresInDays}
+	// A bad form is refused before a password or a one-time code is spent on it.
+	if err := n.Validate(); err != nil {
+		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
-	has, err := a.deps.Auth.HasPassword(r.Context(), u.ID)
+	need, err := a.keyStepUp(r, u)
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not make the key")
 		return
 	}
-	if has && !a.deps.Auth.CheckPassword(r.Context(), u.ID, req.Password) {
-		if a.loginLimiter != nil {
-			a.loginLimiter.fail(pwKey, "")
-		}
-		a.writeError(w, http.StatusBadRequest, "Your password is wrong")
+	if need.reauth {
+		a.writeJSON(w, http.StatusForbidden, map[string]any{
+			"status": "error", "code": "reauth",
+			"message": "For your safety, keys can only be made within 15 minutes of signing in. Sign out and sign in again, then make the key.",
+		})
 		return
 	}
-	raw, key, err := a.deps.Auth.CreateAPIKey(r.Context(), u.ID, auth.NewAPIKey{
-		Name: req.Name, Scope: auth.KeyScope(req.Scope), ExpiresInDays: req.ExpiresInDays,
-	})
+	if need.password && !a.checkMyPassword(w, r, u, req.Password) {
+		return
+	}
+	if need.code && !a.checkMyCode(w, r, u, req.Code) {
+		return
+	}
+	raw, key, err := a.deps.Auth.CreateAPIKey(r.Context(), u.ID, n)
 	switch {
 	case errors.Is(err, auth.ErrAPIKeyName), errors.Is(err, auth.ErrAPIKeyScope),
 		errors.Is(err, auth.ErrAPIKeyExpiry), errors.Is(err, auth.ErrTooManyKeys), errors.Is(err, auth.ErrAPIKeyAccount):
@@ -95,9 +128,6 @@ func (a *api) handleCreateMyAPIKey(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		a.writeError(w, http.StatusInternalServerError, "could not make the key")
 		return
-	}
-	if has && a.loginLimiter != nil {
-		a.loginLimiter.reset(pwKey, "")
 	}
 	// Who, which key and what it may do; never the key.
 	a.deps.Log.Info("account: personal API key made", "user_id", u.ID, "key_id", key.ID, "scope", string(key.Scope), "expires_in_days", req.ExpiresInDays)

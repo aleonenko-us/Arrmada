@@ -57,13 +57,22 @@ In an empty folder on the server:
 curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/docker-compose.example.yml -o docker-compose.yml
 ```
 
-Edit the lines marked `←` (your media folder, the user and group, your timezone, the port),
-then run `docker compose up -d`, open **`http://<your-server>:7878`** and follow the setup.
+Next to it, a `.env` with your folders (full paths), and the other settings marked `←` in
+the file if you want to change them (the user and group, your timezone, the port):
+
+```sh
+ARRMADA_DATA_HOST=/srv/arrmada/data     # Arrmada's database and settings
+ARRMADA_STORAGE_HOST=/srv/media         # your libraries and downloads
+```
+
+Then run `docker compose up -d`, open **`http://<your-server>:7878`** and follow the setup.
+The compose file itself stays as downloaded, so updating it never loses your settings.
 To update: `docker compose pull && docker compose up -d`. That skips the installer's
 pre-update backup and automatic roll-back; the app still copies its database before any
 upgrade of it. [More →](docs/install.md#docker-compose-without-the-installer)
 
-Using Portainer? The same file works as a stack: [Using Portainer →](docs/install.md#using-portainer)
+Using Portainer? The same file works as a stack, with the same lines as its environment
+variables: [Using Portainer →](docs/install.md#using-portainer)
 
 ### On Unraid, from the Docker page
 
@@ -118,7 +127,8 @@ server ([Following main](docs/updating.md#following-main-developers)).
   AI subtitles run on the CPU ([what differs](docs/install.md#arm)).
 - Docker with Compose v2.
 - A free [TMDB API key](https://www.themoviedb.org/settings/api) (entered in the app).
-- Optional: Intel or AMD graphics for faster Convert and AI subtitles (x86-64 only), and a Plex or Jellyfin server.
+- Optional: Intel or AMD graphics for faster Convert and AI subtitles, or an NVIDIA card for
+  faster Convert (x86-64 only; [GPU setup](docs/gpu.md)), and a Plex or Jellyfin server.
 
 ## Documentation
 
@@ -127,12 +137,14 @@ server ([Following main](docs/updating.md#following-main-developers)).
 | [Install](docs/install.md) | The one-liner, its options, Unraid, the git checkout way |
 | [Unraid](docs/unraid.md) | The Unraid template: share layout, the built-in qBittorrent or your own, GPU, updates |
 | [Updating](docs/updating.md) | Updates, rollbacks, published images |
-| [Configuration](docs/configuration.md) | Ports, `.env`, media folders and hardlinks, GPU, recycle bin, reverse proxies |
+| [Configuration](docs/configuration.md) | Ports, `.env`, media folders and hardlinks, recycle bin, reverse proxies |
+| [GPU](docs/gpu.md) | Hardware encoding for Convert (Intel, AMD, NVIDIA) and GPU AI subtitles |
 | [Backups](docs/backups.md) | Backups, restoring, a forgotten admin password |
 | [Troubleshooting](docs/troubleshooting.md) | Common problems and fixes |
 | [Features](docs/features.md) | Everything Arrmada does |
 | [Alerts to n8n](docs/n8n.md) | Sending alerts to n8n or any webhook as signed JSON, and every event's fields |
 | [API keys for scripts](docs/api.md) | Personal API keys: calling Arrmada from n8n, Home Assistant or curl |
+| [Homepage dashboard](docs/homepage.md) | Arrmada's numbers on a gethomepage.dev dashboard: the widget key, the `services.yaml` entry and every field |
 | [Development](docs/development.md) | Building and testing it yourself |
 | [Releasing](docs/releasing.md) | For maintainers |
 

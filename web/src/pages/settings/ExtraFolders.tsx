@@ -16,21 +16,35 @@ export function ExtraFolders() {
   const { user } = useMe();
   const admin = isAdmin(user);
   const { data, error } = useLibraryFolders();
+  // A folder's own downloads folder is offered on every row once a library has several
+  // folders or one is set; a one-folder install sees just the line below until it asks.
+  const [opened, setOpened] = useState(false);
   if (error && !data) return <div className="text-sm" style={{ color: "var(--reject-text)" }}>Couldn't load the folders: {error.message}</div>;
   if (!data) return <div className="text-base text-ink-dim">Loading…</div>;
+  const anySet = [...data.movie.folders, ...data.series.folders].some((f) => !!f.downloads);
+  const offer = admin && (opened || anySet || data.movie.multi || data.series.multi);
   return (
     <div className="flex flex-col gap-5">
-      <FolderList media="movie" title="Movies" set={data.movie} admin={admin} />
-      <FolderList media="series" title="TV Shows" set={data.series} admin={admin} />
+      <FolderList media="movie" title="Movies" set={data.movie} admin={admin} offer={offer} />
+      <FolderList media="series" title="TV Shows" set={data.series} admin={admin} offer={offer} />
       <p className="m-0 text-sm text-ink-faint">
         A new folder has to be inside a folder mounted into the container. Under the same mount as your other libraries (say <span className="font-mono">/storage</span>), just pick it; anywhere else, add its mount to <span className="font-mono">docker-compose.override.yml</span> first (see <span className="font-mono">docker-compose.override.example.yml</span>) and recreate the container, then pick it here. Moving a title between folders moves its files: use <b>Move to folder</b> on the title's page.
       </p>
+      {offer ? (
+        <p className="m-0 text-sm text-ink-faint">
+          A folder on another disk can download onto that disk, so its imports are hardlinks rather than copies (<b>Download to a folder on this disk…</b>). That folder must be mounted into qBittorrent's container too, at the same path. It applies to torrents; usenet downloads keep using SABnzbd's own folders. A seeding download stays where it is when its title moves to another folder; later downloads follow the title.
+        </p>
+      ) : admin && (
+        <button type="button" className="self-start text-sm font-semibold underline-offset-2 hover:underline" style={{ color: "var(--accent-text)" }} onClick={() => setOpened(true)}>
+          Libraries on different disks? Give a folder its own downloads folder…
+        </button>
+      )}
       {!admin && <p className="m-0 text-sm text-ink-faint">Only an admin can change these folders.</p>}
     </div>
   );
 }
 
-function FolderList({ media, title, set, admin }: { media: FolderMedia; title: string; set: LibraryFolderSet; admin: boolean }) {
+function FolderList({ media, title, set, admin, offer }: { media: FolderMedia; title: string; set: LibraryFolderSet; admin: boolean; offer: boolean }) {
   const toast = useToast();
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -82,10 +96,11 @@ function FolderList({ media, title, set, admin }: { media: FolderMedia; title: s
             </div>
             <div className="mt-0.5 font-mono text-xs text-ink-faint">{main.path || "Not set — choose it in Media folders above"}</div>
             {extras.length > 0 && <div className="mt-1 text-xs text-ink-faint">Anything no rule below matches goes here.</div>}
+            {main.path && <DownloadsTo f={main} admin={admin} offer={offer} />}
           </div>
         )}
         {extras.map((f, i) => (
-          <ExtraRow key={f.id} f={f} admin={admin} first={i === 0} last={i === extras.length - 1} busy={busy} onMove={move} />
+          <ExtraRow key={f.id} f={f} admin={admin} first={i === 0} last={i === extras.length - 1} busy={busy} onMove={move} offer={offer} />
         ))}
         {extras.length === 0 && <div className="text-sm text-ink-faint">No other {title} folders. Everything goes to the main one.</div>}
       </div>
@@ -98,13 +113,64 @@ function titles(n: number) {
   return `${n.toLocaleString()} title${n === 1 ? "" : "s"}`;
 }
 
-function ExtraRow({ f, admin, first, last, busy, onMove }: {
+// DownloadsTo is a folder's own downloads folder (GitHub #11): torrents for its titles
+// save there, on the library's disk, so imports hardlink instead of copying. Most installs
+// keep one Downloads folder, so until one is set the row shows at most a small link: for
+// admins, once the card offers it (offer); for managers, nothing.
+function DownloadsTo({ f, admin, offer }: { f: LibraryFolder; admin: boolean; offer: boolean }) {
+  const toast = useToast();
+  const [picking, setPicking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const dl = f.downloads ?? "";
+
+  const save = async (path: string) => {
+    setPicking(false);
+    setSaving(true);
+    try {
+      const res = await foldersApi.setDownloads(f.media, f.id, path);
+      foldersChanged();
+      if (res.warning) toast(`Saved, but ${res.warning}.`, { ms: 10000 });
+      else toast(path ? `${f.label} now downloads to ${path}.` : `${f.label} downloads to the Downloads folder again.`, { tone: "good" });
+    } catch (e) {
+      toast((e as Error).message, { tone: "error", ms: 8000 });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!dl && !offer) return null;
+  return (
+    <div className="mt-2 text-xs">
+      {dl ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-2xs uppercase text-ink-faint">Downloads to</span>
+          <span className="min-w-0 break-all font-mono text-ink-dim">{dl}</span>
+          {admin && (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => setPicking(true)} disabled={saving}>Change…</Button>
+              <Button size="sm" variant="ghost" onClick={() => void save("")} disabled={saving}>Use the Downloads folder</Button>
+            </>
+          )}
+        </div>
+      ) : (
+        <button type="button" className="text-xs font-semibold underline-offset-2 hover:underline disabled:opacity-50" style={{ color: "var(--accent-text)" }} onClick={() => setPicking(true)} disabled={saving}>
+          Download to a folder on this disk…
+        </button>
+      )}
+      {f.downloads_warning && <div className="mt-1" style={{ color: "var(--avoid-text)" }}>{f.downloads_warning}.</div>}
+      {picking && <FolderPicker initial={dl || undefined} onClose={() => setPicking(false)} onSelect={(p) => void save(p)} />}
+    </div>
+  );
+}
+
+function ExtraRow({ f, admin, first, last, busy, onMove, offer }: {
   f: LibraryFolder;
   admin: boolean;
   first: boolean;
   last: boolean;
   busy: boolean;
   onMove: (id: number, dir: -1 | 1) => void;
+  offer: boolean;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -191,6 +257,7 @@ function ExtraRow({ f, admin, first, last, busy, onMove }: {
         )}
         <span className="text-xs text-ink-faint">{rule.help}</span>
       </div>
+      <DownloadsTo f={f} admin={admin} offer={offer} />
     </div>
   );
 }

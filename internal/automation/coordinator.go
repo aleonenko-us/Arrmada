@@ -58,6 +58,12 @@ type Coordinator struct {
 	recycle      string      // recycle-bin dir for book deletes ("" = bin off); set via SetRecycleDir
 	binv         library.Bin // the bins set by SetBin; nil = the single bin at recycle
 
+	// folderDownloadsFn is a library folder's own downloads folder ("" = none): torrent
+	// grabs for a title in that folder save there (grabfolder.go). nil = none anywhere.
+	folderDownloadsFn func(ctx context.Context, media, root string) string
+	// freeGBFn overrides diskspace.FreeGB in tests; nil measures the real disk.
+	freeGBFn func(path string) (float64, bool)
+
 	// removeTorrent overrides downloads.Remove in tests; nil uses the real client.
 	removeTorrent func(ctx context.Context, hash string, deleteData bool) error
 	// fetchRelease overrides indexers.Fetch in tests (a usenet grab's NZB); nil uses the
@@ -339,6 +345,12 @@ func (c *Coordinator) Grab(ctx context.Context, indexerName, downloadURL, title 
 	return c.grabTo(ctx, indexerName, downloadURL, title, c.movieCategory())
 }
 
+// GrabForMovie is Grab for a hand-picked release of film movieID: it saves beside the
+// film's library folder when that folder has a downloads folder of its own.
+func (c *Coordinator) GrabForMovie(ctx context.Context, movieID int64, indexerName, downloadURL, title string) (string, error) {
+	return c.Grab(c.forMovieID(ctx, movieID), indexerName, downloadURL, title)
+}
+
 // grabTo is Grab with an explicit download-client category (series use a separate
 // one so the multi-file importer handles them).
 // grabTo hands a release to the download client and returns the torrent's info hash so
@@ -360,7 +372,7 @@ func (c *Coordinator) grabTo(ctx context.Context, indexerName, downloadURL, titl
 	if err != nil {
 		return "", err
 	}
-	add := download.AddRequest{Name: title, SavePath: c.downloadsPath(), Category: category}
+	add := download.AddRequest{Name: title, SavePath: c.savePath(ctx), Category: category}
 	var hash string
 	switch {
 	case len(res.File) > 0:
@@ -470,8 +482,10 @@ func (c *Coordinator) addNZB(ctx context.Context, file []byte, filename, title, 
 	if filename == "" {
 		filename = "arrmada.nzb"
 	}
+	// Always the Downloads folder: SABnzbd files by category, with no folder per job, so a
+	// library folder's own downloads folder is for torrents only (grabfolder.go).
 	added, err := c.downloads.AddDownload(ctx, download.AddRequest{
-		Name: title, SavePath: c.downloadsPath(), Category: category,
+		Name: title, SavePath: c.usenetSavePath(ctx), Category: category,
 		File: file, Filename: filename, Transport: download.TransportUsenet,
 	})
 	if err != nil {
@@ -528,7 +542,7 @@ func (c *Coordinator) addTorrentFile(ctx context.Context, file []byte, filename,
 	if filename == "" {
 		filename = "arrmada.torrent"
 	}
-	add := download.AddRequest{Name: title, SavePath: c.downloadsPath(), Category: category, File: file, Filename: filename}
+	add := download.AddRequest{Name: title, SavePath: c.savePath(ctx), Category: category, File: file, Filename: filename}
 	if err := c.downloads.Add(ctx, add); err != nil {
 		return "", "", err
 	}
@@ -550,6 +564,7 @@ func uploadedEvent(t download.Transport, title string) string {
 // tracks it like an auto grab so seed cleanup / stall detection manage it too.
 // versionID is the track it's for (0 = the default track).
 func (c *Coordinator) GrabMovieTorrent(ctx context.Context, movieID, versionID int64, file []byte, filename, title string) error {
+	ctx = c.forMovieID(ctx, movieID)
 	hash, tr, err := c.addTorrentFile(ctx, file, filename, title, c.movieCategory())
 	if err != nil {
 		return err
@@ -566,6 +581,7 @@ func (c *Coordinator) GrabMovieTorrent(ctx context.Context, movieID, versionID i
 // GrabSeriesTorrent adds an uploaded .torrent file for a series (TV category, so the
 // multi-file importer handles a pack) and records the grab.
 func (c *Coordinator) GrabSeriesTorrent(ctx context.Context, seriesID int64, file []byte, filename, title string) error {
+	ctx = c.forSeriesID(ctx, seriesID)
 	hash, tr, err := c.addTorrentFile(ctx, file, filename, title, seriesCategory)
 	if err != nil {
 		return err
@@ -1330,6 +1346,7 @@ func (c *Coordinator) grabMissingTitles(ctx context.Context, m movies.Movie, wan
 // grabMissingTitlesExcept is grabMissingTitles that doesn't count the grabs exceptGrabs as
 // in flight — the stalled grab a fail-over is replacing, and its duplicate rows.
 func (c *Coordinator) grabMissingTitlesExcept(ctx context.Context, m movies.Movie, want []movies.Version, byName map[string]indexer.Release, cands []quality.Candidate, exceptGrabs ...int64) []string {
+	ctx = c.forMovie(ctx, m) // saved beside the film's folder when it has its own downloads folder
 	var titles []string
 	grabbed := map[string]bool{}
 	pending, err := c.pendingGrabTitles(ctx, m.ID) // releases already grabbed for this movie, not yet imported
@@ -1391,7 +1408,7 @@ func (c *Coordinator) grabMissingTitlesExcept(ctx context.Context, m movies.Movi
 			notesFrom(ctx).mark(winner.Title, DropPending)
 			continue // already grabbed this exact release and it's still in flight — don't loop
 		}
-		if !c.diskOKFor(grabbedGB + decision.Winner.Candidate.SizeGB) {
+		if !c.diskOKFor(ctx, winner.Indexer, grabbedGB+decision.Winner.Candidate.SizeGB) {
 			c.log.Warn("automation: low disk, skipping grab", "movie", m.Title, "need_gb", decision.Winner.Candidate.SizeGB, "already_queued_gb", grabbedGB)
 			c.movies.AddEvent(ctx, m.ID, "failed", "Not enough free disk space to grab "+winner.Title)
 			continue
@@ -1417,13 +1434,31 @@ func (c *Coordinator) grabMissingTitlesExcept(ctx context.Context, m movies.Movi
 
 // diskOKFor reports whether there's room to grab a release of the given size,
 // keeping a small safety buffer. If free space can't be measured (e.g. non-Linux
-// dev), it doesn't block.
-func (c *Coordinator) diskOKFor(sizeGB float64) bool {
-	free, ok := diskspace.FreeGB(c.downloadsPath())
+// dev), it doesn't block. It measures the folder the grab will save to: a torrent for a
+// title whose library folder has its own downloads folder fills that disk, a usenet job
+// (from indexerName's network) the Downloads folder's whatever the title.
+func (c *Coordinator) diskOKFor(ctx context.Context, indexerName string, sizeGB float64) bool {
+	free, ok := c.freeGB(c.grabSavePath(ctx, indexerName))
 	if !ok {
 		return true
 	}
 	return free >= sizeGB+diskBufferGB
+}
+
+// grabSavePath is the folder a release from indexerName would save to under ctx.
+func (c *Coordinator) grabSavePath(ctx context.Context, indexerName string) string {
+	if c.indexerTransport(ctx, indexerName) == download.TransportUsenet {
+		return c.usenetSavePath(ctx)
+	}
+	return c.savePath(ctx)
+}
+
+// freeGB measures free space (diskspace.FreeGB; a test swaps it via freeGBFn).
+func (c *Coordinator) freeGB(path string) (float64, bool) {
+	if c.freeGBFn != nil {
+		return c.freeGBFn(path)
+	}
+	return diskspace.FreeGB(path)
 }
 
 const diskBufferGB = 2.0
@@ -1610,6 +1645,9 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 		return ErrAlreadySearching
 	}
 	defer release()
+	// The upgrade downloads beside the folder the film is in now (after a Move to folder,
+	// the new one's).
+	ctx = c.forMovie(ctx, m)
 	// Database rows only: the current size and quality come from the cached media info
 	// (or the recorded release name), never from probing the file on every sweep.
 	versions, err := c.movies.VersionRows(ctx, m.ID)
@@ -1700,7 +1738,7 @@ func (c *Coordinator) upgradeMovie(ctx context.Context, m movies.Movie, b *upgra
 		if pending[normTitle(winner.Title)] {
 			return false // this exact upgrade is already in flight — don't stack a second copy
 		}
-		if !c.diskOKFor(grabbedGB + u.pick.SizeGB) {
+		if !c.diskOKFor(ctx, winner.Indexer, grabbedGB+u.pick.SizeGB) {
 			c.log.Warn("automation: low disk, skipping upgrade", "movie", m.Title, "need_gb", u.pick.SizeGB)
 			return false
 		}
@@ -1819,6 +1857,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 	if err != nil {
 		return err
 	}
+	ctx = c.forMovie(ctx, m)
 	versions, err := c.movies.VersionRows(ctx, m.ID)
 	if err != nil {
 		return err
@@ -1867,7 +1906,7 @@ func (c *Coordinator) RegrabMovie(ctx context.Context, id int64) (err error) {
 		if grabbed[winner.DownloadURL] {
 			continue
 		}
-		if !c.diskOKFor(grabbedGB + decision.Winner.Candidate.SizeGB) {
+		if !c.diskOKFor(ctx, winner.Indexer, grabbedGB+decision.Winner.Candidate.SizeGB) {
 			c.log.Warn("automation: low disk, skipping regrab", "movie", m.Title, "need_gb", decision.Winner.Candidate.SizeGB)
 			continue
 		}

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { FleetMark } from "../components/FleetMark";
 import { JellyfinMark, PlexMark } from "../components/brand/marks";
-import { api, resetSignedOut, type AuthUser } from "../lib/api";
+import { api, resetSignedOut, type AuthUser, type LoginAnswer } from "../lib/api";
 import { nextAfterSignIn } from "../lib/session";
 import { Field } from "../ui/Field";
 import { Input } from "../ui/Input";
@@ -9,6 +9,9 @@ import { Input } from "../ui/Input";
 const PlexLoginButton = lazy(() => import("../components/PlexLoginButton"));
 // The Jellyfin sheet (username + password, or Quick Connect) downloads when it's opened.
 const JellyfinLoginSheet = lazy(() => import("../components/JellyfinSignInSheet"));
+// Two-factor sign-in's code step (or an admin's required setup) downloads when a right
+// password asks for it.
+const TwoFactorLogin = lazy(() => import("../components/twofactor/TwoFactorLogin"));
 
 // The media server buttons: the server's mark, then its name, on its brand fill.
 const SERVER_BUTTON ="flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-md font-semibold";
@@ -33,6 +36,8 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
   const [plexBusy, setPlexBusy] = useState(false);
   const [jellyfin, setJellyfin] = useState({ enabled: false, quickConnect: false, open: false });
   const [error, setError] = useState<string | null>(null);
+  // The two-factor step after a right password: a ticket, never a session.
+  const [second, setSecond] = useState<{ step: "code" | "setup"; ticket: string } | null>(null);
 
   useEffect(() => {
     api.status().then((s) => {
@@ -47,8 +52,14 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
     setBusy(true); setError(null);
     try {
       // A new install's first admin lands on "/", where the setup wizard opens.
-      const { user } = mode === "setup" ? await api.setupAdmin(email.trim(), password) : await api.login(email.trim(), password);
-      continueAfterSignIn(user);
+      const r: LoginAnswer = mode === "setup" ? await api.setupAdmin(email.trim(), password) : await api.login(email.trim(), password);
+      if (r.two_factor) {
+        setPassword("");
+        setSecond({ step: r.two_factor, ticket: r.ticket });
+        setBusy(false);
+        return;
+      }
+      continueAfterSignIn(r.user);
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -68,7 +79,15 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
           <p className="m-0 text-base text-ink-dim">{mode === "loading" ? "…" : setup ? "Create your admin account to get started." : "Sign in to discover and request."}</p>
         </div>
 
-        {mode !== "loading" && (
+        {second && (
+          <div className="rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}>
+            <Suspense fallback={<div className="text-sm text-ink-faint">Loading…</div>}>
+              <TwoFactorLogin step={second.step} ticket={second.ticket} username={email.trim()} onSignedIn={continueAfterSignIn}
+                onRestart={(why) => { setSecond(null); setError(why || null); }} />
+            </Suspense>
+          </div>
+        )}
+        {mode !== "loading" && !second && (
           <form onSubmit={submit} className="flex flex-col gap-3 rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}>
             {signedOut && !setup && !error && (
               <div role="status" className="rounded-lg px-3 py-2.5 text-sm text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>

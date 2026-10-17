@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,9 +40,18 @@ type albumFolder struct {
 // reported in Unmatched for a human to look at.
 //
 // Nothing is deleted or moved — this only records what's already there.
-func (c *Coordinator) ScanMusicLibrary(ctx context.Context) (MusicScanResult, error) {
+//
+// progress, when set, hears how many album folders are done out of how many there are.
+// A cancelled or timed-out scan stops between folders and returns an error saying how
+// far it got: the folder it was on is finished (an artist it added gets the album's
+// tracks recorded), nothing after it is touched, and folders cut short aren't reported
+// as unrecognised.
+func (c *Coordinator) ScanMusicLibrary(ctx context.Context, progress func(done, total int)) (MusicScanResult, error) {
 	var res MusicScanResult
 	res.Unmatched = []string{}
+	if progress == nil {
+		progress = func(int, int) {}
+	}
 	if c.music == nil || c.imp == nil {
 		return res, nil
 	}
@@ -66,13 +76,20 @@ func (c *Coordinator) ScanMusicLibrary(ctx context.Context) (MusicScanResult, er
 		byName[music.NormKey(a.Name)] = a
 	}
 
-	for _, f := range folders {
-		artist, ok := c.scanResolveArtist(ctx, f, byName, &res)
+	for i, f := range folders {
+		progress(i, len(folders))
+		if err := ctx.Err(); err != nil {
+			return res, fmt.Errorf("the scan stopped after %d of %d album folders: %w", i, len(folders), err)
+		}
+		// A folder started is finished: the artist lookup, adding the artist and recording
+		// the album's tracks run to the end even if the scan is stopped meanwhile.
+		fctx := context.WithoutCancel(ctx)
+		artist, ok := c.scanResolveArtist(fctx, f, byName, &res)
 		if !ok {
 			res.Unmatched = append(res.Unmatched, f.path)
 			continue
 		}
-		albums, err := c.music.Albums(ctx, artist.ID)
+		albums, err := c.music.Albums(fctx, artist.ID)
 		if err != nil {
 			continue
 		}
@@ -83,7 +100,7 @@ func (c *Coordinator) ScanMusicLibrary(ctx context.Context) (MusicScanResult, er
 			res.Unmatched = append(res.Unmatched, f.path)
 			continue
 		}
-		n, err := c.recordAlbumFiles(ctx, artist, album, f)
+		n, err := c.recordAlbumFiles(fctx, artist, album, f)
 		if err != nil {
 			c.log.Warn("music scan: recording an album failed", "album", album.Title, "err", err)
 			continue
@@ -95,6 +112,7 @@ func (c *Coordinator) ScanMusicLibrary(ctx context.Context) (MusicScanResult, er
 		res.Albums++
 		res.Tracks += n
 	}
+	progress(len(folders), len(folders))
 	c.log.Info("music scan: finished", "artists", res.Artists, "albums", res.Albums,
 		"tracks", res.Tracks, "skipped", res.Skipped, "unmatched", len(res.Unmatched))
 	return res, nil

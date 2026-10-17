@@ -281,6 +281,14 @@ func (a *api) seriesManualSearchJob(id int64) jobs.Spec {
 	return spec
 }
 
+// libraryScanTimeout is how long a library scan (movies, TV, books, music) may run: the
+// same half-day as the other jobs that walk a whole library (a hand import, a move to
+// another folder). Each folder is a metadata lookup or more, often rate-limited, so a big
+// library takes hours; a fixed 10 or 15 minutes cut them off part-way (issue #22). The
+// scan reports its progress as it goes and can be stopped from the page, and one that's
+// stopped keeps what it finished and changes nothing it didn't reach.
+const libraryScanTimeout = 12 * time.Hour
+
 // scanSummary is a library scan's job result: the counts. The folders it couldn't match
 // (with their candidates) stay on each library's Unmatched list, not in the jobs table.
 type scanSummary struct {

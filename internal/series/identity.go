@@ -24,6 +24,9 @@ type ReleaseFit struct {
 	// names for this one show, so the year and country checks don't apply to them; an
 	// automatic alias gets the same checks as the show's own title.
 	Alias bool
+	// Local: the title matched only through a stored translated title (SearchFit.Fit;
+	// FitRelease never sets it).
+	Local bool
 	// OK: Title, and the year and country agree (or the release doesn't name them).
 	OK bool
 	// Year / Country: the release names a year or country and it is this show's — positive
@@ -52,6 +55,9 @@ var reTitleYear = regexp.MustCompile(`\b(?:19|20)\d{2}\b`)
 //
 // The year and country checks apply to the show's own titles and its automatic aliases;
 // the owner's aliases are deliberate names for one show and skip them.
+//
+// Searches judge by SearchFit.Fit, which is this widened by the show's stored translated
+// titles when Settings → Library → "Also match titles in" is set (searchtitles.go).
 func FitRelease(p parser.Release, s Series) ReleaseFit {
 	key := parser.TitleKey(p.Title)
 	if key == "" {

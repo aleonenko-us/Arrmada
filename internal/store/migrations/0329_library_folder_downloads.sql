@@ -1,0 +1,13 @@
+-- 0329_library_folder_downloads: a downloads folder of its own for each extra Movies or TV
+-- library folder (GitHub #11).
+--
+-- Torrent grabs for a title in the folder save here instead of the Downloads folder, so a
+-- library on its own disk downloads onto that disk and imports as a hardlink rather than
+-- a copy that takes the space twice while the torrent seeds.
+--
+--   downloads_path  the folder as Arrmada sees it (inside the container); '' = the
+--                   Downloads folder, which is what every existing folder keeps
+--
+-- The default Movies and TV folders keep theirs in settings (lib_movies_downloads_dir,
+-- lib_tv_downloads_dir), next to the default folders themselves; nothing to migrate there.
+ALTER TABLE library_folders ADD COLUMN downloads_path TEXT NOT NULL DEFAULT '';

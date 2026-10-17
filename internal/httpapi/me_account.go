@@ -72,6 +72,8 @@ func (a *api) handleChangeMyPassword(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "Current password is wrong")
 		return
 	}
+	// The change revokes every personal API key too; say how many went.
+	keys, _ := a.deps.Auth.APIKeyCount(r.Context(), u.ID)
 	ended, err := a.deps.Auth.ChangePassword(r.Context(), u.ID, req.New, sessionToken(r))
 	if errors.Is(err, auth.ErrWeakPassword) {
 		a.writeError(w, http.StatusBadRequest, "The new password must be at least 8 characters")
@@ -85,11 +87,12 @@ func (a *api) handleChangeMyPassword(w http.ResponseWriter, r *http.Request) {
 		a.loginLimiter.reset(key, "")
 	}
 	// Who and how, never the password.
-	a.deps.Log.Info("account: password changed by its owner", "user_id", u.ID, "first_password", !has, "other_sessions_ended", ended)
-	a.writeJSON(w, http.StatusOK, map[string]any{"password_set": true, "signed_out": ended})
+	a.deps.Log.Info("account: password changed by its owner", "user_id", u.ID, "first_password", !has, "other_sessions_ended", ended, "keys_revoked", keys)
+	a.writeJSON(w, http.StatusOK, map[string]any{"password_set": true, "signed_out": ended, "keys_revoked": keys})
 }
 
-// handleRevokeMyOtherSessions signs the caller out of every other browser, keeping this one.
+// handleRevokeMyOtherSessions signs the caller out of every other browser, keeping this
+// one, and forgets the other browsers trusted to skip the two-factor code.
 func (a *api) handleRevokeMyOtherSessions(w http.ResponseWriter, r *http.Request) {
 	u, ok := userFrom(r)
 	if !ok || u == nil {
@@ -101,6 +104,13 @@ func (a *api) handleRevokeMyOtherSessions(w http.ResponseWriter, r *http.Request
 		a.writeError(w, http.StatusInternalServerError, "could not sign out your other devices")
 		return
 	}
-	a.deps.Log.Info("account: signed out of other devices", "user_id", u.ID, "sessions_ended", n)
+	// Other browsers trusted to skip the two-factor code ask for it again; this one keeps
+	// its trust.
+	forgot, err := a.deps.Auth.ForgetTrustedDevices(r.Context(), u.ID, trustToken(r))
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not sign out your other devices")
+		return
+	}
+	a.deps.Log.Info("account: signed out of other devices", "user_id", u.ID, "sessions_ended", n, "trusted_devices_forgotten", forgot)
 	a.writeJSON(w, http.StatusOK, map[string]any{"signed_out": n})
 }

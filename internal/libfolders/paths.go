@@ -67,6 +67,9 @@ var ignoredPathColumns = map[string]string{
 	"convert_swaps.hold_path":     "a move is refused while a Convert swap is open",
 	"library_unmatched.folder":    "a scan's needs-review list, relative to its root",
 	"library_folders.path":        "the library folders themselves",
+	// A folder's own downloads folder: where its torrents save, never a library file. A
+	// move leaves a seeding download where it is.
+	"library_folders.downloads_path": "a downloads folder, not a library file",
 }
 
 // RewriteCount is how many stored paths a rewrite changed, by "table.column".

@@ -52,7 +52,8 @@ left alone too.
 | `ARRMADA_IMAGE` | The published image `update.sh` downloads on the stable channel (`ghcr.io/tristenlammi/arrmada:stable` when unset) ([Updating](updating.md#published-image-or-compiled-here)) |
 | `ARRMADA_APP_IMAGE` | The image `docker compose` runs. `arrmada:dev` (what the installer writes) is whatever `update.sh` built or downloaded — leave it. Without the line, a plain `docker compose up -d` runs the published image ([Updating](updating.md#upgrading-from-v010-or-earlier)) |
 | `ARRMADA_DATA_HOST` | Where the database, its backups and settings live on the host |
-| `ARRMADA_STORAGE_HOST` | Your media folder (for reference; the mount itself is in `docker-compose.override.yml`) |
+| `ARRMADA_STORAGE_HOST` | The media folder the installer mounted at `/storage` (for reference; the mount itself is in `docker-compose.override.yml`, so change it with `install.sh --media`) |
+| `ARRMADA_MEDIA_HOST` | A host folder for `/media`, Arrmada's own downloads and library, in place of the managed Docker volume; every service that shares media follows it ([below](#media-in-a-folder-of-your-own-env-only)) |
 | `ARRMADA_PUID`, `ARRMADA_PGID` | The user and group Arrmada and qBittorrent run as. On Unraid, 99 and 100 |
 | `TZ` | Timezone. Schedules — the Convert window especially — run on this clock ([list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 | `COMPOSE_PROFILES` | The optional companions to run, a comma list: `prowlarr` (Prowlarr), `sabnzbd` (SABnzbd, for Usenet), e.g. `prowlarr,sabnzbd`. `update.sh` never changes it |
@@ -93,7 +94,8 @@ folder mounted into the container — under `/storage` with the rest, or added t
 `docker-compose.override.yml` (see the example file). Moving from Radarr or Sonarr with several
 root folders? **Settings → Import & migrate → Import from Radarr / Sonarr** sets up the same
 folders as part of the import (below). With one folder per library, nothing about folders shows
-anywhere.
+anywhere. A folder on another disk can have its own downloads folder, so its imports hardlink
+([Libraries on separate disks](#libraries-on-separate-disks)).
 
 ### Moving from Radarr and Sonarr
 
@@ -136,6 +138,104 @@ land on the same physical disk; otherwise the import falls back to a copy (the l
 library that used to work), one disk's copy of the folder is owned by root — fix it through
 the share path: `chown 99:100` and `chmod 775` on the library parent folders.
 
+### Libraries on separate disks
+
+With Movies on one disk and TV on another, one Downloads folder means one of them always
+imports by copying, and the copy takes the space twice while the torrent seeds. Give that
+library folder a downloads folder **on its own disk** instead: in **Settings → Library → More
+Movies and TV folders**, use **Download to a folder on this disk…** on the folder (the main
+Movies and TV folders have it too; with one folder per library, open it with **Libraries on
+different disks?** first). Torrents for titles in that folder then save there and import as
+hardlinks. Anything without one keeps using the Downloads folder.
+
+1. Make a downloads folder on each disk, next to its library — for example
+   `/mnt/disk1/media/movies` with `/mnt/disk1/torrents`, and `/mnt/disk2/media/tv` with
+   `/mnt/disk2/torrents`.
+2. Mount both disks into Arrmada's container (the installer's `--media` folder, or extra
+   mounts in `docker-compose.override.yml`).
+3. **If qBittorrent runs in its own container, mount the same folders into it at the same
+   paths.** Arrmada tells qBittorrent where to save by path; qBittorrent has to see that path,
+   and Arrmada has to see the finished files at the same one. (Different paths need a path
+   mapping on the qBittorrent card in Settings → Connections.)
+4. Pick each downloads folder. It must exist, be writable, and sit outside every library
+   folder and Arrmada's data folder. If it isn't on the same filesystem as its library folder
+   the save goes through with a warning, and the health panel keeps a note of it — imports from
+   it would still copy.
+
+What to expect:
+
+- **Torrents only.** SABnzbd files jobs by category, not by folder, so usenet downloads keep
+  going to SABnzbd's own folders. A usenet download is deleted once it's imported, so it never
+  takes the space twice for long.
+- The disk guard watches every downloads folder and pauses only the downloads saving onto a
+  full disk; the health panel checks each one exists, is writable and has free space.
+- **Move to folder** moves the title's library files, not a download that's still seeding:
+  that keeps seeding where it is (its hardlink keeps the data). New downloads and upgrades for
+  the title go to the new folder's downloads folder.
+- qBittorrent's own "keep incomplete torrents in" folder, if you've switched it on, is one
+  folder for everything: a download sits there until it finishes and is then moved to the
+  library's downloads folder. Arrmada's bundled qBittorrent has it off.
+- Arrmada adds its torrents with automatic torrent management off, so a qBittorrent whose
+  default mode is Automatic still saves them where Arrmada asked, and re-filing one into
+  another category never moves its files.
+- Clearing or changing a folder's downloads folder (or removing the library folder) doesn't
+  strand what's already there: those torrents keep seeding, and they can still be imported
+  by hand or from Needs you.
+
+### Media in a folder of your own, `.env` only
+
+Arrmada has two places for media inside the container:
+
+- `/media` is its own: the downloads and library it makes when you give it no media folder
+  (`/media/downloads`, `/media/library`). By default it's a Docker volume, `arrmada-media`.
+- `/storage` is your media folder, when the installer was given one (`--media`). Its mount is
+  in `docker-compose.override.yml`, which the installer writes.
+
+To keep `/media` in a host folder instead of the volume, without any override file, add one
+line to `.env` and run `sh update.sh`:
+
+```sh
+ARRMADA_MEDIA_HOST=/mnt/user/arrmada-media
+```
+
+Arrmada, qBittorrent, SABnzbd and the one-shot that makes the folders all mount that line, so
+a file has the same path in each and imports hardlink. The paths inside the container don't
+change (still `/media/...`), so the folders already saved in the app keep working. When the
+folder is new or empty it's handed to the user Arrmada runs as; when it already holds files,
+only the `downloads` and `library` folders Arrmada makes are, and your own files keep their
+owners. Which of the two `/media` is comes from what's really mounted, so a folder named
+some other way (written into the compose file, a network volume of your own) is handled as
+yours too. Use a full path: a relative one is refused. A folder that is, holds or sits inside
+the database's folder is refused: media never goes with the database. Don't point it at the folder already
+mounted at `/storage` either: that works, but two mounts of one folder can't hardlink between
+them, so pick one place for each library and its downloads.
+
+`update.sh` moves qBittorrent (and SABnzbd) to the new folder along with the app. What was in
+the volume stays there. To bring it across, do the move with everything stopped instead, in
+Arrmada's folder:
+
+```sh
+docker compose stop
+docker volume ls | grep arrmada-media          # its full name, e.g. arrmada_arrmada-media
+docker run --rm -v arrmada_arrmada-media:/from -v /mnt/user/arrmada-media:/to alpine cp -a /from/. /to/
+# now add the ARRMADA_MEDIA_HOST line to .env, then start everything on the new folder:
+docker compose up -d
+```
+
+**A share that isn't mounted yet.** If the folder is a mount point (an NFS or SMB share, an
+Unraid share before the array starts) and the share isn't there when Arrmada starts, Docker
+mounts the empty folder underneath, and Arrmada makes its `downloads` and `library` there,
+on the wrong disk. Start Arrmada after the share is mounted (on Unraid, the array first).
+
+Remove the line (and run `update.sh`) to go back to the volume. Leave it out entirely and
+nothing changes: `/media` stays the `arrmada-media` volume it has always been.
+
+`/storage` has no `.env` switch of its own: Compose can't leave a mount out when a variable
+is empty, and an empty `/storage` would look like a media folder to the setup. Use
+`install.sh --media` (or the override file below) for it, or put everything in `/media` with
+`ARRMADA_MEDIA_HOST`. The [plain Compose file](install.md#docker-compose-without-the-installer)
+always has a media folder, so there `/storage` is set from `.env` too (`ARRMADA_STORAGE_HOST`).
+
 ### Other layouts
 
 For read-only trials or unusual layouts, see
@@ -144,8 +244,10 @@ For read-only trials or unusual layouts, see
 ## GPU
 
 If your server has `/dev/dri` (Intel or AMD graphics), the installer passes it through, and
-Convert and Whisper subtitles use it. Intel Arc and other Gen12+ chips are used through VAAPI
-(HEVC, H.264 and AV1 encoding); `docker exec Arrmada-app vainfo` shows what the container sees.
+Convert and Whisper subtitles use it (Convert once **Use my GPU** is on in Settings → Convert).
+`docker exec Arrmada-app /usr/lib/jellyfin-ffmpeg/vainfo` shows what the container sees.
+NVIDIA cards can do Convert's encoding through the NVIDIA Container Toolkit. [GPU](gpu.md)
+has the setup for each, and where Arrmada shows which encoders passed its start-up test.
 
 On ARM (arm64) there's no GPU acceleration: the image carries no GPU encoders or GPU subtitle
 build, Convert and Whisper use the CPU, and the installer doesn't pass `/dev/dri` through.

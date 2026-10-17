@@ -93,6 +93,53 @@ test.describe("admin", () => {
     expect((api.callsTo("POST", "/api/v1/requests/1/approve")[0].body as { folder_id?: number }).folder_id).toBe(0);
   });
 
+  // Issue #24: the Audiobooks folder in use doesn't exist yet. Create it sends that same
+  // folder with create, and the row looks again and shows it's there.
+  test("Create it makes the missing folder in use and shows it's there", async ({ page, api }) => {
+    let made = false;
+    const missing = (path: string) => ({
+      path, exists: false, is_dir: false, writable: false, hardlink_with_downloads: null, under_data_dir: false,
+      free_bytes: 0, total_bytes: 0, entries: 0, entries_capped: false,
+      error: `Audiobooks: ${path} doesn't exist. Check the spelling, or create it.`,
+    });
+    await page.route((u) => u.pathname === "/api/v1/system/library/check", async (route) => {
+      const url = new URL(route.request().url());
+      const path = url.searchParams.get("path") ?? "";
+      if (path !== "/media/audiobooks" || made) return route.fallback();
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(missing(path)) });
+    });
+    await override(page, api, [{ method: "PUT", path: "/api/v1/system/library", body: { movies: "/media/movies", tv: "/media/tv", ebooks: "/media/ebooks", audiobooks: "/media/audiobooks", music: "/media/music", downloads: "/media/downloads" } }]);
+    await page.route((u) => u.pathname === "/api/v1/system/library", async (route) => {
+      if (route.request().method() === "PUT") made = true;
+      return route.fallback();
+    });
+    await page.goto("/settings/library");
+    await expect(page.getByText("/media/audiobooks doesn't exist")).toBeVisible();
+    await page.getByRole("button", { name: "Create it" }).click();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/system/library").length).toBe(1);
+    expect(api.callsTo("PUT", "/api/v1/system/library")[0].body).toEqual({ audiobooks: "/media/audiobooks", create: true });
+    await expect(page.getByText("/media/audiobooks doesn't exist")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Create it" })).toHaveCount(0);
+  });
+
+  test("Create it says so when the folder couldn't be made", async ({ page, api }) => {
+    await page.route((u) => u.pathname === "/api/v1/system/library/check", async (route) => {
+      const path = new URL(route.request().url()).searchParams.get("path") ?? "";
+      if (path !== "/media/audiobooks") return route.fallback();
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({
+        path, exists: false, is_dir: false, writable: false, hardlink_with_downloads: null, under_data_dir: false,
+        free_bytes: 0, total_bytes: 0, entries: 0, entries_capped: false,
+        error: `Audiobooks: ${path} doesn't exist. Check the spelling, or create it.`,
+      }) });
+    });
+    await override(page, api, [{ method: "PUT", path: "/api/v1/system/library", status: 400, body: {
+      status: "error", folder: "audiobooks", message: "Audiobooks: couldn't create /media/audiobooks (permission denied). Check that the folder above it is mounted and that Arrmada's user (PUID/PGID) can write there.",
+    } }]);
+    await page.goto("/settings/library");
+    await page.getByRole("button", { name: "Create it" }).click();
+    await expect(page.getByText("couldn't create /media/audiobooks (permission denied)")).toBeVisible();
+  });
+
   test("Settings → Library lists the extra folders with their rules", async ({ page, api }) => {
     await override(page, api, [multi]);
     await page.goto("/settings/library#more-folders");
@@ -101,6 +148,76 @@ test.describe("admin", () => {
     await expect(card.getByLabel("Name of the Anime folder")).toHaveValue("Anime");
     await expect(card.getByText("— the main folder")).toHaveCount(2);
     await expect(card.getByText("/media/kids")).toBeVisible();
+  });
+
+  test("with one folder per library the downloads option waits behind one line until asked for", async ({ page }) => {
+    await page.goto("/settings/library#more-folders");
+    const card = page.locator("#more-folders");
+    await expect(card.getByText("— the main folder")).toHaveCount(2);
+    await expect(card.getByRole("button", { name: "Download to a folder on this disk…" })).toHaveCount(0);
+    await card.getByRole("button", { name: /Libraries on different disks\?/ }).click();
+    await expect(card.getByRole("button", { name: "Download to a folder on this disk…" })).toHaveCount(2);
+  });
+
+  test("a folder on another disk can download onto that disk (GitHub #11)", async ({ page, api }) => {
+    await override(page, api, [
+      multi,
+      { method: "GET", path: "/api/v1/system/browse", body: { path: "/mnt/disk2/downloads", parent: "/mnt/disk2", dirs: [], path_disabled: false } },
+      { method: "PUT", path: "/api/v1/system/library/folders/downloads", body: {
+        folder: { ...libraryFoldersMulti.movie.folders[1], downloads: "/mnt/disk2/downloads" },
+        warning: "/mnt/disk2/downloads isn't on the same filesystem as its library folder /media/kids, so imports from it are copied, not hardlinked — pick a downloads folder on the library's disk",
+      } },
+    ]);
+    await page.goto("/settings/library#more-folders");
+    const card = page.locator("#more-folders");
+    // Every folder offers it, the main ones included; nothing is set yet.
+    await expect(card.getByRole("button", { name: "Download to a folder on this disk…" })).toHaveCount(4);
+    await expect(card.getByText("Downloads to")).toHaveCount(0);
+    // The Kids row is the second Movies row (after the main folder).
+    await card.getByRole("button", { name: "Download to a folder on this disk…" }).nth(1).click();
+    await page.getByRole("button", { name: "Select this folder" }).click();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/system/library/folders/downloads").length).toBe(1);
+    expect(api.callsTo("PUT", "/api/v1/system/library/folders/downloads")[0].body).toEqual({ media: "movie", id: 3, path: "/mnt/disk2/downloads" });
+    // Saved, but on another filesystem: the warning says so.
+    await expect(page.getByText(/copied, not hardlinked/)).toBeVisible();
+  });
+
+  test("a folder's own downloads folder shows, warns, and can go back to Downloads", async ({ page, api }) => {
+    const withOwn = {
+      movie: { ...libraryFoldersMulti.movie, folders: [
+        { ...libraryFoldersMulti.movie.folders[0], downloads: "/mnt/disk1/downloads" },
+        { ...libraryFoldersMulti.movie.folders[1], downloads: "/mnt/disk1/downloads", downloads_warning: "/mnt/disk1/downloads isn't on the same filesystem as its library folder /media/kids, so imports from it are copied, not hardlinked" },
+      ] },
+      series: libraryFoldersMulti.series,
+    };
+    await override(page, api, [
+      { method: "GET", path: "/api/v1/library/folders", body: withOwn },
+      { method: "PUT", path: "/api/v1/system/library/folders/downloads", body: { folder: libraryFoldersMulti.movie.folders[1] } },
+    ]);
+    await page.goto("/settings/library#more-folders");
+    const card = page.locator("#more-folders");
+    await expect(card.getByText("/mnt/disk1/downloads", { exact: true })).toHaveCount(2);
+    await expect(card.getByText(/copied, not hardlinked/)).toHaveCount(1);
+    await card.getByRole("button", { name: "Use the Downloads folder" }).nth(1).click();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/system/library/folders/downloads").length).toBe(1);
+    expect(api.callsTo("PUT", "/api/v1/system/library/folders/downloads")[0].body).toEqual({ media: "movie", id: 3, path: "" });
+  });
+});
+
+test.describe("manager", () => {
+  test.use({ persona: "manager" });
+
+  test("sees a folder's downloads folder but can't change it, and nothing when there's none", async ({ page, api }) => {
+    const withOwn = {
+      movie: { ...libraryFoldersMulti.movie, folders: [libraryFoldersMulti.movie.folders[0], { ...libraryFoldersMulti.movie.folders[1], downloads: "/mnt/disk2/downloads" }] },
+      series: libraryFoldersMulti.series,
+    };
+    await override(page, api, [{ method: "GET", path: "/api/v1/library/folders", body: withOwn }]);
+    await page.goto("/settings/library#more-folders");
+    const card = page.locator("#more-folders");
+    await expect(card.getByText("/mnt/disk2/downloads")).toBeVisible();
+    await expect(card.getByRole("button", { name: "Download to a folder on this disk…" })).toHaveCount(0);
+    await expect(card.getByRole("button", { name: "Use the Downloads folder" })).toHaveCount(0);
   });
 });
 

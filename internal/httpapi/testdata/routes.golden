@@ -45,6 +45,7 @@ DELETE /api/v1/subtitles/profiles/{id} staff -
 DELETE /api/v1/system/backups/restore-pending admin -
 DELETE /api/v1/system/backups/{name} admin -
 DELETE /api/v1/system/library/folders/{id} admin -
+DELETE /api/v1/system/widget-key admin -
 DELETE /api/v1/users/api-keys/{id} admin -
 DELETE /api/v1/users/jellyfin-blocks/{jellyfinID} admin -
 DELETE /api/v1/users/plex-blocks/{plexID} admin -
@@ -169,6 +170,7 @@ GET /api/v1/library/folders/suggest staff -
 GET /api/v1/logs admin -
 GET /api/v1/logs/download admin -
 GET /api/v1/logs/level admin -
+GET /api/v1/me/2fa user ext
 GET /api/v1/me/account user ext
 GET /api/v1/me/api-keys user ext
 GET /api/v1/me/apprise user ext
@@ -282,6 +284,7 @@ GET /api/v1/system/pending-restart staff -
 GET /api/v1/system/status admin -
 GET /api/v1/system/support-bundle admin -
 GET /api/v1/system/tasks staff -
+GET /api/v1/system/widget-key admin -
 GET /api/v1/users admin -
 GET /api/v1/users/api-keys admin -
 GET /api/v1/users/jellyfin-blocks admin -
@@ -290,6 +293,7 @@ GET /api/v1/users/{id}/impact admin -
 GET /api/v1/users/{id}/merge admin -
 GET /api/v1/users/{id}/plex/merge admin -
 GET /api/v1/wanted staff -
+GET /api/v1/widget/homepage public -
 GET /api/v1/ws user -
 GET /opds public ext
 GET /opds/ public ext
@@ -310,6 +314,9 @@ POST /api/v1/audioserver/import/apply admin -
 POST /api/v1/auth/jellyfin public ext
 POST /api/v1/auth/jellyfin/quickconnect public ext
 POST /api/v1/auth/login public ext
+POST /api/v1/auth/login/code public ext
+POST /api/v1/auth/login/setup public ext
+POST /api/v1/auth/login/setup/confirm public ext
 POST /api/v1/auth/logout public ext
 POST /api/v1/auth/plex/pin public ext
 POST /api/v1/auth/setup public ext
@@ -373,6 +380,10 @@ POST /api/v1/jellyfin/scan/test staff -
 POST /api/v1/jellyfin/test staff -
 POST /api/v1/jobs/{id}/cancel staff -
 POST /api/v1/library/fit/preview staff -
+POST /api/v1/me/2fa/confirm user ext
+POST /api/v1/me/2fa/disable user ext
+POST /api/v1/me/2fa/recovery-codes user ext
+POST /api/v1/me/2fa/setup user ext
 POST /api/v1/me/api-keys user ext
 POST /api/v1/me/audio/accept user ext
 POST /api/v1/me/audio/dismiss user ext
@@ -495,7 +506,9 @@ POST /api/v1/system/library/folders admin -
 POST /api/v1/system/restart admin -
 POST /api/v1/system/tasks/{name}/run admin -
 POST /api/v1/system/update-check admin -
+POST /api/v1/system/widget-key admin -
 POST /api/v1/users admin -
+POST /api/v1/users/{id}/2fa/reset admin -
 POST /api/v1/users/{id}/block-jellyfin admin -
 POST /api/v1/users/{id}/block-plex admin -
 POST /api/v1/users/{id}/merge admin -
@@ -551,6 +564,7 @@ PUT /api/v1/subtitles/profiles/{id} staff -
 PUT /api/v1/subtitles/settings staff -
 PUT /api/v1/system/backups/settings admin -
 PUT /api/v1/system/library admin -
+PUT /api/v1/system/library/folders/downloads admin -
 PUT /api/v1/system/library/folders/order admin -
 PUT /api/v1/system/library/folders/{id} admin -
 PUT /api/v1/system/update-check admin -

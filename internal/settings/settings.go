@@ -26,6 +26,11 @@ const (
 	KeyModuleBooks = "module_books_enabled"
 )
 
+// KeyTwoFactorAdmins is "Require two-factor for admins" (default off): an admin signing in
+// with a password who hasn't set two-factor up must do so before getting a session. It
+// lives here because the reset-2fa command switches it off for a locked-out owner too.
+const KeyTwoFactorAdmins = "two_factor_admins"
+
 // ModuleMusicDefault is off: Music is a preview, and a fresh install shouldn't start
 // searching indexers for albums before the owner has chosen to try it.
 const ModuleMusicDefault = false

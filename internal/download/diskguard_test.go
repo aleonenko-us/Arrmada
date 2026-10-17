@@ -17,9 +17,15 @@ type fakeClient struct {
 	items   []Item
 	paused  []string
 	resumed []string
+	listErr error // the client is down
 }
 
-func (f *fakeClient) List(context.Context, Client) ([]Item, error) { return f.items, nil }
+func (f *fakeClient) List(context.Context, Client) ([]Item, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	return f.items, nil
+}
 func (f *fakeClient) Pause(_ context.Context, _ Client, hash string) error {
 	f.paused = append(f.paused, hash)
 	for i := range f.items {

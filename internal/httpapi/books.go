@@ -368,9 +368,17 @@ func (a *api) handleBookRename(w http.ResponseWriter, r *http.Request) {
 // handleScanBookLibrary catalogs books already present in the library folder.
 func (a *api) handleScanBookLibrary(w http.ResponseWriter, r *http.Request) {
 	ebooks, audiobooks := a.libEbooks(r), a.libAudiobooks(r)
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "books.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: 15 * time.Minute,
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "books.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: libraryScanTimeout,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
-			res := a.deps.Automation.ScanBookLibrary(ctx, ebooks, audiobooks)
+			// Progress rides the job (job.updated on the live socket), as the movie scan's does.
+			res, err := a.deps.Automation.ScanBookLibrary(ctx, ebooks, audiobooks, func(done, total int) {
+				if total > 0 {
+					p.Set(float64(done)/float64(total), fmt.Sprintf("Scanning %s / %s book folders", thousands(done), thousands(total)))
+				}
+			})
+			if err != nil {
+				return nil, err
+			}
 			a.deps.Log.Info("book library scan done", "imported", res.Imported, "skipped", res.Skipped)
 			p.SetMessage(scanMessage("book", res.Imported, len(res.Unmatched)))
 			return scanSummary{Imported: res.Imported, Skipped: res.Skipped, Unmatched: len(res.Unmatched)}, nil

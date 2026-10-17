@@ -129,6 +129,10 @@ type LibraryState struct {
 	Folders []Folder
 	All     []Folder
 	DataDir string
+	// Recorded counts the files Arrmada has on record inside a folder. It's asked only
+	// about a folder that's missing, to tell a share that isn't mounted (it held files)
+	// from one that was never made. nil: unknown.
+	Recorded func(ctx context.Context, folder string) (int, error)
 }
 
 // folderCheckEvery paces the checks that touch the library shares. They run whether or
@@ -166,7 +170,16 @@ func LibraryFoldersCheck(src func(ctx context.Context) LibraryState, probes *Pro
 				if underData[f.Path] {
 					continue // already reported, and nothing is probed inside the data folder
 				}
-				if level, msg := FolderProblem(f, probes.ProbeFolder(f.Path)); msg != "" {
+				probe := probes.ProbeFolder(f.Path)
+				if !probe.Exists && probe.Err == nil {
+					probe.Recorded = RecordedUnknown
+					if st.Recorded != nil {
+						if n, err := st.Recorded(ctx, f.Path); err == nil {
+							probe.Recorded = n
+						}
+					}
+				}
+				if level, msg := FolderProblem(f, probe); msg != "" {
 					out = append(out, Finding{Key: "library." + f.Role, Level: level, Message: msg, Fix: FixLibraryFolders})
 				}
 			}
@@ -175,15 +188,31 @@ func LibraryFoldersCheck(src func(ctx context.Context) LibraryState, probes *Pro
 	}
 }
 
+// RecordedUnknown is FolderState.Recorded when the records couldn't be read.
+const RecordedUnknown = -1
+
 // FolderProblem turns a folder probe into a health line, or "" when the folder is fine.
-// A missing folder whose parent can be written is only a warning — imports create it —
-// but a missing parent means the share isn't mounted at all.
+// A missing folder whose parent can be written is only a warning — it can still be made —
+// but a missing parent means the share isn't mounted at all, and so does a missing folder
+// Arrmada has files on record in.
+//
+// Imports never make a missing library folder themselves (a share that isn't mounted
+// looks just like one that was never made, and recreating it would put the library on
+// the container's own disk). So Create it is suggested only for a folder known to have
+// held nothing; anywhere else the advice is to check the mount. The download client does
+// make its own folder.
 func FolderProblem(f Folder, st FolderState) (level, msg string) {
 	switch {
 	case !st.Exists && st.Err != nil:
 		return LevelError, fmt.Sprintf("Arrmada can't look at the %s folder %s: %v.", f.Label, f.Path, st.Err)
+	case !st.Exists && st.Recorded > 0:
+		return LevelError, fmt.Sprintf("The %s folder %s is missing, but it held %d file%s Arrmada has on record — its share is probably not mounted. Check the mount (or the container's volume mapping); don't create the folder.", f.Label, f.Path, st.Recorded, plural(st.Recorded))
+	case !st.Exists && st.ParentExists && st.ParentWritable && f.Role == "downloads":
+		return LevelWarning, fmt.Sprintf("The %s folder %s doesn't exist yet. The download client makes it with the first download; if it should be an existing share, check the container's volume mapping.", f.Label, f.Path)
+	case !st.Exists && st.ParentExists && st.ParentWritable && st.Recorded == RecordedUnknown:
+		return LevelWarning, fmt.Sprintf("The %s folder %s doesn't exist, so nothing can be imported into it. If it should be an existing share, check that it's mounted (and the container's volume mapping); if it's new, create it in Settings → Library.", f.Label, f.Path)
 	case !st.Exists && st.ParentExists && st.ParentWritable:
-		return LevelWarning, fmt.Sprintf("The %s folder %s doesn't exist yet. Arrmada will create it when it's first needed; if it should be an existing share, check the container's volume mapping.", f.Label, f.Path)
+		return LevelWarning, fmt.Sprintf("The %s folder %s doesn't exist yet, so nothing can be imported into it. Press Create it beside it in Settings → Library; if it should be an existing share, check the container's volume mapping.", f.Label, f.Path)
 	case !st.Exists && st.ParentExists:
 		return LevelError, fmt.Sprintf("The %s folder %s doesn't exist, and Arrmada can't create it (check the container's volume mapping and the share's permissions).", f.Label, f.Path)
 	case !st.Exists:
@@ -265,25 +294,94 @@ func DiskGuardCheck(state func(ctx context.Context) (DiskGuardState, bool)) Chec
 	}
 }
 
-// DiskFreeCheck warns when the downloads volume is nearly full.
-func DiskFreeCheck(dir func() string) Check {
-	return diskFreeCheck(dir, diskspace.FreeGB)
+// diskFreeCheck is DownloadsFreeCheck over the Downloads folder alone.
+func diskFreeCheck(dir func() string, free func(string) (float64, bool)) Check {
+	return downloadsFreeCheck(func() []Folder { return []Folder{{Role: "downloads", Label: "Downloads", Path: dir()}} }, free, nil)
 }
 
-func diskFreeCheck(dir func() string, free func(string) (float64, bool)) Check {
+// DownloadsFreeCheck warns when a downloads volume is nearly full: the Downloads folder's
+// and, when library folders have downloads folders of their own (DownloadFolders), each
+// of theirs on another filesystem — a torrent filling the TV disk is as stuck as one
+// filling the main downloads drive.
+func DownloadsFreeCheck(dirs func() []Folder) Check {
+	return downloadsFreeCheck(dirs, diskspace.FreeGB, diskspace.SameDevice)
+}
+
+func downloadsFreeCheck(dirs func() []Folder, free func(string) (float64, bool), same func(a, b string) (bool, bool)) Check {
 	return Check{
 		Key: "disk.free", Name: "Free space", Category: CategoryStorage,
 		Run: func(ctx context.Context) []Finding {
-			gb, ok := free(dir())
-			switch {
-			case !ok:
-				return nil
-			case gb < 2:
-				return []Finding{{Key: "disk.free", Level: LevelError, Message: fmt.Sprintf("Very low free disk space (%.1f GB) on the downloads volume.", gb)}}
-			case gb < 10:
-				return []Finding{{Key: "disk.free", Level: LevelWarning, Message: fmt.Sprintf("Low free disk space (%.1f GB) on the downloads volume.", gb)}}
+			var out []Finding
+			var measured []string
+			for _, f := range dirs() {
+				if strings.TrimSpace(f.Path) == "" {
+					continue
+				}
+				// One volume, one line: folders sharing a filesystem are the same space.
+				dup := false
+				for _, m := range measured {
+					if same != nil {
+						if s, ok := same(m, f.Path); ok && s {
+							dup = true
+							break
+						}
+					}
+				}
+				if dup {
+					continue
+				}
+				gb, ok := free(f.Path)
+				if !ok {
+					continue
+				}
+				measured = append(measured, f.Path)
+				key, where := "disk.free", "the downloads volume"
+				if f.Role != "downloads" {
+					key, where = "disk.free."+f.Role, fmt.Sprintf("the volume of %s (%s)", f.Label, f.Path)
+				}
+				switch {
+				case gb < 2:
+					out = append(out, Finding{Key: key, Level: LevelError, Message: fmt.Sprintf("Very low free disk space (%.1f GB) on %s.", gb, where)})
+				case gb < 10:
+					out = append(out, Finding{Key: key, Level: LevelWarning, Message: fmt.Sprintf("Low free disk space (%.1f GB) on %s.", gb, where)})
+				}
 			}
-			return nil
+			return out
+		},
+	}
+}
+
+// FolderDownloadsCheck flags a library folder whose own downloads folder (GitHub #11)
+// isn't on the same filesystem as the library folder: that's the whole point of one, and
+// with the two apart every import is a copy again. A hint, not a fault — a shared mount
+// can report one filesystem id for two disks and the reverse — so it's a warning. That
+// the folder is there and writable is the library-folders check's job.
+func FolderDownloadsCheck(src func(ctx context.Context) []libroots.FolderDownloads) Check {
+	return folderDownloadsCheck(src, diskspace.SameDevice)
+}
+
+func folderDownloadsCheck(src func(ctx context.Context) []libroots.FolderDownloads, same func(a, b string) (bool, bool)) Check {
+	return Check{
+		Key: "library.downloads", Name: "Library downloads folders", Category: CategoryStorage, Interval: folderCheckEvery, Timeout: 20 * time.Second,
+		Run: func(ctx context.Context) []Finding {
+			var out []Finding
+			for _, d := range src(ctx) {
+				if strings.TrimSpace(d.Path) == "" || strings.TrimSpace(d.Library) == "" {
+					continue
+				}
+				if s, ok := same(d.Path, d.Library); !ok || s {
+					continue
+				}
+				key := "library.downloads." + libroots.LibraryName(d.Media)
+				if d.ID != 0 {
+					key = fmt.Sprintf("%s-%d", key, d.ID)
+				}
+				out = append(out, Finding{
+					Key: key, Level: LevelWarning, Fix: FixMoreFolders,
+					Message: fmt.Sprintf("The downloads folder of %s (%s) isn't on the same filesystem as the library folder (%s), so its imports are copied, not hardlinked. Pick a downloads folder on the library's disk.", d.LibraryLabel, d.Path, d.Library),
+				})
+			}
+			return out
 		},
 	}
 }

@@ -2,23 +2,32 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/docker-compose.example.yml -o docker-compose.yml
 #
-# change the lines marked ←, then `docker compose up -d` and open http://<server>:7878.
-# The first-run setup in the browser takes care of the rest (TMDB key, library folders,
-# Plex, indexers). API keys go there, never in this file.
+# put a .env file next to it with your two folders (full paths), and anything else marked
+# ← that you want to change (each has its default after :-, which applies when it's unset):
+#
+#   ARRMADA_DATA_HOST=/srv/arrmada/data       Arrmada's database and settings
+#   ARRMADA_STORAGE_HOST=/srv/media           your libraries and downloads (/storage inside)
+#
+# (Folders can also be written into this file in place of the defaults; .env is better, as
+# a newer copy of the file then replaces this one without losing them.) Then
+# `docker compose up -d` and open http://<server>:7878. The first-run setup in the browser
+# takes care of the rest (TMDB key, library folders, Plex, indexers). API keys go there,
+# never in this file or .env.
 #
 # Update:  docker compose pull && docker compose up -d
 #
-# Works as a Portainer stack too (Stacks → Add stack → Web editor, paste this file):
-# every folder here is an absolute path, since a stack has no folder of its own.
+# Works as a Portainer stack too (Stacks → Add stack, paste this file or point it at the
+# repository, and put the same lines under Environment variables). Use full paths there: a
+# stack has no folder of its own, so a relative one would land inside Portainer's own volume.
 #
 # 64-bit Intel/AMD (x86-64) and 64-bit ARM (arm64) servers; every image here has both.
 # Kept in step with the repository's
 # docker-compose.yml (internal/archtest/compose_test.go checks the two agree).
 
 x-you: &you
-  PUID: "1000"             # ← the user that owns your media folder (Unraid: 99)
-  PGID: "1000"             # ← its group (Unraid: 100)
-  TZ: "Etc/UTC"            # ← your timezone, e.g. Europe/London; schedules run on this clock
+  PUID: "${ARRMADA_PUID:-1000}"   # ← the user that owns your media folder (Unraid: 99)
+  PGID: "${ARRMADA_PGID:-1000}"   # ← its group (Unraid: 100)
+  TZ: "${TZ:-Etc/UTC}"            # ← your timezone, e.g. Europe/London; schedules run on this clock
 
 services:
   arrmada-app:
@@ -27,11 +36,13 @@ services:
     # Lets x265 pin its threads; Convert works without it, just slower.
     cap_add: [SYS_NICE]
     ports:
-      - "7878:7878"        # ← the web page; change the left number if 7878 is taken (Radarr)
-      - "13379:13378"      # audiobook server for listening apps (off until switched on)
+      # ← the web page (ARRMADA_PORT); change it if 7878 is taken (Radarr)
+      - "${ARRMADA_PORT:-7878}:7878"
+      # audiobook server for listening apps (off until switched on)
+      - "${ARRMADA_AUDIOBOOK_PORT:-13379}:13378"
     environment:
       <<: *you
-      ARRMADA_AUDIOBOOK_HOST_PORT: "13379"
+      ARRMADA_AUDIOBOOK_HOST_PORT: "${ARRMADA_AUDIOBOOK_PORT:-13379}"
       ARRMADA_EXTERNAL_HEADER: "Cf-Connecting-Ip"
       ARRMADA_LOG_LEVEL: "info"
       ARRMADA_QBITTORRENT_URL: "http://arrmada-qbittorrent:8080"
@@ -40,21 +51,22 @@ services:
       ARRMADA_PROWLARR_HOST_PORT: "9696"
       ARRMADA_SABNZBD_URL: "http://arrmada-sabnzbd:8080"
       ARRMADA_SABNZBD_HOST_PORT: "8085"
-      ARRMADA_QBIT_PORT: "6881"
+      ARRMADA_QBIT_PORT: "${ARRMADA_QBIT_PORT:-6881}"
     volumes:
-      # ← Where Arrmada keeps its database and settings (e.g. /mnt/user/appdata/arrmada/data
-      #   on Unraid). Its own folder, never your media. A full path: in a Portainer stack a
-      #   relative one (./data) would land inside Portainer's own volume and go with the stack.
-      - /path/to/arrmada/data:/data
-      # ← The folder that holds your libraries AND downloads (e.g. /mnt/user/data with
-      #   media/movies, media/tv and torrents inside), so imports hardlink instead of
-      #   copying. It's /storage inside: pick each library there during setup. Never
-      #   mount media at /data — that's the database.
-      - &media /path/to/your/media:/storage
-      - arrmada-media:/media
+      # ← ARRMADA_DATA_HOST: where Arrmada keeps its database and settings (e.g.
+      #   /mnt/user/appdata/arrmada/data on Unraid). Its own folder, never your media.
+      - "${ARRMADA_DATA_HOST:-/path/to/arrmada/data}:/data"
+      # ← ARRMADA_STORAGE_HOST: the folder that holds your libraries AND downloads (e.g.
+      #   /mnt/user/data with media/movies, media/tv and torrents inside), so imports
+      #   hardlink instead of copying. It's /storage inside: pick each library there during
+      #   setup. Never mount media at /data — that's the database.
+      - &media "${ARRMADA_STORAGE_HOST:-/path/to/your/media}:/storage"
+      # Arrmada's own managed media: a Docker volume, or ARRMADA_MEDIA_HOST's folder.
+      - "${ARRMADA_MEDIA_HOST:-arrmada-media}:/media"
       # The optional SABnzbd's settings (below), read-only: Arrmada reads its API key here.
       - arrmada-sab-config:/bundled/sabnzbd:ro
-    # To use an Intel/AMD GPU for Convert, uncomment (x86-64 only; ARM uses the CPU):
+    # To use an Intel/AMD GPU for Convert, uncomment (x86-64 only; ARM uses the CPU).
+    # NVIDIA: docs/gpu.md.
     # devices: [/dev/dri:/dev/dri]
     depends_on:
       arrmada-media-init: { condition: service_completed_successfully }
@@ -73,12 +85,12 @@ services:
     volumes:
       - arrmada-qbt-config:/config
       - *media
-      - arrmada-media:/media
+      - "${ARRMADA_MEDIA_HOST:-arrmada-media}:/media"
     ports:
-      # BitTorrent; forward it on your router (TCP and UDP). If you change it, change
-      # ARRMADA_QBIT_PORT above to match — Arrmada sets the same port inside qBittorrent.
-      - "6881:6881"
-      - "6881:6881/udp"
+      # ← BitTorrent (ARRMADA_QBIT_PORT); forward it on your router (TCP and UDP). Arrmada
+      # sets the same port inside qBittorrent.
+      - "${ARRMADA_QBIT_PORT:-6881}:${ARRMADA_QBIT_PORT:-6881}"
+      - "${ARRMADA_QBIT_PORT:-6881}:${ARRMADA_QBIT_PORT:-6881}/udp"
       # qBittorrent's own web page isn't needed (Arrmada drives it); to peek, add
       # - "8080:8080"
       # and sign in with the login on its card in Settings → Connections.
@@ -96,14 +108,49 @@ services:
       LOG_LEVEL: "info"
     restart: unless-stopped
 
-  # One-shot: Arrmada's own downloads/library folders, owned by the user above.
+  # One-shot: Arrmada's own downloads/library folders, owned by the user above. The managed
+  # volume (told apart by what's really mounted) also gets a starting folder per library, and
+  # all of it is the user's; any other folder keeps its owners, gets no library folders, and
+  # only the folders made here are handed over. Same script as docker-compose.yml's.
   arrmada-media-init:
     image: alpine:3.20
     container_name: Arrmada-media-init
-    environment: *you
-    command: sh -c 'mkdir -p /media/downloads/incomplete /media/library && chown -R "$$PUID:$$PGID" /media'
+    environment:
+      <<: *you
+      MEDIA_HOST: "${ARRMADA_MEDIA_HOST:-}"
+    command:
+      - sh
+      - -c
+      - |
+        case "$$MEDIA_HOST" in
+          . | ./* | .. | ../*)
+            echo "ARRMADA_MEDIA_HOST=$$MEDIA_HOST is a relative path. Give the full path in .env: a relative one would be inside Arrmada's own folder." >&2
+            exit 1 ;;
+        esac
+        m=$$(awk '$$5 == "/media" { print $$3, $$4 }' /proc/self/mountinfo | tail -n 1)
+        d=$$(awk '$$5 == "/data" { print $$3, $$4 }' /proc/self/mountinfo | tail -n 1)
+        mr=$${m#* }; mr=$${mr%/}; dr=$${d#* }; dr=$${dr%/}; overlap=""
+        if [ -n "$$m" ] && [ -n "$$d" ] && [ "$${m%% *}" = "$${d%% *}" ]; then
+          case "$$mr/" in "$$dr/"*) overlap=1 ;; esac
+          case "$$dr/" in "$$mr/"*) overlap=1 ;; esac
+        fi
+        if [ -n "$$overlap" ]; then
+          echo "The media folder and the database's folder overlap (ARRMADA_MEDIA_HOST, ARRMADA_DATA_HOST). Media never goes in the database's folder: point ARRMADA_MEDIA_HOST at another one in .env." >&2
+          exit 1
+        fi
+        if printf '%s\n' "$$mr" | grep -Eq '/volumes/[^/]+/_data$$'; then
+          mkdir -p /media/downloads/incomplete /media/library/movies /media/library/tvshows \
+            /media/library/ebooks /media/library/audiobooks /media/library/music &&
+            chown -R "$$PUID:$$PGID" /media
+          exit
+        fi
+        [ -n "$$(ls -A /media)" ] || chown "$$PUID:$$PGID" /media
+        for p in /media/downloads /media/downloads/incomplete /media/library; do
+          [ -d "$$p" ] || { mkdir "$$p" && chown "$$PUID:$$PGID" "$$p"; } || exit 1
+        done
     volumes:
-      - arrmada-media:/media
+      - "${ARRMADA_MEDIA_HOST:-arrmada-media}:/media"
+      - "${ARRMADA_DATA_HOST:-/path/to/arrmada/data}:/data:ro"
     restart: "no"
 
   # One-shot: qBittorrent's first settings (only if it has none yet). The whitelist lets
@@ -166,7 +213,7 @@ services:
   #   volumes:
   #     - arrmada-sab-config:/config
   #     - *media
-  #     - arrmada-media:/media
+  #     - "${ARRMADA_MEDIA_HOST:-arrmada-media}:/media"
   #   ports:
   #     - "8085:8080"
   #   depends_on:

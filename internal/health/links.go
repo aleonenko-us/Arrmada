@@ -11,6 +11,8 @@ var (
 	FixFlareSolverr    = &Fix{Path: "/settings/connections#flaresolverr", Label: "FlareSolverr setting"}
 	FixDownloadClients = &Fix{Key: "downloadClients", Path: "/settings/connections#download-clients", Label: "Check download clients"}
 	FixLibraryFolders  = &Fix{Key: "libraryFolders", Path: "/settings/library#media-folders", Label: "Choose folders"}
+	// The extra Movies and TV folders, and each folder's own downloads folder.
+	FixMoreFolders     = &Fix{Key: "moreFolders", Path: "/settings/library#more-folders", Label: "Library folders"}
 	FixDiskGuard       = &Fix{Key: "diskGuard", Path: "/settings/downloads#disk-guard", Label: "Disk guard settings"}
 	FixRecycleBin      = &Fix{Key: "recycleBin", Path: "/settings/downloads#recycle-bin", Label: "Recycle bin settings"}
 	FixAPIKeys         = &Fix{Key: "apiKeys", Path: "/settings/connections#api-keys", Label: "API keys"}

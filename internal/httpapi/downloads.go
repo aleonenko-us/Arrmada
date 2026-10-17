@@ -338,7 +338,7 @@ func (a *api) sharedWithDownloads(ctx context.Context, downloads string) []healt
 		return shared
 	}
 	for _, f := range a.healthFolders(ctx, a.booksEnabled(ctx), a.musicEnabled(ctx)) {
-		if f.Role == "downloads" {
+		if health.IsDownloads(f) {
 			continue
 		}
 		if same, ok := health.SameFilesystem(downloads, f.Path); ok && same {

@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button, useConfirm, useToast } from "../ui";
 import { Field } from "../ui/Field";
 import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
-import { apiKeysApi, expiryLabel, SCOPE_LABEL, type KeyScope, type MyApiKeys, type PersonalApiKey } from "../lib/apiKeysApi";
+import { API_KEYS_QUERY, apiKeysApi, expiryLabel, SCOPE_LABEL, type KeyScope, type MyApiKeys, type PersonalApiKey } from "../lib/apiKeysApi";
 import { formatAgo } from "../lib/format";
+import { useQuery } from "../lib/query";
+import { signOut } from "../lib/session";
 
 // Personal API keys: the Me page's card (every role) and the admin's list in People &
 // access. A key lets a script or app (n8n, Home Assistant, curl) call Arrmada as you,
@@ -30,16 +32,14 @@ const EXPIRY_LABEL = (d: number) => (d === 0 ? "Never" : d === 365 ? "In a year"
 export function PersonalApiKeys() {
   const toast = useToast();
   const confirm = useConfirm();
-  const [state, setState] = useState<MyApiKeys | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // A cached query, so a password change on the Account card (which revokes every key)
+  // can tell this list to read itself again (invalidate(API_KEYS_QUERY)).
+  const { data: state, error: loadError, refetch: load, mutate } = useQuery(API_KEYS_QUERY, apiKeysApi.mine, { staleMs: 0 });
+  const error = loadError?.message ?? null;
+  const setState = (f: (s: MyApiKeys) => MyApiKeys) => { if (state) mutate(f(state)); };
   const [creating, setCreating] = useState(false);
   const [made, setMade] = useState<{ key: string; name: string } | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
-
-  const load = useCallback(() => {
-    apiKeysApi.mine().then((s) => { setState(s); setError(null); }).catch((e: Error) => setError(e.message));
-  }, []);
-  useEffect(load, [load]);
 
   const revoke = async (k: PersonalApiKey) => {
     const ok = await confirm({
@@ -52,11 +52,11 @@ export function PersonalApiKeys() {
     setBusy(k.id);
     try {
       await apiKeysApi.revoke(k.id);
-      setState((s) => s && { ...s, keys: s.keys.filter((x) => x.id !== k.id) });
+      setState((s) => ({ ...s, keys: s.keys.filter((x) => x.id !== k.id) }));
       toast(`Revoked ${k.name}`, { tone: "good" });
     } catch (e) {
       toast((e as Error).message, { tone: "error" });
-      load();
+      void load();
     } finally {
       setBusy(null);
     }
@@ -69,7 +69,7 @@ export function PersonalApiKeys() {
   return (
     <div className="flex flex-col">
       <div className="px-3.5 pt-3 text-sm text-ink-dim">
-        Let a script or app — n8n, Home Assistant, curl — use Arrmada as you. Send the key in an <code className="font-mono">X-Api-Key</code> header. Anyone with a key can do what it allows, so treat it like a password.
+        Let a script or app — n8n, Home Assistant, curl — use Arrmada as you. Send the key in an <code className="font-mono">X-Api-Key</code> header. Anyone with a key can do what it allows, so treat it like a password. Changing your password revokes all your keys.
       </div>
 
       {made && <NewKeyShown made={made} onDone={() => setMade(null)} />}
@@ -102,11 +102,13 @@ export function PersonalApiKeys() {
             onMade={(key, k) => {
               setCreating(false);
               setMade({ key, name: k.name });
-              setState((s) => s && { ...s, keys: [k, ...s.keys] });
+              setState((s) => ({ ...s, keys: [k, ...s.keys] }));
             }}
           />
         ) : live >= state.max ? (
           <p className="m-0 text-sm text-ink-faint">You have the most keys one account can hold ({state.max}). Revoke one you no longer use to make another.</p>
+        ) : state.reauth_required ? (
+          <SignInAgain />
         ) : (
           <Button size="sm" onClick={() => { setMade(null); setCreating(true); }}>New API key</Button>
         )}
@@ -142,29 +144,50 @@ function NewKeyShown({ made, onDone }: { made: { key: string; name: string }; on
   );
 }
 
-// CreateKeyForm names the key, says what it may do and for how long, and — when the
-// account has a password — asks for it, so a browser left signed in isn't enough to make
-// a lasting way in.
+// SignInAgain is what an account with no password sees when its session is older than the
+// server's window for making keys: signing in again (through Plex or Jellyfin) is how it
+// shows it's still them.
+function SignInAgain() {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="m-0 text-sm text-ink-dim">For your safety, keys can only be made within 15 minutes of signing in. Sign out and sign in again, then make the key.</p>
+      <div><Button size="sm" onClick={() => { void signOut(); }}>Sign out to sign in again</Button></div>
+    </div>
+  );
+}
+
+// CreateKeyForm names the key, says what it may do and for how long, and asks for what
+// proves it's you — your password, and a two-factor code when that's on — so a browser
+// left signed in isn't enough to make a lasting way in.
 function CreateKeyForm({ state, onCancel, onMade }: { state: MyApiKeys; onCancel: () => void; onMade: (key: string, k: PersonalApiKey) => void }) {
   const [name, setName] = useState("");
   const [scope, setScope] = useState<KeyScope>("read");
   const [days, setDays] = useState(state.expiry_days.includes(90) ? 90 : 0);
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reauth, setReauth] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) { setError("Give the key a name, like “n8n” or “Home Assistant”."); return; }
     setBusy(true); setError(null);
     try {
-      const r = await apiKeysApi.create({ name: name.trim(), scope, expires_in_days: days, ...(state.password_required ? { password } : {}) });
+      const r = await apiKeysApi.create({
+        name: name.trim(), scope, expires_in_days: days,
+        ...(state.password_required ? { password } : {}),
+        ...(state.code_required ? { code: code.trim() } : {}),
+      });
       onMade(r.key, r.api_key);
     } catch (err) {
+      // The session got too old while the form was open: same answer as on load.
+      if ((err as { body?: { code?: unknown } }).body?.code === "reauth") setReauth(true);
       setError((err as Error).message);
       setBusy(false);
     }
   };
+  if (reauth) return <SignInAgain />;
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3" aria-label="New API key">
@@ -185,6 +208,11 @@ function CreateKeyForm({ state, onCancel, onMade }: { state: MyApiKeys; onCancel
       {state.password_required && (
         <Field label="Your password" hint="To make sure it’s you.">
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+        </Field>
+      )}
+      {state.code_required && (
+        <Field label="Two-factor code" hint="From your authenticator app, or a recovery code.">
+          <Input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" required />
         </Field>
       )}
       {error && <div role="alert" className="text-sm font-medium" style={{ color: "var(--reject-text)" }}>{error}</div>}

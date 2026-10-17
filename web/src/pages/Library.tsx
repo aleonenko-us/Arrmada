@@ -119,7 +119,10 @@ function FolderRow({ row, paths, admin, canScan, onScanned, onSaved }: {
           <div className="text-md font-semibold">{row.label}</div>
           <div className="text-xs text-ink-faint">{row.hint}</div>
         </div>
-        {canScan && <button onClick={() => void scan.start()} disabled={scan.running} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>{scan.running ? "Scanning…" : "Scan"}</button>}
+        <div className="flex items-center gap-2">
+          {canScan && scan.running && scan.job && <button onClick={() => void scan.stop()} aria-label={`Stop the ${row.label} scan`} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink)" }}>Stop</button>}
+          {canScan && <button onClick={() => void scan.start()} disabled={scan.running} className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-60" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>{scan.running ? "Scanning…" : "Scan"}</button>}
+        </div>
       </div>
       {(line || scan.note) && (
         <div role="status" className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
@@ -278,7 +281,6 @@ export function FolderChips({ kind, path, current, downloads, onBlocking, onCrea
   const [check, setCheck] = useState<FolderCheck | null>(null);
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
-  const [nonce, setNonce] = useState(0); // bump to re-check after creating
   const [failed, setFailed] = useState<string | null>(null); // the path whose check errored
   const p = path.trim();
   const linkFrom = kind === "downloads" ? undefined : downloads?.trim() || undefined;
@@ -292,7 +294,7 @@ export function FolderChips({ kind, path, current, downloads, onBlocking, onCrea
         .catch(() => { if (live) setFailed(p); }); // the chips are advice; the save still checks
     }, 500);
     return () => { live = false; window.clearTimeout(t); };
-  }, [p, kind, linkFrom, nonce]);
+  }, [p, kind, linkFrom]);
 
   // A result for an older value is stale; show nothing until the new one lands.
   const c = check && check.path === p ? check : null;
@@ -300,12 +302,16 @@ export function FolderChips({ kind, path, current, downloads, onBlocking, onCrea
   const blocking = !!c?.error && (c.under_data_dir || changed);
   useEffect(() => { onBlocking?.(kind, p !== "" && blocking); }, [kind, p, blocking, onBlocking]);
 
+  // After the save, look again straight away instead of trusting it: a press that left
+  // the folder missing must say so here (it once answered OK and made nothing).
   const create = async () => {
     setCreating(true); setCreateErr(null);
     try {
       const saved = await api.setLibraryPaths({ [kind]: p, create: true });
       onCreated?.(saved);
-      setNonce((n) => n + 1);
+      const after = await api.checkLibraryFolder(p, kind, linkFrom);
+      setCheck(after);
+      if (!after.exists) setCreateErr(`${p} still isn't there. Check the container's volume mapping and Arrmada's log.`);
     } catch (e) { setCreateErr((e as Error).message); } finally { setCreating(false); }
   };
 

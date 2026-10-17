@@ -1,4 +1,4 @@
--- 0329_account_api_keys: personal API keys (Me → Personal API keys) for scripts and
+-- 0331_account_api_keys: personal API keys (Me → Personal API keys) for scripts and
 -- integrations such as n8n, Home Assistant or curl. The api_keys table has existed since
 -- 0001, but nothing ever issued a key, so it only needs the columns the feature uses:
 --   scope              'read' (GET routes only) or 'full' (whatever the role allows on

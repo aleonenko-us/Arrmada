@@ -174,11 +174,23 @@ func TestAPIKeyExpiryAndLastUse(t *testing.T) {
 	if at, _ := lastUse(); !at.Equal(day0) {
 		t.Errorf("written again after five minutes: %v", at)
 	}
-	// Another network: written straight away.
+	// Another network, more than a minute after the last write: written straight away.
 	clock = day0.Add(6 * time.Minute)
 	_, _ = s.ValidateAPIKey(ctx, raw, "192.168.1.5")
 	if at, nw := lastUse(); !at.Equal(clock) || nw != "local" {
 		t.Errorf("network change: %v from %q", at, nw)
+	}
+	// Bouncing back within the minute: no write (a script flipping between two networks
+	// costs at most a write a minute).
+	clock = day0.Add(6*time.Minute + 30*time.Second)
+	_, _ = s.ValidateAPIKey(ctx, raw, "203.0.113.50")
+	if at, nw := lastUse(); !at.Equal(day0.Add(6*time.Minute)) || nw != "local" {
+		t.Errorf("network flip within a minute was written: %v from %q", at, nw)
+	}
+	clock = day0.Add(7*time.Minute + time.Second)
+	_, _ = s.ValidateAPIKey(ctx, raw, "203.0.113.50")
+	if at, nw := lastUse(); !at.Equal(clock) || nw != "203.0.113.x" {
+		t.Errorf("network change after a minute: %v from %q", at, nw)
 	}
 	// Past keyUsedEvery: written.
 	clock = day0.Add(20 * time.Minute)
@@ -256,6 +268,83 @@ func TestAPIKeyRoleCap(t *testing.T) {
 	}
 	if lowerRole(RoleAdmin, RoleManager) != RoleManager || lowerRole(RoleReadonly, RoleAdmin) != RoleReadonly {
 		t.Error("lowerRole")
+	}
+}
+
+// The owner's password change, an admin's reset and "sign out everywhere" revoke every key
+// the account holds (only that account's); disabling only pauses them.
+func TestPasswordAndSignOutRevokeKeys(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+	u, _ := s.CreateUser(ctx, "kid@example.com", "supersecret", RoleRequester, false)
+	other, _ := s.CreateUser(ctx, "aunt@example.com", "supersecret", RoleRequester, false)
+	otherKey, _, _ := s.CreateAPIKey(ctx, other.ID, NewAPIKey{Name: "aunt", Scope: KeyScopeRead})
+	mk := func() string {
+		t.Helper()
+		raw, _, err := s.CreateAPIKey(ctx, u.ID, NewAPIKey{Name: "k", Scope: KeyScopeRead})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	gone := func(raw, why string) {
+		t.Helper()
+		if _, err := s.ValidateAPIKey(ctx, raw, ""); !errors.Is(err, ErrNotFound) {
+			t.Errorf("key survived %s: %v", why, err)
+		}
+	}
+	k := mk()
+	if n, _ := s.APIKeyCount(ctx, u.ID); n != 1 {
+		t.Errorf("count = %d", n)
+	}
+	keep, _, _ := s.CreateSession(ctx, u.ID)
+	if _, err := s.ChangePassword(ctx, u.ID, "newpassword1", keep); err != nil {
+		t.Fatal(err)
+	}
+	gone(k, "the owner's password change")
+	k = mk()
+	if err := s.SetPassword(ctx, u.ID, "newpassword2"); err != nil {
+		t.Fatal(err)
+	}
+	gone(k, "an admin's reset")
+	k = mk()
+	if _, err := s.RevokeUserSessions(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	gone(k, "sign out everywhere")
+	k = mk()
+	_ = s.SetDisabled(ctx, u.ID, true)
+	_ = s.SetDisabled(ctx, u.ID, false)
+	if _, err := s.ValidateAPIKey(ctx, k, ""); err != nil {
+		t.Errorf("disable then enable revoked the key: %v", err)
+	}
+	if _, err := s.ValidateAPIKey(ctx, otherKey, ""); err != nil {
+		t.Errorf("another account's key went too: %v", err)
+	}
+}
+
+// A session counts as just signed in for KeyMintWindow after it was made, and only for its
+// own account.
+func TestSessionSignedInRecently(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+	u, _ := s.CreateUser(ctx, "kid@example.com", "supersecret", RoleRequester, false)
+	other, _ := s.CreateUser(ctx, "aunt@example.com", "supersecret", RoleRequester, false)
+	tok, _, _ := s.CreateSession(ctx, u.ID)
+	if ok, err := s.SessionSignedInRecently(ctx, u.ID, tok); err != nil || !ok {
+		t.Errorf("fresh session: %v %v", ok, err)
+	}
+	if ok, _ := s.SessionSignedInRecently(ctx, other.ID, tok); ok {
+		t.Error("someone else's session counted")
+	}
+	if ok, _ := s.SessionSignedInRecently(ctx, u.ID, ""); ok {
+		t.Error("no session counted")
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sessions SET created_at = datetime('now', '-16 minutes')`); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := s.SessionSignedInRecently(ctx, u.ID, tok); ok {
+		t.Error("a 16-minute-old session counted as just signed in")
 	}
 }
 

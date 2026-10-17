@@ -41,6 +41,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // the same answer as Status.
     { method: "PUT", path: "/api/v1/system/update-check", respond: ({ body }) => ({ ...sys.systemStatus.update, ...(body as object), latest: null, behind: null }) },
     { method: "POST", path: "/api/v1/system/update-check", body: sys.systemStatus.update },
+    // Settings → System → Dashboard widget: no key made yet.
+    get("/api/v1/system/widget-key", { enabled: false, outside: false }),
     get("/api/v1/me/audio", sys.myAudio(p)),
     get("/api/v1/me/audio/listening", sys.myListening),
     // The Listen tab (the player specs answer the rest of the listening API).
@@ -67,6 +69,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     ] }),
     // Me → Personal API keys: none yet; making one asks for the password.
     get("/api/v1/me/api-keys", { keys: [], expiry_days: [0, 30, 90, 365], max: 25, password_required: true }),
+    // Me → Account → Two-factor sign-in: off, and not required.
+    get("/api/v1/me/2fa", { enabled: false, recovery_codes_left: 0, password_set: true, required: false }),
     // Your own Plex link (sidebar footer, Me page): not linked.
     get("/api/v1/me/plex", { linked: false, can_unlink: false }),
     // Your own Jellyfin link (Me page): none, and no Jellyfin connected to link to.

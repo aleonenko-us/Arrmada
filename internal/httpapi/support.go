@@ -272,6 +272,9 @@ func (a *api) bundleScrubber(ctx context.Context) (*bundleScrubber, error) {
 		{`SELECT token_hash FROM calendar_feeds`, func(v []string) { addSecret(v[0]) }},
 		// Personal API keys: the same. The keys themselves are blanked by shape (arrk_…).
 		{`SELECT key_hash FROM api_keys`, func(v []string) { addSecret(v[0]) }},
+		// Two-factor secrets: never logged, but a line quoting one by mistake mustn't
+		// carry it out.
+		{`SELECT secret FROM user_totp`, func(v []string) { addSecret(v[0]) }},
 		{`SELECT username, plex_username, apprise_url, kindle_email, jellyfin_username FROM users`, func(v []string) {
 			names.Add(v[0], "«user»")
 			names.Add(v[1], "«user»")

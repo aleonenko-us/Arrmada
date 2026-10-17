@@ -318,8 +318,9 @@ RUN ln -s /opt/whisper/whisper-cli /usr/local/bin/whisper-cli && \
             echo "$f is missing shared libraries" >&2; exit 1; fi; \
     done && \
     whisper-cli-sycl --help >/dev/null 2>&1
-# Intel's VAAPI driver, which jellyfin-ffmpeg bundles.
-ENV LIBVA_DRIVER_NAME=iHD
+# No LIBVA_DRIVER_NAME here: Convert gives each ffmpeg the VA driver for the GPU it opens
+# (iHD for Intel, radeonsi for AMD, both bundled with jellyfin-ffmpeg; internal/convert/
+# libva.go). Setting one on the container still overrides that, for every run.
 
 # arm64: CPU only. The same jellyfin-ffmpeg (Jellyfin publishes it for arm64 too), so
 # Convert encodes with the same x265 / SVT-AV1 on the CPU; Convert's start-up check finds

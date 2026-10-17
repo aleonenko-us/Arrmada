@@ -67,6 +67,7 @@ func TestSetCategoryOnlyArrmadasTV(t *testing.T) {
 			fmt.Fprint(w, "Ok.")
 		case "/api/v2/torrents/info":
 			fmt.Fprint(w, `[]`)
+		case "/api/v2/torrents/setAutoManagement":
 		case "/api/v2/torrents/setCategory":
 			_ = r.ParseForm()
 			mu.Lock()

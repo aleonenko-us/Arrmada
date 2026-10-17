@@ -34,6 +34,10 @@ export interface MyApiKeys {
   max: number;
   /** Making a key asks for your password (false: you sign in with Plex or Jellyfin only). */
   password_required: boolean;
+  /** Two-factor sign-in is on: making a key asks for a current code too. */
+  code_required?: boolean;
+  /** No password to ask for and this browser didn't sign in recently: sign in again first. */
+  reauth_required?: boolean;
 }
 
 export interface NewApiKey {
@@ -41,7 +45,11 @@ export interface NewApiKey {
   scope: KeyScope;
   expires_in_days: number;
   password?: string;
+  code?: string;
 }
+
+/** The query key the Me card reads keys under; invalidate it when keys may have gone. */
+export const API_KEYS_QUERY = "me:api-keys";
 
 export const apiKeysApi = {
   mine: () => req<MyApiKeys>("/api/v1/me/api-keys"),

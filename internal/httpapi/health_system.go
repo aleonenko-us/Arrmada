@@ -15,6 +15,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/jobs"
+	"github.com/tristenlammi/arrmada/internal/libroots"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 )
 
@@ -196,8 +197,18 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 		reg.Register(health.DiskGuardCheck(a.diskGuardState))
 	}
 
-	// The Downloads folder is read live: one picked since boot is the one filling up.
-	reg.Register(health.DiskFreeCheck(func() string { return a.roots().Downloads(a.runCtx()) }))
+	// The downloads folders are read live: one picked since boot is the one filling up.
+	// A library folder's own downloads folder on another disk is watched too.
+	reg.Register(health.DownloadsFreeCheck(func() []health.Folder {
+		ctx := a.runCtx()
+		r := a.roots()
+		dl := r.Downloads(ctx)
+		return append([]health.Folder{{Role: "downloads", Label: "Downloads", Path: dl}}, health.DownloadFolders(dl, r.PerFolderDownloads(ctx))...)
+	}))
+	// A library folder's own downloads folder only helps on the library's filesystem.
+	reg.Register(health.FolderDownloadsCheck(func(ctx context.Context) []libroots.FolderDownloads {
+		return a.roots().PerFolderDownloads(ctx)
+	}))
 
 	if a.deps.AudioManager != nil && a.deps.Settings != nil {
 		reg.Register(health.AudiobookServerCheck(func(ctx context.Context) (bool, bool, string) {
@@ -306,9 +317,10 @@ func tmdbValidate(ctx context.Context, v tmdbValidator) error {
 // app started with), for the library-folders check.
 func (a *api) libraryState(ctx context.Context) health.LibraryState {
 	return health.LibraryState{
-		Folders: a.healthFolders(ctx, a.booksEnabled(ctx), a.musicEnabled(ctx)),
-		All:     a.healthFolders(ctx, true, true),
-		DataDir: a.deps.Config.DataDir,
+		Folders:  a.healthFolders(ctx, a.booksEnabled(ctx), a.musicEnabled(ctx)),
+		All:      a.healthFolders(ctx, true, true),
+		DataDir:  a.deps.Config.DataDir,
+		Recorded: a.recordedFilesUnder,
 	}
 }
 

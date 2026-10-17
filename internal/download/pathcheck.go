@@ -27,6 +27,28 @@ type PathEnv struct {
 	Libraries []string
 	// DataDir is the database folder; a suggested mapping never points there.
 	DataDir string
+	// FolderDownloads maps a library folder (cleaned) to its own downloads folder (GitHub
+	// #11). Torrents for that library save there, so the same-filesystem check judges the
+	// library against it rather than the client's default save folder. SABnzbd's leftover
+	// guard never deletes a job folder that holds one: torrents seed in it.
+	FolderDownloads map[string]string
+}
+
+// sameDeviceFn compares two folders' filesystem ids (a test swaps it: temp dirs share one).
+var sameDeviceFn = diskspace.SameDevice
+
+// ownDownloads is every library folder's own downloads folder, once each.
+func (e PathEnv) ownDownloads() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, d := range e.FolderDownloads {
+		if d = strings.TrimSpace(d); d != "" && !seen[filepath.Clean(d)] {
+			seen[filepath.Clean(d)] = true
+			out = append(out, d)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // PathCheck is one path the client reported and what Arrmada made of it.
@@ -175,14 +197,26 @@ func checkPaths(c Client, save string, newest *Item, env PathEnv) PathReport {
 	}
 	rep.OK = saveCheck.Visible && (dl == nil || dl.Visible || dl.Gone)
 
-	if saveCheck.Visible {
-		for _, root := range env.Libraries {
-			if root == "" || !isDir(root) {
-				continue
-			}
-			if same, ok := diskspace.SameDevice(saveLocal, root); ok && !same {
-				rep.OtherDrive = append(rep.OtherDrive, root)
-			}
+	// Only a torrent client saves into a library folder's own downloads folder; a usenet
+	// client's jobs always go to its own folders, so it's judged against those.
+	torrent := c.Kind.Transport() == TransportTorrent
+	for _, root := range env.Libraries {
+		if root == "" || !isDir(root) {
+			continue
+		}
+		// A library with its own downloads folder gets its torrents there, not in the
+		// client's default folder: that's the pair that has to hardlink.
+		from := saveLocal
+		if own := strings.TrimSpace(env.FolderDownloads[filepath.Clean(root)]); torrent && own != "" {
+			from = own
+		} else if !saveCheck.Visible {
+			continue
+		}
+		if !isDir(from) {
+			continue
+		}
+		if same, ok := sameDeviceFn(from, root); ok && !same {
+			rep.OtherDrive = append(rep.OtherDrive, root)
 		}
 	}
 	if !rep.OK {
@@ -205,15 +239,26 @@ func suggestMapping(c Client, save PathCheck, dl *PathCheck, env PathEnv) *PathM
 	if dl != nil && !dl.Visible {
 		if rp, ok := parseRemote(dl.Remote); ok {
 			parts := strings.Split(strings.Trim(rp.p, "/"), "/")
-			for k := len(parts) - 1; k >= 1 && sug == nil; k-- {
-				tail := path.Join(parts[len(parts)-k:]...)
-				if !exists(filepath.Join(env.Downloads, filepath.FromSlash(tail))) {
+			// The newest download may have saved into a library folder's own downloads
+			// folder rather than the Downloads folder: look for it in each.
+			locals := []string{env.Downloads}
+			if c.Kind.Transport() == TransportTorrent {
+				locals = append(locals, env.ownDownloads()...)
+			}
+			for _, local := range locals {
+				if sug != nil || !isDir(local) {
 					continue
 				}
-				prefix := rp
-				prefix.p = strings.TrimSuffix(rp.p, "/"+tail)
-				if pr, ok := parseRemote(prefix.String()); ok && prefix.p != rp.p && !pr.isRoot() {
-					sug = &PathMap{Remote: prefix.String(), Local: env.Downloads}
+				for k := len(parts) - 1; k >= 1 && sug == nil; k-- {
+					tail := path.Join(parts[len(parts)-k:]...)
+					if !exists(filepath.Join(local, filepath.FromSlash(tail))) {
+						continue
+					}
+					prefix := rp
+					prefix.p = strings.TrimSuffix(rp.p, "/"+tail)
+					if pr, ok := parseRemote(prefix.String()); ok && prefix.p != rp.p && !pr.isRoot() {
+						sug = &PathMap{Remote: prefix.String(), Local: local}
+					}
 				}
 			}
 		}

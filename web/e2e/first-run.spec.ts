@@ -87,6 +87,28 @@ test.describe("admin", () => {
     expect(api.callsTo("PUT", "/api/v1/apikeys")).toHaveLength(0);
   });
 
+  // With nothing at /storage, the Folders step warns about managed storage only when /media
+  // is Arrmada's own volume; a host folder there (ARRMADA_MEDIA_HOST) is the owner's media.
+  for (const [hostFolder, what] of [[false, "the managed volume"], [true, "a host folder"]] as const) {
+    test(`the Folders step with /media as ${what}`, async ({ page, api }) => {
+      await override(page, api, [
+        { method: "GET", path: "/api/v1/setup", body: { ...fresh, mounts: ["/media"], media_host_folder: hostFolder } },
+      ]);
+      await page.goto("/");
+      await page.getByRole("button", { name: "Continue without a key" }).click();
+      await expect(page.getByRole("heading", { name: "Where's your media?" })).toBeVisible();
+      const warning = page.getByText(/Arrmada is using its own managed storage/);
+      const note = page.getByText(/Your media folder is mounted at/);
+      if (hostFolder) {
+        await expect(note).toBeVisible();
+        await expect(warning).toHaveCount(0);
+      } else {
+        await expect(warning).toBeVisible();
+        await expect(note).toHaveCount(0);
+      }
+    });
+  }
+
   // Ending setup early is its own small link, and it says what's still left first.
   test("finishing setup later from the first step says what's left", async ({ page, api }) => {
     await override(page, api, [
@@ -202,5 +224,31 @@ test.describe("manager", () => {
     await expect(page.getByText("TV Shows: Scanning 20 / 40 show folders · 50%")).toBeVisible();
     await expect(page.getByText("Already scanning — showing its progress.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Scanning…" })).toBeDisabled();
+  });
+
+  // Issue #22: a scan may now run for hours on a big library, so its row can stop it. The
+  // job ends as stopped and the row says so.
+  test("Stop in Settings → Library stops the running scan", async ({ page, api }) => {
+    let stopped = false;
+    const scanJob = () => ({ id: 88, kind: "series.scan", target: "all", trigger: "user:2", status: stopped ? "cancelled" : "running",
+      progress: 0.5, message: "Scanning 20 / 40 show folders", error: stopped ? "context canceled" : "", created_at: null, started_at: null, finished_at: null });
+    await page.route((u) => u.pathname.startsWith("/api/v1/jobs"), async (route) => {
+      const req = route.request();
+      const path = new URL(req.url()).pathname;
+      if (req.method() === "POST" && path === "/api/v1/jobs/88/cancel") {
+        stopped = true;
+        api.calls.push({ method: "POST", path, body: undefined });
+        return route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ status: "cancelling", job_id: 88 }) });
+      }
+      if (req.method() === "GET" && path === "/api/v1/jobs/88") return route.fulfill({ contentType: "application/json", body: JSON.stringify(scanJob()) });
+      if (req.method() === "GET" && path === "/api/v1/jobs") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ jobs: [scanJob()] }) });
+      return route.fallback();
+    });
+    await page.goto("/settings/library");
+    await expect(page.getByText("TV Shows: Scanning 20 / 40 show folders · 50%")).toBeVisible();
+    await page.getByRole("button", { name: "Stop" }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/jobs/88/cancel").length).toBe(1);
+    await expect(page.getByText("Scan stopped.")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
   });
 });

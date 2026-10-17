@@ -6,6 +6,9 @@
 /data/
 # install.sh's default Convert scratch folder and update.sh's download staging.
 /transcode/
+# A media folder kept next to the install (relative ARRMADA_MEDIA_HOST values are refused,
+# but a full path can still point here): never part of a build.
+/media/
 .arrmada-download.*
 *.db
 *.db-shm

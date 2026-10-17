@@ -25,6 +25,9 @@ import (
 type folderView struct {
 	libfolders.Folder
 	Titles int `json:"titles"`
+	// DownloadsWarning says when the folder's own downloads folder isn't on its
+	// filesystem, so imports from it copy rather than hardlink.
+	DownloadsWarning string `json:"downloads_warning,omitempty"`
 }
 
 // libraryFolders is one library's folders.
@@ -50,9 +53,36 @@ func (a *api) foldersOf(ctx context.Context, media string) libraryFolders {
 	}
 	out := libraryFolders{Multi: a.deps.Folders.Multi(ctx, media), Folders: []folderView{}}
 	for _, f := range a.deps.Folders.List(ctx, media) {
-		out.Folders = append(out.Folders, folderView{Folder: f, Titles: counts[f.ID]})
+		out.Folders = append(out.Folders, folderView{Folder: f, Titles: counts[f.ID], DownloadsWarning: libfolders.DownloadsWarning(f.Downloads, f.Path)})
 	}
 	return out
+}
+
+// handleSetFolderDownloads gives a Movies or TV folder (id 0: the default one) a
+// downloads folder of its own, or clears it with "": PUT
+// /api/v1/system/library/folders/downloads {media, id, path}. Torrent grabs for the
+// folder's titles save there from the next grab on. A downloads folder on another
+// filesystem from its library is saved with a warning, not refused.
+func (a *api) handleSetFolderDownloads(w http.ResponseWriter, r *http.Request) {
+	if !a.foldersReady(w) {
+		return
+	}
+	var in struct {
+		Media string `json:"media"`
+		ID    int64  `json:"id"`
+		Path  string `json:"path"`
+	}
+	if !a.decodeJSON(w, r, &in) {
+		return
+	}
+	res, err := a.deps.Folders.SetDownloads(r.Context(), in.Media, in.ID, in.Path)
+	if err != nil {
+		a.writeFolderErr(w, err)
+		return
+	}
+	a.deps.Log.Info("library folders: downloads folder set", "media", in.Media, "folder", res.Folder.Path, "downloads", res.Folder.Downloads)
+	a.recheckHealth(r, "library", "library.downloads", "disk.free")
+	a.writeJSON(w, http.StatusOK, res)
 }
 
 // handleLibraryFolders lists both libraries' folders: GET /api/v1/library/folders.

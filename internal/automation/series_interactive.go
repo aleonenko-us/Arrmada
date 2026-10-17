@@ -43,6 +43,7 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 	// One collector across the broad, per-season, specials and alias queries, so the
 	// banner lists each failing indexer once whichever query it failed.
 	ctx, notes := withSearchNotes(ctx)
+	ctx = c.withSeriesFit(ctx)
 	releases, _, err := c.searchSeriesScope(ctx, s, season, episode)
 	if allIndexersFailed(err) {
 		return ReleaseList{Profile: c.effectiveProfile(ctx, s.QualityProfile, quality.MediaSeries)}.withIssues(notes), nil
@@ -60,6 +61,7 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 	nets := c.networks(ctx)
 	usable, others := nets.split(releases)
 	byTitle := map[string]int{} // specials found by their title rather than S00Exx
+	fit := c.seriesFit(ctx)
 	for _, rel := range append(usable, others...) {
 		p := parser.Parse(rel.Title)
 		if season == 0 {
@@ -82,7 +84,7 @@ func (c *Coordinator) RankSeriesReleasesWith(ctx context.Context, seriesID int64
 				continue
 			}
 		}
-		if ok, why := seriesIdentity(p, s); !ok {
+		if ok, why := searchIdentity(fit, p, s); !ok {
 			droppedTitle++
 			if len(sampleDropped) < 8 {
 				label := rel.Title + " → " + p.Title
@@ -207,8 +209,13 @@ func (c *Coordinator) searchSeriesScope(ctx context.Context, s series.Series, se
 			result.Releases = append(result.Releases, sres.Releases...)
 		}
 	}
-	// The targeted and alias queries (seriesScopeQueries says why each exists). One failing
-	// doesn't sink the search: the main query above already answered.
+	// The targeted and alias queries (seriesScopeQueries says why each exists), and one by
+	// the show's translated title in the owner's extra title languages when it has one
+	// worth asking by. One failing doesn't sink the search: the main query above already
+	// answered.
+	if tq, ok := translatedScopeQuery(c.seriesFit(ctx), s, season, episode, queries); ok {
+		queries = append(queries, tq)
+	}
 	for _, extra := range queries[1:] {
 		res, xerr := c.search(ctx, extra)
 		if xerr != nil {
@@ -473,11 +480,15 @@ func (c *Coordinator) GrabForSeriesAuto(ctx context.Context, seriesID int64, ind
 }
 
 func (c *Coordinator) grabForSeries(ctx context.Context, seriesID int64, indexerName, downloadURL, title string, manual bool, scope GrabScope) error {
+	s, serr := c.series.Get(ctx, seriesID)
+	if serr == nil {
+		ctx = c.forSeries(ctx, s) // saved beside the show's folder when it has its own downloads folder
+	}
 	hash, err := c.grabTo(ctx, indexerName, downloadURL, title, seriesCategory)
 	if err != nil {
 		return err
 	}
-	if s, err := c.series.Get(ctx, seriesID); err == nil {
+	if serr == nil {
 		c.recordSeriesGrab(ctx, seriesID, title, indexerName, s.QualityProfile, hash)
 	}
 	// manual: picked out of the interactive search (or Replace), so the import gate must

@@ -28,7 +28,10 @@ import (
 // once, because the current role is read on every request), and by the key's scope:
 // "read" only reaches GET routes. Which routes a key reaches at all is the route table's
 // business (httpapi/apikey_routes.go). A disabled account's keys stop working while it's
-// disabled; a deleted account's keys go with it (ON DELETE CASCADE).
+// disabled and work again when it's re-enabled (disabling is a pause, like the rest of
+// SetDisabled); a deleted account's keys go with it (ON DELETE CASCADE). A password change
+// — the owner's or an admin's reset — and an admin's "sign out everywhere" revoke them:
+// those are what someone does after a suspected compromise.
 
 // APIKeyPrefix starts every personal API key, so one is recognisable in a config file and
 // a leaked one can be found by searching for it.
@@ -46,6 +49,16 @@ const maxAPIKeyName = 60
 // keyUsedEvery is how stale a key's last use may get before a request writes it again, as
 // for sessions: "5 minutes ago" accuracy without a write on every call.
 const keyUsedEvery = lastSeenEvery
+
+// keyMovedEvery is the sooner write when a key turns up on another network, so "last used
+// from" catches a move quickly — but a script bouncing between two networks still costs at
+// most one write a minute.
+const keyMovedEvery = time.Minute
+
+// KeyMintWindow is how fresh the session must be to make a key on an account with no
+// password to ask for (Plex or Jellyfin sign-in only): a key outlives the session, so a
+// browser left signed in for days isn't enough on its own.
+const KeyMintWindow = 15 * time.Minute
 
 var keyEncoding = base32.NewEncoding("abcdefghijklmnopqrstuvwxyz234567").WithPadding(base32.NoPadding)
 
@@ -124,6 +137,25 @@ func LooksLikeAPIKey(raw string) bool {
 	return true
 }
 
+// Validate checks what a key would be made with (ErrAPIKeyName, ErrAPIKeyScope or
+// ErrAPIKeyExpiry), so a caller can refuse a bad form before asking for a password or a
+// two-factor code.
+func (n NewAPIKey) Validate() error {
+	name := strings.TrimSpace(n.Name)
+	if name == "" || utf8.RuneCountInString(name) > maxAPIKeyName || strings.ContainsAny(name, "\r\n\t") {
+		return ErrAPIKeyName
+	}
+	if n.Scope != KeyScopeRead && n.Scope != KeyScopeFull {
+		return ErrAPIKeyScope
+	}
+	for _, d := range APIKeyExpiryDays {
+		if d == n.ExpiresInDays {
+			return nil
+		}
+	}
+	return ErrAPIKeyExpiry
+}
+
 // lowerRole is the less privileged of two roles; an unknown one counts as read-only.
 func lowerRole(a, b Role) Role {
 	if !ValidRole(a) || !ValidRole(b) {
@@ -138,20 +170,10 @@ func lowerRole(a, b Role) Role {
 // CreateAPIKey makes a key for userID and returns it raw, once, with its listing. The key
 // takes the account's current role as its ceiling.
 func (s *Service) CreateAPIKey(ctx context.Context, userID int64, n NewAPIKey) (string, APIKey, error) {
+	if err := n.Validate(); err != nil {
+		return "", APIKey{}, err
+	}
 	name := strings.TrimSpace(n.Name)
-	if name == "" || utf8.RuneCountInString(name) > maxAPIKeyName || strings.ContainsAny(name, "\r\n\t") {
-		return "", APIKey{}, ErrAPIKeyName
-	}
-	if n.Scope != KeyScopeRead && n.Scope != KeyScopeFull {
-		return "", APIKey{}, ErrAPIKeyScope
-	}
-	validExpiry := false
-	for _, d := range APIKeyExpiryDays {
-		validExpiry = validExpiry || d == n.ExpiresInDays
-	}
-	if !validExpiry {
-		return "", APIKey{}, ErrAPIKeyExpiry
-	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", APIKey{}, err
@@ -254,7 +276,8 @@ func (s *Service) ValidateAPIKey(ctx context.Context, raw, ip string) (*KeyUse, 
 	u.setAutoApproval(am, as, ab)
 	u.Role = lowerRole(u.Role, Role(keyRole))
 	nw := coarseNetwork(ip)
-	if seen := parseSQLTime(lastUsed.String); seen.IsZero() || now.Sub(seen) >= keyUsedEvery || nw != network.String {
+	if seen := parseSQLTime(lastUsed.String); seen.IsZero() || now.Sub(seen) >= keyUsedEvery ||
+		(nw != network.String && now.Sub(seen) >= keyMovedEvery) {
 		_, _ = s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at = ?, last_used_network = ? WHERE id = ?`,
 			sqlTime(now), nw, keyID)
 	}
@@ -331,6 +354,35 @@ func (s *Service) RevokeAPIKey(ctx context.Context, userID, id int64) (bool, err
 	}
 	n, _ := res.RowsAffected()
 	return n > 0, nil
+}
+
+// APIKeyCount is how many keys userID holds, expired ones included: what a password
+// change or "sign out everywhere" is about to revoke.
+func (s *Service) APIKeyCount(ctx context.Context, userID int64) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_keys WHERE user_id = ?`, userID).Scan(&n)
+	return n, err
+}
+
+// SessionSignedInRecently reports whether the session raw (of userID) was made within
+// KeyMintWindow — signed in, not merely used. An unknown, expired or someone else's
+// session is never recent.
+func (s *Service) SessionSignedInRecently(ctx context.Context, userID int64, raw string) (bool, error) {
+	if raw == "" {
+		return false, nil
+	}
+	var created string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT strftime('%Y-%m-%d %H:%M:%S', created_at) FROM sessions WHERE token_hash = ? AND user_id = ? AND expires_at > ?`,
+		hashToken(raw), userID, sqlTime(s.now())).Scan(&created)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	t := parseSQLTime(created)
+	return !t.IsZero() && s.now().Sub(t) < KeyMintWindow, nil
 }
 
 // RevokeAnyAPIKey is the admin's revoke: any account's key by id. It returns whose it was

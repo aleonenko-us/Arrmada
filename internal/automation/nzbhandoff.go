@@ -90,7 +90,7 @@ func handoffDetail(indexerName, title string) string {
 // in an error.
 func (c *Coordinator) addNZBLink(ctx context.Context, blocked *indexer.BlockedError, title, category, indexerName string) (string, error) {
 	added, err := c.downloads.AddDownload(ctx, download.AddRequest{
-		Name: title, SavePath: c.downloadsPath(), Category: category,
+		Name: title, SavePath: c.usenetSavePath(ctx), Category: category,
 		URL: blocked.ClientLink(), ClientFetches: true, Transport: download.TransportUsenet,
 	})
 	if err != nil {
