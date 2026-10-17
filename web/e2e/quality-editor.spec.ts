@@ -131,12 +131,12 @@ test.describe("Quality editor", () => {
   });
 
   test("the guard covers other forms with a Save: a typed mail login asks before leaving Settings", async ({ page }) => {
-    await page.goto("/settings/alerts#outgoing-email");
+    await page.goto("/settings/audiobook-server#outgoing-email");
     await page.getByLabel("Username", { exact: true }).fill("me@example.com");
     await page.getByRole("complementary").first().getByRole("link", { name: "Movies" }).click();
     const ask = page.getByRole("dialog", { name: "Discard your unsaved changes?" });
     await ask.getByRole("button", { name: "Keep editing" }).click();
-    await expect(page).toHaveURL(/\/settings\/alerts/);
+    await expect(page).toHaveURL(/\/settings\/audiobook-server/);
     await expect(page.getByLabel("Username", { exact: true })).toHaveValue("me@example.com");
     await page.getByRole("complementary").first().getByRole("link", { name: "Movies" }).click();
     await ask.getByRole("button", { name: "Discard" }).click();

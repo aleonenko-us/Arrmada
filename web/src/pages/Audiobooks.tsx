@@ -28,7 +28,7 @@ const EReaderPanel = lazyPage(() => import("../components/EReaderPanel"), "ERead
 // devices: how to connect a listening app (Lissen, or anything that speaks
 // Audiobookshelf), their audiobook password and their devices. Admins also get who may
 // connect and everyone's listening (how much and when — never what); the server's own
-// settings are in Settings → Audiobook server, and the Audiobookshelf import in Settings →
+// settings are in Settings → Book server, and the Audiobookshelf import in Settings →
 // Import & migrate. Nobody sees anyone else's places.
 
 type Tab = "listen" | "apps" | "people" | "listening";
@@ -44,7 +44,7 @@ const EVERYONE: readonly Tab[] = ["listen", "apps"];
 export function Audiobooks({ chrome = true }: { chrome?: boolean }) {
   const { user } = useMe();
   const admin = user?.role === "admin";
-  // The old Server tab's address (bookmarks, health links) opens Settings → Audiobook server.
+  // The old Server tab's address (bookmarks, health links) opens Settings → Book server.
   const [params] = useSearchParams();
   if (admin && params.get("tab") === "server") return <Navigate to={LINKS.audiobookServer} replace />;
   // So does the old Import tab's, for the Audiobookshelf import in Settings → Import & migrate.

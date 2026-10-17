@@ -95,12 +95,12 @@ var Catalog = []Key{
 		// FlareSolverr inside unless it's switched off there (and its ARM build has none).
 		Steps: "The bundled one fills this in by itself: http://arrmada-flaresolverr:8191 with the Compose install, http://127.0.0.1:8191 inside the Unraid template's container. With that switched off, or on another setup, point this at your own FlareSolverr, for example http://192.168.1.10:8191.",
 	},
-	// Outgoing email (Settings → Alerts → Outgoing email). The server, the login and the
+	// Send to Kindle email (Settings → Book server). The server, the login and the
 	// password are entered on that card only: no install-time env var, and none of the
 	// three is ever sent back to the browser in full.
-	{ID: SMTPHost, Label: "Mail server", Purpose: "Outgoing email (Send to Kindle).", Secret: true, Hidden: true},
-	{ID: SMTPUsername, Label: "Mail username", Purpose: "Outgoing email (Send to Kindle).", Secret: true, Hidden: true},
-	{ID: SMTPPassword, Label: "Mail password", Purpose: "Outgoing email (Send to Kindle).", Secret: true, Hidden: true},
+	{ID: SMTPHost, Label: "Mail server", Purpose: "Send to Kindle email.", Secret: true, Hidden: true},
+	{ID: SMTPUsername, Label: "Mail username", Purpose: "Send to Kindle email.", Secret: true, Hidden: true},
+	{ID: SMTPPassword, Label: "Mail password", Purpose: "Send to Kindle email.", Secret: true, Hidden: true},
 	// The Jellyfin server's API key, entered on its card in Settings → Connections next to
 	// the server address (internal/jellyfinsvc). An install can set it from the
 	// environment, like the Plex token; it's never sent back to the browser.

@@ -230,7 +230,7 @@ func (a *api) handleSendToKindle(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, password := a.mailConfig(ctx)
 	if !cfg.Ready() {
-		a.writeError(w, http.StatusConflict, "sending to Kindle isn't set up on this server yet — ask whoever runs it to set up outgoing email")
+		a.writeError(w, http.StatusConflict, "sending to Kindle isn't set up on this server yet — ask whoever runs it to set up the Send to Kindle email")
 		return
 	}
 	if b.Ebook == nil || b.Ebook.Path == "" {

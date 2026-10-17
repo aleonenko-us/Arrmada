@@ -1,6 +1,6 @@
 import { req } from "./api";
 
-// Outgoing email (Settings → Alerts → Outgoing email). Its own module, not lib/api.ts:
+// Send to Kindle email (Settings → Book server → Send to Kindle email). Its own module, not lib/api.ts:
 // only the admin's settings card imports it, so none of it reaches a requester's first load.
 //
 // The server, the login and the password never come back: the view says whether each is

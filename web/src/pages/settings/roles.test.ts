@@ -11,7 +11,7 @@ describe("role legend", () => {
     const line = managerExceptions();
     expect(line).toContain("Logs");
     expect(line).toContain("Audiobooks' admin tabs");
-    expect(line).toContain("Settings → Downloads, Audiobook server, People & access, Import & migrate, System, Status");
+    expect(line).toContain("Settings → Downloads, Book server, People & access, Import & migrate, System, Status");
     expect(line).not.toContain("Library,");
   });
 
