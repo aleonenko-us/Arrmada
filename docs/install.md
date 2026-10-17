@@ -42,7 +42,7 @@ It works out everything else and shows a summary before it starts:
 | Ports | Free ones, so nothing clashes with Radarr (7878), qBittorrent (8080) and friends |
 | User | Whoever owns your media folder (99:100 on Unraid) |
 | Timezone | Your server's own (asked only if it can't be found) |
-| GPU | `/dev/dri` is passed through when your server has one |
+| GPU | `/dev/dri` is passed through when your server has one (NVIDIA: see [GPU](gpu.md#nvidia)) |
 | Convert's scratch folder | `transcode/` next to the database |
 | The app | The latest release, downloaded from `ghcr.io/tristenlammi/arrmada:stable` — the stable channel, which updates follow too (compiled on the server only with `--channel main` or if the download fails — that takes 30–60 minutes and [a few GB of memory](troubleshooting.md#the-build-fails-or-gets-killed)) |
 
@@ -180,8 +180,8 @@ in place of those defaults, the way it used to be done.)
 Then `docker compose up -d`, open `http://<server>:7878`, create your admin account and
 follow the setup (TMDB key, library folders under `/storage`, Plex, indexers). The bundled
 qBittorrent is already connected; FlareSolverr runs beside it; Prowlarr and SABnzbd (for
-Usenet) are in the file, commented out, if you want them. For a GPU, uncomment the
-`devices` line.
+Usenet) are in the file, commented out, if you want them. For an Intel or AMD GPU,
+uncomment the `devices` line; for NVIDIA, see [GPU](gpu.md#nvidia).
 
 Update with `docker compose pull && docker compose up -d`. This way has no pre-update backup
 and no automatic roll-back (that's `update.sh`); the app still copies its database to

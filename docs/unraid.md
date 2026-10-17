@@ -178,8 +178,12 @@ after what's already there:
 ```
 
 The template doesn't add the device by itself: on a server without it, Docker would refuse
-to start the container. NVIDIA cards aren't used. `docker exec Arrmada vainfo` shows what the
-container can see.
+to start the container. `docker exec Arrmada /usr/lib/jellyfin-ffmpeg/vainfo` shows what the
+container can see. On an AMD card, also add a Variable `LIBVA_DRIVER_NAME` = `radeonsi`.
+
+An NVIDIA card can do Convert's encoding (NVENC) instead, through the Nvidia-Driver plugin
+and `--runtime=nvidia`; AI subtitles stay on the CPU there. [GPU](gpu.md#nvidia-on-unraid)
+has the steps, and how to see which encoders Arrmada found.
 
 ## Updating
 

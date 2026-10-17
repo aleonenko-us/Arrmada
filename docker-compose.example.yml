@@ -63,7 +63,8 @@ services:
       - "${ARRMADA_MEDIA_HOST:-arrmada-media}:/media"
       # The optional SABnzbd's settings (below), read-only: Arrmada reads its API key here.
       - arrmada-sab-config:/bundled/sabnzbd:ro
-    # To use an Intel/AMD GPU for Convert, uncomment (x86-64 only; ARM uses the CPU):
+    # To use an Intel/AMD GPU for Convert, uncomment (x86-64 only; ARM uses the CPU).
+    # NVIDIA, and the extra setting AMD needs: docs/gpu.md.
     # devices: [/dev/dri:/dev/dri]
     depends_on:
       arrmada-media-init: { condition: service_completed_successfully }

@@ -127,7 +127,8 @@ server ([Following main](docs/updating.md#following-main-developers)).
   AI subtitles run on the CPU ([what differs](docs/install.md#arm)).
 - Docker with Compose v2.
 - A free [TMDB API key](https://www.themoviedb.org/settings/api) (entered in the app).
-- Optional: Intel or AMD graphics for faster Convert and AI subtitles (x86-64 only), and a Plex or Jellyfin server.
+- Optional: Intel or AMD graphics for faster Convert and AI subtitles, or an NVIDIA card for
+  faster Convert (x86-64 only; [GPU setup](docs/gpu.md)), and a Plex or Jellyfin server.
 
 ## Documentation
 
@@ -136,7 +137,8 @@ server ([Following main](docs/updating.md#following-main-developers)).
 | [Install](docs/install.md) | The one-liner, its options, Unraid, the git checkout way |
 | [Unraid](docs/unraid.md) | The Unraid template: share layout, the built-in qBittorrent or your own, GPU, updates |
 | [Updating](docs/updating.md) | Updates, rollbacks, published images |
-| [Configuration](docs/configuration.md) | Ports, `.env`, media folders and hardlinks, GPU, recycle bin, reverse proxies |
+| [Configuration](docs/configuration.md) | Ports, `.env`, media folders and hardlinks, recycle bin, reverse proxies |
+| [GPU](docs/gpu.md) | Hardware encoding for Convert (Intel, AMD, NVIDIA) and GPU AI subtitles |
 | [Backups](docs/backups.md) | Backups, restoring, a forgotten admin password |
 | [Troubleshooting](docs/troubleshooting.md) | Common problems and fixes |
 | [Features](docs/features.md) | Everything Arrmada does |
