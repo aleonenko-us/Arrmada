@@ -7,9 +7,11 @@ import { api, type PendingRestart } from "../../lib/api";
 import { busyLines, restartAppAndWait } from "../../lib/restart";
 import { useSetting } from "../../lib/useSettings";
 import { Backups } from "./Backups";
+import { HomepageWidgetSection } from "./HomepageWidget";
 
-// Settings → System (admin only): which modules are on, restarting Arrmada and the
-// database backups. The API keys live with the other integrations on Settings → Connections.
+// Settings → System (admin only): which modules are on, the outside address, the Homepage
+// dashboard widget's key, restarting Arrmada and the database backups. The API keys live
+// with the other integrations on Settings → Connections.
 export function SystemSettings() {
   // A module switch shows in the nav and Discover as soon as it's saved.
   const books = useSetting("books_enabled");
@@ -21,6 +23,7 @@ export function SystemSettings() {
         <AutoToggle label="Music (preview)" hint="Artists and albums from MusicBrainz with automatic album downloads. Still being hardened. Turning it off hides Music and stops its searches and imports; finished downloads wait until it's back on. Nothing is deleted." save={music} />
       </Section>
       <PublicURLSection />
+      <HomepageWidgetSection />
       <RestartSection />
       <SetupAgainSection />
       <Backups />

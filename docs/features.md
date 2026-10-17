@@ -28,6 +28,7 @@ wired up.
 - **Calendar** — what's coming up.
 - **Notifications** — Apprise alerts for admins, or signed JSON to [n8n or any webhook](n8n.md) for your own automations; an in-app inbox and web push for requesters.
 - **Problem reports** — anyone can report a problem with a title, and many have a one-click fix.
+- **Homepage dashboard** — a read-only widget for [gethomepage.dev](homepage.md): how many titles, what's wanted, downloads, requests waiting, what needs you, disk space and updates, as counts only.
 
 ## Media tools
 

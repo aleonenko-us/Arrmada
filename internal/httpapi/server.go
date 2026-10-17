@@ -178,12 +178,13 @@ type Deps struct {
 }
 
 type api struct {
-	deps         Deps
-	start        time.Time
-	loginLimiter *loginLimiter // throttles auth attempts (login/setup/plex-pin)
-	icsLimiter   *loginLimiter // throttles calendar feed fetches per address (calendar_ics.go)
-	plexPins     *plexPinGuard // which browser (and account) started each Plex PIN
-	jfQC         *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
+	deps          Deps
+	start         time.Time
+	loginLimiter  *loginLimiter // throttles auth attempts (login/setup/plex-pin)
+	icsLimiter    *loginLimiter // throttles calendar feed fetches per address (calendar_ics.go)
+	widgetLimiter *loginLimiter // throttles dashboard widget fetches per address (widget.go)
+	plexPins      *plexPinGuard // which browser (and account) started each Plex PIN
+	jfQC          *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
 	// transfers caches the downloads feed's title cards and requester names (transfers.go).
 	transfers transferCache
 	// wanted caches Activity → Wanted's answer (wantedcache.go).
@@ -197,7 +198,7 @@ type api struct {
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
 // fallback), and the middleware chain (recover → log → mux).
 func New(d Deps) *http.Server {
-	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
+	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetPerMinute, time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
 
 	rt := newRouter(a)
 	a.registerRoutes(rt)
@@ -272,6 +273,13 @@ func (a *api) registerRoutes(mux *router) {
 	// Its "Update available" check: switch it on or off, or check now (CFG-29).
 	mux.HandleFunc("PUT /api/v1/system/update-check", a.requireRole(auth.RoleAdmin, a.handleSetUpdateCheck))
 	mux.HandleFunc("POST /api/v1/system/update-check", a.requireRole(auth.RoleAdmin, a.handleUpdateCheckNow))
+	// The dashboard widget (widget.go): counts for gethomepage.dev, opened only by the
+	// install's widget key (checked in the handler, so the route is public in the table).
+	// LAN-only like the rest. Making, showing and turning off that key is admin-only.
+	mux.HandleFunc("GET /api/v1/widget/homepage", a.public(a.handleHomepageWidget))
+	mux.HandleFunc("GET /api/v1/system/widget-key", a.requireRole(auth.RoleAdmin, a.handleWidgetKey))
+	mux.HandleFunc("POST /api/v1/system/widget-key", a.requireRole(auth.RoleAdmin, a.handleRotateWidgetKey))
+	mux.HandleFunc("DELETE /api/v1/system/widget-key", a.requireRole(auth.RoleAdmin, a.handleRevokeWidgetKey))
 	mux.HandleFunc("GET /api/v1/system/pending-restart", a.requireRole(auth.RoleManager, a.handlePendingRestart))
 	mux.HandleFunc("GET /api/v1/system/browse", a.requireRole(auth.RoleAdmin, a.handleBrowse))
 	// First-run setup wizard + restart to apply new folders.
