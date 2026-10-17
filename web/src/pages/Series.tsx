@@ -14,6 +14,7 @@ import { LibraryEmpty } from "../features/library/LibraryEmpty";
 import { seriesLibraryConfig, statsOf } from "./series/library";
 import { SeriesBulkActions } from "./series/SeriesBulkActions";
 import { AddSeriesModal } from "./series/AddSeriesModal";
+import { useActionParam } from "../lib/useActionParam";
 
 const NO_FITS = new Map<number, SeriesFitSummary>();
 
@@ -27,6 +28,8 @@ export function Series() {
   const confirm = useConfirm();
   const view = useLibraryView("series");
   const [adding, setAdding] = useState(false);
+  // /series?add=1 (the command palette's Add series) opens the Add dialog.
+  useActionParam("add", () => setAdding(true));
   const [confirmDelete, setConfirmDelete] = useState<SeriesT | null>(null);
   const [searchFor, setSearchFor] = useState<SeriesT | null>(null); // the table's per-row "Search indexers"
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);

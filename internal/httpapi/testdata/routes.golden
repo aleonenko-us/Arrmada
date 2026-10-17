@@ -170,6 +170,7 @@ GET /api/v1/library/fit staff -
 GET /api/v1/library/fit/profiles staff -
 GET /api/v1/library/folders staff -
 GET /api/v1/library/folders/suggest staff -
+GET /api/v1/library/search staff -
 GET /api/v1/logs admin -
 GET /api/v1/logs/download admin -
 GET /api/v1/logs/level admin -

@@ -7,6 +7,8 @@ import { PageSkeleton } from "./PageSkeleton";
 import { RestartBanner } from "./RestartBanner";
 import { NotificationBell } from "./NotificationBell";
 import { PushPromptHost } from "./PushPromptHost";
+import { PaletteHost } from "./PaletteHost";
+import { SearchButton } from "./SearchButton";
 import { PlayerHost } from "../lib/playerStub";
 import { useDocumentTitle } from "../lib/title";
 import { prefetchStaffPages } from "../lib/prefetch";
@@ -87,12 +89,17 @@ export function AppLayout() {
             <FleetMark className="h-[15px] w-[15px]" />
           </span>
           <span className="text-md font-extrabold tracking-[0.12em]">ARRMADA</span>
-          {!wide && <div className="ml-auto"><NotificationBell /></div>}
+          <div className="ml-auto flex items-center gap-2">
+            <SearchButton />
+            {!wide && <NotificationBell />}
+          </div>
         </div>
         <RestartBanner />
         <PushPromptHost />
         {/* Asks before a link or Back leaves a form with unsaved edits. */}
         <UnsavedGuardHost />
+        {/* ⌘K / Ctrl K, and the sidebar's and top bar's search buttons. */}
+        <PaletteHost />
         {/* pb-chrome: the last row scrolls clear of the audiobook mini-player and the
             iPhone home indicator. */}
         {/* relative: absolutely placed pieces (a screen-reader-only label) belong to this

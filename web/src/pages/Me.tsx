@@ -120,7 +120,7 @@ export function Me({ chrome = false }: { chrome?: boolean }) {
         </MeSection>
 
         <MeSection id="session">
-          <button onClick={() => { void signOut(); }} className="flex min-h-[48px] w-full items-center px-3.5 text-left text-md font-semibold" style={{ color: "var(--reject-text)" }}>
+          <button onClick={() => { void signOut(user?.id); }} className="flex min-h-[48px] w-full items-center px-3.5 text-left text-md font-semibold" style={{ color: "var(--reject-text)" }}>
             Sign out
           </button>
         </MeSection>

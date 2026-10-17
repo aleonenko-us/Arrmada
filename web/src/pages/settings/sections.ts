@@ -56,6 +56,8 @@ export interface SearchEntry {
   anchor: string;
   /** An admin-only card in a section managers also see (Plex sign-in under Media servers). */
   adminOnly?: true;
+  /** Not a card: choosing it opens the command palette (⌘K / Ctrl K) with what was typed. */
+  palette?: true;
 }
 
 // Every card in every section, with the words someone might type to find it.
@@ -120,6 +122,9 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Backups", keywords: "backup restore database copy download upload nightly schedule", section: "system", anchor: "backups" },
   { label: "Status", keywords: "status health version uptime", section: "status", anchor: "status" },
   { label: "Updates", keywords: "update updates upgrade release releases new version check github notes changelog", section: "status", anchor: "updates" },
+  // The command palette, so someone looking for a shortcut or a way to jump around finds it.
+  // Its section only decides who sees it (Library: every staff member).
+  { label: "Search everything", keywords: "command palette quick jump go to find anywhere keyboard shortcut shortcuts hotkey ctrl cmd titles pages", section: "library", anchor: "search-everything", palette: true },
 ];
 
 // searchSettings finds the cards whose name or keywords contain every word typed, among

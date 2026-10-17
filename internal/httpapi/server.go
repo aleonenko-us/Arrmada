@@ -198,6 +198,8 @@ type api struct {
 	handImports handImports
 	// widget keeps the dashboard widget's answer and its disk reading (widget.go).
 	widget widgetRuntime
+	// search is the command palette's title index (search.go).
+	search searchIndex
 }
 
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
@@ -307,6 +309,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/jobs/{id}/cancel", a.requireRole(auth.RoleManager, a.handleCancelJob))
 	// What each title search found and why nothing was taken (search_attempts).
 	mux.HandleFunc("GET /api/v1/searches", a.requireRole(auth.RoleManager, a.handleListSearches))
+	// The command palette's library lookup (search.go): titles, years and posters only.
+	// Staff only, like the libraries it reads, and not on the personal API key list.
+	mux.HandleFunc("GET /api/v1/library/search", a.requireRole(auth.RoleManager, a.handleLibrarySearch))
 
 	// Audiobook server (listening apps): admin panel + each user's own connection card.
 	mux.HandleFunc("GET /api/v1/audioserver", a.requireRole(auth.RoleAdmin, a.handleAudioServer))
