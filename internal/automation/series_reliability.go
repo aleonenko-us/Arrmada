@@ -152,6 +152,9 @@ func (c *Coordinator) UpgradeSeries(ctx context.Context) {
 		c.log.Warn("series: upgrade sweep skipped — can't read what's already downloading", "err", err)
 		return
 	}
+	// One search rule for the sweep, over the library it already holds.
+	ctx = withFit(ctx, c.series.SearchFitFor(all))
+	fit := c.seriesFit(ctx)
 	for i, meta := range all {
 		if budget.spent() {
 			// Stop before the next indexer search: nothing found now could be grabbed.
@@ -166,7 +169,7 @@ func (c *Coordinator) UpgradeSeries(ctx context.Context) {
 			c.skipUnreadable(meta.Title, err)
 			continue
 		}
-		if busy := seriesBusy(acqs, untracked, meta); busy != "" {
+		if busy := seriesBusyFit(fit, acqs, untracked, meta); busy != "" {
 			c.log.Info("series: skipping upgrade sweep — a grab is still downloading", "series", meta.Title, "release", busy)
 			continue
 		}
@@ -419,7 +422,7 @@ func (c *Coordinator) seriesInFlightFor(ctx context.Context, s series.Series, un
 	if err != nil {
 		return nil, false, nil, err
 	}
-	seasons, whole, names = seriesInFlightScope(acqs, untracked, s)
+	seasons, whole, names = seriesInFlightScopeFit(c.seriesFit(ctx), acqs, untracked, s)
 	return seasons, whole, names, nil
 }
 
@@ -444,6 +447,14 @@ func (c *Coordinator) seriesInFlightFor(ctx context.Context, s series.Series, un
 // matches the show (its romaji title or an alias too) holds what its name says, so a
 // sweep doesn't stack Arrmada's own copy on top of one the user is already fetching.
 func seriesInFlightScope(acqs []Acquisition, untracked []download.Item, s series.Series) (seasons map[int]bool, whole bool, names []string) {
+	return seriesInFlightScopeFit(nil, acqs, untracked, s)
+}
+
+// seriesInFlightScopeFit is seriesInFlightScope telling the untracked torrents apart by a
+// search's rule (series.SearchFit): one named by the show's translated title holds what
+// its name says, as the episode download indicator shows it — the sweep takes such
+// releases, so it mustn't stack its own copy on a hand-added one.
+func seriesInFlightScopeFit(fit *series.SearchFit, acqs []Acquisition, untracked []download.Item, s series.Series) (seasons map[int]bool, whole bool, names []string) {
 	seasons = map[int]bool{}
 	hold := func(scope, name string) {
 		names = append(names, name)
@@ -473,7 +484,7 @@ func seriesInFlightScope(acqs []Acquisition, untracked []download.Item, s series
 		if it.Phase() == "error" || it.State == "error" {
 			continue
 		}
-		if !seriesTitleMatches(it.Name, s) {
+		if !searchTitleMatches(fit, it.Name, s) {
 			continue
 		}
 		hold(seriesAcqScope(it.Name, s), it.Name)
@@ -558,7 +569,12 @@ func seasonList(seasons []int) string {
 // It is the show-level form of seriesInFlightScope: the upgrade sweep still holds the
 // whole show while anything for it downloads (no stacking upgrades).
 func seriesBusy(acqs []Acquisition, untracked []download.Item, s series.Series) string {
-	if _, _, names := seriesInFlightScope(acqs, untracked, s); len(names) > 0 {
+	return seriesBusyFit(nil, acqs, untracked, s)
+}
+
+// seriesBusyFit is seriesBusy by a search's rule (seriesInFlightScopeFit).
+func seriesBusyFit(fit *series.SearchFit, acqs []Acquisition, untracked []download.Item, s series.Series) string {
+	if _, _, names := seriesInFlightScopeFit(fit, acqs, untracked, s); len(names) > 0 {
 		return names[0]
 	}
 	return ""

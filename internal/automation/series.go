@@ -150,6 +150,9 @@ func (c *Coordinator) SearchSeriesMissing(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	// One search rule for the sweep, over the library it already holds: each show's search
+	// would otherwise read the library again for it.
+	ctx = withFit(ctx, c.series.SearchFitFor(all))
 	// One queue read for the whole sweep: a series with a download already in flight is
 	// skipped, so we don't re-grab the same winner every tick while a pack downloads.
 	// (RSSSyncSeries and UpgradeSeries already do this; the missing sweep didn't.)
@@ -345,10 +348,10 @@ func (c *Coordinator) searchSeriesOnceScoped(ctx context.Context, seriesID int64
 	}
 	// What's still missing, asked for once more by the show's translated title in the
 	// owner's extra title languages, when it has one worth asking by.
-	n, left, more := c.searchTranslated(ctx, s, remaining)
+	n, left, returned, matched := c.searchTranslated(ctx, s, remaining)
 	grabbed, remaining = grabbed+n, left
-	out.Returned += more
-	out.Matching += more
+	out.Returned += returned
+	out.Matching += matched
 	grabbed += c.searchByAbsolute(ctx, s, remaining)
 	out.Grabbed = grabbed
 	out.Usable = out.Matching

@@ -82,13 +82,16 @@ func translatedQueryText(fit *series.SearchFit, s series.Series, have ...string)
 // indexer that takes the show's ids would answer the id search again and ignore the name.
 // It goes through the indexer throttle like every query, and costs nothing for a show
 // with no translated title worth asking by, or when nothing is left to find.
-func (c *Coordinator) searchTranslated(ctx context.Context, s series.Series, remaining []epKey) (grabbed int, left []epKey, returned int) {
+//
+// returned is how many releases the query found, matched how many of them are the show.
+func (c *Coordinator) searchTranslated(ctx context.Context, s series.Series, remaining []epKey) (grabbed int, left []epKey, returned, matched int) {
 	if len(remaining) == 0 {
-		return 0, remaining, 0
+		return 0, remaining, 0, 0
 	}
-	text := translatedQueryText(c.seriesFit(ctx), s)
+	fit := c.seriesFit(ctx)
+	text := translatedQueryText(fit, s)
 	if text == "" {
-		return 0, remaining, 0
+		return 0, remaining, 0, 0
 	}
 	q := indexer.SearchQuery{Text: text, MediaType: indexer.MediaSeries, Limit: 100}
 	if seasons := seasonsOf(setOf(remaining)); len(seasons) == 1 && !s.IsAnime() {
@@ -100,16 +103,21 @@ func (c *Coordinator) searchTranslated(ctx context.Context, s series.Series, rem
 	if err != nil {
 		// The title search already answered; this one only adds to it.
 		c.log.Info("series: translated-title search failed", "series", s.Title, "query", text, "err", err)
-		return 0, remaining, 0
+		return 0, remaining, 0, 0
 	}
 	c.log.Info("series: searched by translated title", "series", s.Title, "query", text,
 		"season", q.Season, "returned", len(res.Releases))
 	notesFrom(ctx).consider(res.Releases)
 	if len(res.Releases) == 0 {
-		return 0, remaining, 0
+		return 0, remaining, 0, 0
+	}
+	for _, rel := range res.Releases {
+		if searchTitleMatches(fit, rel.Title, s) {
+			matched++
+		}
 	}
 	grabbed, left = c.grabSeriesLimited(ctx, s, res.Releases, remaining)
-	return grabbed, left, len(res.Releases)
+	return grabbed, left, len(res.Releases), matched
 }
 
 // translatedScopeQuery is the interactive list's (and quick Grab buttons') query by the

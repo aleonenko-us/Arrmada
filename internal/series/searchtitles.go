@@ -2,9 +2,14 @@ package series
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 
+	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
@@ -17,7 +22,7 @@ import (
 // routing's (matchLocal), which only ever places a download that is already here:
 //
 //   - only the translated titles stored for the show (local_titles) in the languages set
-//     now — never a TMDB call — and none shorter than minLocalKeyLen;
+//     now — never a TMDB call — and none shorter than minLocalKeyLen letters;
 //   - only for a release that doesn't name the show by its own title or an alias at all
 //     (FitRelease decides those, a year or country that disagrees included);
 //   - never a name some library show goes by, in any year or country (NamesAShow);
@@ -25,10 +30,15 @@ import (
 //     match, whatever the year;
 //   - a year in the release must be the show's and a country tag its origin, known and
 //     agreeing (import's tier lets an unknown origin pass; this one doesn't);
-//   - a translated title of one short word (four letters or fewer: "Haus", "Lost") needs
-//     the release's year or country tag to agree. Such a word is the name of too many
-//     shows the library has never heard of to go by alone — the extra query below would
-//     bring them in by the page;
+//   - always some evidence the release is the translated show, beyond the name: it says
+//     the title's language (German, GER, German DL…), or it is MULTi/DUAL, or its year
+//     or country agrees with the show's. A translated title is also some other show's
+//     name somewhere — Ghosts (US) is "Fantasmas" in Spanish, and so is HBO's English
+//     "Fantasmas", which the library has never heard of; only the language, the year or
+//     the country tells them apart;
+//   - a translated title of one short word (four letters or fewer: "Haus", "Тьма") needs
+//     the year or the country itself — the language alone isn't enough for a word that
+//     names that many shows;
 //   - and only once every library show's translated titles have been read for those
 //     languages: until the backfill has read them all, a show not yet read could share
 //     the name unseen.
@@ -37,29 +47,37 @@ import (
 
 // SearchFit is the identity rule one search judges its releases by: FitRelease, widened
 // by the stored translated titles. The library it checks names against is read once, on
-// first need, and only when a show with translated titles meets a release its own titles
-// don't name. A nil *SearchFit is FitRelease.
+// first need, and only when a show's translated title names a release its own titles
+// don't. A nil *SearchFit is FitRelease.
 type SearchFit struct {
 	langs []string
 	load  func() ([]Series, error)
+	// unread hears that the tier is off because shows' titles aren't read yet.
+	unread func(unread []Series)
 
 	once  sync.Once
 	all   []Series
 	ready bool
 }
 
-// SearchFit is the rule for one search, reading the library from s when first needed.
+// SearchFit is the rule for one search, reading the library from s when first needed —
+// only what identity needs (searchLibrary), not List's per-show statistics.
 func (s *Service) SearchFit(ctx context.Context) *SearchFit {
 	langs := s.localLangs()
 	if len(langs) == 0 {
 		return nil
 	}
-	return &SearchFit{langs: langs, load: func() ([]Series, error) { return s.List(ctx) }}
+	return &SearchFit{langs: langs, load: func() ([]Series, error) { return s.repo.searchLibrary(ctx) }, unread: s.noteUnread}
 }
 
-// SearchFitFor is SearchFit over a library snapshot the caller already holds (RSS).
+// SearchFitFor is SearchFit over a library snapshot the caller already holds (a sweep,
+// RSS).
 func (s *Service) SearchFitFor(all []Series) *SearchFit {
-	return newSearchFit(all, s.localLangs())
+	f := newSearchFit(all, s.localLangs())
+	if f != nil {
+		f.unread = s.noteUnread
+	}
+	return f
 }
 
 func newSearchFit(all []Series, langs []string) *SearchFit {
@@ -77,14 +95,44 @@ func (f *SearchFit) library() ([]Series, bool) {
 		if err != nil {
 			return
 		}
-		for _, o := range all {
-			if needsLocalTitles(o, f.langs) {
-				return
+		if unread := unreadShows(all, f.langs); len(unread) > 0 {
+			if f.unread != nil {
+				f.unread(unread)
 			}
+			return
 		}
 		f.all, f.ready = all, true
 	})
 	return f.all, f.ready
+}
+
+// unreadShows are the shows whose translated titles haven't been read for every language in
+// langs yet.
+func unreadShows(all []Series, langs []string) []Series {
+	var out []Series
+	for _, o := range all {
+		if needsLocalTitles(o, langs) {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
+// noteUnread says, once per process, that TV searches aren't using translated titles yet
+// and which shows they're waiting for — otherwise the tier is off in silence.
+func (s *Service) noteUnread(unread []Series) {
+	if !s.unreadLogged.CompareAndSwap(false, true) {
+		return
+	}
+	var names []string
+	for _, o := range unread {
+		if len(names) == 5 {
+			break
+		}
+		names = append(names, o.Title)
+	}
+	s.log.Info("series: TV searches don't use translated titles until every show's are read",
+		"unread", len(unread), "shows", strings.Join(names, ", "))
 }
 
 // Fit judges a parsed release against sr for a search: FitRelease, then the translated
@@ -97,8 +145,8 @@ func (f *SearchFit) Fit(p parser.Release, sr Series) ReleaseFit {
 	}
 	// Which of the show's translated titles names the release, before anything reads the
 	// library: most releases a search sees are named by no translated title at all.
-	matched := translatedName(p, sr.searchLocalTitles(f.langs))
-	if matched == "" {
+	matched, ok := translatedName(p, sr.searchLocalTitles(f.langs))
+	if !ok {
 		return fit
 	}
 	all, ok := f.library()
@@ -112,7 +160,9 @@ func (f *SearchFit) Fit(p parser.Release, sr Series) ReleaseFit {
 // there's none worth asking for: the first, in the setting's order, that the translated
 // tier could ever accept a release by — no library show's name, not shared with another
 // show, not a single short word (whose releases need a year or country to be taken, and
-// whose query would mostly bring back other shows).
+// whose query would mostly bring back other shows) — and that an indexer can be asked by:
+// Latin script, since queries are folded to ASCII and a Cyrillic title would be asked as
+// nothing, or as the digits of "911 служба спасения".
 func (f *SearchFit) QueryTitle(sr Series) string {
 	if f == nil {
 		return ""
@@ -126,76 +176,80 @@ func (f *SearchFit) QueryTitle(sr Series) string {
 		return ""
 	}
 	for _, t := range titles {
-		if shortWordTitle(t) {
+		if shortWordTitle(t.Title) || !parser.IsLatin(t.Title) {
 			continue
 		}
-		p := parser.Release{Title: t}
+		p := parser.Release{Title: t.Title}
 		key, baseKey, _ := releaseKeys(p)
 		if NamesAShow(all, p) || sharedTranslation(all, sr.ID, key, baseKey, f.langs) {
 			continue
 		}
-		return t
+		return t.Title
 	}
 	return ""
 }
 
 // searchLocalTitles are sr's stored translated titles in langs, in the setting's order,
 // minus the ones too short to stand for a show and the ones FitRelease already judges by.
-func (s Series) searchLocalTitles(langs []string) []string {
+func (s Series) searchLocalTitles(langs []string) []metadata.TranslatedTitle {
 	if s.Extra == nil || len(s.Extra.LocalTitles) == 0 {
 		return nil
 	}
 	skip := s.ownKeys()
-	var out []string
+	var out []metadata.TranslatedTitle
 	for _, l := range langs {
-		out = append(out, otherNames(titlesOf(s.Extra.LocalTitles, []string{l}), skip)...)
+		for _, t := range s.Extra.LocalTitles {
+			if k := parser.TitleKey(t.Title); t.Lang == l && keyLen(k) >= minLocalKeyLen && !skip[k] {
+				out = append(out, t)
+			}
+		}
 	}
 	return out
 }
 
 // translatedName is the one of titles a parsed release is named by — its title exactly,
-// else its title with a country tag taken off — or "".
-func translatedName(p parser.Release, titles []string) string {
+// else its title with a country tag taken off.
+func translatedName(p parser.Release, titles []metadata.TranslatedTitle) (metadata.TranslatedTitle, bool) {
 	if len(titles) == 0 {
-		return ""
+		return metadata.TranslatedTitle{}, false
 	}
 	key, baseKey, _ := releaseKeys(p)
-	if len(key) < minLocalKeyLen {
-		return ""
+	if keyLen(key) < minLocalKeyLen {
+		return metadata.TranslatedTitle{}, false
 	}
 	for _, t := range titles {
-		if parser.TitleKey(t) == key {
-			return t
+		if parser.TitleKey(t.Title) == key {
+			return t, true
 		}
 	}
 	if baseKey != "" {
 		for _, t := range titles {
-			if parser.TitleKey(t) == baseKey {
-				return t
+			if parser.TitleKey(t.Title) == baseKey {
+				return t, true
 			}
 		}
 	}
-	return ""
+	return metadata.TranslatedTitle{}, false
 }
 
 // fitTranslated is the translated tier of SearchFit.Fit for a release FitRelease found no
 // name of sr's in, and sr's translated title matched does.
-func fitTranslated(all []Series, p parser.Release, sr Series, matched string, langs []string) ReleaseFit {
+func fitTranslated(all []Series, p parser.Release, sr Series, matched metadata.TranslatedTitle, langs []string) ReleaseFit {
 	key, baseKey, cc := releaseKeys(p)
 	if NamesAShow(all, p) {
 		return ReleaseFit{} // another library show's own name or alias: never this one's
 	}
 	if sharedTranslation(all, sr.ID, key, baseKey, langs) {
 		return ReleaseFit{Title: true, Local: true,
-			Why: fmt.Sprintf("%q is the translated title of another show in the library too", matched)}
+			Why: fmt.Sprintf("%q is the translated title of another show in the library too", matched.Title)}
 	}
-	f, _ := sr.fitTitles(p, key, baseKey, cc, []string{matched})
+	f, _ := sr.fitTitles(p, key, baseKey, cc, []string{matched.Title})
 	f.Local = true
 	if !f.OK {
 		return f
 	}
 	if cc != "" && !f.Country {
-		if _, own := parser.SplitCountry(matched); own != cc {
+		if _, own := parser.SplitCountry(matched.Title); own != cc {
 			f.OK, f.Why = false, fmt.Sprintf("tagged %s, and the show's country isn't known yet", cc)
 			return f
 		}
@@ -204,11 +258,21 @@ func fitTranslated(all []Series, p parser.Release, sr Series, matched string, la
 		f.OK, f.Why = false, fmt.Sprintf("the release says %d, and the show's year can't be checked", p.TitleYear)
 		return f
 	}
-	if shortWordTitle(matched) && !f.Year && !f.Country {
-		f.OK, f.Why = false, fmt.Sprintf("%q is too common a name to go by without the show's year or country", matched)
+	if shortWordTitle(matched.Title) && !f.Year && !f.Country {
+		f.OK, f.Why = false, fmt.Sprintf("%q is too common a name to go by without the show's year or country", matched.Title)
+		return f
+	}
+	if !f.Year && !f.Country && !saysLanguage(p, matched.Lang) {
+		f.OK, f.Why = false, fmt.Sprintf("named %q, but nothing in the release — its language, year or country — says it is this show", matched.Title)
 		return f
 	}
 	return f
+}
+
+// saysLanguage reports whether a release names lang (ISO 639-1) among its audio languages,
+// or carries several (MULTi, DUAL), as a release in a translated title's language does.
+func saysLanguage(p parser.Release, lang string) bool {
+	return p.Multi || p.Dual || slices.Contains(p.Languages, lang)
 }
 
 // sharedTranslation reports whether a show other than id has a stored translated title in
@@ -229,5 +293,43 @@ func sharedTranslation(all []Series, id int64, key, baseKey string, langs []stri
 
 // shortWordTitle reports whether a title is one word of four letters or fewer.
 func shortWordTitle(t string) bool {
-	return len(parser.TitleWords(t)) == 1 && len(parser.TitleKey(t)) <= 4
+	return len(parser.TitleWords(t)) == 1 && keyLen(parser.TitleKey(t)) <= 4
+}
+
+// searchLibrary is the library as the search rule reads it: each show's id, title, year,
+// TMDB id, type, extra metadata and aliases — not List's per-show statistics, which cost
+// an aggregate over every episode. Unlike List it fails when the aliases can't be read: a
+// missing alias would let a translated title take a name a show goes by.
+func (r *Repo) searchLibrary(ctx context.Context) ([]Series, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, tmdb_id, title, year, extra_json, series_type FROM series`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Series
+	for rows.Next() {
+		var s Series
+		var extra sql.NullString
+		if err := rows.Scan(&s.ID, &s.TMDBID, &s.Title, &s.Year, &extra, &s.SeriesType); err != nil {
+			return nil, err
+		}
+		if extra.String != "" {
+			var ex SeriesExtra
+			if json.Unmarshal([]byte(extra.String), &ex) == nil {
+				s.Extra = &ex
+			}
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	aliases, err := r.aliasTitles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].Aliases = aliases[out[i].ID]
+	}
+	return out, nil
 }

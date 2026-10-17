@@ -57,7 +57,7 @@ function TitleLanguages() {
         <SavedTick save={save} />
       </div>
       <span className="text-sm text-ink-faint">
-        Library scans and downloads Arrmada didn't grab also recognise a title by its name in these languages, and TV searches also look for and take a show's releases by it. A name another title already goes by, or one two shows share, is never matched. Adding a language reads the titles in it for your whole library, a little at a time; TV searches start using them once every show's are read.
+        Library scans and downloads Arrmada didn't grab also recognise a title by its name in these languages, and TV searches also look for and take a show's releases by it when the release also says the language, or the show's year or country. A name another title already goes by, or one two shows share, is never matched. Adding a language reads the titles in it for your whole library, a little at a time; TV searches start using them once every show's are read.
       </span>
       <LanguagePicker value={save.value} onChange={(next) => void save.commit(next)} label="Add a title language" />
     </div>

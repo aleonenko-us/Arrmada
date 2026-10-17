@@ -69,9 +69,10 @@ func (c *Coordinator) UntrackedQueue(ctx context.Context, queue []download.Item)
 // acquisitions (ActiveByItem) and the untracked torrents: which seasons a download still
 // in flight covers, or whole=true when one covers the show, with those releases' names.
 // It is the same rule the sweeps hold seasons back by, so the Wanted view can say
-// "waiting on S03" exactly when the sweep is waiting on it.
-func SeriesInFlightScope(acqs []Acquisition, untracked []download.Item, s series.Series) (seasons map[int]bool, whole bool, names []string) {
-	return seriesInFlightScope(acqs, untracked, s)
+// "waiting on S03" exactly when the sweep is waiting on it; fit is the search rule
+// (series.Service.SearchFit) the sweeps tell untracked torrents apart by.
+func SeriesInFlightScope(fit *series.SearchFit, acqs []Acquisition, untracked []download.Item, s series.Series) (seasons map[int]bool, whole bool, names []string) {
+	return seriesInFlightScopeFit(fit, acqs, untracked, s)
 }
 
 // UntrackedMovieItem is the torrent nobody grabbed through Arrmada that the movie sweep

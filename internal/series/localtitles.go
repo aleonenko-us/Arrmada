@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+	"unicode/utf8"
 
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/parser"
@@ -30,8 +31,12 @@ import (
 var ErrNoTitles = errors.New("the show's other titles can't be read")
 
 // minLocalKeyLen is the shortest title key a translated title is matched on (as movies'
-// alternative titles).
+// alternative titles), in letters (keyLen).
 const minLocalKeyLen = 3
+
+// keyLen is a title key's length in letters, not bytes: "тьма" is four letters, eight
+// bytes.
+func keyLen(k string) int { return utf8.RuneCountInString(k) }
 
 // SetTitlesSource installs where every name of a show is read from (TMDB). Call it at
 // startup, before anything runs.
@@ -57,7 +62,7 @@ func releaseKeys(p parser.Release) (key, baseKey, cc string) {
 	var base string
 	base, cc = parser.SplitCountry(p.Title)
 	if cc != "" {
-		if baseKey = parser.TitleKey(base); len(baseKey) < minLocalKeyLen {
+		if baseKey = parser.TitleKey(base); keyLen(baseKey) < minLocalKeyLen {
 			baseKey = ""
 		}
 	}
@@ -69,7 +74,7 @@ func releaseKeys(p parser.Release) (key, baseKey, cc string) {
 func otherNames(names []string, skip map[string]bool) []string {
 	var out []string
 	for _, n := range names {
-		if k := parser.TitleKey(n); len(k) >= minLocalKeyLen && !skip[k] {
+		if k := parser.TitleKey(n); keyLen(k) >= minLocalKeyLen && !skip[k] {
 			out = append(out, n)
 		}
 	}
@@ -111,7 +116,7 @@ func NamesAShow(all []Series, p parser.Release) bool {
 // letters never count.
 func (s *Service) KnownAs(ctx context.Context, sr Series, p parser.Release) (bool, error) {
 	key, baseKey, cc := releaseKeys(p)
-	if len(key) < minLocalKeyLen {
+	if keyLen(key) < minLocalKeyLen {
 		return false, nil
 	}
 	skip := sr.ownKeys()
@@ -155,7 +160,7 @@ func titlesOf(ts []metadata.TranslatedTitle, langs []string) []string {
 // as candidates (the import holds the download for a human), never guessed between.
 func matchLocal(all []Series, p parser.Release, langs []string) (Series, bool, []Series) {
 	key, baseKey, cc := releaseKeys(p)
-	if len(key) < minLocalKeyLen {
+	if keyLen(key) < minLocalKeyLen {
 		return Series{}, false, nil
 	}
 	var cands []Series

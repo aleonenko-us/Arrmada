@@ -21,9 +21,10 @@ A search grabs what it accepts with nobody looking, so this tier is stricter tha
 3. Never a name some library show goes by, in any year or country (`NamesAShow`).
 4. Never a name another library show's translated title shares, in any of the languages set. Ambiguous means no match, whatever the year (the import's tier lets a year choose; a search doesn't).
 5. Year and country, as `FitRelease` checks them, but they must be known: a year in the release must be the show's, and a country tag must be its origin. The import's tier lets an unknown origin pass; this one doesn't.
-6. A name shorter than three letters never counts, whether a translated title or a release's title (with or without its country tag) (`minLocalKeyLen`).
-7. **One short word.** A translated title that is a single word of four letters or fewer ("Haus", "Wolf") needs the release's year or country tag to agree. Such a word names too many shows the library has never heard of, and the extra query below would bring their releases in by the page. Longer one-word titles ("Geister") and anything of two words or more don't need it: rules 3–5 already cover what the library knows, and a release with neither year nor country is still taken by them.
-8. **Only once every show is read.** Until every library show with a TMDB id has had its translated titles read for the languages set (after the setting changes, the backfill reads one show every two seconds; a failed read is retried at the next refresh), a show not yet read could share the name unseen, so the tier stays off.
+6. A name shorter than three letters never counts, whether a translated title or a release's title (with or without its country tag) (`minLocalKeyLen`). Letters, not bytes: "Он" is two letters.
+7. **Evidence beyond the name, always.** A translated title is also some other show's name: Ghosts (US) is "Fantasmas" in Spanish, and so is HBO's English "Fantasmas", which the library has never heard of. So the release must also say the title's language (German, GER, SPANISH…), or be MULTi/DUAL (German DL included), or carry the show's year or country tag. With none of these it is refused — in every search, RSS and the extra query's results alike. (The first build took a release with neither year nor country on rules 3–5 alone; the review found the Fantasmas wrong grab.)
+8. **One short word.** A translated title that is a single word of four letters or fewer ("Haus", "Тьма") needs the release's year or country tag to agree — its language alone isn't enough for a word that names that many shows.
+9. **Only once every show is read.** Until every library show with a TMDB id has had its translated titles read for the languages set (after the setting changes, the backfill reads one show every two seconds; a failed read is retried at the next refresh), a show not yet read could share the name unseen, so the tier stays off. It says so once in the log (Info, naming up to five of the shows and the count).
 
 With the setting empty `SearchFit` is `FitRelease`, exactly; the existing identity and golden tests are unchanged.
 
@@ -33,19 +34,23 @@ With the setting empty `SearchFit` is `FitRelease`, exactly; the existing identi
 
 ## TV searches: the extra query
 
-One text query by the translated title (`SearchFit.QueryTitle`: the first title, in the setting's order, that rules 3, 4 and 7 allow), only for a show that has one:
+One text query by the translated title (`SearchFit.QueryTitle`: the first title, in the setting's order, that rules 3, 4 and 8 allow and that is in Latin script — queries are folded to ASCII, so "Бумажный дом" would be asked as nothing and "911 служба спасения" as "911"), only for a show that has one:
 
 - **Sweeps and Search now:** after the title, alias and season queries, and only when episodes are still uncovered, the same way the anime absolute-number follow-up works. Scoped to the one season still missing something when it's one (a standard show), broad otherwise.
 - **Interactive list and quick Grab buttons:** one more query, scoped like the main one (season and episode as tvsearch parameters for a standard show).
 - **Text only**, never the show's TVDB/IMDb ids: an indexer that takes ids would answer the id search again and ignore the name.
 - Through the per-host indexer throttle like every query; at most one per search.
 - **Not** for upgrades (every 6 hours for every show: the cost isn't worth it; a release named so that the title query returns is still taken), RSS (no queries), or the request preview (no extra query; its identity check is the search's).
+- Only releases that are the show count as matching in the search's outcome.
+
+**Cost of the rule.** The sweep, the upgrade sweep and RSS build one `SearchFit` over the library they already listed. Anywhere else (Search now, the interactive list, the series page's download indicator, Wanted) it reads the library once per search, and only when a show's translated title names a release: a light read (`Repo.searchLibrary`: id, title, year, TMDB id, type, extra, aliases — none of List's per-show statistics) that fails, and so falls back to `FitRelease`, when the aliases can't be read.
 
 ## Not changed
 
 - The import gate, `MatchRelease`, `KnownAs` and the library-wide movie matching.
-- A torrent added to the client by hand is still recognised as a show's only by its own titles and aliases (the in-flight check). Arrmada's own grabs are recognised by their record.
-- No new UI: the setting's help text on Settings → Library says TV searches use it.
+- No new UI: the setting's help text on Settings → Library says TV searches use it. A "N shows not read yet" line was considered: read-only facts can't go in GET /settings (its body is PUT back whole), and a new endpoint for it wasn't worth it next to the log line.
+
+A torrent added to the client by hand is told apart by the same rule in the sweeps' in-flight check and on the Wanted page, as the episode download indicator shows it.
 
 ## Checklist
 
@@ -54,3 +59,4 @@ One text query by the translated title (`SearchFit.QueryTitle`: the first title,
 - [x] Extra query: once, only with translated titles and something left to find (automation tests count the queries).
 - [x] RSS can't give a release to the wrong show (unit and end-to-end).
 - [x] Settings help text, user docs.
+- [x] Review fixes, each tested: evidence beyond the name (Fantasmas), letters not bytes, Latin-only query titles, the light library read and one rule per sweep, the once-per-process log, matching counts, the in-flight check by the same rule.
