@@ -75,10 +75,13 @@ func (a *api) pickedConfig(ctx context.Context) config.Config {
 }
 
 // healthFolders is every folder the health panel, the disk panels and System → Status
-// judge: the picked ones plus any extra Movies and TV folders.
+// judge: the picked ones plus any extra Movies and TV folders, and the library folders'
+// own downloads folders (each must be there and writable like the rest).
 func (a *api) healthFolders(ctx context.Context, booksOn, musicOn bool) []health.Folder {
 	r := a.roots()
-	return health.LibraryFolders(r.Config(ctx), booksOn, musicOn, r.Extras(ctx)...)
+	c := r.Config(ctx)
+	return append(health.LibraryFolders(c, booksOn, musicOn, r.Extras(ctx)...),
+		health.DownloadFolders(c.DownloadsDir, r.PerFolderDownloads(ctx))...)
 }
 
 // folderLabel is how the UI names each library folder, for messages.
@@ -187,7 +190,13 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 			effective = resolvedFolder(a.deps.Config, f.name)
 		}
 		if a.deps.Folders != nil && strings.TrimSpace(effective) != "" && effective != f.current {
-			if msg := a.deps.Folders.Conflict(r.Context(), effective); msg != "" {
+			// A library also keeps clear of the library folders' own downloads folders; the
+			// Downloads folder may share or hold one (they only decide where torrents save).
+			conflict := a.deps.Folders.LibraryConflict
+			if f.name == "downloads" {
+				conflict = a.deps.Folders.Conflict
+			}
+			if msg := conflict(r.Context(), effective); msg != "" {
 				a.writeFolderError(w, f.name, label+": "+msg+".", false)
 				return
 			}

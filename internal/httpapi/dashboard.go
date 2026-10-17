@@ -12,6 +12,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/diskspace"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/insights"
 	"github.com/tristenlammi/arrmada/internal/libroots"
 	"github.com/tristenlammi/arrmada/internal/mediaserver"
@@ -279,8 +280,12 @@ func (a *api) storageVolumes(ctx context.Context) []storageVolume {
 		root{"Audiobooks", c.AudiobooksDir},
 		root{"Music", c.MusicDir},
 		root{"Downloads", c.DownloadsDir},
-		root{"App data", c.DataDir},
 	)
+	// Library folders' own downloads folders, on their disks.
+	for _, d := range health.DownloadFolders(c.DownloadsDir, rs.PerFolderDownloads(ctx)) {
+		roots = append(roots, root{d.Label, d.Path})
+	}
+	roots = append(roots, root{"App data", c.DataDir})
 
 	var measured []measuredRoot
 	seenPath := map[string]bool{}

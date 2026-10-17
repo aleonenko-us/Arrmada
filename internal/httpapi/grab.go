@@ -42,7 +42,7 @@ func (a *api) handleGrab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash, err := a.deps.Automation.Grab(r.Context(), ref.Indexer, ref.DownloadURL, ref.Title)
+	hash, err := a.deps.Automation.GrabForMovie(r.Context(), ref.MediaID, ref.Indexer, ref.DownloadURL, ref.Title)
 	if err != nil {
 		a.deps.Log.Warn("grab failed", "indexer", ref.Indexer, "title", ref.Title, "err", err)
 		a.writeGrabError(w, err, ref)

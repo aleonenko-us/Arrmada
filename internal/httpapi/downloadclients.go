@@ -14,6 +14,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/health"
+	"github.com/tristenlammi/arrmada/internal/libroots"
 	"github.com/tristenlammi/arrmada/internal/scheduler"
 )
 
@@ -379,12 +380,27 @@ func (a *api) handleTestDownloadClient(w http.ResponseWriter, r *http.Request) {
 
 // clientPaths runs a client's path check against Arrmada's folders as they are now.
 func (a *api) clientPaths(ctx context.Context, id int64) (download.PathReport, error) {
-	roots := a.roots()
-	env := download.PathEnv{Downloads: roots.Downloads(ctx), DataDir: a.deps.Config.DataDir}
+	return a.deps.Downloads.TestPaths(ctx, id, DownloadPathEnv(ctx, a.roots(), a.deps.Config.DataDir))
+}
+
+// DownloadPathEnv is Arrmada's folders as the download client checks and SABnzbd's
+// leftover guard need them: the Downloads folder, every library folder, the data folder,
+// and each library folder's own downloads folder (GitHub #11).
+func DownloadPathEnv(ctx context.Context, roots *libroots.Roots, dataDir string) download.PathEnv {
+	env := download.PathEnv{Downloads: roots.Downloads(ctx), DataDir: dataDir}
 	for _, lib := range roots.Libraries(ctx) {
 		env.Libraries = append(env.Libraries, lib.Path)
 	}
-	return a.deps.Downloads.TestPaths(ctx, id, env)
+	for _, d := range roots.PerFolderDownloads(ctx) {
+		if strings.TrimSpace(d.Library) == "" {
+			continue
+		}
+		if env.FolderDownloads == nil {
+			env.FolderDownloads = map[string]string{}
+		}
+		env.FolderDownloads[filepath.Clean(d.Library)] = d.Path
+	}
+	return env
 }
 
 // handleDownloadClientStatus reports live client info: the incoming BitTorrent port, so the

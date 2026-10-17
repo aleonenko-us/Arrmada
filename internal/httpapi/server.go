@@ -263,6 +263,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/library/folders/suggest", a.requireRole(auth.RoleManager, a.handleSuggestFolder))
 	mux.HandleFunc("POST /api/v1/system/library/folders", a.requireRole(auth.RoleAdmin, a.handleAddLibraryFolder))
 	mux.HandleFunc("PUT /api/v1/system/library/folders/order", a.requireRole(auth.RoleAdmin, a.handleOrderLibraryFolders))
+	mux.HandleFunc("PUT /api/v1/system/library/folders/downloads", a.requireRole(auth.RoleAdmin, a.handleSetFolderDownloads))
 	mux.HandleFunc("PUT /api/v1/system/library/folders/{id}", a.requireRole(auth.RoleAdmin, a.handleUpdateLibraryFolder))
 	mux.HandleFunc("DELETE /api/v1/system/library/folders/{id}", a.requireRole(auth.RoleAdmin, a.handleRemoveLibraryFolder))
 	// Import & migrate: a Radarr's or Sonarr's root folders, matched to Arrmada's (reads only).

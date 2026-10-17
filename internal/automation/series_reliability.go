@@ -202,6 +202,7 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 	if err != nil {
 		return err
 	}
+	ctx = c.forSeries(ctx, s) // upgrades download beside the show's folder now
 	// Resolved once and used for the gate, the ceiling check and the upgrade decision
 	// alike. A gate reading one profile while the decider reads another is how you get a
 	// sweep that searches and then rejects everything it finds.
@@ -371,7 +372,7 @@ func (c *Coordinator) upgradeSeries(ctx context.Context, seriesID int64, b *upgr
 		if pending[normTitle(winner.Title)] {
 			return false // this exact upgrade is already in flight
 		}
-		if !c.diskOKFor(grabbedGB + u.pick.SizeGB) {
+		if !c.diskOKFor(ctx, winner.Indexer, grabbedGB+u.pick.SizeGB) {
 			c.log.Warn("series: low disk, skipping upgrade", "series", s.Title, "need_gb", u.pick.SizeGB)
 			return false
 		}

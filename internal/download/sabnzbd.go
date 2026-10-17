@@ -919,17 +919,32 @@ func (s *SABnzbd) leftoverTarget(ctx context.Context, dc Client, storage string)
 		g.protected = append(g.protected, dc.PathMaps.ToLocal(f))
 	}
 	g.keep = append(append(g.keep, env.Libraries...), env.DataDir)
+	// Library folders' own downloads folders hold seeding torrents, never usenet jobs
+	// (SABnzbd files by category, with no folder per job): a job folder must never be one
+	// or hold one. Being inside one is left to the roots above — one may well be the
+	// Downloads folder itself, or hold it.
+	g.noHold = env.ownDownloads()
 	target, err := g.check(local)
 	return target, g, err
 }
 
 // leftoverGuard says where a finished job's leftovers may be deleted. roots: deleting is
 // allowed strictly inside one. protected: folders that must never be the target itself.
-// keep: folders the target may be neither inside nor hold.
-type leftoverGuard struct{ roots, protected, keep []string }
+// keep: folders the target may be neither inside nor hold. noHold: folders the target may
+// be neither the same as nor hold.
+type leftoverGuard struct{ roots, protected, keep, noHold []string }
 
 func (g leftoverGuard) check(local string) (string, error) {
-	return guardLeftover(local, g.roots, g.protected, g.keep)
+	rp, err := guardLeftover(local, g.roots, g.protected, g.keep)
+	if err != nil {
+		return "", err
+	}
+	for _, h := range g.noHold {
+		if strings.TrimSpace(h) != "" && pathguard.Within(h, rp) {
+			return "", fmt.Errorf("left %s in place: it holds a library folder's downloads folder, where torrents seed", local)
+		}
+	}
+	return rp, nil
 }
 
 // guardLeftover is the guard's decision, apart so it can be tested on temp folders. It
