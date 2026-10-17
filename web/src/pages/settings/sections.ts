@@ -98,6 +98,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Jellyfin library updates", keywords: "jellyfin scan partial refresh path mapping map folder update library after import rename delete convert", section: "media-servers", anchor: "jellyfin-library-updates" },
   { label: "Jellyfin sign-in", keywords: "jellyfin login sign in with jellyfin family quick connect code password auto-approve staff admin", section: "media-servers", anchor: "jellyfin-sign-in", adminOnly: true },
   { label: "Linked Jellyfin accounts", keywords: "jellyfin linked accounts link unlink who family users", section: "media-servers", anchor: "jellyfin-accounts", adminOnly: true },
+  { label: "Two-factor sign-in", keywords: "two factor 2fa totp mfa authenticator app code security require admins reset lost phone recovery codes", section: "users", anchor: "two-factor" },
   { label: "Request limits", keywords: "quota quotas request limits per week movies seasons books fair use household", section: "users", anchor: "request-limits" },
   { label: "Import from Overseerr / Jellyseerr", keywords: "overseerr jellyseerr requests migrate import", section: "import", anchor: "overseerr-import" },
   { label: "Import from Tautulli", keywords: "tautulli watch history plex insights migrate import", section: "import", anchor: "tautulli-import" },

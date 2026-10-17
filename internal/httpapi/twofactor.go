@@ -131,7 +131,8 @@ func (a *api) writeCodeError(w http.ResponseWriter, err error) {
 	case errors.Is(err, auth.ErrBadCode):
 		a.writeError(w, http.StatusUnauthorized, "That code isn't right. Check the time on your phone, or use a recovery code.")
 	case errors.Is(err, auth.ErrTicket), errors.Is(err, auth.ErrTwoFactorOff), errors.Is(err, auth.ErrTwoFactorSetup):
-		a.writeError(w, http.StatusUnauthorized, auth.ErrTicket.Error())
+		// reason tells the sign-in page to go back to the password rather than ask again.
+		a.writeJSON(w, http.StatusUnauthorized, map[string]string{"status": "error", "message": auth.ErrTicket.Error(), "reason": "ticket"})
 	default:
 		a.deps.Log.Error("auth: two-factor check failed", "err", err)
 		a.writeError(w, http.StatusInternalServerError, "authentication failed")

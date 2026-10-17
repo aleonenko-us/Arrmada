@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PlexMergeDialog } from "../../components/PlexMergeDialog";
-import { AutoNumber, SavedTick, wholeNumber } from "../../components/settings/auto";
+import { AutoNumber, AutoToggle, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { Section, inputStyle } from "../../components/settings/ui";
 import { api, type JellyfinBlock, type Person, type PlexBlock, type UserImpact, type UserQuota, type UserRole } from "../../lib/api";
 import { peopleApi } from "../../lib/peopleApi";
 import { accountApi } from "../../lib/accountApi";
+import { twoFactorApi } from "../../lib/twoFactorApi";
 import { LINKS } from "../../lib/links";
 import { useMe } from "../../lib/me";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { ago } from "../../lib/taskTime";
 import { useAutoSave, type AutoSave } from "../../lib/useAutoSave";
-import { useLoadedSettings } from "../../lib/useSettings";
+import { useLoadedSettings, useSetting } from "../../lib/useSettings";
 import { Button, ConfirmDialog, useConfirm, useToast } from "../../ui";
 import { managerExceptions, requesterPages } from "./roles";
 
@@ -28,11 +29,28 @@ export function PeopleSettings() {
       <p className="m-0 text-sm text-ink-faint">
         Who may sign in with Plex or Jellyfin, and what their new sign-ins auto-approve, is in Settings → Media servers: <Link to={LINKS.plexSignIn} style={{ color: "var(--accent-text)" }}>Plex sign-in</Link> and <Link to={LINKS.jellyfinSignIn} style={{ color: "var(--accent-text)" }}>Jellyfin sign-in</Link>.
       </p>
+      <Section id="two-factor" title="Two-factor sign-in" subtitle="Anyone who signs in with a password can add a code from an authenticator app on their Me page. It covers Arrmada's own password only: Sign in with Plex or Jellyfin is checked by those servers, API keys are separate, and audiobook apps keep their own audiobook password (they can't ask for a code).">
+        <TwoFactorPolicy />
+      </Section>
       <Section id="request-limits" title="Request limits" subtitle="Optional: how much one person can ask for in a stretch of days. Following someone else's request is free, a withdrawn or declined request gives its share back, and admins and managers are never limited. 0 means no limit.">
         <RequestLimits books={booksEnabled} />
         <p className="m-0 text-xs text-ink-faint">Typical household: 10 movies, 5 seasons and 10 books a week. A season request counts each season; asking for a whole show counts all of its seasons. Set a different limit for one person under More on their row.</p>
       </Section>
     </div>
+  );
+}
+
+// TwoFactorPolicy is "Require two-factor for admins": an admin who signs in with a
+// password and hasn't set it up must do so before getting in. Sessions already signed in
+// carry on.
+function TwoFactorPolicy() {
+  const save = useSetting("two_factor_admins");
+  return (
+    <AutoToggle
+      label="Require two-factor for admins"
+      hint="An admin signing in with a password who hasn't set it up is asked to, before anything else. Admins already signed in stay signed in, and an admin who signs in with Plex or Jellyfin isn't asked."
+      save={save}
+    />
   );
 }
 
@@ -300,6 +318,7 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
         <span className="grid h-7 w-7 flex-none place-items-center rounded-full text-xs font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>{p.username[0]?.toUpperCase()}</span>
         <span className="min-w-[8rem] flex-1 truncate text-base font-semibold" style={faded}>{p.username}{isMe && <span className="font-normal text-ink-faint"> (you)</span>}</span>
         {p.disabled && <span className={chip} style={{ background: "var(--reject-soft)", color: "var(--reject-text)" }} title="Can't sign in. Nothing of theirs was deleted.">Disabled</span>}
+        {p.two_factor && <span className={chip} style={{ background: "var(--good-soft)", color: "var(--good-text)" }} title="Their password sign-in asks for a code from an authenticator app too.">2FA</span>}
         {p.plex_linked && (
           <span className="max-w-[160px] truncate rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--panel)", color: p.plex_blocked ? "var(--reject-text)" : "var(--ink-dim)", border: "1px solid var(--line)" }} title={p.plex_blocked ? "Linked Plex account — blocked from signing in" : "Linked Plex account"}>
             Plex{p.plex_username ? ` · ${p.plex_username}` : ""}{p.plex_blocked ? " · blocked" : ""}
@@ -426,6 +445,20 @@ function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContex
   };
 
   const confirm = useConfirm();
+  const resetTwoFactor = async () => {
+    const ok = await confirm({
+      title: `Turn off ${p.username}'s two-factor sign-in?`,
+      body: "Their password alone will sign them in until they set it up again from their Me page. Their recovery codes and trusted devices are forgotten. This is recorded in the log.",
+      confirmLabel: "Turn it off",
+      tone: "danger",
+    });
+    if (!ok) return;
+    try {
+      await twoFactorApi.reset(p.id);
+      ctx.toast(`${p.username}'s two-factor sign-in is off.`, { tone: "good" });
+      ctx.reload();
+    } catch (e) { ctx.toast((e as Error).message, { tone: "error" }); }
+  };
   const plexAction = async (kind: "unlink" | "block") => {
     const ok = await confirm(kind === "unlink"
       ? plexUnlinkConfirm(p)
@@ -484,6 +517,13 @@ function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContex
         </div>
         {pwMsg && <span className="text-sm" style={{ color: pwMsg.ok ? "var(--good-text)" : "var(--reject-text)" }}>{pwMsg.text}</span>}
       </div>
+
+      {p.two_factor && !isMe && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="min-w-[12rem] flex-1 text-sm text-ink-dim">Two-factor sign-in is on. Lost their phone and their recovery codes? Turn it off, and they can set it up again.</span>
+          <Button size="sm" onClick={resetTwoFactor}>Reset two-factor</Button>
+        </div>
+      )}
 
       {p.plex_linked && !isMe && (
         <div className="flex flex-wrap items-center gap-2">

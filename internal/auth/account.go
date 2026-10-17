@@ -39,8 +39,8 @@ func (s *Service) CheckPassword(ctx context.Context, id int64, pw string) bool {
 // ChangePassword sets the account's password, marks it as one somebody knows (so a
 // Plex-only account can then unlink Plex without locking itself out), and signs out every
 // session except keepRaw, the one making the change, and forgets its trusted devices — in
-// one transaction. It says how many
-// other sessions ended. Checking the current password is the caller's job.
+// one transaction. It says how many other sessions ended. Checking the current password is
+// the caller's job.
 func (s *Service) ChangePassword(ctx context.Context, id int64, newPw, keepRaw string) (int64, error) {
 	if len(newPw) < 8 {
 		return 0, ErrWeakPassword

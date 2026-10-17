@@ -65,6 +65,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
       { id: "a1b2c3d4e5f6", created_at: new Date(NOW - 86_400_000).toISOString(), last_seen_at: new Date(NOW).toISOString(), device: "Chrome on Android", network: "local", current: true },
       { id: "0f9e8d7c6b5a", created_at: new Date(NOW - 20 * 86_400_000).toISOString(), last_seen_at: new Date(NOW - 3 * 86_400_000).toISOString(), device: "Safari on Mac", network: "203.0.113.x", current: false },
     ] }),
+    // Me → Account → Two-factor sign-in: off, and not required.
+    get("/api/v1/me/2fa", { enabled: false, recovery_codes_left: 0, password_set: true, required: false }),
     // Your own Plex link (sidebar footer, Me page): not linked.
     get("/api/v1/me/plex", { linked: false, can_unlink: false }),
     // Your own Jellyfin link (Me page): none, and no Jellyfin connected to link to.

@@ -166,8 +166,9 @@ func TestTwoFactorLoginFlow(t *testing.T) {
 	if wrong == code {
 		wrong = "111111"
 	}
-	if r := f.post("/api/v1/auth/login/code", map[string]any{"ticket": tk.Ticket, "code": wrong}); r.Code != http.StatusUnauthorized || sessionCookieOn(r) != nil {
-		t.Errorf("wrong code: HTTP %d", r.Code)
+	// A wrong code is said as such (the page asks again); it isn't the ticket's end.
+	if r := f.post("/api/v1/auth/login/code", map[string]any{"ticket": tk.Ticket, "code": wrong}); r.Code != http.StatusUnauthorized || sessionCookieOn(r) != nil || strings.Contains(r.Body.String(), `"reason"`) {
+		t.Errorf("wrong code: HTTP %d %s", r.Code, r.Body)
 	}
 	r = f.post("/api/v1/auth/login/code", map[string]any{"ticket": tk.Ticket, "code": code})
 	sess := sessionCookieOn(r)
@@ -180,10 +181,10 @@ func TestTwoFactorLoginFlow(t *testing.T) {
 	if cookieNamed(r, trustCookieName) != nil {
 		t.Error("trusted the device without being asked")
 	}
-	// The ticket is spent.
 	f.clock.next()
-	if r := f.post("/api/v1/auth/login/code", map[string]any{"ticket": tk.Ticket, "code": totpAt(t, secret, f.clock.now())}); r.Code != http.StatusUnauthorized {
-		t.Errorf("ticket used twice: HTTP %d", r.Code)
+	// The ticket is spent: the page is told to go back to the password.
+	if r := f.post("/api/v1/auth/login/code", map[string]any{"ticket": tk.Ticket, "code": totpAt(t, secret, f.clock.now())}); r.Code != http.StatusUnauthorized || !strings.Contains(r.Body.String(), `"reason":"ticket"`) {
+		t.Errorf("ticket used twice: HTTP %d %s", r.Code, r.Body)
 	}
 	// And a code works once: a fresh ticket with the code already used is refused.
 	tk = decodeOK[ticketAnswer](t, f.login("mum@example.com", "password123"))
