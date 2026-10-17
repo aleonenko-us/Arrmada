@@ -97,8 +97,9 @@ type SeriesExtra struct {
 	ContentRating string `json:"content_rating,omitempty"`
 	// LocalTitles are the show's translated titles in the languages Settings → Library →
 	// "Also match titles in" names, for import routing and scans of folders and downloads
-	// named in the household's language (localtitles.go) — never for searches. LocalLangs
-	// are the languages (ISO 639-1) they were read for.
+	// named in the household's language (localtitles.go), and under stricter rules for
+	// searches (searchtitles.go). LocalLangs are the languages (ISO 639-1) they were read
+	// for.
 	LocalTitles []metadata.TranslatedTitle `json:"local_titles,omitempty"`
 	LocalLangs  []string                   `json:"local_langs,omitempty"`
 }
