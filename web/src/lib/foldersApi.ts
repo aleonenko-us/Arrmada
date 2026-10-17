@@ -23,6 +23,13 @@ export interface LibraryFolder {
   downloads?: string;
   /** Set when that folder isn't on the library folder's filesystem (imports copy). */
   downloads_warning?: string;
+  /**
+   * An extra folder on disk (only from listWithDisk): "ok" with on_disk, the entries a scan
+   * would look at; "empty" (a new folder, or a share that isn't mounted — never counted);
+   * "missing".
+   */
+  disk?: "ok" | "empty" | "missing";
+  on_disk?: number;
 }
 
 export interface LibraryFolderSet {
@@ -64,6 +71,11 @@ export const FOLDER_RULES: { value: FolderRule; label: string; help: string }[] 
 
 export const foldersApi = {
   list: () => req<LibraryFolders>("/api/v1/library/folders"),
+  /** The same, with what each extra folder holds on disk (Settings → Library). */
+  listWithDisk: () => req<LibraryFolders>("/api/v1/library/folders?disk=1"),
+  /** Scans one Movies or TV folder (a job to follow): adding a folder doesn't import what's in it. */
+  scan: (media: FolderMedia, root: string) =>
+    req<{ status: string } & JobRef>(`/api/v1/${media === "movie" ? "movies" : "series"}/scan`, { method: "POST", body: JSON.stringify({ root }) }),
   /** The folder a title would go to by the rules, to preselect. */
   suggest: (media: FolderMedia, tmdbId: number) =>
     req<{ folder_id: number }>(`/api/v1/library/folders/suggest?media=${media}&tmdb_id=${tmdbId}`).then((r) => r.folder_id),

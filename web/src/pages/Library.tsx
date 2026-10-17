@@ -17,10 +17,11 @@ import { scanLine, unmatchedOf, useLibraryScan } from "../lib/useLibraryScan";
 type PathKey = keyof LibraryPaths;
 // job: the kind of job a row's scan runs as, so a scan started anywhere shows on its row.
 // Ebooks and Audiobooks share the one book scan. review: its unmatched folders are listed
-// under the rows ("needs review").
-const ROWS: { key: PathKey; label: string; hint: string; scan?: () => Promise<{ job_id?: number }>; job?: string; review?: boolean }[] = [
-  { key: "movies", label: "Movies", hint: "folder of movie subfolders", scan: () => api.scanLibrary(), job: "movie.scan", review: true },
-  { key: "tv", label: "TV Shows", hint: "folder of show subfolders", scan: () => api.scanSeries(), job: "series.scan", review: true },
+// under the rows ("needs review"). target: Movies and TV follow whole-library scans only;
+// a scan of one extra folder shows on that folder's row (More Movies and TV folders).
+const ROWS: { key: PathKey; label: string; hint: string; scan?: () => Promise<{ job_id?: number }>; job?: string; target?: string; review?: boolean }[] = [
+  { key: "movies", label: "Movies", hint: "folder of movie subfolders", scan: () => api.scanLibrary(), job: "movie.scan", target: "all", review: true },
+  { key: "tv", label: "TV Shows", hint: "folder of show subfolders", scan: () => api.scanSeries(), job: "series.scan", target: "all", review: true },
   { key: "ebooks", label: "Ebooks", hint: "folder of book subfolders", scan: () => api.scanBooks(), job: "books.scan" },
   { key: "audiobooks", label: "Audiobooks", hint: "may share the ebooks folder", scan: () => api.scanBooks(), job: "books.scan" },
   { key: "music", label: "Music", hint: "folder of artist subfolders", scan: () => api.scanMusic(), job: "music.scan" },
@@ -99,7 +100,7 @@ function FolderRow({ row, paths, admin, canScan, onScanned, onSaved }: {
   onScanned: () => void;
   onSaved: (p: LibraryPaths) => void;
 }) {
-  const scan = useLibraryScan(row.job ?? "", row.scan ?? noScan, onScanned);
+  const scan = useLibraryScan(row.job ?? "", row.scan ?? noScan, onScanned, row.target);
   const line = scanLine(row.label, scan);
   const unmatched = row.review ? unmatchedOf(scan.job) : 0;
   const [picking, setPicking] = useState(false);

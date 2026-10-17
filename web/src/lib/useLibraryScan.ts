@@ -24,7 +24,10 @@ export interface LibraryScan {
   note: { text: string; error: boolean } | null;
 }
 
-export function useLibraryScan(kind: string, begin: () => Promise<{ job_id?: number }>, onFinished?: (job: Job) => void): LibraryScan {
+// target, when set, follows only scans of that target: "all" for a whole library, or
+// "folder:<id>" for one library folder (Settings → Library's extra folders), so a row
+// doesn't show another folder's scan as its own.
+export function useLibraryScan(kind: string, begin: () => Promise<{ job_id?: number }>, onFinished?: (job: Job) => void, target?: string): LibraryScan {
   const [jobId, setJobId] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
   const [finished, setFinished] = useState<Job | null>(null);
@@ -42,18 +45,18 @@ export function useLibraryScan(kind: string, begin: () => Promise<{ job_id?: num
   useEffect(() => {
     if (!kind) return; // a row with no scan (Downloads)
     let live = true;
-    api.jobs({ kind, limit: 5 })
+    api.jobs({ kind, target, limit: 5 })
       .then((js) => {
-        const running = js.find((j) => j.kind === kind && !jobDone(j.status));
+        const running = js.find((j) => j.kind === kind && (!target || j.target === target) && !jobDone(j.status));
         if (live && running) setJobId((cur) => cur ?? running.id);
       })
       .catch(() => {});
     return () => { live = false; };
-  }, [kind]);
+  }, [kind, target]);
   // One started elsewhere while the page is open.
   useLiveEvent("job.updated", (ev) => {
-    const d = ev.data as { id?: number; kind?: string; status?: Job["status"] } | null;
-    if (d?.id && d.kind === kind && !jobDone(d.status)) setJobId((cur) => cur ?? d.id ?? null);
+    const d = ev.data as { id?: number; kind?: string; target?: string; status?: Job["status"] } | null;
+    if (d?.id && d.kind === kind && (!target || d.target === target) && !jobDone(d.status)) setJobId((cur) => cur ?? d.id ?? null);
   }, !!kind);
 
   const start = async () => {
@@ -110,6 +113,18 @@ export function scanLine(label: string, scan: LibraryScan): { text: string; tone
     return { text: `Done: ${j.message || "scan finished"}`, tone: "good" };
   }
   return null;
+}
+
+// foundLine sums up a finished scan of one folder: "Found 3 titles; 1 needs review". The
+// titles found are the ones it added plus, for films, the files it gave to films already in
+// the library.
+export function foundLine(job: Job): string {
+  const r = (job.result ?? {}) as { imported?: unknown; attached?: unknown };
+  const n = (v: unknown) => (typeof v === "number" ? v : 0);
+  const found = n(r.imported) + n(r.attached);
+  const review = unmatchedOf(job);
+  const titles = `Found ${found.toLocaleString()} title${found === 1 ? "" : "s"}`;
+  return review > 0 ? `${titles}; ${review.toLocaleString()} need${review === 1 ? "s" : ""} review` : `${titles}.`;
 }
 
 // unmatchedOf is how many folders a finished scan couldn't identify (its result's count).
