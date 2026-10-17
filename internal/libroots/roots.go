@@ -17,6 +17,9 @@ const (
 	KeyAudiobooks = "lib_audiobooks_dir"
 	KeyMusic      = "lib_music_dir"
 	KeyDownloads  = "lib_downloads_dir"
+	// KeyFoldersConfirmed is set once the Movies or TV folder has been saved or confirmed
+	// in the app — including confirming the defaults unchanged, which writes no folder.
+	KeyFoldersConfirmed = "lib_folders_confirmed"
 )
 
 // Getter reads one setting (settings.Service.Get).

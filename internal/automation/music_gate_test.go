@@ -50,7 +50,7 @@ func TestMusicActionsRefuseWhenTheModuleIsOff(t *testing.T) {
 	if err := c.GrabDiscography(ctx, 1); !errors.Is(err, ErrModuleOff) {
 		t.Errorf("GrabDiscography = %v, want ErrModuleOff", err)
 	}
-	if _, err := c.ScanMusicLibrary(ctx); !errors.Is(err, ErrModuleOff) {
+	if _, err := c.ScanMusicLibrary(ctx, nil); !errors.Is(err, ErrModuleOff) {
 		t.Errorf("ScanMusicLibrary = %v, want ErrModuleOff", err)
 	}
 }
@@ -62,7 +62,7 @@ func TestNilModuleGateIsOn(t *testing.T) {
 		t.Error("a nil gate must read as on")
 	}
 	on, _ := gateTestCoord(t, true)
-	if _, err := on.ScanMusicLibrary(context.Background()); err != nil {
+	if _, err := on.ScanMusicLibrary(context.Background(), nil); err != nil {
 		t.Errorf("scan of an empty library with Music on = %v, want nil", err)
 	}
 }

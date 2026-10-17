@@ -350,15 +350,16 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "unknown quality profile")
 		return
 	}
-	// The scan walks every Movies folder (there's usually one). The time budget grows with
-	// the library (one listing of each folder, which the scan reads first anyway); an
-	// unreadable folder gets the minimum and fails in the scan.
+	// The scan walks every Movies folder (there's usually one). The time budget is the
+	// library scans' half-day, longer still for a library so big that two seconds a
+	// folder outgrows it (one listing of each folder, which the scan reads first anyway);
+	// an unreadable folder gets the minimum and fails in the scan.
 	n := 0
 	for _, root := range a.roots().MovieFolders(r.Context()) {
 		folders, _ := movies.ScanFolders(root)
 		n += len(folders)
 	}
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "movie.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: movies.ScanBudget(n),
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "movie.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: max(libraryScanTimeout, movies.ScanBudget(n)),
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
 			// Progress rides the job: the runner records it and announces it as job.updated
 			// (at most once a second) on the one live socket the page already has.

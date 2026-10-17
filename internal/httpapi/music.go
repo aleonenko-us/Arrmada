@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/jobs"
@@ -222,11 +221,15 @@ func (a *api) musicErr(w http.ResponseWriter, err error, msg string) {
 // far longer than any sensible request timeout.
 func (a *api) handleScanMusicLibrary(w http.ResponseWriter, r *http.Request) {
 	// One scan at a time (single-flight): two overlapping runs would double every
-	// MusicBrainz lookup and race each other's writes. Its own class, so a two-hour music
+	// MusicBrainz lookup and race each other's writes. Its own class, so an hours-long music
 	// scan doesn't hold up the other libraries' scans.
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "music.scan", Target: "all", Class: "music.scan", Timeout: 2 * time.Hour,
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "music.scan", Target: "all", Class: "music.scan", Timeout: libraryScanTimeout,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
-			res, err := a.deps.Automation.ScanMusicLibrary(ctx)
+			res, err := a.deps.Automation.ScanMusicLibrary(ctx, func(done, total int) {
+				if total > 0 {
+					p.Set(float64(done)/float64(total), fmt.Sprintf("Scanning %s / %s album folders", thousands(done), thousands(total)))
+				}
+			})
 			if err != nil {
 				return nil, err
 			}

@@ -140,6 +140,10 @@ func suggestFolders(mounts []string) map[string]string {
 // librariesChosen reports whether anyone has pointed the libraries somewhere: in the
 // app, or with the per-library environment variables an older installer wrote.
 func (a *api) librariesChosen(ctx context.Context) bool {
+	// Confirmed in the app, even when the folders confirmed were the defaults.
+	if a.deps.Settings.GetBool(ctx, libroots.KeyFoldersConfirmed, false) {
+		return true
+	}
 	for _, k := range []string{keyLibMovies, keyLibTV} {
 		if strings.TrimSpace(a.deps.Settings.Get(ctx, k, "")) != "" {
 			return true

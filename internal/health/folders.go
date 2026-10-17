@@ -40,6 +40,9 @@ type FolderState struct {
 	ParentExists   bool
 	ParentWritable bool
 	Err            error
+	// Recorded is how many files Arrmada has on record inside a missing folder (the
+	// library check fills it; a probe never does). RecordedUnknown when it couldn't tell.
+	Recorded int
 }
 
 // ProbeFolder looks at path without changing anything that matters: it never creates the

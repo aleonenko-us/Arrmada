@@ -14,11 +14,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tristenlammi/arrmada/internal/books"
 	"github.com/tristenlammi/arrmada/internal/config"
 	"github.com/tristenlammi/arrmada/internal/diskspace"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/indexer"
+	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/settings"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
@@ -303,6 +305,155 @@ func TestSetLibraryPathsCreate(t *testing.T) {
 	}
 	if _, err := os.Stat(inData); !os.IsNotExist(err) {
 		t.Errorf("a folder was created inside the data dir: %v", err)
+	}
+}
+
+// Issue #24: on a fresh install the folder in use is the environment's default, and it
+// doesn't exist yet. "Create it" sends that same folder; it must be made (not skipped as
+// unchanged with a 200), and the environment's default must not be pinned as a save.
+func TestSetLibraryPathsCreateTheFolderInUse(t *testing.T) {
+	a, _ := folderTestAPI(t)
+	p := a.deps.Config.AudiobooksDir // <library>/audiobooks: in use, never made
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatalf("test setup: %s should be missing (%v)", p, err)
+	}
+	w := putPaths(t, a, map[string]any{"audiobooks": p, "create": true})
+	if w.Code != http.StatusOK {
+		t.Fatalf("create: HTTP %d %s", w.Code, w.Body.String())
+	}
+	if fi, err := os.Stat(p); err != nil || !fi.IsDir() {
+		t.Fatalf("the folder in use wasn't created: %v", err)
+	}
+	if v := a.deps.Settings.Get(context.Background(), keyLibAudiobooks, "<unset>"); v != "<unset>" {
+		t.Errorf("the environment's default was saved as a picked folder: %q", v)
+	}
+	// Without create, an unchanged missing folder is still just left alone.
+	tv := filepath.Join(a.deps.Config.LibraryDir, "missing-tv")
+	a.deps.Config.TVDir = tv
+	if w := putPaths(t, a, map[string]any{"tv": tv}); w.Code != http.StatusOK {
+		t.Errorf("unchanged save: HTTP %d %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(tv); !os.IsNotExist(err) {
+		t.Errorf("a save without create made the folder: %v", err)
+	}
+}
+
+// A folder that can't be made says so: a 400 naming the row, with the reason, rather
+// than a quiet success.
+func TestSetLibraryPathsCreateFailureIsReported(t *testing.T) {
+	a, base := folderTestAPI(t)
+	// A dangling link stands where a folder above it should be: the folder reads as
+	// missing, and making it fails (even as root, where permissions wouldn't).
+	dangling := filepath.Join(base, "media", "unmounted")
+	if err := os.Symlink(filepath.Join(base, "nowhere"), dangling); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	// The folder in use is itself a dangling link: its parent is there, it reads as
+	// missing, and the one-step mkdir fails.
+	music := filepath.Join(base, "media", "music-link")
+	if err := os.Symlink(filepath.Join(base, "nowhere-music"), music); err != nil {
+		t.Fatal(err)
+	}
+	a.deps.Config.MusicDir = music
+	for _, tc := range []struct{ field, path string }{
+		{"ebooks", filepath.Join(dangling, "ebooks")}, // a new folder
+		{"music", music}, // the folder in use
+	} {
+		w := putPaths(t, a, map[string]any{tc.field: tc.path, "create": true})
+		var body map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &body)
+		if w.Code != http.StatusBadRequest || body["folder"] != tc.field || !strings.Contains(fmt.Sprint(body["message"]), "couldn't create") {
+			t.Errorf("%s: HTTP %d %+v, want a 400 naming it", tc.field, w.Code, body)
+		}
+	}
+
+	// A folder in use that can't even be looked at is refused too, never a silent 200.
+	blocker := filepath.Join(base, "media", "file")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.deps.Config.TVDir = filepath.Join(blocker, "tv")
+	if w := putPaths(t, a, map[string]any{"tv": a.deps.Config.TVDir, "create": true}); w.Code != http.StatusBadRequest {
+		t.Errorf("a folder under a file: HTTP %d %s, want 400", w.Code, w.Body.String())
+	}
+}
+
+// Create it on the folder in use never makes a chain of folders on a dropped share: with
+// the folder above it missing too, it's refused and nothing is made.
+func TestSetLibraryPathsCreateInUseNeedsItsParent(t *testing.T) {
+	a, base := folderTestAPI(t)
+	share := filepath.Join(base, "array") // the share's mount point, empty: not mounted
+	a.deps.Config.EbooksDir = filepath.Join(share, "media", "ebooks")
+	w := putPaths(t, a, map[string]any{"ebooks": a.deps.Config.EbooksDir, "create": true})
+	var body map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if w.Code != http.StatusBadRequest || body["folder"] != "ebooks" || !strings.Contains(fmt.Sprint(body["message"]), "not mounted") {
+		t.Errorf("HTTP %d %+v, want a 400 pointing at the mount", w.Code, body)
+	}
+	if _, err := os.Stat(share); !os.IsNotExist(err) {
+		t.Errorf("a folder was made on the missing share: %v", err)
+	}
+}
+
+// A missing folder Arrmada has files on record in is a share that isn't mounted, not a
+// folder to make: Create it refuses with the count and the advice to check the mount.
+func TestSetLibraryPathsCreateRefusesAFolderThatHeldFiles(t *testing.T) {
+	a, _ := folderTestAPI(t)
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	a.deps.Books = books.NewService(st.DB(), nil, a.deps.Log)
+	ctx := context.Background()
+	added, _ := a.deps.Books.AddWorks(ctx, []metadata.BookResult{{Key: "ol:1", Title: "Held Book", Author: "Someone"}}, "", false)
+	if len(added) != 1 {
+		t.Fatal("book not added")
+	}
+	audio := a.deps.Config.AudiobooksDir // in use, missing; its parent is there
+	if err := a.deps.Books.MarkImported(ctx, added[0].ID, books.KindAudiobook, filepath.Join(audio, "Someone", "Held Book", "Held Book.m4b"), "m4b", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"audiobooks", "ebooks"} { // in use, and a new folder
+		w := putPaths(t, a, map[string]any{field: audio, "create": true})
+		var body map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &body)
+		if w.Code != http.StatusBadRequest || body["folder"] != field || !strings.Contains(fmt.Sprint(body["message"]), "held 1 file") {
+			t.Errorf("%s: HTTP %d %+v, want a 400 saying it held a file", field, w.Code, body)
+		}
+	}
+	if _, err := os.Stat(audio); !os.IsNotExist(err) {
+		t.Errorf("the folder was made over a share that isn't mounted: %v", err)
+	}
+	// A folder beside it that never held anything is made as usual.
+	if w := putPaths(t, a, map[string]any{"music": a.deps.Config.MusicDir, "create": true}); w.Code != http.StatusOK {
+		t.Errorf("an empty default folder: HTTP %d %s", w.Code, w.Body.String())
+	}
+}
+
+// The wizard confirms the folders it prefilled — the defaults, unchanged. That's choosing
+// them (the Dashboard's "Choose your library folders" ticks), though no folder is saved.
+func TestWizardConfirmingTheDefaultsChoosesThem(t *testing.T) {
+	a, _ := folderTestAPI(t)
+	ctx := context.Background()
+	if a.librariesChosen(ctx) {
+		t.Fatal("chosen before anything was confirmed")
+	}
+	c := a.deps.Config
+	w := putPaths(t, a, map[string]any{"movies": c.MoviesDir, "tv": c.TVDir, "downloads": c.DownloadsDir})
+	if w.Code != http.StatusOK {
+		t.Fatalf("HTTP %d %s", w.Code, w.Body.String())
+	}
+	if !a.librariesChosen(ctx) {
+		t.Error("confirming the default folders leaves libraries_chosen false")
+	}
+	if v := a.deps.Settings.Get(ctx, keyLibMovies, "<unset>"); v != "<unset>" {
+		t.Errorf("the default Movies folder was pinned as a save: %q", v)
+	}
+	// Saving only another library's folder isn't choosing Movies and TV.
+	b, _ := folderTestAPI(t)
+	if w := putPaths(t, b, map[string]any{"music": b.deps.Config.MusicDir}); w.Code != http.StatusOK || b.librariesChosen(ctx) {
+		t.Errorf("a Music-only save: HTTP %d, chosen %v", w.Code, b.librariesChosen(ctx))
 	}
 }
 

@@ -384,6 +384,24 @@ func (r *Repo) SetAlbumMonitored(ctx context.Context, id int64, monitored bool) 
 const trackCols = `id, album_id, mbid, disc_number, track_number, title, duration_sec,
 	monitored, has_file, file_path, format, bitrate_kbps, size_bytes, source_release`
 
+// FilePaths returns the path of every track with a file on record.
+func (r *Repo) FilePaths(ctx context.Context) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT file_path FROM tracks WHERE has_file = 1 AND COALESCE(file_path, '') != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // TracksFor returns an album's tracks in disc/track order.
 func (r *Repo) TracksFor(ctx context.Context, albumID int64) ([]Track, error) {
 	rows, err := r.db.QueryContext(ctx,

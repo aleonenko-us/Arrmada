@@ -203,4 +203,30 @@ test.describe("manager", () => {
     await expect(page.getByText("Already scanning — showing its progress.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Scanning…" })).toBeDisabled();
   });
+
+  // Issue #22: a scan may now run for hours on a big library, so its row can stop it. The
+  // job ends as stopped and the row says so.
+  test("Stop in Settings → Library stops the running scan", async ({ page, api }) => {
+    let stopped = false;
+    const scanJob = () => ({ id: 88, kind: "series.scan", target: "all", trigger: "user:2", status: stopped ? "cancelled" : "running",
+      progress: 0.5, message: "Scanning 20 / 40 show folders", error: stopped ? "context canceled" : "", created_at: null, started_at: null, finished_at: null });
+    await page.route((u) => u.pathname.startsWith("/api/v1/jobs"), async (route) => {
+      const req = route.request();
+      const path = new URL(req.url()).pathname;
+      if (req.method() === "POST" && path === "/api/v1/jobs/88/cancel") {
+        stopped = true;
+        api.calls.push({ method: "POST", path, body: undefined });
+        return route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ status: "cancelling", job_id: 88 }) });
+      }
+      if (req.method() === "GET" && path === "/api/v1/jobs/88") return route.fulfill({ contentType: "application/json", body: JSON.stringify(scanJob()) });
+      if (req.method() === "GET" && path === "/api/v1/jobs") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ jobs: [scanJob()] }) });
+      return route.fallback();
+    });
+    await page.goto("/settings/library");
+    await expect(page.getByText("TV Shows: Scanning 20 / 40 show folders · 50%")).toBeVisible();
+    await page.getByRole("button", { name: "Stop" }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/jobs/88/cancel").length).toBe(1);
+    await expect(page.getByText("Scan stopped.")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
+  });
 });
