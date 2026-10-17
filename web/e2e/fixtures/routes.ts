@@ -41,6 +41,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // the same answer as Status.
     { method: "PUT", path: "/api/v1/system/update-check", respond: ({ body }) => ({ ...sys.systemStatus.update, ...(body as object), latest: null, behind: null }) },
     { method: "POST", path: "/api/v1/system/update-check", body: sys.systemStatus.update },
+    // Settings → System → Dashboard widget: no key made yet.
+    get("/api/v1/system/widget-key", { enabled: false, outside: false }),
     get("/api/v1/me/audio", sys.myAudio(p)),
     get("/api/v1/me/audio/listening", sys.myListening),
     // The Listen tab (the player specs answer the rest of the listening API).

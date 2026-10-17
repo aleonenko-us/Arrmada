@@ -132,6 +132,7 @@ server ([Following main](docs/updating.md#following-main-developers)).
 | [Troubleshooting](docs/troubleshooting.md) | Common problems and fixes |
 | [Features](docs/features.md) | Everything Arrmada does |
 | [Alerts to n8n](docs/n8n.md) | Sending alerts to n8n or any webhook as signed JSON, and every event's fields |
+| [Homepage dashboard](docs/homepage.md) | Arrmada's numbers on a gethomepage.dev dashboard: the widget key, the `services.yaml` entry and every field |
 | [Development](docs/development.md) | Building and testing it yourself |
 | [Releasing](docs/releasing.md) | For maintainers |
 

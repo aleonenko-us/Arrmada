@@ -282,8 +282,7 @@ func (a *api) storageVolumes(ctx context.Context) []storageVolume {
 		root{"App data", c.DataDir},
 	)
 
-	var out []storageVolume
-	index := map[[2]uint64]int{}
+	var measured []measuredRoot
 	seenPath := map[string]bool{}
 	for _, rt := range roots {
 		if strings.TrimSpace(rt.path) == "" {
@@ -301,13 +300,45 @@ func (a *api) storageVolumes(ctx context.Context) []storageVolume {
 		if !ok {
 			continue // unmounted, or a platform that can't measure — say nothing rather than zero
 		}
-		key := [2]uint64{u.TotalBytes, u.FreeBytes}
-		if i, dup := index[key]; dup {
-			out[i].Roots = append(out[i].Roots, rt.label)
+		dev, devOK := diskspace.Device(abs)
+		measured = append(measured, measuredRoot{label: rt.label, path: abs, usage: u, dev: dev, devOK: devOK})
+	}
+	return foldVolumes(measured)
+}
+
+// measuredRoot is one library folder's disk reading and, where the platform can say, the
+// id of the filesystem it's on.
+type measuredRoot struct {
+	label, path string
+	usage       diskspace.Usage
+	dev         uint64
+	devOK       bool
+}
+
+// foldVolumes makes one volume per filesystem, fullest first. Folders share a filesystem
+// when they share a device id (st_dev). Without one, byte-identical totals stand in —
+// but free space moves between two readings while a download writes, so totals alone
+// used to show one array twice, and the widget counted its space twice.
+func foldVolumes(roots []measuredRoot) []storageVolume {
+	var out []storageVolume
+	byDev := map[uint64]int{}
+	bySize := map[[2]uint64]int{}
+	for _, m := range roots {
+		size := [2]uint64{m.usage.TotalBytes, m.usage.FreeBytes}
+		i, dup := bySize[size]
+		if m.devOK {
+			i, dup = byDev[m.dev]
+		}
+		if dup {
+			out[i].Roots = append(out[i].Roots, m.label)
 			continue
 		}
-		index[key] = len(out)
-		out = append(out, storageVolume{Roots: []string{rt.label}, Path: abs, Usage: u})
+		if m.devOK {
+			byDev[m.dev] = len(out)
+		} else {
+			bySize[size] = len(out)
+		}
+		out = append(out, storageVolume{Roots: []string{m.label}, Path: m.path, Usage: m.usage})
 	}
 	// Fullest first: the one about to cause a problem is the one worth seeing.
 	sort.SliceStable(out, func(i, j int) bool { return out[i].UsedPct > out[j].UsedPct })

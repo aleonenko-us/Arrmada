@@ -44,6 +44,7 @@ DELETE /api/v1/subtitles/profiles/{id} staff -
 DELETE /api/v1/system/backups/restore-pending admin -
 DELETE /api/v1/system/backups/{name} admin -
 DELETE /api/v1/system/library/folders/{id} admin -
+DELETE /api/v1/system/widget-key admin -
 DELETE /api/v1/users/jellyfin-blocks/{jellyfinID} admin -
 DELETE /api/v1/users/plex-blocks/{plexID} admin -
 DELETE /api/v1/users/{id} admin -
@@ -279,6 +280,7 @@ GET /api/v1/system/pending-restart staff -
 GET /api/v1/system/status admin -
 GET /api/v1/system/support-bundle admin -
 GET /api/v1/system/tasks staff -
+GET /api/v1/system/widget-key admin -
 GET /api/v1/users admin -
 GET /api/v1/users/jellyfin-blocks admin -
 GET /api/v1/users/plex-blocks admin -
@@ -286,6 +288,7 @@ GET /api/v1/users/{id}/impact admin -
 GET /api/v1/users/{id}/merge admin -
 GET /api/v1/users/{id}/plex/merge admin -
 GET /api/v1/wanted staff -
+GET /api/v1/widget/homepage public -
 GET /api/v1/ws user -
 GET /opds public ext
 GET /opds/ public ext
@@ -490,6 +493,7 @@ POST /api/v1/system/library/folders admin -
 POST /api/v1/system/restart admin -
 POST /api/v1/system/tasks/{name}/run admin -
 POST /api/v1/system/update-check admin -
+POST /api/v1/system/widget-key admin -
 POST /api/v1/users admin -
 POST /api/v1/users/{id}/block-jellyfin admin -
 POST /api/v1/users/{id}/block-plex admin -
