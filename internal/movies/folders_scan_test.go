@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -61,8 +62,47 @@ func TestScanSkipsAnUnreadableFolder(t *testing.T) {
 		t.Error("a scan with every folder unreadable didn't fail")
 	}
 
-	single, _, _ := scanFixture(t)
-	if _, err := single.ScanLibrary(ctx, filepath.Join(t.TempDir(), "gone"), ScanOptions{}); err == nil {
+	single, _, root := scanFixture(t)
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := single.ScanLibrary(ctx, root, ScanOptions{}); err == nil {
 		t.Error("a one-folder scan of an unreadable folder didn't fail")
+	}
+}
+
+// A scan of one folder (Settings → Library's Scan on a folder just added) reads only that
+// folder and leaves every other folder's review rows alone; a folder that isn't one of the
+// Movies folders is refused.
+func TestScanOfOneFolder(t *testing.T) {
+	svc, _, movies, kids := foldersFixture(t)
+	ctx := context.Background()
+	videoFixture(t, filepath.Join(movies, "Mystery Film (2001)", "Mystery.Film.2001.mkv"))
+	if _, err := svc.ScanLibrary(ctx, "", ScanOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	videoFixture(t, filepath.Join(movies, "Other (2020)", "Other.2020.1080p.mkv"))
+	videoFixture(t, filepath.Join(kids.Path, "Toy Story (1995)", "Toy.Story.1995.mkv"))
+	videoFixture(t, filepath.Join(kids.Path, "Unknown Cartoon (1999)", "Unknown.Cartoon.1999.mkv"))
+
+	res, err := svc.ScanLibrary(ctx, kids.Path, ScanOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Imported != 1 || len(res.Unmatched) != 1 || res.Unmatched[0].Root != kids.Path {
+		t.Fatalf("result = %+v, want Kids' one film imported and its one unknown folder", res)
+	}
+	if _, err := svc.repo.GetByTMDB(ctx, 20); err == nil {
+		t.Error("the scan of Kids imported a film from the main folder")
+	}
+	un, _ := svc.LastUnmatched(ctx)
+	if len(un) != 2 {
+		t.Fatalf("needs review = %+v, want the main folder's row kept and Kids' added", un)
+	}
+
+	for _, bad := range []string{t.TempDir(), filepath.Join(kids.Path, "Toy Story (1995)")} {
+		if _, err := svc.ScanLibrary(ctx, bad, ScanOptions{}); err == nil || !strings.Contains(err.Error(), "isn't one of the Movies folders") {
+			t.Errorf("scan of %s = %v, want it refused", bad, err)
+		}
 	}
 }

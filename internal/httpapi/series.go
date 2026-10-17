@@ -19,6 +19,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/jobs"
+	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/parser"
 	"github.com/tristenlammi/arrmada/internal/series"
@@ -696,12 +697,25 @@ func (a *api) handleSeriesHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleScanSeriesLibrary catalogs series already present in the library folders (every
-// TV folder, when there are several).
+// TV folder, when there are several). An optional body {root} scans just that TV folder.
 func (a *api) handleScanSeriesLibrary(w http.ResponseWriter, r *http.Request) {
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "series.scan", Target: "all", Class: jobs.ClassLibraryScan, Timeout: libraryScanTimeout,
+	var in struct {
+		Root string `json:"root"`
+	}
+	if r.ContentLength > 0 && !a.decodeJSON(w, r, &in) {
+		return
+	}
+	scope, ok := a.scanScope(w, r, libfolders.MediaSeries, in.Root)
+	if !ok {
+		return
+	}
+	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "series.scan", Target: scope.target(), Class: jobs.ClassLibraryScan, Timeout: libraryScanTimeout,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			if err := scope.recheck(libfolders.MediaSeries); err != nil {
+				return nil, err
+			}
 			// Progress rides the job (job.updated on the live socket), as the movie scan's does.
-			res, err := a.deps.Series.ScanLibrary(ctx, "", func(done, total int) {
+			res, err := a.deps.Series.ScanLibrary(ctx, scope.Root, func(done, total int) {
 				if total > 0 {
 					p.Set(float64(done)/float64(total), fmt.Sprintf("Scanning %s / %s show folders", thousands(done), thousands(total)))
 				}
@@ -720,7 +734,7 @@ func (a *api) handleScanSeriesLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	if existing {
 		// One scan at a time, as for movies: the page follows the one that's running (job_id).
-		a.alreadyRunning(w, jobID, "a TV library scan is already running")
+		a.alreadyRunning(w, jobID, scope.running("a TV library scan is already running"))
 		return
 	}
 	a.accepted(w, jobID, false, map[string]any{"status": "scanning"})

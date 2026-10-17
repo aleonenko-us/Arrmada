@@ -526,9 +526,13 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 		return res, ErrScanRunning
 	}
 	defer s.scanning.Unlock()
-	// Every Movies folder, the default first — or just the one asked for.
+	// Every Movies folder, the default first — or just the one asked for, which must be one
+	// of them (a scan files what it finds under the folder it was found in).
 	roots := s.libRoots()
 	if rootOverride != "" {
+		if len(roots) > 0 && !s.isRoot(rootOverride) {
+			return res, fmt.Errorf("%s isn't one of the Movies folders", rootOverride)
+		}
 		roots = []string{rootOverride}
 	}
 	if len(roots) == 0 {
@@ -577,9 +581,18 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 	if len(res.FailedFolders) == len(roots) {
 		return res, fmt.Errorf("none of the Movies folders could be read (%s)", res.FailedFolders[0].Error)
 	}
-	var unread []string
+	// The review rows a scan leaves alone: those of a folder it couldn't read, and, when it
+	// scans one folder, every other folder's.
+	var keep []string
 	for _, f := range res.FailedFolders {
-		unread = append(unread, f.Root)
+		keep = append(keep, f.Root)
+	}
+	if rootOverride != "" {
+		for _, r := range s.libRoots() {
+			if filepath.Clean(r) != filepath.Clean(rootOverride) {
+				keep = append(keep, r)
+			}
+		}
 	}
 	progress := opts.Progress
 	if progress == nil {
@@ -669,11 +682,11 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, opts Sca
 	if err := ctx.Err(); err != nil {
 		// Stopped part-way (a cancel, the time budget, shutdown): keep what it did find,
 		// and don't wipe the review rows of the folders it never reached.
-		s.recordUnmatched(ctx, res.Unmatched, false, unread)
+		s.recordUnmatched(ctx, res.Unmatched, false, keep)
 		return res, fmt.Errorf("the scan stopped after %d of %d folders: %w", done, total, err)
 	}
 	progress(total, total)
-	s.recordUnmatched(ctx, res.Unmatched, true, unread)
+	s.recordUnmatched(ctx, res.Unmatched, true, keep)
 	return res, nil
 }
 
