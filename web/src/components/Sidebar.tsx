@@ -10,6 +10,7 @@ import { NotificationBell } from "./NotificationBell";
 import { nextTheme, THEME_LABEL, useTheme, type ThemePref } from "../lib/theme";
 import { Scrim } from "../ui/Scrim";
 import { VersionBadge } from "./VersionBadge";
+import { SearchBar } from "./PaletteHost";
 
 const PlexAccountLink = lazy(() => import("./PlexAccountLink"));
 const JellyfinAccountLink = lazy(() => import("./JellyfinAccountLink"));
@@ -133,6 +134,11 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
           </span>
           <span className="text-lg font-extrabold tracking-[0.12em]">ARRMADA</span>
           {bell && <div className="ml-auto"><NotificationBell placement="side" /></div>}
+        </div>
+        {/* Search everything (⌘K / Ctrl K): titles, pages, settings and a few actions. */}
+        <div className="flex-none px-2.5 pb-1">
+          {/* As a drawer it closes first: the palette takes over the screen. */}
+          <SearchBar onOpen={onClose} />
         </div>
 
         <nav className="relative flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2.5 pb-3 pt-2">

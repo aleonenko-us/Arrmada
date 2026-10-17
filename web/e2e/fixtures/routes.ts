@@ -166,6 +166,10 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/blocklist", media.blocklist),
     get("/api/v1/movies", media.movies),
     get("/api/v1/series", media.series),
+    // The command palette's library lookup: staff only, like the server.
+    staff
+      ? { method: "GET", path: "/api/v1/search", respond: ({ url }) => media.librarySearch(url) }
+      : { method: "GET", path: "/api/v1/search", status: 403, body: { message: "forbidden" } },
     // The series detail page (its own fixture file).
     ...seriesDetail.routes(),
     get("/api/v1/movies/unmatched", { unmatched: [] }),

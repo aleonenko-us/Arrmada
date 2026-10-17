@@ -22,6 +22,7 @@ import { AddMovieModal } from "./movies/AddMovieModal";
 import { ScanDialog } from "./movies/ScanDialog";
 import { ScanStatus, scanProgressLabel, useMovieScan } from "../components/movies/LibraryScan";
 import { OrganizeModal } from "../components/OrganizeModal";
+import { useActionParam } from "../lib/useActionParam";
 
 const NO_MOVIES: MovieSummary[] = [];
 const NO_FITS = new Map<number, FitItem>();
@@ -44,6 +45,8 @@ export function Movies() {
   const toast = useToast();
   const view = useLibraryView("movies");
   const [showAdd, setShowAdd] = useState(false);
+  // /movies?add=1 (the command palette's Add movie) opens the Add dialog.
+  useActionParam("add", () => setShowAdd(true));
   const [confirmDelete, setConfirmDelete] = useState<MovieSummary | null>(null);
   const [searchFor, setSearchFor] = useState<MovieSummary | null>(null); // the table's per-row "Search indexers"
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);

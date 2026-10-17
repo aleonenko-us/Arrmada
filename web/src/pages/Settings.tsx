@@ -19,6 +19,7 @@ import { SubtitlesSettings } from "./settings/SubtitlesSettings";
 import { ConvertSettings } from "./settings/ConvertSettings";
 import { AudiobookServerSettings } from "./settings/AudiobookServer";
 import { Page } from "../ui/Page";
+import { openPalette, paletteShortcut } from "../lib/paletteOpen";
 
 // How long a deep link keeps its card in view while the section's cards load (see below).
 const SETTLE_MS = 3000;
@@ -101,6 +102,7 @@ function SettingsHub() {
   const results = searchSettings(query, ids, isAdmin(user));
   const open = (r: SearchEntry) => {
     setQuery("");
+    if (r.palette) { openPalette(); return; }
     navigate(`/settings/${r.section}#${r.anchor}`);
     // Same section and same card: the URL doesn't change, so scroll here.
     if (r.section === section && hash === `#${r.anchor}`) document.getElementById(r.anchor)?.scrollIntoView({ block: "start" });
@@ -135,7 +137,7 @@ function SettingsHub() {
                   results.map((r) => (
                     <button key={r.anchor} onClick={() => open(r)} className="flex flex-col rounded-md px-2.5 py-1.5 text-left hover:bg-[var(--panel-2)]">
                       <span className="text-base font-semibold">{r.label}</span>
-                      <span className="text-xs text-ink-faint">{sections.find((x) => x.id === r.section)?.label}</span>
+                      <span className="text-xs text-ink-faint">{r.palette ? `${paletteShortcut()} from any page` : sections.find((x) => x.id === r.section)?.label}</span>
                     </button>
                   ))
                 )}
