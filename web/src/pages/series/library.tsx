@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Series, SeriesFitSummary } from "../../lib/api";
 import { FIT_COLOR } from "../../components/FitBadge";
+import { shownTitle } from "../../lib/displayTitle";
 import { isWanted, libraryStatus } from "../../lib/status";
 import type { LibraryConfig } from "../../features/library/types";
 import type { MenuItem } from "../../ui";
@@ -109,8 +110,10 @@ export function seriesLibraryConfig({ fits, actions, rowAction }: SeriesConfigDe
       { key: "ended", label: "Ended", match: (s) => ENDED.test(s.status ?? "") },
       { key: "wanted", label: "Wanted", match: (s) => isWanted(statusInput(s)) },
     ],
-    searchText: (s) => s.title,
-    compare: (a, b) => a.title.localeCompare(b.title),
+    // The shown title and the English one both find a show shown under another name; the
+    // order follows the shown title.
+    searchText: (s) => `${s.display_title ?? ""} ${s.title}`,
+    compare: (a, b) => shownTitle(a).localeCompare(shownTitle(b)),
     tableMinWidth: 820,
     columns: [
       { key: "status", label: "Status", sort: (s) => STATUS_RANK[seriesStatus(s).label] ?? 4, cell: (s) => { const st = seriesStatus(s); return <span className="font-mono text-2xs uppercase" style={{ color: st.color }}>{st.label}</span>; } },

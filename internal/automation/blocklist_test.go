@@ -76,3 +76,21 @@ func TestListAllBlocks(t *testing.T) {
 		t.Errorf("second unblock: %v, want ErrBlockNotFound", err)
 	}
 }
+
+// A film shown under another name (Settings → Library → Display titles) is listed by the
+// name it's shown by, and a search finds it by either name.
+func TestListAllBlocksDisplayTitle(t *testing.T) {
+	c, _, ctx := reviewTestCoord(t)
+	mustExec(t, c, `INSERT INTO movies (id, tmdb_id, title, display_title, monitored) VALUES (7, 7, 'The Travelling Players', 'Ο Θίασος', 1)`)
+	_ = c.addBlock(ctx, 7, "Thiasos.1975.1080p.BluRay", "", "", "manually blocklisted")
+
+	for _, q := range []string{"ίασος", "travelling"} {
+		got, _, err := c.ListAllBlocks(ctx, BlockFilter{Q: q})
+		if err != nil || len(got) != 1 || got[0].ItemTitle != "Ο Θίασος" {
+			t.Errorf("q=%s: %+v %v, want the row named by its shown title", q, got, err)
+		}
+	}
+	if got, _, _ := c.ListAllBlocks(ctx, BlockFilter{Q: "dune"}); len(got) != 0 {
+		t.Errorf("q=dune matched %+v", got)
+	}
+}

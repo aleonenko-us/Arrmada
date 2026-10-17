@@ -257,3 +257,24 @@ func TestMatchSearchUsesEveryName(t *testing.T) {
 		t.Errorf("money heist = %+v, want the show by its second name", got)
 	}
 }
+
+// ⌘K lists a film or show by the title the app shows (Settings → Library → Display
+// titles) and finds it by that or its own English title.
+func TestLibrarySearchDisplayTitle(t *testing.T) {
+	a, rt := searchAPI(t)
+	db := a.deps.Store.DB()
+	for _, q := range []string{
+		`INSERT INTO movies (id, tmdb_id, title, display_title, year, poster_url) VALUES (7, 107, 'The Travelling Players', 'O Thiasos', 1975, '')`,
+		`UPDATE series SET display_title = 'Grafeio' WHERE id = 1`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for q, want := range map[string]string{"thiasos": "O Thiasos", "travelling players": "O Thiasos", "grafeio": "Grafeio", "office": "Grafeio"} {
+		_, got := searchAs(t, rt, auth.RoleManager, q)
+		if len(got) == 0 || got[0]["title"] != want {
+			t.Errorf("q=%q: %v, want %q first", q, got, want)
+		}
+	}
+}

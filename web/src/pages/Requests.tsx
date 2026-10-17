@@ -335,16 +335,16 @@ function RequestRow({ rq, staff, own, queueKnown, selectable, selected, onSelect
     <li className="rounded-xl p-3" style={{ background: "var(--panel)", border: `1px solid ${error ? "var(--reject)" : "var(--line)"}` }}>
       <div className="flex items-start gap-3">
         {selectable && (
-          <input type="checkbox" checked={selected} onChange={onSelect} aria-label={`Select ${rq.title}`} className="mt-1 h-4 w-4 flex-none" />
+          <input type="checkbox" checked={selected} onChange={onSelect} aria-label={`Select ${rq.display_title || rq.title}`} className="mt-1 h-4 w-4 flex-none" />
         )}
-        <button onClick={onOpen} className="flex min-w-0 flex-1 items-start gap-3 text-left" aria-label={`Open the request for ${rq.title}`}>
+        <button onClick={onOpen} className="flex min-w-0 flex-1 items-start gap-3 text-left" aria-label={`Open the request for ${rq.display_title || rq.title}`}>
           <div className="h-[72px] w-[48px] flex-none overflow-hidden rounded-lg" style={{ background: "var(--panel-2)" }}>
             {rq.poster_url && <img src={posterThumb(rq.poster_url)} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{mediaLabel(rq.media_type)}</span>
-              <span className="min-w-0 truncate text-md font-semibold" style={{ color: "var(--ink)" }}>{rq.title}</span>
+              <span className="min-w-0 truncate text-md font-semibold" style={{ color: "var(--ink)" }}>{rq.display_title || rq.title}</span>
               <span className="font-mono text-xs text-ink-faint">{rq.year || ""}</span>
               {rq.author && <span className="min-w-0 truncate text-xs text-ink-dim">{rq.author}</span>}
               {rq.media_type === "book" && <BookFormatBadge formats={rq.formats} />}

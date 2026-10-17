@@ -261,6 +261,7 @@ func (s *Service) notifySeasonsReady(ctx context.Context, req Request, prog map[
 	if len(req.Seasons) < 2 {
 		return nil
 	}
+	req = s.withShownTitle(ctx, req) // the notices name the show as the library does
 	sg := s.newSeasonGate(ctx, req)
 	var errs []error
 	for _, n := range req.Seasons {
@@ -439,6 +440,7 @@ func (s *Service) notifyReady(ctx context.Context, req Request) error {
 	if err != nil || v == plexWait {
 		return err
 	}
+	req = s.withShownTitle(ctx, req) // the notice names it as the library does
 	told, err := s.notifyParties(ctx, req, notice{Title: "Your request is ready", Body: readyBody(req, v, note), Ref: requestRef(req), Kind: "request-ready", Links: note.links}, nil)
 	if err == nil {
 		// Only once everyone has been told: a failure leaves it unstamped, and the retry
@@ -462,6 +464,7 @@ func (s *Service) notifyReady(ctx context.Context, req Request) error {
 // re-request the second decline — or a later approval — is told too; repeating the same
 // decision's notice still reaches nobody twice.
 func (s *Service) notifyDecision(ctx context.Context, req Request, approved bool, skip map[int64]bool) {
+	req = s.withShownTitle(ctx, req) // named as the library shows it, once it's there
 	if approved {
 		body := fmt.Sprintf("Your request for %s was approved — we're on it.", requestedWhat(req))
 		if req.notApproved != "" {

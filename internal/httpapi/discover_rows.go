@@ -137,12 +137,12 @@ func (a *api) becauseSeeds(ctx context.Context, userID int64) []titledSeed {
 					if wt.MediaType == "episode" || wt.MediaType == "show" {
 						if a.deps.Series != nil {
 							if sr, ok := a.deps.Series.MatchByTitle(ctx, series.NormTitle(wt.Title)); ok {
-								add("series", sr.TMDBID, sr.Title, "watched")
+								add("series", sr.TMDBID, sr.Shown(), "watched")
 							}
 						}
 					} else if a.deps.Movies != nil {
 						if m, ok := a.deps.Movies.Match(ctx, wt.Title, wt.Year); ok {
-							add("movie", m.TMDBID, m.Title, "watched")
+							add("movie", m.TMDBID, m.Shown(), "watched")
 						}
 					}
 				}

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/adultfilter"
 	"github.com/tristenlammi/arrmada/internal/requests"
 )
 
@@ -26,6 +27,9 @@ type CalendarItem struct {
 	Season       int    `json:"season,omitempty"`
 	Episode      int    `json:"episode,omitempty"`
 	EpisodeTitle string `json:"episode_title,omitempty"`
+	// CanonicalTitle is the title's own (TMDB English) name when Title is the shown one
+	// (Settings → Library → "Show titles as"); never sent, only judged by the adult filter.
+	CanonicalTitle string `json:"-"`
 	// RequestedByMe: the viewer asked for this title or follows a request for it (and it
 	// wasn't declined). Only ever about the viewer's own requests.
 	RequestedByMe bool `json:"requested_by_me"`
@@ -72,6 +76,7 @@ func (a *api) calendarItems(ctx context.Context, start, end string) []CalendarIt
 				Subtitle:  episodeSubtitle(e.Season, e.Episode, e.EpisodeName),
 				PosterURL: e.PosterURL, RefID: e.SeriesID, HasFile: e.HasFile, Monitored: e.Monitored,
 				TMDBID: e.TMDBID, MediaType: "series", Season: e.Season, Episode: e.Episode, EpisodeTitle: e.EpisodeName,
+				CanonicalTitle: e.CanonicalTitle,
 			})
 		}
 	}
@@ -84,11 +89,25 @@ func (a *api) calendarItems(ctx context.Context, start, end string) []CalendarIt
 			items = append(items, CalendarItem{
 				Date: m.ReleaseDate, Type: "movie", Title: m.Title, Subtitle: sub,
 				PosterURL: m.PosterURL, RefID: m.ID, HasFile: m.HasFile, Monitored: m.Monitored,
-				TMDBID: m.TMDBID, MediaType: "movie", Year: m.Year,
+				TMDBID: m.TMDBID, MediaType: "movie", Year: m.Year, CanonicalTitle: m.CanonicalTitle,
 			})
 		}
 	}
-	return items
+	// The adult filter is always on, for every feed built from these: a title shown under
+	// a clean display name is still judged by its own name too.
+	kept := items[:0]
+	for _, it := range items {
+		if !calendarAdult(it) {
+			kept = append(kept, it)
+		}
+	}
+	return kept
+}
+
+// calendarAdult reports whether an item names adult content: its shown title, its own
+// title or its episode's.
+func calendarAdult(it CalendarItem) bool {
+	return adultfilter.Matches(it.Title) || adultfilter.Matches(it.CanonicalTitle) || adultfilter.Matches(it.EpisodeTitle)
 }
 
 // markRequestedBy sets RequestedByMe on the items user uid asked for or follows, and with

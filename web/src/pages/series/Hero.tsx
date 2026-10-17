@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { TitleWatchPills, WatchedBy } from "../../components/PlexBits";
 import type { Series as SeriesT } from "../../lib/api";
+import { shownTitle } from "../../lib/displayTitle";
 import { libraryStatus } from "../../lib/status";
 import { StatusChip } from "../../ui";
 import { fmtAirDay, fmtSize, nextEpisode, sxe } from "./util";
@@ -43,21 +44,22 @@ export function Hero({ series: s, children }: { series: SeriesT; children?: Reac
         <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-4 sm:grid-cols-[180px_minmax(0,1fr)] sm:grid-rows-[auto_auto_1fr] sm:gap-x-6">
           <div className="row-span-1 w-[96px] self-start overflow-hidden rounded-xl sm:row-span-3 sm:w-[180px]" style={{ border: "1px solid var(--line)", aspectRatio: "2/3", boxShadow: "var(--shadow)" }}>
             {s.poster_url ? (
-              <img src={s.poster_url} alt={s.title} className="h-full w-full object-cover" />
+              <img src={s.poster_url} alt={shownTitle(s)} className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full w-full items-end p-3" style={{ background: "linear-gradient(150deg, hsl(24 40% 30%), hsl(20 35% 16%))" }}>
-                <span className="text-md font-bold text-white sm:text-lg">{s.title}</span>
+                <span className="text-md font-bold text-white sm:text-lg">{shownTitle(s)}</span>
               </div>
             )}
           </div>
 
           <div className="min-w-0">
-            <h2 className="m-0 text-2xl font-bold leading-tight tracking-[-0.01em] sm:text-3xl">{s.title}</h2>
+            <h2 className="m-0 text-2xl font-bold leading-tight tracking-[-0.01em] sm:text-3xl">{shownTitle(s)}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <StatusChip tone={st.tone} size="md">{st.label}</StatusChip>
               <StatusChip tone={continuing ? "good" : "faint"} size="md">{continuing ? "Continuing" : "Ended"}</StatusChip>
               {s.network && <span className="font-mono text-xs text-ink-dim">{s.network}</span>}
               {s.year > 0 && <span className="font-mono text-xs text-ink-faint">{s.year}</span>}
+              {shownTitle(s) !== s.title && <span className="text-xs text-ink-faint" title="TMDB's English title: matching and file names use it">{s.title}</span>}
               <span className="flex items-center gap-2">
                 {s.imdb_id && <a href={`https://www.imdb.com/title/${s.imdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: "#f5c518", color: "#000" }}>IMDb</a>}
                 <a href={`https://www.themoviedb.org/tv/${s.tmdb_id}`} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ background: "#01b4e4", color: "#0d253f" }}>TMDB</a>

@@ -288,7 +288,7 @@ func (b *wantedBuild) movies() (searching, upcoming []wantedRow) {
 		if downloading {
 			continue
 		}
-		row := wantedRow{MediaType: automation.AttemptMovie, ID: m.ID, MovieID: m.ID, Title: m.Title, Year: m.Year,
+		row := wantedRow{MediaType: automation.AttemptMovie, ID: m.ID, MovieID: m.ID, Title: m.Shown(), Year: m.Year,
 			PosterURL: m.PosterURL, QualityProfile: b.profile(m.QualityProfile), State: wantedSearching}
 		if !b.a.deps.Movies.IsAvailable(m) {
 			row.State = wantedNotReleased

@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/displaytitle"
 	"github.com/tristenlammi/arrmada/internal/eventbus"
 	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
@@ -90,6 +91,11 @@ type Service struct {
 	// go round once more (the languages changed while it ran).
 	titlesPass  sync.Mutex
 	titlesAgain atomic.Bool
+	// displayPolicy is Settings → Library → "Show titles as" (nil = English titles); see
+	// display.go.
+	displayPolicy func() displaytitle.Policy
+	// displaySync runs one SyncDisplayTitles pass at a time.
+	displaySync sync.Mutex
 }
 
 // UnmatchedFolder is a scanned library folder the scan couldn't confidently
@@ -703,6 +709,7 @@ func (s *Service) importMovieFile(ctx context.Context, video string, tmdbID int,
 	}
 	extra := extraFrom(details)
 	s.withLocalTitles(ctx, extra, nil, details.TMDBID, details.Title)
+	s.withDisplayNames(ctx, extra, nil, details.TMDBID, details.Title)
 	created, err := s.repo.Create(ctx, Movie{
 		TMDBID: details.TMDBID, IMDBID: details.IMDBID, Title: details.Title, Year: details.Year,
 		Overview: details.Overview, PosterURL: details.PosterURL, Runtime: details.Runtime, Status: details.Status,
@@ -712,6 +719,7 @@ func (s *Service) importMovieFile(ctx context.Context, video string, tmdbID int,
 	if err != nil {
 		return Movie{}, err
 	}
+	s.showCreated(ctx, &created)
 	_ = s.setDefaultFile(ctx, created.ID, video)
 	_ = s.repo.AddEvent(ctx, created.ID, "imported", "Found during library scan: "+filepath.Base(video))
 	s.log.Info("library scan: imported", "title", details.Title, "year", details.Year)
@@ -755,7 +763,7 @@ func (s *Service) attachExisting(ctx context.Context, m Movie, video, eventPrefi
 	// The file decides the folder: a film found in the Kids folder belongs to it.
 	s.assignOwner(ctx, m.ID, video)
 	s.log.Info("library scan: attached file to film in library", "title", m.Title, "path", video)
-	s.publish("movie.downloaded", map[string]any{"id": m.ID, "version_id": int64(0), "path": video, "title": m.Title, "year": m.Year, "tmdb_id": m.TMDBID})
+	s.publish("movie.downloaded", map[string]any{"id": m.ID, "version_id": int64(0), "path": video, "title": m.Shown(), "year": m.Year, "tmdb_id": m.TMDBID})
 	return nil
 }
 
@@ -1028,7 +1036,7 @@ func (s *Service) MarkImportedTo(ctx context.Context, id, versionID int64, path,
 		ev["old_path"] = target.FilePath
 	}
 	if getErr == nil {
-		ev["title"], ev["year"], ev["tmdb_id"] = m.Title, m.Year, m.TMDBID
+		ev["title"], ev["year"], ev["tmdb_id"] = m.Shown(), m.Year, m.TMDBID // the shown title, for the alert
 	}
 	s.publish("movie.downloaded", ev)
 
@@ -1718,9 +1726,13 @@ func (s *Service) Refresh(ctx context.Context, id int64) (Movie, error) {
 			prev := m.Extra
 			m.Extra = extraFrom(d)
 			s.withLocalTitles(ctx, m.Extra, prev, m.TMDBID, d.Title)
+			s.withDisplayNames(ctx, m.Extra, prev, m.TMDBID, d.Title)
 			if uerr := s.repo.UpdateMetadata(ctx, id, m); uerr != nil {
 				s.log.Warn("refresh: metadata update failed", "movie", m.Title, "err", uerr)
 			}
+			// The override is a column of its own and survives; the shown title follows
+			// the fresh names and title.
+			s.syncDisplay(ctx, id)
 		} else {
 			s.log.Warn("refresh: metadata fetch failed", "movie", m.Title, "err", derr)
 		}

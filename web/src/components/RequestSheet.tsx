@@ -163,7 +163,7 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
 
   const big = "min-h-[40px]";
   return (
-    <Sheet onClose={onClose} closeOnBack={closeOnBack} ariaLabel={rq.title} size="lg" dismissible={!busy}>
+    <Sheet onClose={onClose} closeOnBack={closeOnBack} ariaLabel={rq.display_title || rq.title} size="lg" dismissible={!busy}>
       <div className="flex gap-4 p-5 sm:p-6">
         <div className="h-[150px] w-[100px] flex-none overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
           {rq.poster_url && <img src={posterThumb(rq.poster_url)} alt="" className="h-full w-full object-cover" />}
@@ -175,7 +175,7 @@ export function RequestSheet({ requestId, initial, startDeclining = false, close
             {rq.media_type === "book" && <BookFormatBadge formats={rq.formats} />}
             {following && <StatusChip tone="faint">Following</StatusChip>}
           </div>
-          <h2 className="m-0 mt-1.5 text-xl font-bold leading-tight">{rq.title}</h2>
+          <h2 className="m-0 mt-1.5 text-xl font-bold leading-tight">{rq.display_title || rq.title}</h2>
           <div className="mt-0.5 font-mono text-xs text-ink-faint">
             {[rq.author, rq.year || "", rq.media_type === "series" ? formatSeasons(rq.seasons) || "All seasons" : ""].filter(Boolean).join(" · ")}
           </div>

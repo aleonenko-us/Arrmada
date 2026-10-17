@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/displaytitle"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
@@ -142,19 +143,25 @@ func (a *api) buildSearchEntries(ctx context.Context, booksOn, musicOn bool) ([]
 		}
 		return rows.Err()
 	}
+	// A film or show is listed by the title the app shows (Settings → Library → Display
+	// titles, or its own pick) and found by that or its own (TMDB English) title.
 	titled := func(kind string, rank int) func(rows searchRow) (searchEntry, error) {
 		return func(rows searchRow) (searchEntry, error) {
 			h := searchHit{Kind: kind}
-			if err := rows.Scan(&h.ID, &h.Title, &h.Year, &h.PosterURL); err != nil {
+			var canonical string
+			if err := rows.Scan(&h.ID, &canonical, &h.Title, &h.Year, &h.PosterURL); err != nil {
 				return searchEntry{}, err
 			}
-			return newSearchEntry(h, rank, h.Title), nil
+			if canonical == h.Title {
+				return newSearchEntry(h, rank, h.Title), nil
+			}
+			return newSearchEntry(h, rank, h.Title, canonical), nil
 		}
 	}
-	if err := read(`SELECT id, title, year, poster_url FROM movies`, titled("movie", 0)); err != nil {
+	if err := read(`SELECT id, title, `+displaytitle.SQL("m")+`, year, poster_url FROM movies m`, titled("movie", 0)); err != nil {
 		return nil, err
 	}
-	if err := read(`SELECT id, title, year, poster_url FROM series`, titled("series", 1)); err != nil {
+	if err := read(`SELECT id, title, `+displaytitle.SQL("s")+`, year, poster_url FROM series s`, titled("series", 1)); err != nil {
 		return nil, err
 	}
 	if booksOn {

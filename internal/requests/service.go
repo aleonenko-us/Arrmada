@@ -1202,6 +1202,7 @@ func (s *Service) enrichAvailability(ctx context.Context, reqs []Request) {
 		misses          int    // searches in a row that found nothing
 		lastSearch      string // when the sweep last looked, as stored
 		nextCheck       string // books: when the ladder looks again (RFC3339)
+		shown           string // a movie's or show's title as the library shows it
 	}
 	// Only these requests' media: a query per media type (per few hundred requests), not
 	// the whole library.
@@ -1236,7 +1237,7 @@ func (s *Service) enrichAvailability(ctx context.Context, reqs []Request) {
 		for _, m := range ms {
 			st := stamps[m.ID]
 			movHave[m.TMDBID] = lib{id: m.ID, have: m.HasFile, released: m.Status == "" || m.Status == "Released",
-				misses: st.Misses, lastSearch: st.LastAt}
+				misses: st.Misses, lastSearch: st.LastAt, shown: m.Shown()}
 		}
 	}
 	serHave := map[int]lib{}
@@ -1252,7 +1253,7 @@ func (s *Service) enrichAvailability(ctx context.Context, reqs []Request) {
 		stamps, _ := s.series.SearchStatesFor(ctx, seriesLibIDs(ss))
 		for _, sr := range ss {
 			st := stamps[sr.ID]
-			l := lib{id: sr.ID, released: true, misses: st.Misses, lastSearch: st.LastAt}
+			l := lib{id: sr.ID, released: true, misses: st.Misses, lastSearch: st.LastAt, shown: sr.Shown()}
 			if sr.Stats != nil {
 				l.have, l.epHave, l.epTotal = sr.Stats.HaveFiles > 0, sr.Stats.HaveFiles, sr.Stats.Episodes
 			}
@@ -1333,6 +1334,9 @@ func (s *Service) enrichAvailability(ctx context.Context, reqs []Request) {
 		}
 		reqs[i].Available = l.have
 		reqs[i].libID, reqs[i].epHave, reqs[i].epTotal, reqs[i].released = l.id, l.epHave, l.epTotal, l.released
+		if l.shown != "" && l.shown != reqs[i].Title {
+			reqs[i].DisplayTitle = l.shown
+		}
 		reqs[i].searchMisses, reqs[i].lastSearchAt, reqs[i].nextCheckAt = l.misses, l.lastSearch, l.nextCheck
 		if reqs[i].MediaType == "series" && len(reqs[i].Seasons) > 0 && l.id > 0 {
 			s.enrichSeasons(ctx, &reqs[i], l.id, progBySeries)

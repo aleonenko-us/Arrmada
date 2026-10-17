@@ -5,6 +5,7 @@
 package series
 
 import (
+	"github.com/tristenlammi/arrmada/internal/displaytitle"
 	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 )
@@ -44,6 +45,11 @@ type Series struct {
 	// LibraryFolderID is the TV folder the show belongs to when there's more than one
 	// (internal/libfolders): 0 is the default folder.
 	LibraryFolderID int64 `json:"library_folder_id"`
+	// DisplayTitle is the title the app shows (Settings → Library → "Show titles as", or
+	// TitleOverride, the per-show "Display title…" pick; "" follows the setting):
+	// presentation only. Title stays the canonical name matching, naming and scripts use.
+	DisplayTitle  string `json:"display_title"`
+	TitleOverride string `json:"title_override,omitempty"`
 
 	Extra *SeriesExtra `json:"extra,omitempty"`
 	// Aliases are the other titles this show is released under. Populated on read so
@@ -102,6 +108,9 @@ type SeriesExtra struct {
 	// for.
 	LocalTitles []metadata.TranslatedTitle `json:"local_titles,omitempty"`
 	LocalLangs  []string                   `json:"local_langs,omitempty"`
+	// DisplayNames are the names the "Show titles as" setting may show (display.go).
+	// Never used for matching.
+	DisplayNames *displaytitle.Names `json:"display_names,omitempty"`
 }
 
 // IsAnime reports whether the series uses anime (absolute) episode numbering.

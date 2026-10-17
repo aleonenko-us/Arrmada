@@ -36,6 +36,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/config"
 	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/convert"
+	"github.com/tristenlammi/arrmada/internal/displaytitle"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/eventbus"
 	"github.com/tristenlammi/arrmada/internal/flaresolverr"
@@ -451,6 +452,13 @@ func main() {
 	movieSvc.SetTitleLanguages(titleLangs)
 	seriesSvc.SetTitlesSource(tmdb)
 	seriesSvc.SetTitleLanguages(titleLangs)
+	// Which name the app SHOWS for a film or show (Settings → Library → "Show titles as"),
+	// read per use. Presentation only: matching and naming keep the canonical title.
+	displayPolicy := func() displaytitle.Policy {
+		return settings.DisplayTitlePolicy(func(key string) string { return settingsSvc.Get(context.Background(), key, "") })
+	}
+	movieSvc.SetDisplayPolicy(displayPolicy)
+	seriesSvc.SetDisplayPolicy(displayPolicy)
 	// The Unraid all-in-one image runs its qBittorrent inside this container, and it can be
 	// switched off there: its client follows that switch, before the tuning below reads it.
 	if cfg.AIOQbittorrentURL != "" {
@@ -934,7 +942,16 @@ func main() {
 	// one every two seconds, so searches and imports match them without a manual refresh.
 	// The same pass (and the series one after it) reads the translated titles of the extra
 	// title languages for titles not yet read for them; saving new languages runs it again.
+	// The same passes read the display names "Show titles as" needs; first, every title's
+	// shown title is put right from what's stored (a setting saved before an update, or a
+	// title change a refresh made while the shown title couldn't be stored).
 	grp.Go("movies: alt titles backfill", func(ctx context.Context) {
+		if _, err := movieSvc.SyncDisplayTitles(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("movies: couldn't update the titles shown", "err", err)
+		}
+		if _, err := seriesSvc.SyncDisplayTitles(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("series: couldn't update the titles shown", "err", err)
+		}
 		n, err := movieSvc.BackfillAltTitles(ctx, 2*time.Second)
 		if err != nil && ctx.Err() == nil {
 			log.Warn("movies: alternative titles backfill failed", "filled", n, "err", err)

@@ -52,6 +52,7 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, o AddOptions) (Movie,
 		Extra:           extraFrom(details),
 	}
 	s.withLocalTitles(ctx, m.Extra, nil, details.TMDBID, details.Title)
+	s.withDisplayNames(ctx, m.Extra, nil, details.TMDBID, details.Title)
 	if m.LibraryFolderID, err = s.pickFolder(ctx, o.FolderID, m.Extra); err != nil {
 		return Movie{}, err
 	}
@@ -59,6 +60,7 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, o AddOptions) (Movie,
 	if err != nil {
 		return Movie{}, err
 	}
+	s.showCreated(ctx, &created)
 	s.log.Info("movie added", "title", created.Title, "year", created.Year)
 	_ = s.repo.AddEvent(ctx, created.ID, "added", "Added to library")
 	return created, nil

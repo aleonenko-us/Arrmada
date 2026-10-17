@@ -1170,6 +1170,12 @@ export interface AppSettings {
   books_languages: string[];
   /** Extra languages whose translated titles scans and imports match (canonical codes); [] = English and original titles only. */
   match_title_languages: string[];
+  /** Settings → Library → "Show titles as": english (TMDB's, the default), original or
+   *  language (display_title_language). */
+  display_title_mode: "english" | "original" | "language";
+  display_title_language: string;
+  /** Works originally in these languages show their original title in any mode. */
+  display_title_original_in: string[];
   /** How releases are ranked: "v2" ordered keys (default) or "v1" classic (the rollback). Admin-only. */
   quality_ranking?: "v1" | "v2";
   /** When a release is on both Usenet and torrents: the better release wins (best, the default), or the preferred network between equals. */
@@ -1598,6 +1604,8 @@ export interface MediaRequest {
    *  the choice existed. */
   formats?: "ebook" | "audiobook" | "both";
   title: string;
+  /** The title as the library shows it, when the movie or show is there under another name. */
+  display_title?: string;
   year: number;
   poster_url?: string;
   overview?: string;
@@ -1792,6 +1800,8 @@ export interface DiscoverCard {
   media_type: "movie" | "series";
   tmdb_id: number;
   title: string;
+  /** The title as the library shows it, for a title there under another name than TMDB's. */
+  display_title?: string;
   year: number;
   overview?: string;
   poster_url?: string;
@@ -2175,6 +2185,11 @@ export interface Series {
   library_folder_id?: number;
   imdb_id?: string;
   title: string;
+  /** The title the app shows (Settings → Library → "Show titles as", or the title's own
+   *  override); title stays TMDB's English title. Use lib/displayTitle shownTitle. */
+  display_title?: string;
+  /** The per-show "Display title…" pick; absent follows the setting. */
+  title_override?: string;
   year: number;
   overview?: string;
   poster_url?: string;
@@ -3757,6 +3772,11 @@ export interface Movie {
   library_folder_id?: number;
   imdb_id?: string;
   title: string;
+  /** The title the app shows (Settings → Library → "Show titles as", or the title's own
+   *  override); title stays TMDB's English title. Use lib/displayTitle shownTitle. */
+  display_title?: string;
+  /** The per-title "Display title…" pick; absent follows the setting. */
+  title_override?: string;
   year: number;
   overview?: string;
   poster_url?: string;
@@ -3830,6 +3850,9 @@ export interface SummaryMedia {
 export interface MovieSummary {
   id: number;
   title: string;
+  /** The title the app shows (Settings → Library → "Show titles as", or the title's own
+   *  override); title stays TMDB's English title. Use lib/displayTitle shownTitle. */
+  display_title?: string;
   sort_title: string;
   year: number;
   poster_url?: string;

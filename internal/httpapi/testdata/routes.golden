@@ -218,6 +218,7 @@ GET /api/v1/movies/{id}/history staff -
 GET /api/v1/movies/{id}/manualimport staff -
 GET /api/v1/movies/{id}/releases staff -
 GET /api/v1/movies/{id}/rename staff -
+GET /api/v1/movies/{id}/title-choices staff -
 GET /api/v1/movies/{id}/versions staff -
 GET /api/v1/movies/{id}/watch-stats staff -
 GET /api/v1/music/albums/{id} staff -
@@ -262,6 +263,7 @@ GET /api/v1/series/{id}/numbering staff -
 GET /api/v1/series/{id}/releases staff -
 GET /api/v1/series/{id}/rename staff -
 GET /api/v1/series/{id}/scene-map staff -
+GET /api/v1/series/{id}/title-choices staff -
 GET /api/v1/series/{id}/watch-stats staff -
 GET /api/v1/settings staff -
 GET /api/v1/settings/smtp admin -
@@ -547,6 +549,7 @@ PUT /api/v1/me/kindle user ext
 PUT /api/v1/me/notify-prefs user ext
 PUT /api/v1/movies/bulk staff -
 PUT /api/v1/movies/{id}/availability staff -
+PUT /api/v1/movies/{id}/display-title staff -
 PUT /api/v1/movies/{id}/monitor staff -
 PUT /api/v1/movies/{id}/profile staff -
 PUT /api/v1/movies/{id}/versions/{vid} staff -
@@ -556,6 +559,7 @@ PUT /api/v1/music/artists/{id}/profile staff -
 PUT /api/v1/notifications/{id} admin -
 PUT /api/v1/quality/profiles/{id} staff -
 PUT /api/v1/series/episodes/{eid}/monitor staff -
+PUT /api/v1/series/{id}/display-title staff -
 PUT /api/v1/series/{id}/monitor staff -
 PUT /api/v1/series/{id}/monitor/episodes staff -
 PUT /api/v1/series/{id}/profile staff -

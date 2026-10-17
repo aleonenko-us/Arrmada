@@ -124,6 +124,33 @@ script drives Radarr's or Sonarr's API. It would never reach security or setting
 sessions, passwords, two-factor, keys, people, outside services' keys, folders, backups,
 logs). Until then, keys reach only the routes above.
 
+## Titles: `title` and `display_title`
+
+Movies and shows carry two titles. `title` is always TMDB's English title — what Arrmada
+matches releases by and names files and folders after — so a script can rely on it whatever
+anyone picks in the app. `display_title` is the name the app shows (Settings → Library →
+Display titles, or the title's own pick on its page): the original Greek title of a Greek
+film, say. When nothing changes it, it is the same as `title`.
+
+- `GET /api/v1/movies` and `GET /api/v1/series` rows and `GET /api/v1/movies/{id}` and
+  `GET /api/v1/series/{id}` carry `display_title`; the detail and full rows also carry
+  `title_override` when the title has its own pick. The movie list's `sort_title` follows
+  `display_title`.
+- Requests (`GET /api/v1/requests`) and Discover cards carry `display_title` only when the
+  title is in the library under another name; `title` stays what was asked for (TMDB's).
+- Feeds made for reading — the calendar (and its iCal feed), Wanted, history, the blocklist,
+  Activity's download items — give the shown title as their `title`. So do the
+  `movie.imported` and `episodes.imported` webhooks ([n8n](n8n.md)); identify the title by
+  `tmdb_id` or the Arrmada id, never by its name.
+- Staff: `PUT /api/v1/movies/{id}/display-title` (and `/series/{id}/display-title`) with
+  `{"title": "…"}` sets a title's own name (at most 200 characters, one line), `{"title": ""}`
+  clears it; the answer is `{id, title, display_title, title_override}`.
+  `GET /api/v1/movies/{id}/title-choices` (and `/series/…`) lists the names TMDB has for it.
+  These are staff routes, not open to personal API keys.
+- The setting is `display_title_mode` (`english`, `original` or `language`),
+  `display_title_language` (a language code, for `language`) and `display_title_original_in`
+  (language codes) in `GET`/`PUT /api/v1/settings`.
+
 ## Examples
 
 These use `curl` with Arrmada at `http://192.168.1.10:7878` and the key in `$ARRMADA_KEY`.

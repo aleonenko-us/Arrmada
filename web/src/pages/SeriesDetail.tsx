@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
+import { shownTitle } from "../lib/displayTitle";
 import { NumberingBanner } from "./series/NumberingReviewModal";
 import { usePoll } from "../lib/usePoll";
 import { useLiveConnected, useLiveEvent } from "../lib/live";
@@ -155,7 +156,7 @@ export function SeriesDetail() {
 
   return (
     <>
-      <PageHeader title={s.title} />
+      <PageHeader title={shownTitle(s)} />
 
       <Hero series={s}>
         <HeroActions series={s} onChange={load} flash={say} />

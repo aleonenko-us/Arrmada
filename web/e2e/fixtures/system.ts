@@ -250,6 +250,9 @@ export const settings: AppSettings = {
   app_public_url: "",
   books_languages: ["en"],
   match_title_languages: [],
+  display_title_mode: "english",
+  display_title_language: "",
+  display_title_original_in: [],
 };
 
 export const recycle: RecycleStats = {

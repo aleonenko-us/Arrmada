@@ -29,11 +29,14 @@ const (
 // These answer a narrower question — "is this download the film it was grabbed for?" — or
 // supply the few languages the owner asked to match in.
 type Titles struct {
-	Title         string            `json:"title"`
-	OriginalTitle string            `json:"original_title,omitempty"`
-	Year          int               `json:"year,omitempty"`
-	Alternatives  []AltTitle        `json:"alternatives,omitempty"`
-	Translations  []TranslatedTitle `json:"translations,omitempty"`
+	Title         string `json:"title"`
+	OriginalTitle string `json:"original_title,omitempty"`
+	// OriginalLanguage is TMDB's original_language (ISO 639-1, "el"): which language the
+	// original title is in, for the display-title setting.
+	OriginalLanguage string            `json:"original_language,omitempty"`
+	Year             int               `json:"year,omitempty"`
+	Alternatives     []AltTitle        `json:"alternatives,omitempty"`
+	Translations     []TranslatedTitle `json:"translations,omitempty"`
 }
 
 // TranslatedTitle is a title's name in one language (TMDB's translations).
@@ -120,7 +123,7 @@ func tmdbTitlesPath(media string) (string, error) {
 // Titles reads every name of a film or show in one request (alternative_titles and
 // translations appended to the bare detail call — no credits, no seasons), kept for
 // titlesTTL in the disk cache under its own key so the Discover detail cache (v5) is
-// untouched.
+// untouched. v2 added the original language: v1 entries lack it, so they're read again.
 func (t *TMDB) Titles(ctx context.Context, media string, tmdbID int) (*Titles, error) {
 	path, err := tmdbTitlesPath(media)
 	if err != nil {
@@ -129,7 +132,7 @@ func (t *TMDB) Titles(ctx context.Context, media string, tmdbID int) (*Titles, e
 	if media == "tv" {
 		media = TitlesSeries
 	}
-	key := "tmdb:titles:v1:" + media + ":" + strconv.Itoa(tmdbID)
+	key := "tmdb:titles:v2:" + media + ":" + strconv.Itoa(tmdbID)
 	return swr(ctx, t.disk, key, titlesTTL, func(ctx context.Context) (*Titles, error) {
 		q := url.Values{}
 		q.Set("append_to_response", "alternative_titles,translations")
@@ -156,6 +159,7 @@ func parseTMDBTitles(body []byte) (*Titles, error) {
 		Name              string `json:"name"`
 		OriginalTitle     string `json:"original_title"`
 		OriginalName      string `json:"original_name"`
+		OriginalLanguage  string `json:"original_language"`
 		ReleaseDate       string `json:"release_date"`
 		FirstAirDate      string `json:"first_air_date"`
 		AlternativeTitles struct {
@@ -183,9 +187,10 @@ func parseTMDBTitles(body []byte) (*Titles, error) {
 		return strings.TrimSpace(b)
 	}
 	t := &Titles{
-		Title:         first(p.Title, p.Name),
-		OriginalTitle: first(p.OriginalTitle, p.OriginalName),
-		Year:          yearOf(first(p.ReleaseDate, p.FirstAirDate)),
+		Title:            first(p.Title, p.Name),
+		OriginalTitle:    first(p.OriginalTitle, p.OriginalName),
+		OriginalLanguage: strings.ToLower(strings.TrimSpace(p.OriginalLanguage)),
+		Year:             yearOf(first(p.ReleaseDate, p.FirstAirDate)),
 	}
 	for _, a := range append(p.AlternativeTitles.Titles, p.AlternativeTitles.Results...) {
 		if title := strings.TrimSpace(a.Title); title != "" {

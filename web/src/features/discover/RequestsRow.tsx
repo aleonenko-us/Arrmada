@@ -103,7 +103,7 @@ function RequestPoster({ rq, staff, queueKnown = true, onOpen }: { rq: MediaRequ
           action is a visible, labelled button. Nothing on the strip acts by itself. */}
       <button
         onClick={onOpen}
-        aria-label={`Open the request for ${rq.title}`}
+        aria-label={`Open the request for ${rq.display_title || rq.title}`}
         className="relative block w-full overflow-hidden rounded-xl text-left"
         style={{ aspectRatio: "2/3", border: "1px solid var(--line)", background: "var(--panel-2)" }}
       >
@@ -147,7 +147,7 @@ function RequestPoster({ rq, staff, queueKnown = true, onOpen }: { rq: MediaRequ
       </button>
       {/* Always-visible caption: the title, and where it's got to in plain words. */}
       <div className="px-0.5 pt-2">
-        <div className="truncate text-sm font-semibold" style={{ color: "var(--ink)" }} title={rq.title}>{rq.title}</div>
+        <div className="truncate text-sm font-semibold" style={{ color: "var(--ink)" }} title={rq.display_title || rq.title}>{rq.display_title || rq.title}</div>
         <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs" style={{ color: stage.detailTone ?? "var(--ink-faint)" }} title={stage.detail}>
           {/* A book request says what was asked for: Read, Listen or Both. */}
           {rq.media_type === "book" && rq.formats && (

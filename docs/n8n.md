@@ -398,7 +398,7 @@ A movie file landed in the library. Severity: info.
 |---|---|---|
 | `movie_id` | integer | The movie's id in Arrmada. |
 | `tmdb_id` | integer | TMDB id. |
-| `title` | string | The movie's title. |
+| `title` | string | The movie's title as Arrmada shows it (Settings → Library → Show titles as). |
 | `year` | integer | Release year. |
 | `version_id` | integer | The extra version (e.g. a Director's Cut) the file belongs to; null for the main file. |
 | `upgrade` | boolean | true when it replaced a file of lower quality. |
@@ -416,7 +416,7 @@ New episodes of a show landed in the library. Severity: info.
 |---|---|---|
 | `series_id` | integer | The show's id in Arrmada. |
 | `tmdb_id` | integer | TMDB id. |
-| `title` | string | The show's title. |
+| `title` | string | The show's title as Arrmada shows it (Settings → Library → Show titles as). |
 | `year` | integer | The show's first-air year. |
 | `count` | integer | How many episodes were imported. |
 | `episodes` | string[] | The episodes imported, as S01E02. |

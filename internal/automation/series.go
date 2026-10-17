@@ -1276,7 +1276,7 @@ func (c *Coordinator) ImportSeriesDownloads(ctx context.Context) {
 				c.series.AddEvent(ctx, s.ID, "imported", fmt.Sprintf("Imported %d episode%s from %s", imported, plural(imported), it.Name))
 				c.seriesImported(ctx, s.ID, placed)
 				c.bus.Publish("series.imported", map[string]any{
-					"title": s.Title, "id": s.ID, "count": imported, "year": s.Year, "tmdb_id": s.TMDBID,
+					"title": s.Shown(), "id": s.ID, "count": imported, "year": s.Year, "tmdb_id": s.TMDBID,
 					"episodes": episodeLabels(placed), "release": it.Name, "size_bytes": it.SizeBytes,
 				})
 			} else if c.series.SeasonHasMissing(ctx, s.ID, parsed.Season) {

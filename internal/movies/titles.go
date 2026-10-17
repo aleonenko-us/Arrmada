@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/displaytitle"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
@@ -105,14 +106,15 @@ func TitleMatches(keys []string, m Movie, title string, year int) bool {
 }
 
 // BackfillAltTitles reads the original and alternative titles of every movie stored before
-// they were kept (Extra.TitlesRead unset), and the translated titles of every movie not
-// yet read for all the "Also match titles in" languages (needsLocalTitles), one movie per
-// every so a large library never bursts TMDB, and returns how many it filled. It stops
+// they were kept (Extra.TitlesRead unset), the translated titles of every movie not yet
+// read for all the "Also match titles in" languages (needsLocalTitles), and the display
+// names the "Show titles as" setting needs (needsDisplayNames), one movie per every so a
+// large library never bursts TMDB, and returns how many it filled. It stops
 // when none are left, when TMDB isn't configured (the next start tries again), or when ctx
 // ends. A movie TMDB can't answer right now is left for the next start; one TMDB no longer
 // has is marked read. New movies and Refresh fill the titles themselves.
 //
-// It runs at start and again whenever the languages change. One pass runs at a time: a
+// It runs at start and again whenever the languages or the display setting change. One pass runs at a time: a
 // call while one is running asks it to go round once more (the languages it read may be
 // out of date) and returns at once with 0.
 func (s *Service) BackfillAltTitles(ctx context.Context, every time.Duration) (int, error) {
@@ -146,11 +148,13 @@ func (s *Service) backfillTitlesOnce(ctx context.Context, every time.Duration) (
 		return 0, err
 	}
 	langs := s.localLangs()
+	display := s.policy()
 	filled := 0
 	for _, m := range all {
 		needAlt := m.TMDBID > 0 && (m.Extra == nil || !m.Extra.TitlesRead)
 		needLocal := s.titles != nil && needsLocalTitles(m, langs)
-		if !needAlt && !needLocal {
+		needDisplay := s.titles != nil && needsDisplayNames(m, display)
+		if !needAlt && !needLocal && !needDisplay {
 			continue
 		}
 		t := time.NewTimer(every)
@@ -196,6 +200,25 @@ func (s *Service) backfillTitlesOnce(ctx context.Context, every time.Duration) (
 				return filled, err
 			}
 		}
+		if needDisplay {
+			// The same titles read as the translated titles above (one request, cached).
+			got, err := s.readDisplayNames(ctx, m.TMDBID, display)
+			switch {
+			case errors.Is(err, metadata.ErrNotConfigured):
+				return filled, nil
+			case errors.Is(err, metadata.ErrNotFound):
+				got = displaytitle.FromTitles(nil, display.TranslationLangs()) // read, nothing to show
+			case err != nil:
+				if ctx.Err() != nil {
+					return filled, ctx.Err()
+				}
+				s.log.Debug("movies: couldn't read display titles; trying again next start", "movie", m.Title, "err", err)
+				continue
+			}
+			if err := s.setDisplayNames(ctx, m.ID, got); err != nil {
+				return filled, err
+			}
+		}
 		filled++
 	}
 	return filled, nil
@@ -216,6 +239,20 @@ func (r *Repo) SetTitles(ctx context.Context, id int64, original string, alts []
 			CASE WHEN json_valid(extra_json) AND extra_json <> '' THEN extra_json ELSE '{}' END,
 			'$.original_title', ?, '$.alt_titles', json(?), '$.titles_read', json('true'))
 		WHERE id = ?`, original, string(b), id)
+	return err
+}
+
+// SetDisplayNames stores a movie's display names (display.go), leaving the rest of its
+// extra metadata as it is (json_set, as SetTitles).
+func (r *Repo) SetDisplayNames(ctx context.Context, id int64, n *displaytitle.Names) error {
+	b, err := json.Marshal(n)
+	if err != nil {
+		return err
+	}
+	_, err = r.q().ExecContext(ctx, `UPDATE movies SET extra_json = json_set(
+			CASE WHEN json_valid(extra_json) AND extra_json <> '' THEN extra_json ELSE '{}' END,
+			'$.display_names', json(?))
+		WHERE id = ?`, string(b), id)
 	return err
 }
 

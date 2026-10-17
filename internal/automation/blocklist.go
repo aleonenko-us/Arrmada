@@ -59,13 +59,19 @@ func (c *Coordinator) ListAllBlocks(ctx context.Context, f BlockFilter) ([]Block
 	if f.Offset < 0 {
 		f.Offset = 0
 	}
-	// Each kind's title comes from its own table: ids are only unique per table, so the
-	// join must be on the row's own kind.
+	// Each kind's title comes from its own table (a film's or show's shown title): ids are
+	// only unique per table, so the join must be on the row's own kind.
 	const item = `CASE b.media_type
-			WHEN 'movie' THEN COALESCE(m.title, '')
-			WHEN 'series' THEN COALESCE(s.title, '')
+			WHEN 'movie' THEN COALESCE(NULLIF(m.display_title, ''), m.title, '')
+			WHEN 'series' THEN COALESCE(NULLIF(s.display_title, ''), s.title, '')
 			WHEN 'book' THEN COALESCE(bk.title, '')
 			WHEN 'music' THEN COALESCE(al.title, '')
+			ELSE '' END`
+	// A film's or show's own (TMDB English) title, which a search also finds it by when
+	// it's shown under another name.
+	const canonical = `CASE b.media_type
+			WHEN 'movie' THEN COALESCE(m.title, '')
+			WHEN 'series' THEN COALESCE(s.title, '')
 			ELSE '' END`
 	const from = ` FROM blocklist b
 		LEFT JOIN movies m ON b.media_type = 'movie' AND m.id = b.movie_id
@@ -80,8 +86,9 @@ func (c *Coordinator) ListAllBlocks(ctx context.Context, f BlockFilter) ([]Block
 	}
 	if q := strings.TrimSpace(f.Q); q != "" {
 		like := "%" + escapeLike(strings.ToLower(q)) + "%"
-		where += ` AND (lower(b.title) LIKE ? ESCAPE '\' OR lower(` + item + `) LIKE ? ESCAPE '\')`
-		args = append(args, like, like)
+		where += ` AND (lower(b.title) LIKE ? ESCAPE '\' OR lower(` + item + `) LIKE ? ESCAPE '\'
+			OR lower(` + canonical + `) LIKE ? ESCAPE '\')`
+		args = append(args, like, like, like)
 	}
 	var total int
 	if err := c.db.QueryRowContext(ctx, `SELECT COUNT(*)`+from+where, args...).Scan(&total); err != nil {

@@ -14,6 +14,7 @@ import { LibraryEmpty } from "../features/library/LibraryEmpty";
 import { seriesLibraryConfig, statsOf } from "./series/library";
 import { SeriesBulkActions } from "./series/SeriesBulkActions";
 import { AddSeriesModal } from "./series/AddSeriesModal";
+import { shownTitle } from "../lib/displayTitle";
 import { useActionParam } from "../lib/useActionParam";
 
 const NO_FITS = new Map<number, SeriesFitSummary>();
@@ -91,7 +92,7 @@ export function Series() {
   const search = async (s: SeriesT) => {
     try {
       await api.searchSeries(s.id);
-      toast(`Searching for “${s.title}” — follow packs and episodes in Activity → Queue once grabbed.`);
+      toast(`Searching for “${shownTitle(s)}” — follow packs and episodes in Activity → Queue once grabbed.`);
     } catch (e) {
       toast((e as Error).message, { tone: "error" });
     }
@@ -129,7 +130,7 @@ export function Series() {
         empty={<LibraryEmpty noun="series" folder="TV folder" addLabel="Add series" onScan={scanLibrary} scanning={scanning || scan.running} />}
       />
       {searchFor && (
-        <SeriesSearchModal id={searchFor.id} title={searchFor.title} onClose={() => setSearchFor(null)} onGrabbed={() => { toast(`Grabbed for ${searchFor.title} — follow it in Activity → Queue.`); refresh(); }} />
+        <SeriesSearchModal id={searchFor.id} title={shownTitle(searchFor)} onClose={() => setSearchFor(null)} onGrabbed={() => { toast(`Grabbed for ${shownTitle(searchFor)} — follow it in Activity → Queue.`); refresh(); }} />
       )}
       {adding && <AddSeriesModal onClose={() => setAdding(false)} onAdded={() => { setAdding(false); refresh(); }} />}
       {confirmDelete && <DeleteSeriesDialog series={confirmDelete} onClose={() => setConfirmDelete(null)} onDeleted={() => { setConfirmDelete(null); refresh(); }} />}
