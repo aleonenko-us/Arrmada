@@ -186,8 +186,8 @@ type api struct {
 	widgetLimiter *loginLimiter // throttles wrong dashboard widget keys per address (widget.go)
 	// keySprayLimiter is the per-address ceiling on wrong personal API keys (auth.go).
 	keySprayLimiter *loginLimiter
-	plexPins      *plexPinGuard // which browser (and account) started each Plex PIN
-	jfQC          *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
+	plexPins        *plexPinGuard // which browser (and account) started each Plex PIN
+	jfQC            *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
 	// transfers caches the downloads feed's title cards and requester names (transfers.go).
 	transfers transferCache
 	// wanted caches Activity → Wanted's answer (wantedcache.go).
