@@ -1,10 +1,14 @@
+import { useId } from "react";
 import { Link } from "react-router-dom";
 import { LanguagePicker } from "../../components/LanguagePicker";
 import { AutoSelect, AutoToggle, SavedTick } from "../../components/settings/auto";
 import { Section } from "../../components/settings/ui";
 import { useMe } from "../../lib/me";
 import { useAutoSave } from "../../lib/useAutoSave";
-import { useLoadedSettings, useSetting } from "../../lib/useSettings";
+import { useLanguages } from "../../lib/languages";
+import { useLoadedSettings, useSetting, useSettingGroup } from "../../lib/useSettings";
+import type { AppSettings } from "../../lib/api";
+import { Field } from "../../ui/Field";
 import { LibraryFolders } from "../Library";
 import { ExtraFolders } from "./ExtraFolders";
 import { DEFAULT_MONITOR_PRESET, MONITOR_PRESETS, isMonitorPreset, type MonitorPreset } from "../series/presets";
@@ -64,6 +68,74 @@ function TitleLanguages() {
   );
 }
 
+type DisplayMode = AppSettings["display_title_mode"];
+
+const DISPLAY_MODES: readonly { value: DisplayMode; label: string }[] = [
+  { value: "english", label: "English (TMDB default)" },
+  { value: "original", label: "Original title" },
+  { value: "language", label: "My language" },
+];
+
+const DISPLAY_KEYS = ["display_title_mode", "display_title_language"] as const;
+
+// DisplayTitles: which of a film's or show's names the app shows — TMDB's English title
+// (the default), its original title in its own language and script, or its title in a
+// chosen language — plus the original languages whose works always show their original
+// title. Presentation only: matching, file and folder names and the API's title keep the
+// English one. The mode and its language save together (a language mode needs one).
+function DisplayTitles() {
+  const id = useId();
+  const langs = useLanguages();
+  const group = useSettingGroup(DISPLAY_KEYS, {
+    // "My language" stays picked while its language is still to choose.
+    keepOnError: true,
+    validate: (v) => (v.display_title_mode === "language" && !v.display_title_language ? "Pick the language to show titles in." : null),
+  });
+  const originals = useSetting("display_title_original_in", { equal: sameLangs, keepOnError: false });
+  const mode = group.value.display_title_mode;
+  const change = (next: Partial<Pick<AppSettings, (typeof DISPLAY_KEYS)[number]>>) => {
+    const v = { ...group.value, ...next };
+    group.set(v);
+    void group.commit(v);
+  };
+  return (
+    <div className="flex flex-col gap-4">
+      <Field label="Show titles as" controlId={id} hint="Library pages, the calendar, Activity, alerts, requests and Discover cards for titles you have. File and folder names, matching and the API keep TMDB's English title.">
+        <span className="flex flex-wrap items-center gap-2">
+          <select id={id} value={mode} onChange={(e) => change({ display_title_mode: e.target.value as DisplayMode })} className="w-full max-w-[280px] rounded-lg border border-line bg-panel-2 px-3 py-2 text-base text-ink">
+            {DISPLAY_MODES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          {mode === "language" && (
+            <select aria-label="Language to show titles in" value={group.value.display_title_language} onChange={(e) => change({ display_title_language: e.target.value })} className="w-full max-w-[220px] rounded-lg border border-line bg-panel-2 px-3 py-2 text-base text-ink">
+              <option value="">Pick a language…</option>
+              {(langs ?? []).map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+            </select>
+          )}
+          <SavedTick save={group} />
+        </span>
+      </Field>
+      {mode === "language" && (
+        <span className="text-sm text-ink-faint">A title made in that language shows its original title. One TMDB has no translation for shows its original title.</span>
+      )}
+      {mode !== "original" && (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-base font-semibold">Original titles for these languages</span>
+            <SavedTick save={originals} />
+          </div>
+          <span className="text-sm text-ink-faint">
+            Films and shows originally in these languages show their original title whatever the setting above — Greek films as Ο Θίασος while everything else stays in English.
+          </span>
+          <LanguagePicker value={originals.value} onChange={(next) => void originals.commit(next)} label="Add an original language" />
+        </div>
+      )}
+      <span className="text-sm text-ink-faint">
+        Changing this reads the names it needs for your whole library, a little at a time. Any title can have its own on its page: ⋯ → Display title….
+      </span>
+    </div>
+  );
+}
+
 export function LibrarySettings() {
   const searchOnAdd = useSetting("search_on_add");
   const { booksEnabled } = useMe();
@@ -81,6 +153,9 @@ export function LibrarySettings() {
       </Section>
       <Section id="series-monitoring" title="Series monitoring" subtitle="Which episodes a new series monitors. The add dialog starts from this, and requests use it.">
         <SeriesMonitorDefault />
+      </Section>
+      <Section id="display-titles" title="Display titles" subtitle="Which name the app shows for each film and show.">
+        <DisplayTitles />
       </Section>
       <Section id="title-languages" title="Titles in other languages" subtitle="For folders, downloads and TV releases named in your household's language.">
         <TitleLanguages />

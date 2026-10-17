@@ -51,7 +51,7 @@ export default defineConfig({
   projects: [
     {
       name: "desktop",
-      testMatch: /(admin-smoke|media-servers|quality-editor|discover-split|activity|wanted|movies-list|movie-versions|movies-scan-add|library|library-state|requests|needs-you|review-import|alerts|seasons|users-autoapprove|insights|insights-servers|discover-titles|insights-import|plex|discover-depth|live-updates|account-menu|connections|settings-autosave|module-settings|people|system-status|series-detail|convert-plan|convert|convert-hold|issues-staff|subtitles-library|subtitles-queue|subtitles-drawer|subtitles-profile-picker|book-duplicates|books-library|book-kindle-staff|music-library|first-run|watch-links|jellyfin-signin|media-server-settings|setup-media-server|version-badge|usenet|library-folders|arr-import|book-naming|two-factor|api-keys)\.spec\.ts/,
+      testMatch: /(admin-smoke|media-servers|quality-editor|discover-split|activity|wanted|movies-list|movie-versions|movies-scan-add|library|library-state|requests|needs-you|review-import|alerts|seasons|users-autoapprove|insights|insights-servers|discover-titles|insights-import|plex|discover-depth|live-updates|account-menu|connections|settings-autosave|module-settings|people|system-status|series-detail|convert-plan|convert|convert-hold|issues-staff|subtitles-library|subtitles-queue|subtitles-drawer|subtitles-profile-picker|book-duplicates|books-library|book-kindle-staff|music-library|first-run|watch-links|jellyfin-signin|media-server-settings|setup-media-server|version-badge|usenet|library-folders|arr-import|book-naming|two-factor|api-keys|display-titles)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
     {

@@ -9,6 +9,8 @@ import type { MenuItem } from "../../ui";
 export interface LibraryItem {
   id: number;
   title: string;
+  /** The title people read (lib/displayTitle.ts); title stays canonical. */
+  display_title?: string;
   year?: number;
   poster_url?: string;
 }

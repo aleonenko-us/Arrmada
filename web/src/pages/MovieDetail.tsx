@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
+import { shownTitle } from "../lib/displayTitle";
 import { AudioLangChips } from "../components/AudioLangChips";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
 import { UploadTorrentModal } from "../components/UploadTorrentModal";
@@ -45,6 +46,9 @@ import { MovieSubtitles } from "../components/subtitles/MovieSubtitles";
 import { TitleProfilePicker } from "./subtitles/ProfileSelect";
 import { movieStatus, trackStatus } from "../lib/movieStatus";
 import { Page } from "../ui/Page";
+
+// The "Display title…" picker: loaded when it opens.
+const DisplayTitleDialog = lazy(() => import("../components/DisplayTitleDialog"));
 
 const AVAILABILITY_LABELS: Record<string, string> = {
   announced: "Announced",
@@ -155,7 +159,7 @@ export function MovieDetail() {
 
   return (
     <>
-      <PageHeader title={movie.title} />
+      <PageHeader title={shownTitle(movie)} />
 
       {/* Hero band with backdrop */}
       <div className="relative">
@@ -177,10 +181,10 @@ export function MovieDetail() {
           <div className="flex flex-col gap-6 sm:flex-row">
             <div className="w-[180px] flex-none overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)", aspectRatio: "2/3" }}>
               {movie.poster_url ? (
-                <img src={movie.poster_url} alt={movie.title} className="h-full w-full object-cover" />
+                <img src={movie.poster_url} alt={shownTitle(movie)} className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full w-full items-end p-3" style={{ background: "linear-gradient(150deg, hsl(24 40% 30%), hsl(20 35% 16%))" }}>
-                  <span className="text-lg font-bold text-white">{movie.title}</span>
+                  <span className="text-lg font-bold text-white">{shownTitle(movie)}</span>
                 </div>
               )}
             </div>
@@ -192,6 +196,9 @@ export function MovieDetail() {
                   <span className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{ex.certification}</span>
                 )}
                 <span className="font-mono text-xs text-ink-faint">{movie.year || "—"}</span>
+                {shownTitle(movie) !== movie.title && (
+                  <span className="text-xs text-ink-faint" title="TMDB's English title: matching and file names use it">{movie.title}</span>
+                )}
                 {movie.runtime ? <span className="font-mono text-xs text-ink-faint">{fmtRuntime(movie.runtime)}</span> : null}
                 {typeof ex?.vote_average === "number" && ex.vote_average > 0 && (
                   <span className="font-mono text-xs" style={{ color: "var(--accent-text)" }}>★ {ex.vote_average.toFixed(1)}</span>
@@ -1185,6 +1192,8 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
   const folders = useLibraryFolders().data?.movie;
   const multiFolder = !!folders?.multi;
   const [showMove, setShowMove] = useState(false);
+  const [showTitle, setShowTitle] = useState(false);
+  const name = shownTitle(movie);
 
   // At most one primary button, and it matches the movie's state: Search when it's
   // monitored and has no file (or its file is gone), Search for upgrade when it has a
@@ -1247,6 +1256,7 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
             { label: "Upload .torrent or .nzb", onSelect: () => setShowPaste(true) },
             ...(hasAnyFile ? [{ label: "Rename…", onSelect: () => setShowRename(true) }] : []),
             ...(multiFolder ? [{ label: "Move to folder…", onSelect: () => setShowMove(true) }] : []),
+            { label: "Display title…", onSelect: () => setShowTitle(true) },
             { label: "Refresh & rescan", busyLabel: "Refreshing…", onSelect: () => run("refresh", async () => { await api.refreshMovie(movie.id); onChange(); flash("Refreshed metadata and rescanned disk."); }) },
             { label: "Delete movie…", tone: "danger" as const, onSelect: () => setShowDelete(true) },
           ]}
@@ -1259,10 +1269,19 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
       </div>
       {showMove && folders && (
         <MoveFolderDialog
-          media="movie" id={movie.id} title={movie.title} current={movie.library_folder_id ?? 0} folders={folders}
+          media="movie" id={movie.id} title={name} current={movie.library_folder_id ?? 0} folders={folders}
           onClose={() => setShowMove(false)}
-          onMoved={() => { onChange(); flash(`Moved “${movie.title}”.`); }}
+          onMoved={() => { onChange(); flash(`Moved “${name}”.`); }}
         />
+      )}
+      {showTitle && (
+        <Suspense fallback={null}>
+          <DisplayTitleDialog
+            media="movies" id={movie.id} title={movie.title} override={movie.title_override ?? ""}
+            onClose={() => setShowTitle(false)}
+            onSaved={() => { invalidate("movies"); onChange(); }}
+          />
+        </Suspense>
       )}
       {(search.running || searchResult) && (
         <div className="mt-2 text-sm" role="status" style={{ color: search.running ? "var(--ink-dim)" : searchResult?.failed ? "var(--reject-text)" : "var(--ink)" }}>
@@ -1270,10 +1289,10 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
         </div>
       )}
       {showDelete && <DeleteMovieDialog movie={movie} onClose={() => setShowDelete(false)} onDeleted={() => { invalidate("movies"); navigate("/movies"); }} />}
-      {showRename && <MovieRenameModal movieId={movie.id} title={movie.title} onClose={() => setShowRename(false)} onRenamed={onChange} />}
+      {showRename && <MovieRenameModal movieId={movie.id} title={name} onClose={() => setShowRename(false)} onRenamed={onChange} />}
       {showPaste && (
         <UploadTorrentModal
-          what={movie.title}
+          what={name}
           onPreview={(torrent) => api.previewTorrent(torrent)}
           onGrab={async (torrent, filename, title) => { await api.grabMovieTorrent(movie.id, torrent, filename, title); onChange(); }}
           onClose={() => setShowPaste(false)}
@@ -1282,7 +1301,7 @@ function Toolbar({ movie, onChange, flash }: { movie: Movie; onChange: () => voi
       {showImport && <ManualImportModal movie={movie} onClose={() => setShowImport(false)} onImported={() => { setShowImport(false); onChange(); flash("Imported."); }} />}
       {showSearch && (
         <ReleaseSearchModal
-          title={`Search indexers — ${movie.title}`}
+          title={`Search indexers — ${name}`}
           subtitle="Pick a release to grab, or blocklist one to search for an alternate."
           fetchReleases={() => api.movieReleases(movie.id)}
           onGrab={async (rel) => { await api.grab({ token: rel.token ?? "", movie_id: movie.id }); onChange(); }}

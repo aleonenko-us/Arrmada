@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { shownTitle } from "../../lib/displayTitle";
 import { usePersisted } from "../../lib/persist";
 import { compareValues, parseSortPref } from "./sort";
 import { useProgressive } from "./progressive";
@@ -58,10 +59,10 @@ export function LibraryTable<T extends LibraryItem>({ items, config, selectable,
           <tbody>
             {rows.shown.map((it) => {
               const on = selected.has(it.id);
-              const name = <>{it.title} <span className="font-normal text-ink-faint">{it.year || ""}</span></>;
+              const name = <>{shownTitle(it)} <span className="font-normal text-ink-faint">{it.year || ""}</span></>;
               return (
                 <tr key={it.id} className="transition-colors hover:bg-[var(--panel-2)]" style={{ background: on ? "var(--accent-soft)" : "var(--panel)", borderBottom: "1px solid var(--line-soft)" }}>
-                  {selectable && <td className={TD}><input type="checkbox" aria-label={`Select ${it.title}`} checked={on} onChange={() => onToggle(it.id)} /></td>}
+                  {selectable && <td className={TD}><input type="checkbox" aria-label={`Select ${shownTitle(it)}`} checked={on} onChange={() => onToggle(it.id)} /></td>}
                   <td className={`${TD} min-w-[220px]`}>
                     {selectable
                       ? <button onClick={() => onToggle(it.id)} className="text-left font-semibold">{name}</button>

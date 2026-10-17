@@ -3,6 +3,7 @@ import { ApiError, type DeletePreview } from "../lib/api";
 import { seriesApi } from "../lib/seriesApi";
 import { disposalLine, useRecycleMode } from "../lib/disposal";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { shownTitle } from "../lib/displayTitle";
 
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
@@ -11,7 +12,7 @@ const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? o
 // shows how many files, how big, and whether they go to the recycle bin or are gone for
 // good. A very large show needs its title typed.
 export function DeleteSeriesDialog({ series, onClose, onDeleted }: {
-  series: { id: number; title: string; poster_url?: string };
+  series: { id: number; title: string; display_title?: string; poster_url?: string };
   onClose: () => void;
   onDeleted: () => void;
 }) {
@@ -61,7 +62,7 @@ export function DeleteSeriesDialog({ series, onClose, onDeleted }: {
 
   return (
     <ConfirmDialog
-      title={<>Remove “{series.title}”?</>}
+      title={<>Remove “{shownTitle(series)}”?</>}
       body={
         <div className="flex items-start gap-3">
           {series.poster_url && (

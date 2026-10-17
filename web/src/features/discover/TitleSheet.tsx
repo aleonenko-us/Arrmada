@@ -105,7 +105,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
   // The detail answer's card wins once it's here: the freshest badge state, and all of a
   // title opened cold from its address.
   const c: DiscoverCard = d?.card ? { ...current, ...d.card } : current;
-  useTitle(c.title || undefined);
+  useTitle(c.display_title || c.title || undefined);
   const badge = badgeFor(c, done);
   const declined = badge?.label === "Declined";
   const isShow = c.media_type === "series";
@@ -199,7 +199,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
     <Sheet
       onClose={onClose}
       closeOnBack={false}
-      ariaLabel={c.title || "Title"}
+      ariaLabel={c.display_title || c.title || "Title"}
       handle={false}
       scrim={0.68}
       panelClassName="flex h-full w-full flex-col overflow-hidden sm:h-auto sm:max-h-[92vh] sm:max-w-[820px] sm:rounded-2xl sm:shadow-panel"
@@ -231,7 +231,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
           <div className="min-w-0 flex-1 pt-4">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{c.media_type === "series" ? "TV" : "Movie"}</span>
-              <h2 className="m-0 text-xl font-bold leading-tight sm:text-2xl">{c.title || <span className="text-ink-faint">Loading…</span>}</h2>
+              <h2 className="m-0 text-xl font-bold leading-tight sm:text-2xl">{c.display_title || c.title || <span className="text-ink-faint">Loading…</span>}</h2>
               <span className="font-mono text-sm text-ink-faint">{c.year || ""}</span>
             </div>
             {/* Meta line */}

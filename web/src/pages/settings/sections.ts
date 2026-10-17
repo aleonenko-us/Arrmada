@@ -65,6 +65,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "More Movies and TV folders", keywords: "extra second another multiple folders library kids children animation anime cartoons rule root folder move downloads disk drive hardlink per-folder", section: "library", anchor: "more-folders" },
   { label: "Adding titles", keywords: "search on add automatic default", section: "library", anchor: "adding-titles" },
   { label: "Series monitoring", keywords: "series tv show monitor monitoring preset default all future missing existing first latest season new seasons add request", section: "library", anchor: "series-monitoring" },
+  { label: "Display titles", keywords: "display title titles show shown original greek italian language translated localized english name names override", section: "library", anchor: "display-titles" },
   { label: "Titles in other languages", keywords: "language languages german french spanish translated translation localized title titles folder folders scan match matching foreign search searches tv series release releases", section: "library", anchor: "title-languages" },
   { label: "Books", keywords: "book books ebook audiobook language languages english foreign translation mam myanonamouse grab", section: "library", anchor: "books" },
   { label: "Plex recommended naming", keywords: "preset plex tmdb tvdb imdb id edition folder naming", section: "media", anchor: "naming-presets" },

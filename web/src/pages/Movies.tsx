@@ -22,6 +22,7 @@ import { AddMovieModal } from "./movies/AddMovieModal";
 import { ScanDialog } from "./movies/ScanDialog";
 import { ScanStatus, scanProgressLabel, useMovieScan } from "../components/movies/LibraryScan";
 import { OrganizeModal } from "../components/OrganizeModal";
+import { shownTitle } from "../lib/displayTitle";
 
 const NO_MOVIES: MovieSummary[] = [];
 const NO_FITS = new Map<number, FitItem>();
@@ -107,7 +108,7 @@ export function Movies() {
   const search = async (m: MovieSummary) => {
     try {
       const note = queuedNote(await api.searchMovie(m.id));
-      toast(note ? `“${m.title}”: ${note}.` : `Searching for “${m.title}” — follow it in ${PAGE.activity} → Wanted.`);
+      toast(note ? `“${shownTitle(m)}”: ${note}.` : `Searching for “${shownTitle(m)}” — follow it in ${PAGE.activity} → Wanted.`);
     } catch (e) {
       toast((e as Error).message, { tone: "error" });
     }
@@ -158,10 +159,10 @@ export function Movies() {
       />
       {searchFor && (
         <ReleaseSearchModal
-          title={`Search indexers — ${searchFor.title}`}
+          title={`Search indexers — ${shownTitle(searchFor)}`}
           subtitle="Pick a release to grab, or blocklist one to search for an alternate."
           fetchReleases={() => api.movieReleases(searchFor.id)}
-          onGrab={async (rel) => { await api.grab({ token: rel.token ?? "", movie_id: searchFor.id }); toast(`Grabbed "${rel.summary}" for ${searchFor.title}.`); refresh(); }}
+          onGrab={async (rel) => { await api.grab({ token: rel.token ?? "", movie_id: searchFor.id }); toast(`Grabbed "${rel.summary}" for ${shownTitle(searchFor)}.`); refresh(); }}
           onBlock={async (rel) => { await api.blockRelease(searchFor.id, { token: rel.token ?? "", search_again: true }); toast(`Blocklisted "${rel.summary}" — searching for an alternate.`); refresh(); }}
           onClose={() => setSearchFor(null)}
         />

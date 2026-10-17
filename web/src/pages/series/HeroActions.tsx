@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DeleteSeriesDialog } from "../../components/DeleteSeriesDialog";
 import { MoveFolderDialog } from "../../components/MoveFolderDialog";
@@ -18,6 +18,10 @@ import { ManualImportModal } from "./ManualImportModal";
 import { invalidate } from "../../lib/query";
 import { ProfileSelector } from "./ProfileSelector";
 import { TitleProfilePicker } from "../subtitles/ProfileSelect";
+import { shownTitle } from "../../lib/displayTitle";
+
+// The "Display title…" picker: loaded when it opens.
+const DisplayTitleDialog = lazy(() => import("../../components/DisplayTitleDialog"));
 
 export type Flash = (msg: string, err?: boolean) => void;
 
@@ -64,7 +68,8 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
   useJob(importJob, {
     onDone: (j) => { setImportJob(null); flash(jobToast(j, "Import finished."), jobFailed(j)); onChange(); },
   });
-  const [open, setOpen] = useState<null | "import" | "choose" | "upload" | "rename" | "delete" | "move">(null);
+  const [open, setOpen] = useState<null | "import" | "choose" | "upload" | "rename" | "delete" | "move" | "title">(null);
+  const name = shownTitle(series);
   const close = () => setOpen(null);
   // More than one TV folder: the show's folder shows, and it can move to another one.
   // With one folder neither appears.
@@ -100,6 +105,7 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
     { label: "Upload .torrent or .nzb…", onSelect: () => setOpen("upload") },
     { label: numberingLabel(series), busyLabel: "Saving…", onSelect: () => switchNumbering(series, onChange, flash) },
     ...(multiFolder ? [{ label: "Move to folder…", onSelect: () => setOpen("move") }] : []),
+    { label: "Display title…", onSelect: () => setOpen("title") },
     ...extraItems,
     { label: "Delete…", tone: "danger", onSelect: () => setOpen("delete") },
   ];
@@ -140,13 +146,13 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
 
       {open === "upload" && (
         <UploadTorrentModal
-          what={series.title}
+          what={name}
           onPreview={(torrent) => api.previewTorrent(torrent)}
           onGrab={async (torrent, filename, title) => { await api.grabSeriesTorrent(series.id, torrent, filename, title); onChange(); }}
           onClose={close}
         />
       )}
-      {open === "rename" && <RenameModal seriesId={series.id} title={series.title} onClose={close} onRenamed={onChange} />}
+      {open === "rename" && <RenameModal seriesId={series.id} title={name} onClose={close} onRenamed={onChange} />}
       {open === "import" && (
         <ManualImportModal
           series={series}
@@ -157,7 +163,7 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
       )}
       {open === "choose" && (
         <ReleaseSearchModal
-          title={`Choose a release — ${series.title}`}
+          title={`Choose a release — ${name}`}
           subtitle="Whole-series search. Pick any pack or episode to grab."
           fetchReleases={() => api.seriesReleases(series.id)}
           onGrab={async (rel) => { await api.grabSeries(series.id, { token: rel.token ?? "" }); onChange(); }}
@@ -167,10 +173,19 @@ export function HeroActions({ series, onChange, flash, extraItems = [] }: { seri
       {open === "delete" && <DeleteSeriesDialog series={series} onClose={close} onDeleted={() => navigate("/series")} />}
       {open === "move" && folders && (
         <MoveFolderDialog
-          media="series" id={series.id} title={series.title} current={series.library_folder_id ?? 0} folders={folders}
+          media="series" id={series.id} title={name} current={series.library_folder_id ?? 0} folders={folders}
           onClose={close}
-          onMoved={() => { onChange(); flash(`Moved “${series.title}”.`); }}
+          onMoved={() => { onChange(); flash(`Moved “${name}”.`); }}
         />
+      )}
+      {open === "title" && (
+        <Suspense fallback={null}>
+          <DisplayTitleDialog
+            media="series" id={series.id} title={series.title} override={series.title_override ?? ""}
+            onClose={close}
+            onSaved={() => { invalidate("series"); onChange(); }}
+          />
+        </Suspense>
       )}
     </>
   );

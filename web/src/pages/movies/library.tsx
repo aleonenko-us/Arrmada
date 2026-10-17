@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { FitItem, MovieDownload, MovieSummary, SummaryMedia } from "../../lib/api";
 import { FitBadge, FIT_COLOR, bitrateColor, fitRank, hasIssue } from "../../components/FitBadge";
+import { shownTitle } from "../../lib/displayTitle";
 import { isMovieWanted, movieStatus } from "../../lib/movieStatus";
 import { STATUS_LABEL } from "../../lib/status";
 import type { LibraryConfig } from "../../features/library/types";
@@ -127,9 +128,10 @@ export function movieLibraryConfig({ fits, queueKnown, actions, rowAction }: Mov
       { key: "misfit", label: "Doesn't fit", match: (m) => isMisfit(fits.get(m.id)), title: "The file doesn't fit its profile's ideal file (bitrate or spec) — the table says why" },
       { key: "unmonitored", label: STATUS_LABEL.unmonitored, match: (m) => !m.monitored },
     ],
-    // "dune 2021" finds Dune (2021); the sort title lets "matrix" find The Matrix.
+    // "dune 2021" finds Dune (2021); the sort title lets "matrix" find The Matrix. The
+    // shown title and the English one both find a film shown under another name.
     // Original and alternative titles join this when the summary carries them (MOV-24).
-    searchText: (m) => `${m.title} ${m.sort_title ?? ""} ${m.year || ""}`,
+    searchText: (m) => `${m.display_title ?? ""} ${m.title} ${m.sort_title ?? ""} ${m.year || ""}`,
     sorts: [
       { key: "title", label: "Title" },
       { key: "added", label: "Added", dir: "desc", value: (m) => m.added_at || undefined },
@@ -137,8 +139,8 @@ export function movieLibraryConfig({ fits, queueKnown, actions, rowAction }: Mov
       { key: "rating", label: "Rating", dir: "desc", value: (m) => m.vote_average || undefined },
       { key: "size", label: "Size", dir: "desc", value: (m) => m.size_bytes || undefined },
     ],
-    // Alphabetical, "The" ignored.
-    compare: (a, b) => (a.sort_title || a.title).localeCompare(b.sort_title || b.title),
+    // Alphabetical by the shown title (the server's sort title follows it), "The" ignored.
+    compare: (a, b) => (a.sort_title || shownTitle(a)).localeCompare(b.sort_title || shownTitle(b)),
     tableMinWidth: 900,
     columns: [
       { key: "status", label: "Status", sort: (m) => (m.has_file ? 0 : m.monitored ? 1 : 2), cell: (m) => { const st = movieStatus(m, undefined, queueKnown); return <span className="font-mono text-2xs uppercase" style={{ color: st.color }}>{st.label}</span>; } },

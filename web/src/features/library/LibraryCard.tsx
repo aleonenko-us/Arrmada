@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { shownTitle } from "../../lib/displayTitle";
 import { posterThumb } from "../../lib/img";
 import { Menu } from "../../ui";
 import type { LibraryConfig, LibraryItem } from "./types";
@@ -38,10 +39,11 @@ export function LibraryCard<T extends LibraryItem>({ item, config, selectable, s
   onToggle: () => void;
 }) {
   const st = config.card.status(item);
+  const name = shownTitle(item);
   const actions = !selectable ? config.actions?.(item) ?? [] : [];
   const caption = (
     <>
-      <div className="truncate text-base font-semibold" title={item.title}>{item.title}</div>
+      <div className="truncate text-base font-semibold" title={name}>{name}</div>
       {/* A long caption ("Coastal · Next Thu") takes the line and pushes the status word
           under it on a narrow card, rather than being cut short. */}
       <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2">
@@ -56,11 +58,11 @@ export function LibraryCard<T extends LibraryItem>({ item, config, selectable, s
       <div className="relative overflow-hidden rounded-t-xl" style={{ aspectRatio: "2/3" }}>
         {selectable ? (
           <button onClick={onToggle} aria-pressed={selected} className="block h-full w-full text-left">
-            <Poster url={item.poster_url} title={item.title} />
+            <Poster url={item.poster_url} title={name} />
             {selected && <div className="absolute inset-0" style={{ background: "var(--accent-soft)" }} />}
           </button>
         ) : (
-          <Link to={to} className="block h-full w-full"><Poster url={item.poster_url} title={item.title} /></Link>
+          <Link to={to} className="block h-full w-full"><Poster url={item.poster_url} title={name} /></Link>
         )}
         {selectable ? <SelectTick on={selected} /> : config.card.badges && <div className="pointer-events-none absolute left-1.5 top-1.5 flex max-w-[calc(100%-2.5rem)] flex-wrap gap-1">{config.card.badges(item)}</div>}
         {config.card.overlay?.(item)}
@@ -68,7 +70,7 @@ export function LibraryCard<T extends LibraryItem>({ item, config, selectable, s
       {actions.length > 0 && (
         <div className="absolute right-1.5 top-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
           <Menu
-            label={`Actions for ${item.title}`}
+            label={`Actions for ${name}`}
             trigger={<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>}
             items={actions}
             triggerClassName="grid h-7 w-7 place-items-center rounded-full"

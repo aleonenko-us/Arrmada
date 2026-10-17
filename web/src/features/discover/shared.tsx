@@ -168,17 +168,19 @@ export function MediaCard({ c, ctx, full }: { c: DiscoverCard; ctx: RowCtx; full
     finally { setQuickBusy(false); }
   };
 
+  // A title in the library shows by the library's name for it (Show titles as).
+  const name = c.display_title || c.title;
   return (
     <PosterCard
-      title={c.title}
+      title={name}
       full={full}
       onOpen={() => openTitle(c)}
       badge={badge}
       progress={c.download_progress}
       quick={showQuick ? { label: "＋ Request", busy: quickBusy, onClick: quick } : null}
       art={c.poster_url
-        ? <img src={posterThumb(c.poster_url)} alt={c.title} className="h-full w-full object-cover" loading="lazy" decoding="async" />
-        : <PosterPlaceholder title={c.title} year={c.year} />}
+        ? <img src={posterThumb(c.poster_url)} alt={name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+        : <PosterPlaceholder title={name} year={c.year} />}
     >
       <div className="mt-0.5 flex items-center gap-1.5 text-xs" style={{ color: "var(--ink-faint)" }}>
         <span>{c.year || "—"}</span>

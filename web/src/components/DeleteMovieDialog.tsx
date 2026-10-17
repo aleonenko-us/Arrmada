@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError, type MovieBulkDeleteReply, type MovieDeletePreview } from "../lib/api";
 import { disposalLine, useRecycleMode } from "../lib/disposal";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { shownTitle } from "../lib/displayTitle";
 
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
@@ -11,7 +12,7 @@ const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? o
 // A download still in flight for it is cancelled by default; left running, it's held in
 // Review when it finishes instead of putting the movie back.
 export function DeleteMovieDialog({ movie, onClose, onDeleted }: {
-  movie: { id: number; title: string; poster_url?: string };
+  movie: { id: number; title: string; display_title?: string; poster_url?: string };
   onClose: () => void;
   onDeleted: () => void;
 }) {
@@ -60,7 +61,7 @@ export function DeleteMovieDialog({ movie, onClose, onDeleted }: {
 
   return (
     <ConfirmDialog
-      title={<>Remove “{movie.title}”?</>}
+      title={<>Remove “{shownTitle(movie)}”?</>}
       body={
         <div className="flex items-start gap-3">
           {movie.poster_url && (
@@ -108,7 +109,7 @@ export function DeleteMovieDialog({ movie, onClose, onDeleted }: {
 // the recycle bin refuses a file, that film and the ones after it are kept and listed, and
 // onDone hears what happened so the page can keep the failures selected.
 export function DeleteMoviesDialog({ movies, onClose, onDone }: {
-  movies: { id: number; title: string }[];
+  movies: { id: number; title: string; display_title?: string }[];
   onClose: () => void;
   onDone: (reply: MovieBulkDeleteReply) => void;
 }) {
@@ -118,7 +119,7 @@ export function DeleteMoviesDialog({ movies, onClose, onDone }: {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const titleOf = new Map(movies.map((m) => [m.id, m.title]));
+  const titleOf = new Map(movies.map((m) => [m.id, shownTitle(m)]));
 
   const confirm = async () => {
     if (done) { onClose(); return; }

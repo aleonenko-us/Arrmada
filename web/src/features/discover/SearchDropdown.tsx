@@ -100,7 +100,7 @@ function SearchGroup({ label, items, flatBase, highlight, onPick }: { label: str
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-base font-semibold" style={{ color: "var(--ink)" }}>{c.title}</div>
+              <div className="truncate text-base font-semibold" style={{ color: "var(--ink)" }}>{c.display_title || c.title}</div>
               <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--ink-faint)" }}>
                 <span>{c.year || "—"}</span>
                 <span>·</span>

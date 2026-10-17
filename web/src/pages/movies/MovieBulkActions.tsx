@@ -5,6 +5,7 @@ import { Button, Modal, useToast } from "../../ui";
 import { DeleteMoviesDialog } from "../../components/DeleteMovieDialog";
 import { OrganizeModal } from "../../components/OrganizeModal";
 import type { LibrarySelection } from "../../features/library/types";
+import { shownTitle } from "../../lib/displayTitle";
 
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
@@ -92,7 +93,7 @@ export function MovieBulkActions({ sel, profiles, onDone }: {
       <Button size="sm" variant="secondary" disabled={none} busy={busy === "search"} busyLabel="Queuing…"
         onClick={() => update("search", { search: "missing_and_upgrade" }, () => "Searching the selected movies.")}>Search selected</Button>
       <Button size="sm" variant="ghost" disabled={none} onClick={() => setRenaming(ids)}>Rename…</Button>
-      <Button size="sm" variant="danger" disabled={none} onClick={() => setDeleting(sel.items.map((m) => ({ id: m.id, title: m.title })))}>Delete…</Button>
+      <Button size="sm" variant="danger" disabled={none} onClick={() => setDeleting(sel.items.map((m) => ({ id: m.id, title: m.title, display_title: m.display_title })))}>Delete…</Button>
 
       {renaming && <OrganizeModal ids={renaming} onClose={() => setRenaming(null)} onDone={onDone} />}
       {deleting && (
@@ -149,7 +150,7 @@ function ExceedsPrompt({ items, onClose }: { items: Exceeds; onClose: () => void
       <div className="thin-scroll max-h-[40vh] overflow-y-auto">
         {items.map((it) => (
           <div key={it.id} className="py-1.5" style={{ borderBottom: "1px solid var(--line-soft)" }}>
-            <div className="text-sm font-semibold">{it.title} {it.size_bytes ? <span className="font-mono text-xs font-normal text-ink-faint">{fmtBytes(it.size_bytes)}</span> : null}</div>
+            <div className="text-sm font-semibold">{shownTitle(it)} {it.size_bytes ? <span className="font-mono text-xs font-normal text-ink-faint">{fmtBytes(it.size_bytes)}</span> : null}</div>
             {it.reason && <div className="text-xs text-ink-dim">{it.reason}</div>}
           </div>
         ))}
