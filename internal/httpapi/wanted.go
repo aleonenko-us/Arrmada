@@ -120,6 +120,9 @@ type wantedBuild struct {
 	untracked []download.Item
 	reviews   map[string]int64 // "<kind>:<id>" → a pending review's id
 	profiles  map[string]string
+	// seriesFit is the search rule the sweeps tell untracked torrents apart by (nil = the
+	// show's own titles only), read once for the page when first needed.
+	seriesFit *series.SearchFit
 }
 
 func (b *wantedBuild) profile(ref string) string {
@@ -359,7 +362,10 @@ func (b *wantedBuild) seriesInFlight(row *wantedRow, sa series.SeriesAcquisition
 	if err != nil {
 		return
 	}
-	seasons, whole, names := automation.SeriesInFlightScope(acqs, untracked, s)
+	if b.seriesFit == nil {
+		b.seriesFit = b.a.deps.Series.SearchFit(b.ctx)
+	}
+	seasons, whole, names := automation.SeriesInFlightScope(b.seriesFit, acqs, untracked, s)
 	if len(names) == 0 {
 		return
 	}
