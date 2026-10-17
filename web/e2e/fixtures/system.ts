@@ -139,9 +139,10 @@ export const arrImportJob: Job = {
 };
 
 // Movies with a Kids folder (rule: kids) and TV with an Anime folder (rule: anime).
+// disk/on_disk: what Settings → Library reads (?disk=1) about each extra folder on disk.
 export const libraryFoldersMulti: LibraryFolders = {
-  movie: { multi: true, folders: [...libraryFolders.movie.folders, { id: 3, media: "movie", path: "/media/kids", label: "Kids", rule: "kids", position: 1, default: false, titles: 2 }] },
-  series: { multi: true, folders: [...libraryFolders.series.folders, { id: 4, media: "series", path: "/media/anime", label: "Anime", rule: "anime", position: 1, default: false, titles: 1 }] },
+  movie: { multi: true, folders: [...libraryFolders.movie.folders, { id: 3, media: "movie", path: "/media/kids", label: "Kids", rule: "kids", position: 1, default: false, titles: 2, disk: "ok", on_disk: 2 }] },
+  series: { multi: true, folders: [...libraryFolders.series.folders, { id: 4, media: "series", path: "/media/anime", label: "Anime", rule: "anime", position: 1, default: false, titles: 1, disk: "ok", on_disk: 1 }] },
 };
 
 // Every folder checks out: there, writable, and hardlink-able with downloads.

@@ -62,7 +62,7 @@ export interface SearchEntry {
 export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Media folders", keywords: "movies tv shows ebooks audiobooks music downloads folder path browse scan mount directory unmatched needs review", section: "library", anchor: "media-folders" },
   { label: "Folders that need review", keywords: "scan unmatched needs review identify pick title folder", section: "library", anchor: "needs-review" },
-  { label: "More Movies and TV folders", keywords: "extra second another multiple folders library kids children animation anime cartoons rule root folder move downloads disk drive hardlink per-folder", section: "library", anchor: "more-folders" },
+  { label: "More Movies and TV folders", keywords: "extra folder second folder another multiple folders library kids children family animation animated anime cartoons rule root folder scan existing titles move downloads disk drive hardlink per-folder", section: "library", anchor: "more-folders" },
   { label: "Adding titles", keywords: "search on add automatic default", section: "library", anchor: "adding-titles" },
   { label: "Series monitoring", keywords: "series tv show monitor monitoring preset default all future missing existing first latest season new seasons add request", section: "library", anchor: "series-monitoring" },
   { label: "Display titles", keywords: "display title titles show shown original greek italian language translated localized english name names override", section: "library", anchor: "display-titles" },

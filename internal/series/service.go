@@ -1801,9 +1801,13 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 	if !s.meta.Available() {
 		return res, fmt.Errorf("series metadata isn't configured — add a TMDB key in Settings → Connections")
 	}
-	// Every TV folder, the default first — or just the one asked for.
+	// Every TV folder, the default first — or just the one asked for, which must be one of
+	// them.
 	roots := s.libRoots()
 	if rootOverride != "" {
+		if len(roots) > 0 && !s.isRoot(rootOverride) {
+			return res, fmt.Errorf("%s isn't one of the TV folders", rootOverride)
+		}
 		roots = []string{rootOverride}
 	}
 	if len(roots) == 0 {
@@ -1907,13 +1911,18 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 		res.Imported++
 	}
 	report(len(shows))
-	// A folder that couldn't be read keeps the needs-review rows its last scan left.
+	// A folder that couldn't be read keeps the needs-review rows its last scan left, and so
+	// does every other folder when this scan was of one folder only.
 	keep := append([]UnmatchedFolder(nil), res.Unmatched...)
 	for _, u := range s.LastUnmatched() {
+		kept := rootOverride != "" && filepath.Clean(u.Root) != filepath.Clean(rootOverride)
 		for _, f := range res.FailedFolders {
 			if filepath.Clean(u.Root) == filepath.Clean(f.Root) {
-				keep = append(keep, u)
+				kept = true
 			}
+		}
+		if kept {
+			keep = append(keep, u)
 		}
 	}
 	s.setLastUnmatched(keep)

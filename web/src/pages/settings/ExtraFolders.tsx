@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { foldersChanged, useLibraryFolders } from "../../components/FolderSelect";
-import { FOLDER_RULES, foldersApi, type FolderMedia, type FolderRule, type LibraryFolder, type LibraryFolderSet } from "../../lib/foldersApi";
+import { FOLDERS_KEY, foldersChanged } from "../../components/FolderSelect";
+import { FOLDER_RULES, foldersApi, type FolderMedia, type FolderRule, type LibraryFolder, type LibraryFolderSet, type LibraryFolders } from "../../lib/foldersApi";
 import { isAdmin, useMe } from "../../lib/me";
+import { useQuery } from "../../lib/query";
+import { jobDone, jobFailed } from "../../lib/useJob";
+import { foundLine, scanLine, unmatchedOf, useLibraryScan } from "../../lib/useLibraryScan";
 import { Button, IconButton, useConfirm, useToast } from "../../ui";
-import { FolderPicker } from "../Library";
+import { FolderPicker, needsReviewChanged } from "../Library";
 
 const field = { background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 
@@ -11,11 +14,15 @@ const field = { background: "var(--panel)", border: "1px solid var(--line)", col
 // next to the main one (a Kids, Animation or Anime folder, often its own Plex or Jellyfin
 // library). Each can carry a rule; a new title goes to the first folder, top to bottom,
 // whose rule matches it, otherwise to the main folder. Admins change them; managers see
-// them. Removing one that still holds titles is refused and says what to do.
+// them. Removing one that still holds titles is refused and says what to do. Adding a
+// folder doesn't import what's already in it, so each extra folder says what it holds on
+// disk and can be scanned on its own (GitHub #3).
 export function ExtraFolders() {
   const { user } = useMe();
   const admin = isAdmin(user);
-  const { data, error } = useLibraryFolders();
+  // The folders with what each extra one holds on disk: a key of its own (the add dialogs'
+  // list never touches the disk), reloaded with the rest by foldersChanged.
+  const { data, error } = useQuery<LibraryFolders>(`${FOLDERS_KEY}:disk`, foldersApi.listWithDisk, { staleMs: 60_000 });
   // A folder's own downloads folder is offered on every row once a library has several
   // folders or one is set; a one-folder install sees just the line below until it asks.
   const [opened, setOpened] = useState(false);
@@ -48,6 +55,8 @@ function FolderList({ media, title, set, admin, offer }: { media: FolderMedia; t
   const toast = useToast();
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
+  // The folder just added: its row offers to scan what's already in it.
+  const [fresh, setFresh] = useState<number | null>(null);
   const extras = set.folders.filter((f) => !f.default);
   const main = set.folders.find((f) => f.default);
 
@@ -56,6 +65,7 @@ function FolderList({ media, title, set, admin, offer }: { media: FolderMedia; t
     setBusy(true);
     try {
       const f = await foldersApi.add({ media, path });
+      setFresh(f.id);
       foldersChanged();
       toast(`Added ${f.label} to ${title}.`, { tone: "good" });
     } catch (e) {
@@ -100,7 +110,7 @@ function FolderList({ media, title, set, admin, offer }: { media: FolderMedia; t
           </div>
         )}
         {extras.map((f, i) => (
-          <ExtraRow key={f.id} f={f} admin={admin} first={i === 0} last={i === extras.length - 1} busy={busy} onMove={move} offer={offer} />
+          <ExtraRow key={f.id} f={f} admin={admin} first={i === 0} last={i === extras.length - 1} busy={busy} onMove={move} offer={offer} fresh={f.id === fresh} />
         ))}
         {extras.length === 0 && <div className="text-sm text-ink-faint">No other {title} folders. Everything goes to the main one.</div>}
       </div>
@@ -163,7 +173,7 @@ function DownloadsTo({ f, admin, offer }: { f: LibraryFolder; admin: boolean; of
   );
 }
 
-function ExtraRow({ f, admin, first, last, busy, onMove, offer }: {
+function ExtraRow({ f, admin, first, last, busy, onMove, offer, fresh }: {
   f: LibraryFolder;
   admin: boolean;
   first: boolean;
@@ -171,6 +181,8 @@ function ExtraRow({ f, admin, first, last, busy, onMove, offer }: {
   busy: boolean;
   onMove: (id: number, dir: -1 | 1) => void;
   offer: boolean;
+  /** Just added: offer to scan what's already in it. */
+  fresh: boolean;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
@@ -244,6 +256,7 @@ function ExtraRow({ f, admin, first, last, busy, onMove, offer }: {
         )}
       </div>
       <div className="mt-1 font-mono text-xs text-ink-faint">{f.path}</div>
+      <FolderScan f={f} fresh={fresh} />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {admin ? (
           <label className="flex items-center gap-2 text-sm">
@@ -258,6 +271,74 @@ function ExtraRow({ f, admin, first, last, busy, onMove, offer }: {
         <span className="text-xs text-ink-faint">{rule.help}</span>
       </div>
       <DownloadsTo f={f} admin={admin} offer={offer} />
+    </div>
+  );
+}
+
+const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+// FolderScan is an extra folder's scan. Adding a folder doesn't import what's already in
+// it, so the row says what's there — the folder just added offers a scan straight away,
+// one with no titles yet says how much isn't in the library — and scans just that folder,
+// following the job and saying what it found. A folder that's missing, or empty while
+// titles belong to it (a share that isn't mounted), says so and is never scanned.
+function FolderScan({ f, fresh }: { f: LibraryFolder; fresh: boolean }) {
+  const scan = useLibraryScan(
+    f.media === "movie" ? "movie.scan" : "series.scan",
+    () => foldersApi.scan(f.media, f.path),
+    () => {
+      foldersChanged(); // the title counts and what's on disk changed
+      needsReviewChanged(); // and so may the needs-review list in Media folders
+    },
+    `folder:${f.id}`,
+  );
+  if (!f.disk) return null; // not looked at (yet)
+  if (f.disk === "missing") {
+    return <div className="mt-1.5 text-sm" style={{ color: "var(--reject-text)" }}>Can't find this folder — is its drive or share mounted?</div>;
+  }
+  if (f.disk === "unknown") {
+    return <div className="mt-1.5 text-sm" style={{ color: "var(--reject-text)" }}>This folder is not responding — check its drive or share.</div>;
+  }
+  if (f.disk === "empty") {
+    return f.titles > 0
+      ? <div className="mt-1.5 text-sm" style={{ color: "var(--avoid-text)" }}>This folder looks empty, but titles belong to it — is its drive or share mounted?</div>
+      : null;
+  }
+
+  const n = f.on_disk ?? 0;
+  // The scan that ended, while it's still the one shown.
+  const ended = !scan.running && scan.job && jobDone(scan.job.status) ? scan.job : null;
+  const review = unmatchedOf(ended);
+  let line: { text: string; color: string } | null = null;
+  if (scan.running || scan.note?.error || (ended && (jobFailed(ended) || ended.status === "cancelled"))) {
+    const s = scanLine(f.label, scan);
+    if (s) line = { text: s.text, color: s.tone === "error" ? "var(--reject-text)" : "var(--ink-dim)" };
+  } else if (ended) {
+    line = { text: foundLine(ended), color: "var(--good-text)" };
+  }
+  // Nothing asked yet: the folder just added offers the scan; one with no titles says
+  // what isn't in the library.
+  const prompt = !line && n > 0
+    ? fresh
+      ? `This folder has ${plural(n, "item", "items")}. Scan it now to add what's already there?`
+      : f.titles === 0 ? `${plural(n, "folder here isn't", "folders here aren't")} in the library yet.` : ""
+    : "";
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+      {line && <span role="status" style={{ color: line.color }}>{line.text}</span>}
+      {review > 0 && <a href="#needs-review" className="font-semibold" style={{ color: "var(--accent-text)" }}>Review them ↑</a>}
+      {prompt && <span className="text-ink-dim">{prompt}</span>}
+      <Button
+        size="sm"
+        variant={prompt ? "primary" : "ghost"}
+        onClick={() => void scan.start()}
+        busy={scan.running}
+        busyLabel="Scanning…"
+        aria-label={prompt && fresh ? undefined : `Scan the ${f.label} folder`}
+      >
+        {prompt && fresh ? "Scan now" : "Scan"}
+      </Button>
     </div>
   );
 }
