@@ -167,7 +167,7 @@ export const freshKeys: APIKeyStatus[] = setupKeys.map((k) => ({ ...k, configure
 // Setup is finished, so the staff console opens straight onto its pages.
 export const setup: SetupState = {
   needed: false, complete: true, tmdb_configured: true, libraries_chosen: true, keys: setupKeys,
-  library: paths, running: paths, restart_needed: false, can_restart: true, mounts: ["/media"], suggestions: {},
+  library: paths, running: paths, restart_needed: false, can_restart: true, mounts: ["/media"], media_host_folder: false, suggestions: {},
 };
 
 // Settings → System's Backups card: no copies yet, the nightly on at 3 am.

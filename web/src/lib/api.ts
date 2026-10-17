@@ -870,6 +870,8 @@ export interface SetupState {
   restart_needed: boolean;
   can_restart: boolean;
   mounts: string[];
+  /** /media is a folder of the owner's (ARRMADA_MEDIA_HOST), not Arrmada's managed volume. */
+  media_host_folder?: boolean;
   suggestions: Partial<LibraryPaths>;
   /** The Media server step: Plex is connected (address and token saved), and its name. */
   plex_connected?: boolean;

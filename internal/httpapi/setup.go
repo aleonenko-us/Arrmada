@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/config"
@@ -239,7 +240,9 @@ func (a *api) handleSetupState(w http.ResponseWriter, r *http.Request) {
 		"restart_needed":   rs.Needed,
 		"can_restart":      rs.CanRestart,
 		"mounts":           mounts,
-		"suggestions":      suggestFolders(mounts),
+		// /media is a folder of the owner's (ARRMADA_MEDIA_HOST), not the managed volume.
+		"media_host_folder": slices.Contains(mounts, "/media") && isHostFolder("/media"),
+		"suggestions":       suggestFolders(mounts),
 	})
 }
 
