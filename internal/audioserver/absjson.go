@@ -140,7 +140,7 @@ func (s *Server) itemFull(ctx context.Context, it Item, p *listening.Progress, p
 	// The book's ebook, when it has one on disk, for apps that can read it (AUD-18).
 	var ebookFile, ebookFormat any
 	libraryFiles := []obj{}
-	if e, ok := ebookOf(it); ok {
+	if e, ok := s.ebookOf(ctx, it); ok {
 		ebookFile, ebookFormat = e.ebookFileJSON(it), e.Format
 		libraryFiles = append(libraryFiles, e.libraryFileJSON(it))
 	}

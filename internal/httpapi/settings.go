@@ -63,7 +63,7 @@ func (a *api) seriesMonitorDefault(ctx context.Context) string {
 func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	quota := requests.GlobalLimits(func(key string) string { return a.deps.Settings.Get(ctx, key, "") })
-	a.writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"search_on_add":           a.deps.Settings.GetBool(ctx, keySearchOnAdd, true),
 		"series_monitor_default":  a.seriesMonitorDefault(ctx),
 		"naming_movie_folder":     a.deps.Settings.Get(ctx, keyNamingFolder, library.DefaultMovieFolder),
@@ -128,7 +128,12 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// Require two-factor for admins: an admin signing in with a password who hasn't
 		// set it up must do so before any session is made (twofactor.go).
 		"two_factor_admins": a.deps.Settings.GetBool(ctx, keyTwoFactorAdmins, false),
-	})
+	}
+	// The audiobook and ebook folder/file templates (books_naming.go).
+	for k, v := range a.bookNamingSettings(ctx) {
+		out[k] = v
+	}
+	a.writeJSON(w, http.StatusOK, out)
 }
 
 // qualityRanking is the ranking mode in effect (quality_ranking: v2 unless "v1" was saved
@@ -174,14 +179,20 @@ type settingsUpdate struct {
 	NamingSeriesFolder   *string `json:"naming_series_folder"`
 	NamingSeriesSeason   *string `json:"naming_series_season"`
 	NamingSeriesEpisode  *string `json:"naming_series_episode"`
-	WriteNFO             *bool   `json:"write_nfo"`
-	DownloadArtwork      *bool   `json:"download_artwork"`
-	BooksEnabled         *bool   `json:"books_enabled"`
-	MusicEnabled         *bool   `json:"music_enabled"`
-	PlexLoginEnabled     *bool   `json:"plex_login_enabled"`
-	PlexSignInStaff      *bool   `json:"plex_signin_staff"`
-	TMDBRegion           *string `json:"tmdb_region"`
-	PlexLoginAutoApprove *bool   `json:"plex_login_auto_approve"` // legacy: every type or none
+	// Book naming (books_naming.go): checked as templates before anything is saved.
+	NamingAudiobookFolder *string `json:"naming_audiobook_folder"`
+	NamingAudiobookFile   *string `json:"naming_audiobook_file"`
+	NamingAudiobookTrack  *string `json:"naming_audiobook_track"`
+	NamingEbookFolder     *string `json:"naming_ebook_folder"`
+	NamingEbookFile       *string `json:"naming_ebook_file"`
+	WriteNFO              *bool   `json:"write_nfo"`
+	DownloadArtwork       *bool   `json:"download_artwork"`
+	BooksEnabled          *bool   `json:"books_enabled"`
+	MusicEnabled          *bool   `json:"music_enabled"`
+	PlexLoginEnabled      *bool   `json:"plex_login_enabled"`
+	PlexSignInStaff       *bool   `json:"plex_signin_staff"`
+	TMDBRegion            *string `json:"tmdb_region"`
+	PlexLoginAutoApprove  *bool   `json:"plex_login_auto_approve"` // legacy: every type or none
 	// PlexLoginAutoApproveTypes wins over the legacy bool when both are sent.
 	PlexLoginAutoApproveTypes *string   `json:"plex_login_auto_approve_types"`
 	JellyfinLoginEnabled      *bool     `json:"jellyfin_login_enabled"`
@@ -355,6 +366,10 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if msg := checkBookNaming(&req); msg != "" {
+		a.writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	if msg := validQuota(req.QuotaDays, req.QuotaMovies, req.QuotaSeasons, req.QuotaBooks); msg != "" {
 		a.writeError(w, http.StatusBadRequest, msg)
 		return
@@ -435,6 +450,11 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.NamingSeriesEpisode != nil && !save(a.deps.Settings.Set(ctx, keyNamingSeriesEpisode, *req.NamingSeriesEpisode)) {
 		return
+	}
+	for _, f := range bookNamingFields {
+		if p := bookNamingUpdate(&req)[f.key]; p != nil && !save(a.deps.Settings.Set(ctx, f.key, *p)) {
+			return
+		}
 	}
 	if req.WriteNFO != nil && !save(a.deps.Settings.SetBool(ctx, keyWriteNFO, *req.WriteNFO)) {
 		return

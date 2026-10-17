@@ -885,8 +885,11 @@ func (c *Coordinator) ImportBookDownloads(ctx context.Context) {
 			}
 			continue
 		}
-		imported, hadFiles := c.importBookContent(ctx, b, it.ContentPath, it.Hash, it.Name)
+		imported, hadFiles, waiting := c.importBookContentWaiting(ctx, b, it.ContentPath, it.Hash, it.Name)
 		switch {
+		case waiting:
+			// A book it belongs to is being changed; the next sweep tries again. Said once,
+			// when the book was first found busy.
 		case imported:
 			// At least one edition actually landed — drop it from the downloads view.
 			c.recordImportedHash(ctx, it.Hash, it.Name, it.SizeBytes)
@@ -932,6 +935,14 @@ func (c *Coordinator) ImportBookDownloads(ctx context.Context) {
 // download held any recognisable book files at all — the caller needs to tell "import
 // failed, retry" apart from "nothing here to import".
 func (c *Coordinator) importBookContent(ctx context.Context, b books.Book, contentPath, hash, name string) (imported, hadFiles bool) {
+	imported, hadFiles, _ = c.importBookContentWaiting(ctx, b, contentPath, hash, name)
+	return imported, hadFiles
+}
+
+// importBookContentWaiting is importBookContent that also reports waiting: a book the
+// download's files belong to was being changed (a rename, a merge), so the download is
+// left for the next sweep — which says nothing more about it each time.
+func (c *Coordinator) importBookContentWaiting(ctx context.Context, b books.Book, contentPath, hash, name string) (imported, hadFiles, waiting bool) {
 	// Scene ebook and audiobook packs routinely ship inside a RAR set. Without this the
 	// archive yielded no recognised book files and the download was never imported.
 	if fi, err := os.Stat(contentPath); err == nil && fi.IsDir() {
@@ -946,7 +957,13 @@ func (c *Coordinator) importBookContent(ctx context.Context, b books.Book, conte
 	// it used to be hardlinked into Red Rising's folder — three books filed as one, with
 	// the other two still showing as missing. Split off anything that names a DIFFERENT
 	// book in the library and import it where it belongs.
-	found, diverted := c.divertForeignBookFiles(ctx, b, found, hash, name)
+	found, diverted, waiting := c.divertForeignBookFiles(ctx, b, found, hash, name)
+	if waiting {
+		// Another book in the pack is being changed (a rename, a merge): its files wait
+		// for the next sweep, and so does the download — counting it imported now would
+		// leave that book's files behind for good. What did import is found again.
+		return false, true, true
+	}
 
 	var ebooks, audio []library.FoundFile
 	for _, f := range found {
@@ -979,16 +996,19 @@ func (c *Coordinator) importBookContent(ctx context.Context, b books.Book, conte
 		// review — whose Import then failed the same way. The download is finished with:
 		// say so, stop searching this release for b, and let seeding rules take it.
 		c.finishForeignOnlyDownload(ctx, b, hash, name, diverted)
-		return true, true
+		return true, true, false
 	}
-	okEbook := c.importBookEdition(ctx, b, books.KindEbook, ebooks, hash, name)
-	var okAudio bool
+	errEbook := c.importEdition(ctx, b, books.KindEbook, ebooks, hash, name)
+	var errAudio error
 	if v := c.audioVersionForDownload(ctx, b, hash, name); v != nil && len(audio) > 0 {
-		okAudio = c.importAudioVersion(ctx, b, *v, audio, hash, name)
+		errAudio = c.importVersion(ctx, b, *v, audio, hash, name)
 	} else {
-		okAudio = c.importBookEdition(ctx, b, books.KindAudiobook, audio, hash, name)
+		errAudio = c.importEdition(ctx, b, books.KindAudiobook, audio, hash, name)
 	}
-	return okEbook || okAudio, hadFiles
+	if errors.Is(errEbook, ErrBookBusy) || errors.Is(errAudio, ErrBookBusy) {
+		return false, true, true // the book is being changed: the whole download waits for the next sweep
+	}
+	return errEbook == nil || errAudio == nil, hadFiles, false
 }
 
 // divertForeignBookFiles pulls the files that belong to a DIFFERENT library book out of a
@@ -1006,9 +1026,9 @@ func (c *Coordinator) importBookContent(ctx context.Context, b books.Book, conte
 //
 // It also returns the titles of the other books that actually received files, so the
 // caller can tell a download that held nothing at all from one that held only other books.
-func (c *Coordinator) divertForeignBookFiles(ctx context.Context, b books.Book, found []library.FoundFile, hash, name string) ([]library.FoundFile, []string) {
+func (c *Coordinator) divertForeignBookFiles(ctx context.Context, b books.Book, found []library.FoundFile, hash, name string) (keep []library.FoundFile, diverted []string, waiting bool) {
 	if len(found) < 2 || c.books == nil {
-		return found, nil // a single file is whatever the download was matched as
+		return found, nil, false // a single file is whatever the download was matched as
 	}
 	// One audiobook file and at most one ebook-type file (the usual companion PDF) is one
 	// book, whatever else its name mentions. "Fire & Blood … 300 Years Before A Game of
@@ -1023,12 +1043,11 @@ func (c *Coordinator) divertForeignBookFiles(ctx context.Context, b books.Book, 
 		}
 	}
 	if nAudio <= 1 && nEbook <= 1 {
-		return found, nil
+		return found, nil, false
 	}
 	// The file matcher goes by the title a file leads with, not the longest title in it.
 	match := c.books.FileMatcher(ctx)
-	keep := make([]library.FoundFile, 0, len(found))
-	var diverted []string
+	keep = make([]library.FoundFile, 0, len(found))
 	foreign := map[int64][]library.FoundFile{}
 	titles := map[int64]books.Book{}
 	for _, f := range found {
@@ -1057,14 +1076,17 @@ func (c *Coordinator) divertForeignBookFiles(ctx context.Context, b books.Book, 
 		if len(audio) > 0 && len(ebooks) > 0 {
 			ebooks = nil // same companion-PDF rule the main path applies
 		}
-		okE := c.importBookEdition(ctx, other, books.KindEbook, ebooks, hash, name)
-		okA := c.importBookEdition(ctx, other, books.KindAudiobook, audio, hash, name)
-		if okE || okA {
+		errE := c.importEdition(ctx, other, books.KindEbook, ebooks, hash, name)
+		errA := c.importEdition(ctx, other, books.KindAudiobook, audio, hash, name)
+		if errors.Is(errE, ErrBookBusy) || errors.Is(errA, ErrBookBusy) {
+			waiting = true
+		}
+		if errE == nil || errA == nil {
 			diverted = append(diverted, other.Title)
 		}
 	}
 	sort.Strings(diverted)
-	return keep, diverted
+	return keep, diverted, waiting
 }
 
 // matchBookFile resolves one file inside a pack to a library book, trying its own name
@@ -1150,17 +1172,41 @@ func bookParsedTitle(name string) string {
 // reporting whether the edition actually imported — callers must only mark the
 // download handled when something did.
 func (c *Coordinator) importBookEdition(ctx context.Context, b books.Book, kind string, files []library.FoundFile, infoHash, downloadName string) bool {
+	return c.importEdition(ctx, b, kind, files, infoHash, downloadName) == nil
+}
+
+// errNothingToImport is an import handed no files of the kind.
+var errNothingToImport = errString("no files to import")
+
+// importEdition is importBookEdition saying why it didn't: ErrBookBusy when another change
+// to the book's files is running (the next sweep retries it).
+func (c *Coordinator) importEdition(ctx context.Context, b books.Book, kind string, files []library.FoundFile, infoHash, downloadName string) error {
 	if len(files) == 0 {
-		return false
+		return errNothingToImport
 	}
-	bi, err := c.imp.Using(ctx).ImportBookEdition(b.Author, b.Title, files)
+	unlock, ok := c.tryLockBook(b.ID)
+	if !ok {
+		if c.firstBusy(b.ID) {
+			c.log.Info("book: import waits — the book's files are being changed", "title", b.Title, "edition", kind)
+		}
+		return ErrBookBusy
+	}
+	defer unlock()
+	// Checked under the lock, so nothing about the book changes between the check and
+	// the import.
+	name := bookName(b, nil, kind == books.KindAudiobook)
+	if err := c.bookImportRefusal(ctx, b, name, files); err != nil {
+		c.log.Warn("book: import failed", "title", b.Title, "edition", kind, "err", err)
+		return err
+	}
+	bi, err := c.imp.Using(ctx).ImportBook(name, files)
 	if err != nil {
 		c.log.Warn("book: import failed", "title", b.Title, "edition", kind, "err", err)
-		return false
+		return err
 	}
 	if err := c.books.MarkImported(ctx, b.ID, kind, bi.TargetPath, bi.Format, bi.SizeBytes, bi.FileCount); err != nil {
 		c.log.Warn("book: recording the imported edition failed", "title", b.Title, "edition", kind, "err", err)
-		return false
+		return err
 	}
 	c.log.Info("book: imported", "title", b.Title, "edition", kind, "format", bi.Format, "files", bi.FileCount)
 	// Say so when the release was hand-picked: it skipped the name check, so the
@@ -1171,7 +1217,7 @@ func (c *Coordinator) importBookEdition(ctx context.Context, b books.Book, kind 
 	c.bus.Publish("book.imported", map[string]any{
 		"title": b.Title, "id": b.ID, "edition": kind, "author": b.Author, "year": b.Year, "format": bi.Format, "size_bytes": bi.SizeBytes,
 	})
-	return true
+	return nil
 }
 
 // GrabForBook grabs a chosen release for a book (interactive search) into the book
@@ -1368,16 +1414,26 @@ func summarizeBook(format string) string {
 
 // RescanBook re-reads the book's library folder and records the ebook/audiobook
 // editions present. A multi-file audiobook is recorded as its folder + a file count.
-func (c *Coordinator) RescanBook(ctx context.Context, bookID int64) {
+func (c *Coordinator) RescanBook(ctx context.Context, bookID int64) error {
 	if c.books == nil || c.imp == nil {
-		return
+		return errBooksNotReady
 	}
+	unlock, ok := c.tryLockBook(bookID)
+	if !ok {
+		return ErrBookBusy
+	}
+	defer unlock()
 	b, err := c.books.Get(ctx, bookID)
 	if err != nil {
-		return
+		return err
+	}
+	keep, err := c.notOthersFilter(ctx, editionKey(b.ID, 0, books.KindEbook), editionKey(b.ID, 0, books.KindAudiobook))
+	if err != nil {
+		c.log.Warn("book rescan: couldn't read the library", "book_id", bookID, "err", err)
+		return err
 	}
 	var ebooks, audio []library.FoundFile
-	for _, f := range c.imp.BookLibraryFiles(b.Author, b.Title) {
+	for _, f := range keepFiles(c.imp.BookLibraryFiles(bookName(b, nil, true), editionFormat(b.Ebook), editionFormat(b.Audiobook)), keep) {
 		if library.IsAudiobookFile(f.Path) {
 			audio = append(audio, f)
 		} else {
@@ -1387,6 +1443,7 @@ func (c *Coordinator) RescanBook(ctx context.Context, bookID int64) {
 	c.recordEdition(ctx, bookID, books.KindEbook, ebooks)
 	c.recordEdition(ctx, bookID, books.KindAudiobook, audio)
 	c.rescanAudioVersions(ctx, b)
+	return nil
 }
 
 // recordEdition marks an edition present from on-disk files: a single file uses its
@@ -1455,7 +1512,17 @@ func (c *Coordinator) ManualImportBook(ctx context.Context, bookID, versionID in
 	if library.IsAudiobookFile(path) {
 		kind = books.KindAudiobook
 	}
-	bi, err := c.imp.ImportBookEdition(b.Author, b.Title, []library.FoundFile{{Path: path}})
+	unlock, ok := c.tryLockBook(bookID)
+	if !ok {
+		return ErrBookBusy
+	}
+	defer unlock()
+	name := bookName(b, nil, kind == books.KindAudiobook)
+	files := []library.FoundFile{{Path: path}}
+	if err := c.bookImportRefusal(ctx, b, name, files); err != nil {
+		return err
+	}
+	bi, err := c.imp.ImportBook(name, files)
 	if err != nil {
 		return err
 	}
@@ -1474,6 +1541,11 @@ func (c *Coordinator) DeleteBookEdition(ctx context.Context, bookID int64, kind 
 	if c.books == nil {
 		return errBooksNotReady
 	}
+	unlock, ok := c.tryLockBook(bookID)
+	if !ok {
+		return ErrBookBusy
+	}
+	defer unlock()
 	b, err := c.books.Get(ctx, bookID)
 	if err != nil {
 		return err
@@ -1547,63 +1619,6 @@ func (c *Coordinator) removeBookFile(path string) error {
 	return nil
 }
 
-// BookRename renames single-file editions to their canonical library path, returning
-// how many moved. Multi-file (folder) editions are left as-is.
-func (c *Coordinator) BookRename(ctx context.Context, bookID int64) (int, error) {
-	if c.books == nil || c.imp == nil {
-		return 0, errBooksNotReady
-	}
-	b, err := c.books.Get(ctx, bookID)
-	if err != nil {
-		return 0, err
-	}
-	moved := 0
-	for _, e := range []struct {
-		kind string
-		f    *books.BookFile
-	}{{books.KindEbook, b.Ebook}, {books.KindAudiobook, b.Audiobook}} {
-		if e.f == nil || e.f.Path == "" {
-			continue
-		}
-		if fi, err := os.Stat(e.f.Path); err == nil && fi.IsDir() {
-			continue // folder edition — leave it
-		}
-		target := c.imp.BookEditionCanonical(b.Author, b.Title, e.f.Path)
-		if target == "" || target == e.f.Path {
-			continue
-		}
-		if err := c.imp.Move(e.f.Path, target); err != nil {
-			c.log.Warn("book: rename failed", "from", e.f.Path, "err", err)
-			continue
-		}
-		_ = c.books.MarkImported(ctx, bookID, e.kind, target, e.f.Format, e.f.SizeBytes, 1)
-		moved++
-	}
-	for _, v := range b.AudioVersions {
-		if v.File == nil || v.File.Path == "" {
-			continue
-		}
-		if fi, err := os.Stat(v.File.Path); err == nil && fi.IsDir() {
-			continue
-		}
-		target := c.imp.BookEditionCanonical(b.Author, v.FolderTitle(b.Title), v.File.Path)
-		if target == "" || target == v.File.Path {
-			continue
-		}
-		if err := c.imp.Move(v.File.Path, target); err != nil {
-			c.log.Warn("book: rename failed", "from", v.File.Path, "err", err)
-			continue
-		}
-		_ = c.books.SetAudioVersionFile(ctx, v.ID, target, v.File.Format, v.File.SizeBytes, 1)
-		moved++
-	}
-	if moved > 0 {
-		c.books.AddEvent(ctx, bookID, "renamed", fmt.Sprintf("Renamed %d file%s to the canonical scheme", moved, plural(moved)))
-		c.bookFilesChanged(ctx, bookID)
-	}
-	return moved, nil
-}
-
 // BookScanResult summarizes a book library scan.
 type BookScanResult struct {
 	Imported  int      `json:"imported"`
@@ -1653,6 +1668,7 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 	}
 	byKey := map[string]*pending{}
 	var order []string
+	known := knownBookPaths(allBooks)
 	stopped := func(done, total int, what string) (BookScanResult, error) {
 		return res, fmt.Errorf("the scan stopped after %d of %d %s: %w", done, total, what, ctx.Err())
 	}
@@ -1664,12 +1680,24 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 		if bf.Title == "" || (len(bf.Ebooks) == 0 && len(bf.Audiobooks) == 0) {
 			continue
 		}
+		// Every file here is already a book's: nothing to catalogue. Without this a folder
+		// a naming scheme wrote ("02 - Golden Son" under a series folder) was looked up by
+		// its name all over again, and listed as unmatched when the name didn't read back.
+		if known.covers(bf) {
+			res.Skipped++
+			continue
+		}
 		// "<Title> (<Label>)" is one of a book's audiobook versions, not a book of its
 		// own: the title lookup would prefix-match it to the book and, with no standard
 		// audiobook on file yet, record the full-cast production as the standard one.
 		if vb, v, ok := versionForScanFolder(bf.Title, allBooks); ok {
 			if v.File == nil && len(bf.Audiobooks) > 0 {
-				c.recordVersionFiles(context.WithoutCancel(ctx), vb, v, bf.Audiobooks, "during a library scan")
+				if !c.underBookLock(vb.ID, func() {
+					c.recordVersionFiles(context.WithoutCancel(ctx), vb, v, bf.Audiobooks, "during a library scan")
+				}) {
+					res.Skipped++ // being changed right now: the next scan records it
+					continue
+				}
 				res.Imported++
 			} else {
 				res.Skipped++
@@ -1739,13 +1767,18 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 			// Already in the library — backfill any edition present on disk but not
 			// yet recorded (e.g. the ebook when only the audiobook was found before).
 			merged := false
-			if hasE && b.Ebook == nil {
-				c.recordEdition(wctx, b.ID, books.KindEbook, p.ebooks)
-				merged = true
-			}
-			if hasA && b.Audiobook == nil {
-				c.recordEdition(wctx, b.ID, books.KindAudiobook, p.audio)
-				merged = true
+			if !c.underBookLock(b.ID, func() {
+				if hasE && b.Ebook == nil {
+					c.recordEdition(wctx, b.ID, books.KindEbook, p.ebooks)
+					merged = true
+				}
+				if hasA && b.Audiobook == nil {
+					c.recordEdition(wctx, b.ID, books.KindAudiobook, p.audio)
+					merged = true
+				}
+			}) {
+				res.Skipped++ // being changed right now: the next scan records it
+				continue
 			}
 			if merged {
 				// Widen the profile so both on-disk editions count as wanted/included.
@@ -1763,11 +1796,16 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 		added, err := c.books.Add(wctx, p.match.Key, profile, false, p.match)
 		if errors.Is(err, books.ErrExists) && added.ID > 0 {
 			// Same book, different catalogue key: file the editions under the existing row.
-			if hasE && added.Ebook == nil {
-				c.recordEdition(wctx, added.ID, books.KindEbook, p.ebooks)
-			}
-			if hasA && added.Audiobook == nil {
-				c.recordEdition(wctx, added.ID, books.KindAudiobook, p.audio)
+			if !c.underBookLock(added.ID, func() {
+				if hasE && added.Ebook == nil {
+					c.recordEdition(wctx, added.ID, books.KindEbook, p.ebooks)
+				}
+				if hasA && added.Audiobook == nil {
+					c.recordEdition(wctx, added.ID, books.KindAudiobook, p.audio)
+				}
+			}) {
+				res.Skipped++
+				continue
 			}
 			res.Imported++
 			c.log.Info("book scan: matched an existing book under another catalogue key", "title", added.Title, "key", p.match.Key)
@@ -1777,8 +1815,10 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 			res.Unmatched = append(res.Unmatched, p.match.Title)
 			continue
 		}
-		c.recordEdition(wctx, added.ID, books.KindEbook, p.ebooks)
-		c.recordEdition(wctx, added.ID, books.KindAudiobook, p.audio)
+		c.underBookLock(added.ID, func() { // a new book: nothing else knows it yet
+			c.recordEdition(wctx, added.ID, books.KindEbook, p.ebooks)
+			c.recordEdition(wctx, added.ID, books.KindAudiobook, p.audio)
+		})
 		res.Imported++
 		c.log.Info("book scan: imported", "title", added.Title, "ebooks", len(p.ebooks), "audio", len(p.audio))
 	}

@@ -70,6 +70,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Plex recommended naming", keywords: "preset plex tmdb tvdb imdb id edition folder naming", section: "media", anchor: "naming-presets" },
   { label: "Movie naming", keywords: "folder file name format template tokens rename", section: "media", anchor: "movie-naming" },
   { label: "Series naming", keywords: "tv show season episode folder file name format template tokens specials rename", section: "media", anchor: "series-naming" },
+  { label: "Book naming", keywords: "book books audiobook audiobooks ebook ebooks author series narrator folder file name format template tokens rename audiobookshelf abs", section: "media", anchor: "book-naming" },
   { label: "Metadata", keywords: "nfo movie.nfo artwork poster fanart kodi plex jellyfin emby sidecar", section: "media", anchor: "metadata" },
   { label: "Indexers and Prowlarr", keywords: "indexer indexers tracker trackers torznab prowlarr sync torrentleech 1337x myanonamouse flaresolverr cloudflare search status test", section: "connections", anchor: "search" },
   { label: "Download clients", keywords: "qbittorrent sabnzbd usenet nzb torrent client clients categories download order bundled status test", section: "connections", anchor: "download-clients" },

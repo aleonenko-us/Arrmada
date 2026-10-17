@@ -82,6 +82,9 @@ type Coordinator struct {
 	// merging holds the IDs of books with an audiobook merge running, so a second click
 	// can't start another ffmpeg over the same files.
 	merging sync.Map
+	// bookLocks holds one *sync.Mutex per book: an import, a rename, a rescan and a merge
+	// of the same book's files never run at once (books_guard.go).
+	bookLocks sync.Map
 	// mergeFn, durationFn and decodedDurationFn default to the audiobook package; tests
 	// swap them.
 	mergeFn           func(ctx context.Context, files []string, out string, opts audiobook.MergeOptions) (audiobook.MergeResult, error)

@@ -25,7 +25,7 @@ type audioVersionBody struct {
 }
 
 func (a *api) writeVersionError(w http.ResponseWriter, err error) {
-	if a.writeBinRefusal(w, err) {
+	if a.writeBookBusy(w, err) || a.writeBinRefusal(w, err) {
 		return
 	}
 	switch {

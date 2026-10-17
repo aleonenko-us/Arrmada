@@ -376,6 +376,10 @@ func (s *Service) MarkImported(ctx context.Context, id int64, kind, path, format
 	if err := s.repo.SetEdition(ctx, id, kind, path, format, size, files); err != nil {
 		return err
 	}
+	// A rename journal entry for the edition describes a place it no longer is.
+	if err := s.ClearRenameJournal(ctx, id, 0, kind); err != nil {
+		return err
+	}
 	s.log.Info("book imported", "id", id, "kind", kind, "format", format, "files", files)
 	return nil
 }
@@ -383,6 +387,9 @@ func (s *Service) MarkImported(ctx context.Context, id int64, kind, path, format
 // ClearEdition forgets a book edition (after the user deletes its file).
 func (s *Service) ClearEdition(ctx context.Context, id int64, kind string) error {
 	if err := s.repo.ClearEdition(ctx, id, kind); err != nil {
+		return err
+	}
+	if err := s.ClearRenameJournal(ctx, id, 0, kind); err != nil {
 		return err
 	}
 	s.repo.AddEvent(ctx, id, "deleted", "Removed the "+kind+" edition")

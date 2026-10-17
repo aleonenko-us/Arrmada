@@ -224,17 +224,38 @@ func (c *Coordinator) audioVersionForDownload(ctx context.Context, b books.Book,
 
 // importAudioVersion files a download's audio as one version of the book.
 func (c *Coordinator) importAudioVersion(ctx context.Context, b books.Book, v books.AudioVersion, files []library.FoundFile, infoHash, downloadName string) bool {
+	return c.importVersion(ctx, b, v, files, infoHash, downloadName) == nil
+}
+
+// importVersion is importAudioVersion saying why it didn't: ErrBookBusy when another
+// change to the book's files is running (the next sweep retries it).
+func (c *Coordinator) importVersion(ctx context.Context, b books.Book, v books.AudioVersion, files []library.FoundFile, infoHash, downloadName string) error {
 	if len(files) == 0 {
-		return false
+		return errNothingToImport
 	}
-	bi, err := c.imp.Using(ctx).ImportBookEdition(b.Author, v.FolderTitle(b.Title), files)
+	unlock, ok := c.tryLockBook(b.ID)
+	if !ok {
+		if c.firstBusy(b.ID) {
+			c.log.Info("book: import waits — the book's files are being changed", "title", b.Title, "version", v.Label)
+		}
+		return ErrBookBusy
+	}
+	defer unlock()
+	// Checked under the lock, so nothing about the book changes between the check and
+	// the import.
+	name := bookName(b, &v, true)
+	if err := c.bookImportRefusal(ctx, b, name, files); err != nil {
+		c.log.Warn("book: import failed", "title", b.Title, "version", v.Label, "err", err)
+		return err
+	}
+	bi, err := c.imp.Using(ctx).ImportBook(name, files)
 	if err != nil {
 		c.log.Warn("book: import failed", "title", b.Title, "version", v.Label, "err", err)
-		return false
+		return err
 	}
 	if err := c.books.SetAudioVersionFile(ctx, v.ID, bi.TargetPath, bi.Format, bi.SizeBytes, bi.FileCount); err != nil {
 		c.log.Warn("book: recording the imported version failed", "title", b.Title, "version", v.Label, "err", err)
-		return false
+		return err
 	}
 	detail := fmt.Sprintf("Imported the %q audiobook (%s", v.Label, bi.Format)
 	if bi.FileCount > 1 {
@@ -252,7 +273,7 @@ func (c *Coordinator) importAudioVersion(ctx context.Context, b books.Book, v bo
 		"title": b.Title, "id": b.ID, "edition": books.KindAudiobook, "version": v.Label,
 		"author": b.Author, "year": b.Year, "format": bi.Format, "size_bytes": bi.SizeBytes,
 	})
-	return true
+	return nil
 }
 
 // recordVersionFiles marks a version present from files already on disk.
@@ -279,8 +300,13 @@ func (c *Coordinator) recordVersionFiles(ctx context.Context, b books.Book, v bo
 // know about yet (dropped in by hand, or imported before a restore).
 func (c *Coordinator) rescanAudioVersions(ctx context.Context, b books.Book) {
 	for _, v := range b.AudioVersions {
+		keep, err := c.notOthersFilter(ctx, editionKey(b.ID, v.ID, books.KindAudiobook))
+		if err != nil {
+			c.log.Warn("book rescan: couldn't read the library", "book_id", b.ID, "err", err)
+			return
+		}
 		var audio []library.FoundFile
-		for _, f := range c.imp.BookLibraryFiles(b.Author, v.FolderTitle(b.Title)) {
+		for _, f := range keepFiles(c.imp.BookLibraryFiles(bookName(b, &v, true), "", editionFormat(v.File)), keep) {
 			if library.IsAudiobookFile(f.Path) {
 				audio = append(audio, f)
 			}
@@ -319,8 +345,11 @@ func (c *Coordinator) ManualImportAudioVersion(ctx context.Context, bookID, vers
 	if len(audio) == 0 {
 		return fmt.Errorf("no audiobook files at %s", path)
 	}
-	if !c.importAudioVersion(ctx, b, v, audio, "", filepath.Base(path)) {
-		return fmt.Errorf("import failed — see the log")
+	if err := c.importVersion(ctx, b, v, audio, "", filepath.Base(path)); err != nil {
+		if errors.Is(err, ErrBookBusy) {
+			return ErrBookBusy
+		}
+		return fmt.Errorf("import failed: %w", err)
 	}
 	return nil
 }
@@ -331,6 +360,11 @@ func (c *Coordinator) DeleteAudioVersionFile(ctx context.Context, bookID, versio
 	if c.books == nil {
 		return errBooksNotReady
 	}
+	unlock, ok := c.tryLockBook(bookID)
+	if !ok {
+		return ErrBookBusy
+	}
+	defer unlock()
 	v, err := c.books.GetAudioVersion(ctx, bookID, versionID)
 	if err != nil {
 		return err
@@ -356,6 +390,11 @@ func (c *Coordinator) RemoveAudioVersion(ctx context.Context, bookID, versionID 
 		return err
 	}
 	if deleteFiles {
+		unlock, ok := c.tryLockBook(bookID)
+		if !ok {
+			return ErrBookBusy
+		}
+		defer unlock()
 		defer c.bookFilesChanged(ctx, bookID)
 		if err := c.removeAudioFiles(ctx, bookID, v.File); err != nil {
 			return err

@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/tristenlammi/arrmada/internal/library"
 )
@@ -109,11 +108,12 @@ func (p *prober) knownUnder(ctx context.Context, root string) known {
 	return k
 }
 
-// knownPaths lists every file with stored details at root or below it.
+// knownPaths lists every file with stored details at root or below it (a row holding only
+// a file's id has none).
 func (p *prober) knownPaths(ctx context.Context, root string) ([]string, error) {
 	clean, from, to := underRange(root)
 	rows, err := p.db.QueryContext(ctx,
-		`SELECT path FROM audio_file_meta WHERE path = ? OR (path >= ? AND path < ?)`, clean, from, to)
+		`SELECT path FROM audio_file_meta WHERE size != -1 AND (path = ? OR (path >= ? AND path < ?))`, clean, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -129,11 +129,15 @@ func (p *prober) knownPaths(ctx context.Context, root string) ([]string, error) 
 	return out, rows.Err()
 }
 
-// forget drops the stored details of files that are gone, returning how many went.
+// forget drops the probed details of files that are gone, returning how many went. The
+// row stays with only the file's id: a file that comes back (a share remounted, a file
+// restored from the bin) is the same file to the apps that downloaded it.
 func (p *prober) forget(ctx context.Context, paths []string) int {
 	n := 0
 	for _, path := range paths {
-		if res, err := p.db.ExecContext(ctx, `DELETE FROM audio_file_meta WHERE path = ?`, path); err == nil {
+		if res, err := p.db.ExecContext(ctx,
+			`UPDATE audio_file_meta SET size = -1, mtime = 0, duration = 0, bitrate = 0, codec = '', title = '',
+			        narrator = '', chapters = '[]' WHERE path = ? AND size != -1`, path); err == nil {
 			if c, _ := res.RowsAffected(); c > 0 {
 				n++
 			}
@@ -197,16 +201,65 @@ func (p *prober) listFor(ctx context.Context, path, author string, probe bool) (
 		if err != nil {
 			continue
 		}
-		af := AudioFile{Index: i + 1, Ino: inoFor(relTo(base, fp)), Path: fp, Name: filepath.Base(fp),
+		af := AudioFile{Index: i + 1, Ino: p.storedIno(ctx, fp), Path: fp, Name: filepath.Base(fp),
 			Ext: strings.ToLower(filepath.Ext(fp)), Size: fi.Size(), MTimeMs: fi.ModTime().UnixMilli()}
-		if probe {
-			p.meta(ctx, &af, author)
-		} else {
-			p.cached(ctx, &af)
-		}
 		out = append(out, af)
 	}
+	// A file's id is stored the first time it's listed, and from then on it's the file's,
+	// whatever it's renamed to (a book rename carries the row along). A new id is the one
+	// the file's name has always given it — so nothing anyone already holds changes — made
+	// unique within the item, since a renamed file keeps the id its old name gave and a new
+	// file could arrive under that old name.
+	used := map[string]bool{}
+	for _, af := range out {
+		if af.Ino != "" {
+			used[af.Ino] = true
+		}
+	}
+	for i := range out {
+		if out[i].Ino != "" {
+			continue
+		}
+		rel := relTo(base, out[i].Path)
+		ino := inoFor(rel)
+		for n := 2; used[ino]; n++ {
+			ino = inoFor(rel + "#" + strconv.Itoa(n))
+		}
+		used[ino] = true
+		out[i].Ino = ino
+		p.storeIno(ctx, out[i].Path, ino)
+	}
+	for i := range out {
+		af := &out[i]
+		if probe {
+			p.meta(ctx, af, author)
+		} else {
+			p.cached(ctx, af)
+		}
+	}
 	return out, nil
+}
+
+// storedIno is the id stored for a file, "" when none is yet.
+func (p *prober) storedIno(ctx context.Context, path string) string {
+	if p.db == nil {
+		return ""
+	}
+	var ino string
+	_ = p.db.QueryRowContext(ctx, `SELECT ino FROM audio_file_meta WHERE path = ?`, path).Scan(&ino)
+	return ino
+}
+
+// storeIno keeps a file's id. A file not probed yet gets a row holding only its id: size
+// -1 matches no file on disk, so the row reads as "not probed" until a probe fills it in
+// (which leaves the id alone).
+func (p *prober) storeIno(ctx context.Context, path, ino string) {
+	if p.db == nil {
+		return
+	}
+	_, _ = p.db.ExecContext(ctx,
+		`INSERT INTO audio_file_meta (path, size, mtime, ino) VALUES (?, -1, 0, ?)
+		 ON CONFLICT(path) DO UPDATE SET ino = excluded.ino WHERE audio_file_meta.ino = ''`, path, ino)
 }
 
 // cached fills in probed details only if they are already known.
@@ -315,23 +368,12 @@ func tagValue(tags map[string]string, key string) string {
 	return ""
 }
 
-func relTo(base, p string) string {
-	if r, err := filepath.Rel(base, p); err == nil {
-		return filepath.ToSlash(r)
-	}
-	return filepath.Base(p)
-}
+func relTo(base, p string) string { return library.RelPath(base, p) }
 
-// inoFor makes a stable numeric-string id for a file from its path within the item —
-// Audiobookshelf clients treat "ino" as an opaque string, and a number is the safe shape.
-func inoFor(rel string) string {
-	var h uint64 = 1469598103934665603
-	for i := 0; i < len(rel); i++ {
-		h ^= uint64(rel[i])
-		h *= 1099511628211
-	}
-	return strconv.FormatUint(h>>11, 10) // keep it within 53 bits: safe in JSON numbers too
-}
+// inoFor is the id a file is given from its path within the item (library.AudioFileID),
+// for a file with none stored yet — Audiobookshelf clients treat "ino" as an opaque string,
+// and a number is the safe shape.
+func inoFor(rel string) string { return library.AudioFileID(rel) }
 
 func mimeFor(ext string) string {
 	switch strings.ToLower(ext) {
@@ -355,36 +397,9 @@ func mimeFor(ext string) string {
 	return "application/octet-stream"
 }
 
-// naturalLess orders "Chapter 2" before "Chapter 10".
-func naturalLess(a, b string) bool {
-	a, b = strings.ToLower(a), strings.ToLower(b)
-	for a != "" && b != "" {
-		ra, rb := rune(a[0]), rune(b[0])
-		if unicode.IsDigit(ra) && unicode.IsDigit(rb) {
-			na, restA := leadingNumber(a)
-			nb, restB := leadingNumber(b)
-			if na != nb {
-				return na < nb
-			}
-			a, b = restA, restB
-			continue
-		}
-		if ra != rb {
-			return ra < rb
-		}
-		a, b = a[1:], b[1:]
-	}
-	return len(a) < len(b)
-}
-
-func leadingNumber(s string) (int64, string) {
-	i := 0
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-	}
-	n, _ := strconv.ParseInt(s[:i], 10, 64)
-	return n, s[i:]
-}
+// naturalLess orders "Chapter 2" before "Chapter 10". It is library.NaturalLess — the one
+// play order — so a book rename, which numbers tracks by it, can never reorder what plays.
+func naturalLess(a, b string) bool { return library.NaturalLess(a, b) }
 
 func firstNonEmpty(v ...string) string {
 	for _, s := range v {

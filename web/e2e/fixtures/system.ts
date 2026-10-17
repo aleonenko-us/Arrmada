@@ -216,6 +216,11 @@ export const settings: AppSettings = {
   naming_series_folder: "{Title} ({Year})",
   naming_series_season: "Season {Season:00}",
   naming_series_episode: "{Title} - S{Season:00}E{Episode:00}",
+  naming_audiobook_folder: "{Author}/{Title}",
+  naming_audiobook_file: "{Title}",
+  naming_audiobook_track: "{Original}",
+  naming_ebook_folder: "{Author}/{Title}",
+  naming_ebook_file: "{Title}",
   write_nfo: false,
   download_artwork: true,
   books_enabled: true,
@@ -367,4 +372,36 @@ export function quota(p: PersonaInfo): MyQuota {
   const none = { limit: 0, used: 0 };
   if (p.user.role !== "requester") return { days: 7, movie: none, season: none, book: none };
   return { days: 7, movie: { limit: 3, used: 1, resets_at: "2026-10-14T09:00:00Z" }, season: none, book: none };
+}
+
+// Book naming's presets, as GET /books/naming/presets answers them.
+export const bookNamingPresets = {
+  presets: [
+    {
+      id: "author-title", label: "Author/Title (default)", description: "One folder per author, one per book inside it.",
+      audiobook: { folder: "{Author}/{Title}", file: "{Title}", track: "{Original}" },
+      ebook: { folder: "{Author}/{Title}", file: "{Title}" },
+    },
+    {
+      id: "audiobookshelf", label: "Audiobookshelf (Author/Series/Title)", description: "A series folder under the author.",
+      audiobook: { folder: "{Author}/{Series}/{Series Position} - {Title}", file: "{Title}", track: "{Original}" },
+      ebook: { folder: "{Author}/{Series}/{Series Position} - {Title}", file: "{Title}" },
+    },
+  ],
+  tokens: ["Author", "Author Sort", "Title", "Series", "Series Position", "Year", "Narrator", "Edition", "Format", "Part", "Part Count", "Original"],
+};
+
+// A stand-in for the server's renderer (library.PreviewBookNaming): enough for a spec to
+// see the preview follow the template, and a broken folder template explained.
+export function bookNamingPreview(url: URL) {
+  const folder = url.searchParams.get("folder") ?? "";
+  const file = url.searchParams.get("file") ?? "";
+  if (!folder.includes("{Title}")) {
+    return { samples: [], error: { field: "folder", message: "the last folder must have {Title} in it (outside any < >), so every book gets a folder of its own" } };
+  }
+  const fill = (t: string) => t
+    .split("{Author}").join("Pierce Brown").split("{Title}").join("Golden Son")
+    .split("{Series Position}").join("2").split("{Series}").join("Red Rising Saga");
+  const ext = url.searchParams.get("kind") === "ebook" ? ".epub" : ".m4b";
+  return { samples: [{ label: "A book in a series", paths: [`${fill(folder)}/${fill(file)}${ext}`] }] };
 }

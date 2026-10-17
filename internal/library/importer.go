@@ -209,6 +209,7 @@ func (im *Importer) FindBookFoldersIn(roots ...string) []BookFolder {
 		roots = uniq
 	}
 	for _, root := range roots {
+		hint := im.bookScanHint(root)
 		_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 			// Hidden folders are Arrmada's own (the merge backups under the audiobooks
 			// root) or a system's: scanned as books they'd turn into bogus titles, or an
@@ -231,6 +232,7 @@ func (im *Importer) FindBookFoldersIn(roots ...string) []BookFolder {
 					author = filepath.Base(parent)
 				}
 				title := filepath.Base(dir)
+				author, title = hint.read(root, dir, author, title)
 				if author == "" {
 					// A flat folder named "Title by Author": the author is not part of
 					// the title, and searching the two words together found guides to
@@ -260,9 +262,6 @@ func (im *Importer) FindBookFoldersIn(roots ...string) []BookFolder {
 	return out
 }
 
-// ImportBookEdition hardlinks a book edition into "<root>/<Author>/<Title>/". A single
-// file becomes "<Title>.ext"; a multi-file audiobook keeps each file's name in the
-// book folder (TargetPath then points at the folder). Format is the dominant extension.
 // titleByRe reads "<title> by <Author Name>" where the name is two to four capitalised
 // words or initials — "Death by Chocolate" keeps its title.
 var titleByRe = regexp.MustCompile(`^(.*\S)\s+(?i:by)\s+((?:[A-Z][\w.'’\-]*)(?:\s+[A-Z][\w.'’\-]*){1,3}|[A-Z]\.[\w.]*\s+[A-Z][\w'’\-]*)$`)
@@ -276,21 +275,34 @@ func splitTitleBy(name string) (title, author string) {
 	return name, ""
 }
 
+// ImportBookEdition is ImportBook for a book known only by author and title.
 func (im *Importer) ImportBookEdition(author, title string, files []FoundFile) (*BookImport, error) {
+	return im.ImportBook(BookName{Author: author, Title: title}, files)
+}
+
+// ImportBook hardlinks a book edition into its folder under the book naming scheme
+// (default "<root>/<Author>/<Title>/"). A single file is named by the file template
+// (default "<Title>.ext"); a multi-file audiobook's files by the track template (default:
+// each keeps its own name), numbered in play order; a multi-file ebook keeps its names.
+// TargetPath is the file, or the folder for several. Format is the dominant extension.
+func (im *Importer) ImportBook(n BookName, files []FoundFile) (*BookImport, error) {
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no book files to import")
 	}
+	audio := isAudiobook(files[0].Path)
 	root := im.bookRootForFiles(files)
 	if err := im.checkRoot(root); err != nil {
 		return nil, err
 	}
-	dir := im.bookDirIn(root, author, title)
+	nm := im.BookNamingFor(audio)
+	dir := BookFolderPath(root, nm, audio, n, BookFileFormat(files[0].Path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create book dir: %w", err)
 	}
 	cleanStaleTemps(dir)
+	title := n.Title
 	if len(files) == 1 {
-		target := filepath.Join(dir, clean(title)+filepath.Ext(files[0].Path))
+		target := filepath.Join(dir, BookFileName(nm, audio, n, files[0].Path))
 		method, err := im.linkOrCopy(files[0].Path, target)
 		if err != nil {
 			return nil, fmt.Errorf("import book: %w", err)
@@ -302,14 +314,27 @@ func (im *Importer) ImportBookEdition(author, title string, files []FoundFile) (
 		}
 		return &BookImport{TargetPath: target, Format: BookFileFormat(target), SizeBytes: size, FileCount: 1}, nil
 	}
-	// Multi-file (e.g. an mp3 audiobook): keep names inside the book folder. Per-file
-	// failures are logged and counted out of FileCount; only a total wipeout errors.
+	// Multi-file (e.g. an mp3 audiobook): the files go side by side in the book folder.
+	// Per-file failures are logged and counted out of FileCount; only a total wipeout errors.
+	names := make([]string, len(files))
+	if audio {
+		base := commonDir(files)
+		rels := make([]string, len(files))
+		for i, f := range files {
+			rels[i] = relOrBase(base, f.Path)
+		}
+		names = BookTrackNames(nm, n, rels)
+	} else {
+		for i, f := range files {
+			names[i] = clean(strings.TrimSuffix(filepath.Base(f.Path), filepath.Ext(f.Path))) + filepath.Ext(f.Path)
+		}
+	}
 	var total int64
 	format := ""
 	placed := 0
 	var lastErr error
-	for _, f := range files {
-		target := filepath.Join(dir, clean(strings.TrimSuffix(filepath.Base(f.Path), filepath.Ext(f.Path)))+filepath.Ext(f.Path))
+	for i, f := range files {
+		target := filepath.Join(dir, names[i])
 		method, err := im.linkOrCopy(f.Path, target)
 		if err != nil {
 			lastErr = err
@@ -329,37 +354,121 @@ func (im *Importer) ImportBookEdition(author, title string, files []FoundFile) (
 	return &BookImport{TargetPath: dir, Format: format, SizeBytes: total, FileCount: placed}, nil
 }
 
-// BookLibraryFiles returns the book files present in a book's library folder
-// (rescan). Ebooks and audiobooks may live under different roots, so both are
-// checked (deduped when they share one folder).
-func (im *Importer) BookLibraryFiles(author, title string) []FoundFile {
-	out := FindBookFiles(im.bookDirIn(im.ebookDir(), author, title))
-	if im.audiobookDir() != im.ebookDir() {
-		out = append(out, FindBookFiles(im.bookDirIn(im.audiobookDir(), author, title))...)
+// commonDir is the deepest folder every file is in.
+func commonDir(files []FoundFile) string {
+	if len(files) == 0 {
+		return ""
+	}
+	dir := filepath.Dir(files[0].Path)
+	for _, f := range files[1:] {
+		for !pathWithin(f.Path, dir) {
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				return ""
+			}
+			dir = parent
+		}
+	}
+	return dir
+}
+
+// pathWithin reports whether p is dir or inside it, on whole path segments.
+func pathWithin(p, dir string) bool {
+	p, dir = filepath.Clean(p), filepath.Clean(dir)
+	if p == dir {
+		return true
+	}
+	if !strings.HasSuffix(dir, string(filepath.Separator)) {
+		dir += string(filepath.Separator)
+	}
+	return strings.HasPrefix(p, dir)
+}
+
+// PathWithin reports whether p is dir or inside it, on whole path segments.
+func PathWithin(p, dir string) bool { return pathWithin(p, dir) }
+
+// relOrBase is p relative to base with "/" separators, or just its name when it isn't
+// under base.
+func relOrBase(base, p string) string {
+	if base != "" {
+		if r, err := filepath.Rel(base, p); err == nil && r != ".." && !strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+			return filepath.ToSlash(r)
+		}
+	}
+	return filepath.Base(p)
+}
+
+// BookLibraryFiles returns the book files present in a book's library folders (rescan):
+// the ebook folder and the audiobook folder the naming scheme gives it, which may be under
+// different roots (deduped when they're one folder). The formats are the editions'
+// recorded ones, for a scheme that names {Format} in a folder ("" when there's none). n is
+// named as the audiobook (its narrator, if typed); the ebook folder is named without it.
+func (im *Importer) BookLibraryFiles(n BookName, ebookFormat, audioFormat string) []FoundFile {
+	var out []FoundFile
+	eDir := ""
+	if r := im.ebookDir(); r != "" {
+		en := n
+		en.Narrator = "" // an ebook has no narrator, so its folder is named without one
+		eDir = BookFolderPath(r, im.BookNamingFor(false), false, en, ebookFormat)
+		out = FindBookFiles(eDir)
+	}
+	if r := im.audiobookDir(); r != "" {
+		if aDir := BookFolderPath(r, im.BookNamingFor(true), true, n, audioFormat); aDir != eDir {
+			out = append(out, FindBookFiles(aDir)...)
+		}
 	}
 	return out
 }
 
-// BookEditionCanonical returns the canonical path a single-file book edition should
-// live at ("<root>/<Author>/<Title>/<Title>.ext"), rooted by the file's kind.
-func (im *Importer) BookEditionCanonical(author, title, srcPath string) string {
-	root := im.ebookDir()
-	if isAudiobook(srcPath) {
-		root = im.audiobookDir()
+// BookEditionCanonical returns the path a single-file book edition belongs at under the
+// naming scheme (default "<root>/<Author>/<Title>/<Title>.ext"), rooted by the file's
+// kind; "" when that kind has no library folder.
+func (im *Importer) BookEditionCanonical(n BookName, srcPath string) string {
+	audio := isAudiobook(srcPath)
+	root := im.BookRoot(audio)
+	if root == "" {
+		return ""
 	}
-	return filepath.Join(im.bookDirIn(root, author, title), clean(title)+filepath.Ext(srcPath))
+	nm := im.BookNamingFor(audio)
+	return filepath.Join(BookFolderPath(root, nm, audio, n, BookFileFormat(srcPath)), BookFileName(nm, audio, n, srcPath))
 }
 
-func (im *Importer) bookDirIn(root, author, title string) string {
-	a := clean(author)
-	if a == "" {
-		a = "Unknown Author"
+// BookDir is the folder a book edition of this kind belongs in under the naming scheme,
+// or "" when that kind has no library folder.
+func (im *Importer) BookDir(audio bool, n BookName, format string) string {
+	root := im.BookRoot(audio)
+	if root == "" {
+		return ""
 	}
-	t := clean(title)
-	if t == "" {
-		t = "Unknown"
+	return BookFolderPath(root, im.BookNamingFor(audio), audio, n, format)
+}
+
+// BookRoot is the library folder audiobooks (audio) or ebooks are placed under.
+func (im *Importer) BookRoot(audio bool) string {
+	if audio {
+		return im.audiobookDir()
 	}
-	return filepath.Join(root, a, t)
+	return im.ebookDir()
+}
+
+// SetBookNaming installs the book naming provider (audiobook and ebook templates).
+func (im *Importer) SetBookNaming(np BookNamingProvider) { im.bookNaming = np }
+
+// BookNamingFor is the book naming in effect for audiobooks (audio) or ebooks, with a
+// blank or broken template replaced by its default.
+func (im *Importer) BookNamingFor(audio bool) BookNaming {
+	var n BookNaming
+	switch {
+	case im.bookNaming != nil && audio:
+		n = im.bookNaming.AudiobookNaming()
+	case im.bookNaming != nil:
+		n = im.bookNaming.EbookNaming()
+	case audio:
+		n = DefaultAudiobookNaming
+	default:
+		n = DefaultEbookNaming
+	}
+	return bookNamingOrDefault(n, audio)
 }
 
 var reIllegal = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
@@ -421,6 +530,7 @@ type Importer struct {
 	log          *slog.Logger
 	naming       NamingProvider       // nil → built-in defaults
 	seriesNaming SeriesNamingProvider // nil → built-in defaults
+	bookNaming   BookNamingProvider   // nil → built-in defaults
 	// epTitleFn resolves an episode's metadata title for naming ("" when unknown or
 	// unset). Keyed by show name/year since the importer only knows the show by name.
 	epTitleFn func(seriesTitle string, year, season, episode int) string

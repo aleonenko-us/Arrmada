@@ -90,6 +90,21 @@ func (p libPrefs) SeriesNaming() library.SeriesNaming {
 		EpisodeFile:  p.s.Get(ctx, "naming_series_episode", library.DefaultEpisodeFile),
 	}
 }
+func (p libPrefs) AudiobookNaming() library.BookNaming {
+	ctx := context.Background()
+	return library.BookNaming{
+		Folder: p.s.Get(ctx, "naming_audiobook_folder", library.DefaultAudiobookFolder),
+		File:   p.s.Get(ctx, "naming_audiobook_file", library.DefaultAudiobookFile),
+		Track:  p.s.Get(ctx, "naming_audiobook_track", library.DefaultAudiobookTrack),
+	}
+}
+func (p libPrefs) EbookNaming() library.BookNaming {
+	ctx := context.Background()
+	return library.BookNaming{
+		Folder: p.s.Get(ctx, "naming_ebook_folder", library.DefaultEbookFolder),
+		File:   p.s.Get(ctx, "naming_ebook_file", library.DefaultEbookFile),
+	}
+}
 func (p libPrefs) WriteNFO() bool { return p.s.GetBool(context.Background(), "write_nfo", false) }
 func (p libPrefs) DownloadArtwork() bool {
 	return p.s.GetBool(context.Background(), "download_artwork", false)
@@ -608,6 +623,7 @@ func main() {
 		return seriesSvc.EpisodeTitleByName(context.Background(), seriesTitle, year, season, episode)
 	})
 	bookImporter.SetSeriesNaming(prefs) // user-configurable series folder / season / episode formats
+	bookImporter.SetBookNaming(prefs)   // user-configurable audiobook and ebook folder / file names
 	// A new series folder can carry the show's ids ("Show (2022) {tvdb-12345}", the Plex
 	// recommended scheme); existing folders are reused as they are.
 	bookImporter.SetSeriesIDsFunc(func(seriesTitle string, year int) library.SeriesIDs {
@@ -617,6 +633,11 @@ func main() {
 	coordinator.SetSeries(seriesSvc, bookImporter)
 	// Books share the importer set above; ebooks land in their own category.
 	coordinator.SetBooks(booksSvc)
+	// A book rename a crash or power cut stopped part way is rolled back now, before any
+	// import, scan or rename touches book files again.
+	if n := coordinator.RecoverBookRenames(runCtx); n > 0 {
+		log.Warn("rolled back interrupted book renames", "editions", n)
+	}
 	// Music shares the same importer; albums land in their own category.
 	coordinator.SetMusic(musicSvc)
 	// Switching Music off in Settings stops its searches, imports and manual actions on the
@@ -1213,6 +1234,13 @@ func main() {
 		DB: st.DB(), Books: booksSvc, Listen: listenStore, Users: authSvc, Settings: settingsSvc,
 		Log: modLog(log, "audioserver"), FFprobe: "ffprobe", DataDir: cfg.DataDir,
 	})
+	// Files probed before their ids were stored get the id they've always been given, from
+	// the database alone, before any rename can move them.
+	if n, err := audioSrv.BackfillFileIDs(runCtx); err != nil {
+		log.Warn("audiobook server: couldn't store the ids of known files", "err", err)
+	} else if n > 0 {
+		log.Info("audiobook server: stored the ids of known files", "files", n)
+	}
 	audioPort := os.Getenv("ARRMADA_AUDIOBOOK_LISTEN_PORT")
 	if audioPort == "" {
 		audioPort = "13378"

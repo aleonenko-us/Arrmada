@@ -1,12 +1,14 @@
 package audioserver
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/books"
+	"github.com/tristenlammi/arrmada/internal/library"
 )
 
 // The ebook of an audiobook's book, for apps that read as well as listen (the official
@@ -51,8 +53,9 @@ func ebookFormatOf(it Item) string {
 	return ebookFormatFor("." + strings.ToLower(strings.TrimSpace(e.Format)))
 }
 
-// ebookOf finds an item's ebook on disk through the books package's shared helper.
-func ebookOf(it Item) (ebook, bool) {
+// ebookOf finds an item's ebook on disk through the books package's shared helper. Its
+// id is stored like an audio file's, so renaming the ebook doesn't change it.
+func (s *Server) ebookOf(ctx context.Context, it Item) (ebook, bool) {
 	if ebookFormatOf(it) == "" {
 		return ebook{}, false
 	}
@@ -68,9 +71,12 @@ func ebookOf(it Item) (ebook, bool) {
 		return ebook{}, false
 	}
 	name := filepath.Base(path)
-	// "ebook/" keeps its ino apart from every audio file's, which hash the file's path
-	// within the audiobook folder.
-	return ebook{Ino: inoFor("ebook/" + name), Path: path, Name: name, Ext: ext, Format: format,
+	ino := s.probe.storedIno(ctx, path)
+	if ino == "" {
+		ino = library.EbookFileID(name)
+		s.probe.storeIno(ctx, path, ino)
+	}
+	return ebook{Ino: ino, Path: path, Name: name, Ext: ext, Format: format,
 		Size: fi.Size(), MTimeMs: fi.ModTime().UnixMilli()}, true
 }
 
@@ -100,7 +106,7 @@ func (s *Server) handleEbook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Item not found")
 		return
 	}
-	e, ok := ebookOf(it)
+	e, ok := s.ebookOf(r.Context(), it)
 	if !ok || (r.PathValue("fileid") != "" && r.PathValue("fileid") != e.Ino) {
 		writeError(w, http.StatusNotFound, "Ebook not found")
 		return
