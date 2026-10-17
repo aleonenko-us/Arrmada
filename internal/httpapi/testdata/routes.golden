@@ -11,6 +11,7 @@ DELETE /api/v1/downloadclients/{id} staff -
 DELETE /api/v1/indexers/{id} staff -
 DELETE /api/v1/insights/import/runs/{id}/rows admin -
 DELETE /api/v1/jellyfin admin -
+DELETE /api/v1/me/api-keys/{id} user ext
 DELETE /api/v1/me/audio/devices/{family} user ext
 DELETE /api/v1/me/audio/items/{key}/bookmarks/{time} user ext
 DELETE /api/v1/me/audio/password user ext
@@ -28,8 +29,8 @@ DELETE /api/v1/music/artists/{id} staff -
 DELETE /api/v1/notifications/{id} admin -
 DELETE /api/v1/quality/profiles/{id} staff -
 DELETE /api/v1/queue/{hash} staff -
-DELETE /api/v1/requests/{id} requester ext
-DELETE /api/v1/requests/{id}/subscription requester ext
+DELETE /api/v1/requests/{id} requester ext key
+DELETE /api/v1/requests/{id}/subscription requester ext key
 DELETE /api/v1/series/{id} staff -
 DELETE /api/v1/series/{id}/aliases/{alias} staff -
 DELETE /api/v1/series/{id}/blocklist/{bid} staff -
@@ -44,41 +45,42 @@ DELETE /api/v1/subtitles/profiles/{id} staff -
 DELETE /api/v1/system/backups/restore-pending admin -
 DELETE /api/v1/system/backups/{name} admin -
 DELETE /api/v1/system/library/folders/{id} admin -
+DELETE /api/v1/users/api-keys/{id} admin -
 DELETE /api/v1/users/jellyfin-blocks/{jellyfinID} admin -
 DELETE /api/v1/users/plex-blocks/{plexID} admin -
 DELETE /api/v1/users/{id} admin -
-GET /api/health public ext
+GET /api/health public ext key
 GET /api/v1/apikeys admin -
 GET /api/v1/attention staff -
 GET /api/v1/audioserver admin -
 GET /api/v1/audioserver/listening admin -
 GET /api/v1/auth/jellyfin/quickconnect/{id} public ext
-GET /api/v1/auth/me user ext
+GET /api/v1/auth/me user ext key
 GET /api/v1/auth/plex/pin/{id} public ext
 GET /api/v1/blocklist staff -
 GET /api/v1/book-authors staff -
 GET /api/v1/book-authors/{id} staff -
 GET /api/v1/books staff -
 GET /api/v1/books/authors/images staff -
-GET /api/v1/books/discover/authors user ext
-GET /api/v1/books/discover/authors/{key} user ext
-GET /api/v1/books/discover/authors/{key}/works user ext
-GET /api/v1/books/discover/browse/{kind} user ext
-GET /api/v1/books/discover/detail user ext
-GET /api/v1/books/discover/recommended user ext
-GET /api/v1/books/discover/search user ext
-GET /api/v1/books/discover/similar user ext
-GET /api/v1/books/discover/subjects/{name} user ext
-GET /api/v1/books/discover/trending user ext
+GET /api/v1/books/discover/authors user ext key
+GET /api/v1/books/discover/authors/{key} user ext key
+GET /api/v1/books/discover/authors/{key}/works user ext key
+GET /api/v1/books/discover/browse/{kind} user ext key
+GET /api/v1/books/discover/detail user ext key
+GET /api/v1/books/discover/recommended user ext key
+GET /api/v1/books/discover/search user ext key
+GET /api/v1/books/discover/similar user ext key
+GET /api/v1/books/discover/subjects/{name} user ext key
+GET /api/v1/books/discover/trending user ext key
 GET /api/v1/books/duplicates staff -
 GET /api/v1/books/lookup staff -
 GET /api/v1/books/search-missing staff -
 GET /api/v1/books/upgrade staff -
 GET /api/v1/books/{id} staff -
 GET /api/v1/books/{id}/audiobook user ext
-GET /api/v1/books/{id}/cover-image user ext
+GET /api/v1/books/{id}/cover-image user ext key
 GET /api/v1/books/{id}/covers staff -
-GET /api/v1/books/{id}/ebook user ext
+GET /api/v1/books/{id}/ebook user ext key
 GET /api/v1/books/{id}/edition-files staff -
 GET /api/v1/books/{id}/history staff -
 GET /api/v1/books/{id}/manualimport staff -
@@ -105,22 +107,22 @@ GET /api/v1/convert/skips staff -
 GET /api/v1/convert/stats staff -
 GET /api/v1/convert/status staff -
 GET /api/v1/dashboard staff -
-GET /api/v1/discover user ext
-GET /api/v1/discover/because user ext
-GET /api/v1/discover/browse user ext
-GET /api/v1/discover/collection/{id} user ext
-GET /api/v1/discover/collections user ext
-GET /api/v1/discover/genres user ext
-GET /api/v1/discover/person/{id} user ext
-GET /api/v1/discover/popular user ext
-GET /api/v1/discover/provider user ext
-GET /api/v1/discover/providers user ext
-GET /api/v1/discover/recently-added user ext
-GET /api/v1/discover/recommended user ext
-GET /api/v1/discover/rows/{kind} user ext
-GET /api/v1/discover/search user ext
-GET /api/v1/discover/trending user ext
-GET /api/v1/discover/upcoming user ext
+GET /api/v1/discover user ext key
+GET /api/v1/discover/because user ext key
+GET /api/v1/discover/browse user ext key
+GET /api/v1/discover/collection/{id} user ext key
+GET /api/v1/discover/collections user ext key
+GET /api/v1/discover/genres user ext key
+GET /api/v1/discover/person/{id} user ext key
+GET /api/v1/discover/popular user ext key
+GET /api/v1/discover/provider user ext key
+GET /api/v1/discover/providers user ext key
+GET /api/v1/discover/recently-added user ext key
+GET /api/v1/discover/recommended user ext key
+GET /api/v1/discover/rows/{kind} user ext key
+GET /api/v1/discover/search user ext key
+GET /api/v1/discover/trending user ext key
+GET /api/v1/discover/upcoming user ext key
 GET /api/v1/downloadclients staff -
 GET /api/v1/downloadclients/bundled-login admin -
 GET /api/v1/downloadclients/{id}/settings staff -
@@ -153,8 +155,8 @@ GET /api/v1/insights/servers staff -
 GET /api/v1/insights/stats staff -
 GET /api/v1/insights/users staff -
 GET /api/v1/insights/users/{id} staff -
-GET /api/v1/issues user ext
-GET /api/v1/issues/episodes/{tmdb} requester ext
+GET /api/v1/issues user ext key
+GET /api/v1/issues/episodes/{tmdb} requester ext key
 GET /api/v1/jellyfin staff -
 GET /api/v1/jellyfin/scan staff -
 GET /api/v1/jobs staff -
@@ -168,6 +170,7 @@ GET /api/v1/logs admin -
 GET /api/v1/logs/download admin -
 GET /api/v1/logs/level admin -
 GET /api/v1/me/account user ext
+GET /api/v1/me/api-keys user ext
 GET /api/v1/me/apprise user ext
 GET /api/v1/me/audio user ext
 GET /api/v1/me/audio/history user ext
@@ -178,21 +181,21 @@ GET /api/v1/me/audio/items/{key}/file/{ino} user ext
 GET /api/v1/me/audio/library user ext
 GET /api/v1/me/audio/listening user ext
 GET /api/v1/me/audio/shelves user ext
-GET /api/v1/me/books user ext
+GET /api/v1/me/books user ext key
 GET /api/v1/me/calendar-feed user -
 GET /api/v1/me/jellyfin user ext
 GET /api/v1/me/jellyfin/link/quickconnect/{id} user ext
 GET /api/v1/me/kindle user ext
-GET /api/v1/me/notifications user ext
+GET /api/v1/me/notifications user ext key
 GET /api/v1/me/notify-prefs user ext
 GET /api/v1/me/plex user ext
 GET /api/v1/me/plex/link/{id} user ext
 GET /api/v1/me/push/key user ext
-GET /api/v1/me/quota user ext
+GET /api/v1/me/quota user ext key
 GET /api/v1/me/sessions user ext
-GET /api/v1/media/links user ext
-GET /api/v1/media/series/{id}/seasons user ext
-GET /api/v1/media/{media}/{id} user ext
+GET /api/v1/media/links user ext key
+GET /api/v1/media/series/{id}/seasons user ext key
+GET /api/v1/media/{media}/{id} user ext key
 GET /api/v1/movies staff -
 GET /api/v1/movies/downloads staff -
 GET /api/v1/movies/editions staff -
@@ -222,7 +225,7 @@ GET /api/v1/notifications/presets staff -
 GET /api/v1/notifications/{id}/deliveries staff -
 GET /api/v1/parse staff -
 GET /api/v1/people admin -
-GET /api/v1/plex/link user ext
+GET /api/v1/plex/link user ext key
 GET /api/v1/quality/preview staff -
 GET /api/v1/quality/profiles staff -
 GET /api/v1/quality/profiles/{ref} staff -
@@ -232,8 +235,8 @@ GET /api/v1/queue/{hash}/targets staff -
 GET /api/v1/recycle staff -
 GET /api/v1/recycle/items staff -
 GET /api/v1/recycle/mode staff -
-GET /api/v1/requests user ext
-GET /api/v1/requests/{id} user ext
+GET /api/v1/requests user ext key
+GET /api/v1/requests/{id} user ext key
 GET /api/v1/reviews staff -
 GET /api/v1/reviews/{id}/files staff -
 GET /api/v1/reviews/{id}/targets staff -
@@ -258,7 +261,7 @@ GET /api/v1/settings staff -
 GET /api/v1/settings/smtp admin -
 GET /api/v1/setup admin -
 GET /api/v1/setup/checklist admin -
-GET /api/v1/status public ext
+GET /api/v1/status public ext key
 GET /api/v1/subtitles/attention staff -
 GET /api/v1/subtitles/coverage staff -
 GET /api/v1/subtitles/file staff -
@@ -280,6 +283,7 @@ GET /api/v1/system/status admin -
 GET /api/v1/system/support-bundle admin -
 GET /api/v1/system/tasks staff -
 GET /api/v1/users admin -
+GET /api/v1/users/api-keys admin -
 GET /api/v1/users/jellyfin-blocks admin -
 GET /api/v1/users/plex-blocks admin -
 GET /api/v1/users/{id}/impact admin -
@@ -361,7 +365,7 @@ POST /api/v1/insights/import/tautulli admin -
 POST /api/v1/insights/plex/auth staff -
 POST /api/v1/insights/plex/scan/test staff -
 POST /api/v1/insights/plex/test staff -
-POST /api/v1/issues requester ext
+POST /api/v1/issues requester ext key
 POST /api/v1/issues/{id}/dismiss staff -
 POST /api/v1/issues/{id}/fix staff -
 POST /api/v1/issues/{id}/resolve staff -
@@ -369,6 +373,7 @@ POST /api/v1/jellyfin/scan/test staff -
 POST /api/v1/jellyfin/test staff -
 POST /api/v1/jobs/{id}/cancel staff -
 POST /api/v1/library/fit/preview staff -
+POST /api/v1/me/api-keys user ext
 POST /api/v1/me/audio/accept user ext
 POST /api/v1/me/audio/dismiss user ext
 POST /api/v1/me/audio/items/{key}/bookmarks user ext
@@ -381,8 +386,8 @@ POST /api/v1/me/books/{id}/send-to-kindle user ext
 POST /api/v1/me/calendar-feed user -
 POST /api/v1/me/jellyfin/link user ext
 POST /api/v1/me/jellyfin/link/quickconnect user ext
-POST /api/v1/me/notifications/read-all user ext
-POST /api/v1/me/notifications/{id}/read user ext
+POST /api/v1/me/notifications/read-all user ext key
+POST /api/v1/me/notifications/{id}/read user ext key
 POST /api/v1/me/password user ext
 POST /api/v1/me/plex/link user ext
 POST /api/v1/me/push/status user ext
@@ -434,12 +439,12 @@ POST /api/v1/queue/{hash}/resume staff -
 POST /api/v1/recycle/delete admin -
 POST /api/v1/recycle/empty admin -
 POST /api/v1/recycle/restore staff -
-POST /api/v1/requests requester ext
-POST /api/v1/requests/bulk staff ext
-POST /api/v1/requests/import/overseerr admin ext
-POST /api/v1/requests/{id}/approve staff ext
-POST /api/v1/requests/{id}/decline staff ext
-POST /api/v1/requests/{id}/preview staff ext
+POST /api/v1/requests requester ext key
+POST /api/v1/requests/bulk staff ext key
+POST /api/v1/requests/import/overseerr admin -
+POST /api/v1/requests/{id}/approve staff ext key
+POST /api/v1/requests/{id}/decline staff ext key
+POST /api/v1/requests/{id}/preview staff ext key
 POST /api/v1/reviews/bulk staff -
 POST /api/v1/reviews/{id}/dismiss staff -
 POST /api/v1/reviews/{id}/import staff -

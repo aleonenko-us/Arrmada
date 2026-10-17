@@ -53,12 +53,15 @@ func TestAutoApprovalRoundTrips(t *testing.T) {
 	}
 	got, err = s.ValidateSession(ctx, tok)
 	check("ValidateSession", got, err)
-	key, err := s.CreateAPIKey(ctx, u.ID, "k")
+	key, _, err := s.CreateAPIKey(ctx, u.ID, NewAPIKey{Name: "k", Scope: KeyScopeFull})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err = s.ValidateAPIKey(ctx, key)
-	check("ValidateAPIKey", got, err)
+	use, err := s.ValidateAPIKey(ctx, key, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("ValidateAPIKey", use.User, nil)
 	list, err := s.ListUsers(ctx)
 	if err != nil || len(list) != 1 {
 		t.Fatal(err)

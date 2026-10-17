@@ -26,11 +26,15 @@ var (
 	userinfo = regexp.MustCompile(`(?i)([a-z][a-z0-9+.\-]*://)[^/\s:@]+:[^/\s@]+@`)
 	// Email addresses: account names, Kindle addresses.
 	email = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
+	// A personal API key (auth.APIKeyPrefix), wherever it turns up: they're never logged
+	// on purpose, but one pasted into a message or a URL by somebody else's tool would be.
+	personalKey = regexp.MustCompile(`\barrk_[A-Za-z0-9]{8,}`)
 )
 
 // RedactText takes secrets out of free text: values of secret-named keys and query
 // parameters, Authorization credentials, passwords in URLs, and email addresses.
 func RedactText(s string) string {
+	s = personalKey.ReplaceAllString(s, "arrk_"+redacted)
 	s = scrubQuery(s)
 	s = bearer.ReplaceAllString(s, "${1} "+redacted)
 	s = secretPair.ReplaceAllStringFunc(s, func(m string) string {

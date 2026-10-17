@@ -42,6 +42,9 @@ type MergePreview struct {
 	// device held it.
 	SignedInDevices int `json:"signed_in_devices"`
 	ListeningApps   int `json:"listening_apps"`
+	// Personal API keys are revoked, not moved, for the same reason: a key handed over
+	// would act as the other account.
+	APIKeys int `json:"api_keys"`
 }
 
 type querier interface {
@@ -125,6 +128,7 @@ func (s *Service) MergePreview(ctx context.Context, targetID, fromID int64) (Mer
 		{`SELECT COUNT(*) > 0 FROM audio_passwords WHERE user_id = ?`, &p.AudiobookPassword},
 		{`SELECT COUNT(*) FROM sessions WHERE user_id = ?`, &p.SignedInDevices},
 		{`SELECT COUNT(DISTINCT family) FROM audio_tokens WHERE user_id = ? AND revoked = 0`, &p.ListeningApps},
+		{`SELECT COUNT(*) FROM api_keys WHERE user_id = ?`, &p.APIKeys},
 	}
 	for _, c := range counts {
 		if err := s.db.QueryRowContext(ctx, c.q, fromID).Scan(c.dst); err != nil {
@@ -217,8 +221,11 @@ func (s *Service) MergeDuplicate(ctx context.Context, targetID, fromID int64) er
 			// The duplicate's calendar feed link stops working, like its sessions: it was
 			// made for that account's view, and the person can make a new one in a click.
 			step{"calendar feed", `DELETE FROM calendar_feeds WHERE user_id = ?`, []any{fromID}},
-			// Sessions, API keys, listening-app sign-ins and anything not moved go with the
-			// row (ON DELETE CASCADE).
+			// Personal API keys are revoked, never moved: a script holding one would
+			// otherwise start acting as the target account.
+			step{"personal API keys", `DELETE FROM api_keys WHERE user_id = ?`, []any{fromID}},
+			// Sessions, listening-app sign-ins and anything not moved go with the row
+			// (ON DELETE CASCADE).
 			step{"the duplicate account", `DELETE FROM users WHERE id = ?`, []any{fromID}},
 		)
 		for _, st := range steps {

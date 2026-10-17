@@ -376,6 +376,13 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/me/sessions/revoke-others", a.signedIn(a.handleRevokeMyOtherSessions).ext())
 	mux.HandleFunc("GET /api/v1/me/sessions", a.signedIn(a.handleMySessions).ext())
 	mux.HandleFunc("DELETE /api/v1/me/sessions/{id}", a.signedIn(a.handleRevokeMySession).ext())
+	// Your personal API keys, for scripts (every role). Never callable with a key.
+	mux.HandleFunc("GET /api/v1/me/api-keys", a.signedIn(a.handleMyAPIKeys).ext())
+	mux.HandleFunc("POST /api/v1/me/api-keys", a.signedIn(a.handleCreateMyAPIKey).ext())
+	mux.HandleFunc("DELETE /api/v1/me/api-keys/{id}", a.signedIn(a.handleRevokeMyAPIKey).ext())
+	// Everyone's personal API keys, for the admin to see and revoke (People & access).
+	mux.HandleFunc("GET /api/v1/users/api-keys", a.requireRole(auth.RoleAdmin, a.handleListAllAPIKeys))
+	mux.HandleFunc("DELETE /api/v1/users/api-keys/{id}", a.requireRole(auth.RoleAdmin, a.handleRevokeAnyAPIKey))
 
 	// User management (admin only).
 	mux.HandleFunc("GET /api/v1/users", a.requireRole(auth.RoleAdmin, a.handleListUsers))
@@ -616,7 +623,9 @@ func (a *api) registerRoutes(mux *router) {
 	// Owner-withdraw is allowed (own request, still pending), so the route admits
 	// requesters; the handler enforces ownership vs manager.
 	mux.HandleFunc("DELETE /api/v1/requests/{id}", a.requireRole(auth.RoleRequester, a.handleDeleteRequest).ext())
-	mux.HandleFunc("POST /api/v1/requests/import/overseerr", a.requireRole(auth.RoleAdmin, a.handleImportOverseerr).ext())
+	// Admin only, so not ext(): the outside-the-network mark only ever limits non-staff,
+	// and this one takes another server's API key.
+	mux.HandleFunc("POST /api/v1/requests/import/overseerr", a.requireRole(auth.RoleAdmin, a.handleImportOverseerr))
 	// Reported problems: a requester reports one from a title's sheet (from outside the LAN
 	// too) and lists their own; staff list everyone's and close them.
 	mux.HandleFunc("GET /api/v1/issues", a.signedIn(a.handleListIssues).ext())

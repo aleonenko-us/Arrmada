@@ -18,6 +18,11 @@ import (
 // compile. Anything not deliberately opened to everyone signed in is staff-only, and
 // testdata/routes.golden lists every route with its audience so a change shows up in
 // review.
+//
+// A request made with a personal API key has one more gate: the route must be marked for
+// keys (apikey_routes.go; "key" in the golden table), and a read-only key only reaches
+// GET. Being marked for keys never widens who may call a route: the scope check below
+// still applies, with the key's (capped) role.
 
 // scope is the least privileged audience a route admits.
 type scope int
@@ -67,7 +72,10 @@ type guard struct {
 	// read-only accounts and anyone not signed in). Without it, such a request from
 	// outside gets 403 before the handler runs. Staff are never limited this way.
 	external bool
-	h        http.HandlerFunc
+	// apiKey marks a route a personal API key may call (apikey_routes.go decides; only
+	// HandleFunc sets it). A request made with a key gets 403 from every other route.
+	apiKey bool
+	h      http.HandlerFunc
 }
 
 // ext marks the route as reachable from outside the LAN.
@@ -104,6 +112,7 @@ type routeSpec struct {
 	Pattern  string
 	Scope    scope
 	External bool
+	APIKey   bool // a personal API key may call it
 }
 
 // router is the only thing in this package that registers on the ServeMux.
@@ -129,9 +138,30 @@ func (rt *router) HandleFunc(pattern string, g guard) {
 	if i := strings.IndexByte(pattern, ' '); i >= 0 {
 		method, path = pattern[:i], strings.TrimSpace(pattern[i+1:])
 	}
-	spec := routeSpec{Method: method, Pattern: path, Scope: g.scope, External: g.external}
+	g.apiKey = apiKeyRoutes[pattern]
+	spec := routeSpec{Method: method, Pattern: path, Scope: g.scope, External: g.external, APIKey: g.apiKey}
 	rt.specs = append(rt.specs, spec)
-	rt.mux.HandleFunc(pattern, rt.wrap(g))
+	rt.mux.HandleFunc(pattern, rt.keyed(g, rt.wrap(g)))
+}
+
+// keyed puts the personal-API-key rules in front of h: a request made with a key reaches
+// only routes marked for keys, and a read-only key only their GET (and HEAD) side. A
+// request without a key passes straight through.
+func (rt *router) keyed(g guard, h http.HandlerFunc) http.HandlerFunc {
+	a := rt.a
+	return func(w http.ResponseWriter, r *http.Request) {
+		if k, ok := keyUseFrom(r); ok {
+			if !g.apiKey {
+				a.writeError(w, http.StatusForbidden, "API keys can't be used for this; sign in to Arrmada instead")
+				return
+			}
+			if k.Scope != auth.KeyScopeFull && r.Method != http.MethodGet && r.Method != http.MethodHead {
+				a.writeError(w, http.StatusForbidden, "this API key is read-only")
+				return
+			}
+		}
+		h(w, r)
+	}
 }
 
 func (rt *router) wrap(g guard) http.HandlerFunc {

@@ -642,46 +642,6 @@ func (s *Service) DeleteSession(ctx context.Context, raw string) error {
 	return err
 }
 
-// CreateAPIKey creates a named API key for a user. The raw key is returned once
-// (prefixed "arr_"); only its hash is stored.
-func (s *Service) CreateAPIKey(ctx context.Context, userID int64, name string) (string, error) {
-	raw, err := randToken(32)
-	if err != nil {
-		return "", err
-	}
-	key := "arr_" + raw
-	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO api_keys (user_id, name, key_hash) VALUES (?, ?, ?)`,
-		userID, strings.TrimSpace(name), hashToken(key))
-	if err != nil {
-		return "", err
-	}
-	return key, nil
-}
-
-// ValidateAPIKey returns the user owning the given API key and stamps last-used.
-func (s *Service) ValidateAPIKey(ctx context.Context, key string) (*User, error) {
-	var (
-		u          User
-		disabled   int
-		am, as, ab int
-	)
-	h := hashToken(key)
-	err := s.db.QueryRowContext(ctx, `
-		SELECT u.id, u.username, u.role, u.disabled, u.auto_approve_movie, u.auto_approve_series, u.auto_approve_book
-		FROM api_keys k JOIN users u ON u.id = k.user_id
-		WHERE k.key_hash = ?`, h).Scan(&u.ID, &u.Username, &u.Role, &disabled, &am, &as, &ab)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && disabled != 0) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	u.setAutoApproval(am, as, ab)
-	_, _ = s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE key_hash = ?`, h)
-	return &u, nil
-}
-
 // --- helpers ---
 
 func randToken(n int) (string, error) {
