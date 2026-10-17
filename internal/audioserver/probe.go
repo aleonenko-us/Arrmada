@@ -108,11 +108,12 @@ func (p *prober) knownUnder(ctx context.Context, root string) known {
 	return k
 }
 
-// knownPaths lists every file with stored details at root or below it.
+// knownPaths lists every file with stored details at root or below it (a row holding only
+// a file's id has none).
 func (p *prober) knownPaths(ctx context.Context, root string) ([]string, error) {
 	clean, from, to := underRange(root)
 	rows, err := p.db.QueryContext(ctx,
-		`SELECT path FROM audio_file_meta WHERE path = ? OR (path >= ? AND path < ?)`, clean, from, to)
+		`SELECT path FROM audio_file_meta WHERE size != -1 AND (path = ? OR (path >= ? AND path < ?))`, clean, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -128,11 +129,15 @@ func (p *prober) knownPaths(ctx context.Context, root string) ([]string, error) 
 	return out, rows.Err()
 }
 
-// forget drops the stored details of files that are gone, returning how many went.
+// forget drops the probed details of files that are gone, returning how many went. The
+// row stays with only the file's id: a file that comes back (a share remounted, a file
+// restored from the bin) is the same file to the apps that downloaded it.
 func (p *prober) forget(ctx context.Context, paths []string) int {
 	n := 0
 	for _, path := range paths {
-		if res, err := p.db.ExecContext(ctx, `DELETE FROM audio_file_meta WHERE path = ?`, path); err == nil {
+		if res, err := p.db.ExecContext(ctx,
+			`UPDATE audio_file_meta SET size = -1, mtime = 0, duration = 0, bitrate = 0, codec = '', title = '',
+			        narrator = '', chapters = '[]' WHERE path = ? AND size != -1`, path); err == nil {
 			if c, _ := res.RowsAffected(); c > 0 {
 				n++
 			}
@@ -363,23 +368,12 @@ func tagValue(tags map[string]string, key string) string {
 	return ""
 }
 
-func relTo(base, p string) string {
-	if r, err := filepath.Rel(base, p); err == nil {
-		return filepath.ToSlash(r)
-	}
-	return filepath.Base(p)
-}
+func relTo(base, p string) string { return library.RelPath(base, p) }
 
-// inoFor makes a stable numeric-string id for a file from its path within the item —
-// Audiobookshelf clients treat "ino" as an opaque string, and a number is the safe shape.
-func inoFor(rel string) string {
-	var h uint64 = 1469598103934665603
-	for i := 0; i < len(rel); i++ {
-		h ^= uint64(rel[i])
-		h *= 1099511628211
-	}
-	return strconv.FormatUint(h>>11, 10) // keep it within 53 bits: safe in JSON numbers too
-}
+// inoFor is the id a file is given from its path within the item (library.AudioFileID),
+// for a file with none stored yet — Audiobookshelf clients treat "ino" as an opaque string,
+// and a number is the safe shape.
+func inoFor(rel string) string { return library.AudioFileID(rel) }
 
 func mimeFor(ext string) string {
 	switch strings.ToLower(ext) {

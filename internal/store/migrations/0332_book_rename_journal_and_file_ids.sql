@@ -9,7 +9,9 @@ ALTER TABLE audio_file_meta ADD COLUMN ino TEXT NOT NULL DEFAULT '';
 
 -- A rename's planned moves, written before the first file moves and removed in the same
 -- transaction that records the new place (or once the moves are undone). An entry still
--- here at start-up is a rename a crash cut short; it is rolled back then.
+-- here at start-up is a rename a crash cut short. The edition's old and new recorded paths
+-- say which way to settle it: a record still at the old one is rolled back, one already at
+-- the new one just drops the entry, and anything else is left alone.
 CREATE TABLE IF NOT EXISTS book_rename_journal (
     book_id    INTEGER NOT NULL,
     version_id INTEGER NOT NULL DEFAULT 0,
@@ -17,6 +19,8 @@ CREATE TABLE IF NOT EXISTS book_rename_journal (
     seq        INTEGER NOT NULL,
     from_path  TEXT    NOT NULL,
     to_path    TEXT    NOT NULL,
+    old_edition_path TEXT NOT NULL DEFAULT '',
+    new_edition_path TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL,
     PRIMARY KEY (book_id, version_id, kind, seq)
 );

@@ -251,7 +251,12 @@ func (a *api) handleRefreshBook(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "could not refresh book")
 		return
 	}
-	a.deps.Automation.RescanBook(r.Context(), id)
+	if err := a.deps.Automation.RescanBook(r.Context(), id); err != nil {
+		if a.writeBookBusy(w, err) {
+			return
+		}
+		a.deps.Log.Warn("book refresh: rescan failed", "book_id", id, "err", err)
+	}
 	b, err := a.deps.Books.Get(r.Context(), id)
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not load book")
@@ -345,6 +350,9 @@ func (a *api) handleBookManualImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.deps.Automation.ManualImportBook(r.Context(), id, req.VersionID, src); err != nil {
+		if a.writeBookBusy(w, err) {
+			return
+		}
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
@@ -498,7 +506,7 @@ func (a *api) handleDeleteBookFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.deps.Automation.DeleteBookEdition(r.Context(), id, kind); err != nil {
-		if a.writeBinRefusal(w, err) {
+		if a.writeBookBusy(w, err) || a.writeBinRefusal(w, err) {
 			return
 		}
 		a.writeError(w, http.StatusInternalServerError, "could not delete file")
@@ -1315,7 +1323,7 @@ func (a *api) handleDeleteBook(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, step := range steps {
 			if err := step(); err != nil {
-				if a.writeBinRefusal(w, err) {
+				if a.writeBookBusy(w, err) || a.writeBinRefusal(w, err) {
 					return
 				}
 				a.writeError(w, http.StatusInternalServerError, "could not delete the book's files — the book was kept")

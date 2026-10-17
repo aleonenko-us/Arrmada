@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -93,6 +94,17 @@ func (a *api) handleBookNamingPreview(w http.ResponseWriter, r *http.Request) {
 // handleBookNamingPresets lists the ready-made schemes.
 func (a *api) handleBookNamingPresets(w http.ResponseWriter, _ *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"presets": library.BookNamingPresets, "tokens": library.BookTokens})
+}
+
+// writeBookBusy answers 409 when another change to the book's files was running (an
+// import, a rename, a rescan, a delete or a merge), so the page says to try again rather
+// than that something broke. It reports whether it answered.
+func (a *api) writeBookBusy(w http.ResponseWriter, err error) bool {
+	if !errors.Is(err, automation.ErrBookBusy) {
+		return false
+	}
+	a.writeError(w, http.StatusConflict, "This book's files are busy (an import, rename, rescan or merge is running) — try again in a moment.")
+	return true
 }
 
 // bookOrganizeCounts is what a book rename preview found, by edition.

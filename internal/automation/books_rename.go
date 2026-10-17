@@ -502,7 +502,7 @@ func (c *Coordinator) applyBookEdition(ctx context.Context, p *bookPlanner, aske
 	res := BookRenameResult{BookID: asked.BookID, VersionID: asked.VersionID, Kind: asked.Kind, From: asked.Current, To: asked.Proposed, Files: len(asked.Files)}
 	unlock, ok := c.tryLockBook(asked.BookID)
 	if !ok {
-		res.Reason = errBookBusy.Error()
+		res.Reason = ErrBookBusy.Error()
 		return res
 	}
 	defer unlock()
@@ -559,10 +559,17 @@ func (c *Coordinator) moveBookEdition(ctx context.Context, e bookEdition, it Boo
 			planned = append(planned, books.PathMove{From: f.From, To: f.To})
 		}
 	}
+	// Each file keeps the id listening apps know it by. One with no id stored yet (probed
+	// before ids were kept, or never listed) gets the one its old name has always given it
+	// now, before the move, so the move carries it.
+	if err := c.books.PinFileIDs(ctx, fileIDsBefore(it, e.audio())); err != nil {
+		res.Reason = "couldn't keep the files' ids before the rename: " + err.Error()
+		return res
+	}
 	// The moves are written down before the first one, so a crash part way through is
 	// undone at the next start (RecoverBookRenames) instead of leaving a book split
 	// between two folders with its record pointing at one.
-	if err := c.books.JournalRename(ctx, it.BookID, it.VersionID, it.Kind, planned); err != nil {
+	if err := c.books.JournalRename(ctx, it.BookID, it.VersionID, it.Kind, it.Current, it.Proposed, planned); err != nil {
 		res.Reason = "couldn't note the rename before starting it: " + err.Error()
 		return res
 	}
@@ -582,7 +589,7 @@ func (c *Coordinator) moveBookEdition(ctx context.Context, e bookEdition, it Boo
 				c.bookFilesChanged(wctx, it.BookID)
 				return res
 			}
-			_ = c.books.ClearRenameJournal(wctx, it.BookID, it.VersionID, it.Kind)
+			c.endJournal(wctx, it)
 			return res
 		}
 		done = append(done, m)
@@ -597,7 +604,7 @@ func (c *Coordinator) moveBookEdition(ctx context.Context, e bookEdition, it Boo
 	detail := fmt.Sprintf("Renamed the %s to the naming scheme: %s → %s", what, filepath.Base(it.Current), filepath.Base(it.Proposed))
 	if err := c.books.RepointEdition(wctx, it.BookID, it.VersionID, it.Kind, it.Proposed, done, detail); err != nil {
 		if berr := c.putBookFilesBack(done); berr == nil {
-			_ = c.books.ClearRenameJournal(wctx, it.BookID, it.VersionID, it.Kind)
+			c.endJournal(wctx, it)
 			res.Reason = "couldn't record the new name, so the files were put back: " + err.Error()
 		} else {
 			c.log.Error("book rename: the record couldn't be written and the files couldn't all be put back",
@@ -616,6 +623,35 @@ func (c *Coordinator) moveBookEdition(ctx context.Context, e bookEdition, it Boo
 	c.bookFilesChanged(wctx, it.BookID)
 	res.Renamed = true
 	return res
+}
+
+// endJournal ends a rename's journal entry once its moves are undone. If that fails the
+// entry stays, and the next start finds the record at the old place with the files there
+// too: it drops the entry without moving anything.
+func (c *Coordinator) endJournal(ctx context.Context, it BookRenameItem) {
+	if err := c.books.ClearRenameJournal(ctx, it.BookID, it.VersionID, it.Kind); err != nil {
+		c.log.Warn("book rename: couldn't clear the rename journal after undoing a rename; the next start settles it",
+			"book_id", it.BookID, "err", err)
+	}
+}
+
+// fileIDsBefore is each file's id from its current name, the one it has had all along:
+// relative to the audiobook item's folder for an audiobook, the ebook's own name for an
+// ebook (as the audiobook server gives them).
+func fileIDsBefore(it BookRenameItem, audio bool) []books.FileID {
+	base := library.ItemBase(it.Current, it.folder)
+	var out []books.FileID
+	for _, f := range it.Files {
+		if f.From == f.To {
+			continue
+		}
+		id := library.AudioFileID(library.RelPath(base, f.From))
+		if !audio {
+			id = library.EbookFileID(filepath.Base(f.From))
+		}
+		out = append(out, books.FileID{Path: f.From, ID: id})
+	}
+	return out
 }
 
 // splitMessage says where a book's files are after a rename that could neither finish nor

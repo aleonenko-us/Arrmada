@@ -45,7 +45,7 @@ func TestBookLockKeepsChangesApart(t *testing.T) {
 		t.Fatal("a held lock must not be taken twice")
 	}
 	moved, skipped, err := r.c.RenameBookFiles(ctx, b.ID)
-	if err != nil || moved != 0 || len(skipped) != 1 || skipped[0].Reason != errBookBusy.Error() {
+	if err != nil || moved != 0 || len(skipped) != 1 || skipped[0].Reason != ErrBookBusy.Error() {
 		t.Errorf("rename while busy: moved %d, skipped %+v, err %v", moved, skipped, err)
 	}
 	src := r.write(t.TempDir(), "new.epub")
@@ -75,7 +75,7 @@ func TestRecoverInterruptedBookRename(t *testing.T) {
 	_ = r.svc.MarkImported(ctx, b.ID, books.KindAudiobook, dir, "MP3", 20, 2)
 	newDir := filepath.Join(r.audio, "Frank Herbert", "Dune Chronicles", "1 - Dune")
 	moves := []books.PathMove{{From: one, To: filepath.Join(newDir, "1.mp3")}, {From: two, To: filepath.Join(newDir, "2.mp3")}}
-	if err := r.svc.JournalRename(ctx, b.ID, 0, books.KindAudiobook, moves); err != nil {
+	if err := r.svc.JournalRename(ctx, b.ID, 0, books.KindAudiobook, dir, newDir, moves); err != nil {
 		t.Fatal(err)
 	}
 	// The crash: the first file moved, the second didn't, the record wasn't written.

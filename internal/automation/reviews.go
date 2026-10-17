@@ -800,7 +800,10 @@ func (c *Coordinator) importContentInto(ctx context.Context, r Review, dest int6
 		if err != nil {
 			return err
 		}
-		imported, hadFiles := c.importBookContent(ctx, b, r.ContentPath, r.Hash, r.Name)
+		imported, hadFiles, waiting := c.importBookContentWaiting(ctx, b, r.ContentPath, r.Hash, r.Name)
+		if waiting {
+			return ErrBookBusy
+		}
 		if !imported {
 			if !hadFiles {
 				return fmt.Errorf("no ebook or audiobook files found in the download for %q", b.Title)

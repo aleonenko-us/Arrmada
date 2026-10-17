@@ -101,7 +101,7 @@ func (c *Coordinator) MergeAudiobook(ctx context.Context, bookID int64) error {
 	}
 	unlock, ok := c.tryLockBook(bookID)
 	if !ok {
-		return fail(errBookBusy.Error())
+		return fail(ErrBookBusy.Error())
 	}
 	defer unlock()
 	b, paths, err := c.audiobookMergeSources(ctx, bookID)

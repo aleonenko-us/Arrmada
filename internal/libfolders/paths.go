@@ -62,6 +62,8 @@ var ignoredPathColumns = map[string]string{
 	"audio_file_meta.path":          "audiobooks have one folder",
 	"book_rename_journal.from_path": "books have one folder",
 	"book_rename_journal.to_path":   "books have one folder",
+	"book_rename_journal.old_edition_path": "books have one folder",
+	"book_rename_journal.new_edition_path": "books have one folder",
 	"tracks.file_path":              "music has one folder",
 	"imports.source_path":           "the download, not the library file",
 	"import_reviews.content_path":   "the download, not the library file",

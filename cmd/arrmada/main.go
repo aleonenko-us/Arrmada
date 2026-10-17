@@ -1234,6 +1234,13 @@ func main() {
 		DB: st.DB(), Books: booksSvc, Listen: listenStore, Users: authSvc, Settings: settingsSvc,
 		Log: modLog(log, "audioserver"), FFprobe: "ffprobe", DataDir: cfg.DataDir,
 	})
+	// Files probed before their ids were stored get the id they've always been given, from
+	// the database alone, before any rename can move them.
+	if n, err := audioSrv.BackfillFileIDs(runCtx); err != nil {
+		log.Warn("audiobook server: couldn't store the ids of known files", "err", err)
+	} else if n > 0 {
+		log.Info("audiobook server: stored the ids of known files", "files", n)
+	}
 	audioPort := os.Getenv("ARRMADA_AUDIOBOOK_LISTEN_PORT")
 	if audioPort == "" {
 		audioPort = "13378"

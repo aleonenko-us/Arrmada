@@ -53,7 +53,7 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, key, ino stri
 	// it and asking for it doesn't re-list the audiobook.
 	f, ok := s.cachedFileByIno(ctx, it.Path, ino)
 	if !ok {
-		if e, isEbook := ebookOf(it); isEbook && e.Ino == ino {
+		if e, isEbook := s.ebookOf(ctx, it); isEbook && e.Ino == ino {
 			s.sendEbook(w, r, it, e, attach)
 			return
 		}

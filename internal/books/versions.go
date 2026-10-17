@@ -351,12 +351,25 @@ func (s *Service) GetAudioVersion(ctx context.Context, bookID, id int64) (AudioV
 
 // SetAudioVersionFile records a version's file(s).
 func (s *Service) SetAudioVersionFile(ctx context.Context, id int64, path, format string, size int64, files int) error {
-	return s.repo.SetAudioVersionFile(ctx, id, path, format, size, files)
+	if err := s.repo.SetAudioVersionFile(ctx, id, path, format, size, files); err != nil {
+		return err
+	}
+	return s.clearVersionJournal(ctx, id)
 }
 
 // ClearAudioVersionFile forgets a version's file.
 func (s *Service) ClearAudioVersionFile(ctx context.Context, id int64) error {
-	return s.repo.ClearAudioVersionFile(ctx, id)
+	if err := s.repo.ClearAudioVersionFile(ctx, id); err != nil {
+		return err
+	}
+	return s.clearVersionJournal(ctx, id)
+}
+
+// clearVersionJournal ends a version's rename journal entry: once its file is recorded
+// (or forgotten) some other way, the entry describes a place it no longer is.
+func (s *Service) clearVersionJournal(ctx context.Context, id int64) error {
+	_, err := s.repo.db.ExecContext(ctx, `DELETE FROM book_rename_journal WHERE version_id = ? AND kind = ?`, id, KindAudiobook)
+	return err
 }
 
 // DeleteAudioVersion removes a version (its files are the caller's job).
