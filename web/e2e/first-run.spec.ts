@@ -87,6 +87,28 @@ test.describe("admin", () => {
     expect(api.callsTo("PUT", "/api/v1/apikeys")).toHaveLength(0);
   });
 
+  // With nothing at /storage, the Folders step warns about managed storage only when /media
+  // is Arrmada's own volume; a host folder there (ARRMADA_MEDIA_HOST) is the owner's media.
+  for (const [hostFolder, what] of [[false, "the managed volume"], [true, "a host folder"]] as const) {
+    test(`the Folders step with /media as ${what}`, async ({ page, api }) => {
+      await override(page, api, [
+        { method: "GET", path: "/api/v1/setup", body: { ...fresh, mounts: ["/media"], media_host_folder: hostFolder } },
+      ]);
+      await page.goto("/");
+      await page.getByRole("button", { name: "Continue without a key" }).click();
+      await expect(page.getByRole("heading", { name: "Where's your media?" })).toBeVisible();
+      const warning = page.getByText(/Arrmada is using its own managed storage/);
+      const note = page.getByText(/Your media folder is mounted at/);
+      if (hostFolder) {
+        await expect(note).toBeVisible();
+        await expect(warning).toHaveCount(0);
+      } else {
+        await expect(warning).toBeVisible();
+        await expect(note).toHaveCount(0);
+      }
+    });
+  }
+
   // Ending setup early is its own small link, and it says what's still left first.
   test("finishing setup later from the first step says what's left", async ({ page, api }) => {
     await override(page, api, [

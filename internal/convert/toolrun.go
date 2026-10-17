@@ -31,6 +31,9 @@ import (
 // reaches it.
 func (s *Service) tool(ctx context.Context, job *Job, class toolrun.Class, bin string, args ...string) *toolrun.Cmd {
 	cmd := toolrun.Command(ctx, class, bin, args...)
+	if bin == s.ffmpeg {
+		cmd.Env = libvaEnv(args) // the VA driver for the GPU this run opens (libva.go)
+	}
 	if job == nil {
 		job = jobFrom(ctx)
 	}
