@@ -124,7 +124,8 @@ func TestAdminSignOutEverywhere(t *testing.T) {
 		}
 	}
 	rec := s.doJSON("POST", path, adminC, ``)
-	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"signed_out":2}` {
+	// Counts only: sessions ended and personal API keys revoked, never devices.
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"keys_revoked":0,"signed_out":2}` {
 		t.Fatalf("admin: HTTP %d %s", rec.Code, rec.Body)
 	}
 	for _, c := range []*http.Cookie{kidC, {Name: sessionCookieName, Value: other}} {
