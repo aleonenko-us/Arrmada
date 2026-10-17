@@ -20,6 +20,9 @@ const AccountSettings = lazyPage(() => import("../components/AccountSettings"), 
 // Your Kindle's address, for Send to Kindle on My shelf or, for staff, the book page
 // (anyone requester and up).
 const KindleCard = lazyPage(() => import("../components/Kindle"), "KindleCard");
+// Your personal API keys, for scripts and apps (every role). Its own chunk, so the
+// requester's first load doesn't grow.
+const PersonalApiKeys = lazyPage(() => import("../components/PersonalApiKeys"), "PersonalApiKeys");
 // Your private calendar link for Google / Apple Calendar (LAN only, like the Calendar).
 const CalendarFeedPanel = lazyPage(() => import("../components/CalendarFeed"), "CalendarFeedPanel");
 
@@ -42,6 +45,7 @@ const ROLE: Record<UserRole, string> = {
 //   Calendar feed — your private link for Google / Apple Calendar (not from outside);
 //   Account      — change your password (or set a first one after Plex sign-in) and sign
 //                  out your other devices;
+//   Personal API keys — keys a script or app (n8n, Home Assistant) uses to act as you;
 //   More, Sign out.
 export function Me({ chrome = false }: { chrome?: boolean }) {
   const { user, external, booksEnabled } = useMe();
@@ -99,6 +103,12 @@ export function Me({ chrome = false }: { chrome?: boolean }) {
         <MeSection id="account" title="Account">
           <Suspense fallback={<Loading />}>
             <AccountSettings />
+          </Suspense>
+        </MeSection>
+
+        <MeSection id="api-keys" title="Personal API keys">
+          <Suspense fallback={<Loading />}>
+            <PersonalApiKeys />
           </Suspense>
         </MeSection>
 

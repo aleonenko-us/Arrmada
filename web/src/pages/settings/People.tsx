@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PlexMergeDialog } from "../../components/PlexMergeDialog";
+import { AllPersonalApiKeys } from "../../components/PersonalApiKeys";
 import { AutoNumber, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { Section, inputStyle } from "../../components/settings/ui";
 import { api, type JellyfinBlock, type Person, type PlexBlock, type UserImpact, type UserQuota, type UserRole } from "../../lib/api";
@@ -31,6 +32,9 @@ export function PeopleSettings() {
       <Section id="request-limits" title="Request limits" subtitle="Optional: how much one person can ask for in a stretch of days. Following someone else's request is free, a withdrawn or declined request gives its share back, and admins and managers are never limited. 0 means no limit.">
         <RequestLimits books={booksEnabled} />
         <p className="m-0 text-xs text-ink-faint">Typical household: 10 movies, 5 seasons and 10 books a week. A season request counts each season; asking for a whole show counts all of its seasons. Set a different limit for one person under More on their row.</p>
+      </Section>
+      <Section id="personal-api-keys" title="Personal API keys" subtitle={<>Keys people made on their Me page so a script or app (n8n, Home Assistant) can act as them. A key never does more than its owner may, and revoking one stops it at once. The keys Arrmada uses for outside services such as TMDB are in <Link to={LINKS.apiKeys} style={{ color: "var(--accent-text)" }}>Settings → Connections</Link>.</>}>
+        <AllPersonalApiKeys />
       </Section>
     </div>
   );
