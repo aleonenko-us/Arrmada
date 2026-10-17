@@ -102,7 +102,8 @@ function SettingsHub() {
   const results = searchSettings(query, ids, isAdmin(user));
   const open = (r: SearchEntry) => {
     setQuery("");
-    if (r.palette) { openPalette(); return; }
+    // The palette entry: carry on there with what was typed.
+    if (r.palette) { openPalette(query); return; }
     navigate(`/settings/${r.section}#${r.anchor}`);
     // Same section and same card: the URL doesn't change, so scroll here.
     if (r.section === section && hash === `#${r.anchor}`) document.getElementById(r.anchor)?.scrollIntoView({ block: "start" });

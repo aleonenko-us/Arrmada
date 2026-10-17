@@ -79,7 +79,7 @@ export function UserLayout() {
               { label: "Audiobook apps & password", onSelect: () => navigate("/audiobooks?tab=apps") },
               // Cycles System → Light → Dark in place; the menu stays open to show the result.
               { label: `Theme: ${THEME_LABEL[theme]}`, title: `Switch to ${THEME_LABEL[nextTheme(theme)]}`, keepOpen: true, onSelect: () => setTheme(nextTheme(theme)) },
-              { label: "Sign out", tone: "danger", onSelect: signOut },
+              { label: "Sign out", tone: "danger", onSelect: () => { void signOut(user?.id); } },
             ]}
           />
         </div>

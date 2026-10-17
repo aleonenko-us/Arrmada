@@ -3,6 +3,7 @@ import { ACTIVITY_TAB_LABEL } from "./activity";
 import { visibleNav } from "./nav";
 import { requesterNav } from "./requesterNav";
 import { SEARCH_INDEX, visibleSections } from "../pages/settings/sections";
+import { paletteRecentsKey as recentKey } from "./paletteOpen";
 
 // The command palette's brain, kept free of components so it can be tested on its own:
 // what this person may jump to (pages, settings cards, actions), how a query ranks it, how
@@ -331,7 +332,6 @@ const best = (r: Ranked[]) => r.reduce((m, x) => Math.max(m, x.score), 0);
 // ---- Recent picks -----------------------------------------------------------------------
 
 const RECENT_MAX = 8;
-const recentKey = (userId: number) => `arrmada.palette.recent.${userId}`;
 
 // loadRecents reads this person's recent picks (per account, so a shared browser never
 // shows one person's picks to another) and keeps only what they may still open: a library

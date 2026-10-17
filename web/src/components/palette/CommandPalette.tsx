@@ -112,7 +112,7 @@ export default function CommandPalette({ initialQuery = "", onClose }: { initial
   };
 
   const run = (item: PaletteItem) => {
-    if (item.action === "sign-out") { void signOut(); return; }
+    if (item.action === "sign-out") { void signOut(user?.id); return; }
     if (item.to) navigate(item.to);
     if (item.action === "check-updates") void checkUpdates();
   };

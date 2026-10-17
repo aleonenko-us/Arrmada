@@ -1,14 +1,25 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./mockApi";
 
 // Issue #17: the command palette (Ctrl K / ⌘K). It opens from anywhere, finds library
 // titles, pages and settings cards, moves with the arrows and opens with Enter; a
 // requester's palette never asks for (or shows) library titles.
 
+// pressShortcut presses Ctrl K until the palette is up: the shortcut only works once the
+// shell's palette host has mounted, and a press before that is dropped on purpose.
+async function pressShortcut(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Search" });
+  await expect(async () => {
+    if (!(await dialog.isVisible())) await page.keyboard.press("Control+K");
+    await expect(dialog).toBeVisible({ timeout: 500 });
+  }).toPass();
+}
+
 test.describe("command palette (staff)", () => {
   test("Ctrl+K opens it, typing finds a movie, Enter opens the movie", async ({ page, api }) => {
     await page.goto("/movies");
     await expect(page.getByRole("heading", { name: "Movies" }).first()).toBeVisible();
-    await page.keyboard.press("Control+K");
+    await pressShortcut(page);
     const dialog = page.getByRole("dialog", { name: "Search" });
     await expect(dialog).toBeVisible();
     const input = dialog.getByRole("combobox");
@@ -30,7 +41,7 @@ test.describe("command palette (staff)", () => {
 
   test("the arrows move the highlight and Escape closes it", async ({ page }) => {
     await page.goto("/activity/queue");
-    await page.keyboard.press("Control+K");
+    await pressShortcut(page);
     const dialog = page.getByRole("dialog", { name: "Search" });
     const input = dialog.getByRole("combobox");
     await input.fill("naming");
@@ -55,7 +66,7 @@ test.describe("command palette (staff)", () => {
     await expect(page).toHaveURL(/\/settings\/users#two-factor$/);
     await expect(page.locator("#two-factor")).toBeInViewport();
 
-    await page.keyboard.press("Control+K");
+    await pressShortcut(page);
     await dialog.getByRole("combobox").fill("homepage");
     await expect(dialog.getByRole("option", { selected: true })).toContainText("Dashboard widget");
     await page.keyboard.press("Enter");
@@ -64,7 +75,7 @@ test.describe("command palette (staff)", () => {
 
   test("Add movie opens the Movies page's Add dialog", async ({ page }) => {
     await page.goto("/activity/queue");
-    await page.keyboard.press("Control+K");
+    await pressShortcut(page);
     await page.getByRole("dialog", { name: "Search" }).getByRole("combobox").fill("add movie");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/movies$/);
@@ -73,11 +84,11 @@ test.describe("command palette (staff)", () => {
 
   test("lists recent picks before anything is typed", async ({ page }) => {
     await page.goto("/movies");
-    await page.keyboard.press("Control+K");
+    await pressShortcut(page);
     await page.getByRole("dialog", { name: "Search" }).getByRole("combobox").fill("calendar");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/calendar$/);
-    await page.keyboard.press("Control+K");
+    await pressShortcut(page);
     const recent = page.getByRole("dialog", { name: "Search" }).getByRole("group", { name: "Recent" });
     await expect(recent.getByRole("option", { name: /Calendar/ })).toBeVisible();
   });
@@ -86,7 +97,8 @@ test.describe("command palette (staff)", () => {
     await page.goto("/settings/library");
     await page.getByRole("searchbox", { name: "Search settings" }).fill("shortcut");
     await page.getByRole("button", { name: /Search everything/ }).click();
-    await expect(page.getByRole("dialog", { name: "Search" })).toBeVisible();
+    // It carries on with what was typed.
+    await expect(page.getByRole("dialog", { name: "Search" }).getByRole("combobox")).toHaveValue("shortcut");
   });
 });
 
@@ -95,7 +107,7 @@ test.describe("command palette (requester)", () => {
 
   test("shows their pages and Discover, never a library group", async ({ page, api }) => {
     await page.goto("/discover");
-    await page.keyboard.press("Control+K");
+    await pressShortcut(page);
     const dialog = page.getByRole("dialog", { name: "Search" });
     const input = dialog.getByRole("combobox");
     await input.fill("cartographer");

@@ -101,8 +101,13 @@ const shots: Shot[] = [
     path: "/movies",
     label: "palette",
     open: async (page) => {
-      await page.keyboard.press("Control+K");
-      await page.getByRole("dialog", { name: "Search" }).getByRole("combobox").fill("the");
+      // The shortcut works once the shell's palette host is up; press until it opens.
+      const dialog = page.getByRole("dialog", { name: "Search" });
+      await expect(async () => {
+        if (!(await dialog.isVisible())) await page.keyboard.press("Control+K");
+        await expect(dialog).toBeVisible({ timeout: 500 });
+      }).toPass();
+      await dialog.getByRole("combobox").fill("the");
       await expect(page.getByRole("dialog", { name: "Search" }).getByRole("group", { name: "Library" })).toBeVisible();
     },
   },

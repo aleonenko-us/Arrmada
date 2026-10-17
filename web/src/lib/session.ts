@@ -1,4 +1,5 @@
 import { api, type UserRole } from "./api";
+import { paletteRecentsKey } from "./paletteOpen";
 
 // Where to go back to after signing in again. When a session ends mid-use, the page the
 // person was on is remembered here, so signing back in returns them to it instead of
@@ -8,7 +9,12 @@ const KEY = "arrmada.next";
 
 // signOut ends this session and reloads at the root, so every bit of the signed-in app
 // (router, caches, polls) starts over at the sign-in screen.
-export async function signOut(): Promise<void> {
+// userId: whose command palette recents to forget, so the next person on this browser
+// starts with none.
+export async function signOut(userId?: number): Promise<void> {
+  if (userId !== undefined) {
+    try { localStorage.removeItem(paletteRecentsKey(userId)); } catch { /* storage blocked: nothing kept */ }
+  }
   try { await api.logout(); } catch { /* clearing the session locally is enough */ }
   window.location.href = "/";
 }

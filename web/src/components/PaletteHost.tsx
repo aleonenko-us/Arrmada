@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type ComponentType } from "react";
-import { PALETTE_EVENT, openPalette, paletteHostReady, paletteShortcut, paletteShown } from "../lib/paletteOpen";
+import { PALETTE_EVENT, openPalette, paletteHostMounted, paletteShortcut, paletteShown } from "../lib/paletteOpen";
 
 // The command palette (⌘K / Ctrl K): search titles, pages, settings and a few actions from
 // anywhere. The shortcut lives in lib/paletteOpen.ts; this host mounts the palette when
@@ -16,12 +16,13 @@ export function PaletteHost() {
   useEffect(() => {
     const onEvent = (e: Event) => setQuery((e as CustomEvent<string | null>).detail);
     window.addEventListener(PALETTE_EVENT, onEvent);
-    // An open (the shortcut, a search button) from before this chunk had loaded.
-    const early = paletteHostReady();
+    // A search button pressed before this chunk had loaded. (The shortcut only works
+    // from here on.)
+    const early = paletteHostMounted(true);
     if (early !== null) setQuery(early);
     return () => {
       window.removeEventListener(PALETTE_EVENT, onEvent);
-      paletteShown(false);
+      paletteHostMounted(false);
     };
   }, []);
   useEffect(() => paletteShown(query !== null), [query]);
