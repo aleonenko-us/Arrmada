@@ -306,6 +306,70 @@ func TestSetLibraryPathsCreate(t *testing.T) {
 	}
 }
 
+// Issue #24: on a fresh install the folder in use is the environment's default, and it
+// doesn't exist yet. "Create it" sends that same folder; it must be made (not skipped as
+// unchanged with a 200), and the environment's default must not be pinned as a save.
+func TestSetLibraryPathsCreateTheFolderInUse(t *testing.T) {
+	a, _ := folderTestAPI(t)
+	p := a.deps.Config.AudiobooksDir // <library>/audiobooks: in use, never made
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatalf("test setup: %s should be missing (%v)", p, err)
+	}
+	w := putPaths(t, a, map[string]any{"audiobooks": p, "create": true})
+	if w.Code != http.StatusOK {
+		t.Fatalf("create: HTTP %d %s", w.Code, w.Body.String())
+	}
+	if fi, err := os.Stat(p); err != nil || !fi.IsDir() {
+		t.Fatalf("the folder in use wasn't created: %v", err)
+	}
+	if v := a.deps.Settings.Get(context.Background(), keyLibAudiobooks, "<unset>"); v != "<unset>" {
+		t.Errorf("the environment's default was saved as a picked folder: %q", v)
+	}
+	// Without create, an unchanged missing folder is still just left alone.
+	tv := filepath.Join(a.deps.Config.LibraryDir, "missing-tv")
+	a.deps.Config.TVDir = tv
+	if w := putPaths(t, a, map[string]any{"tv": tv}); w.Code != http.StatusOK {
+		t.Errorf("unchanged save: HTTP %d %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(tv); !os.IsNotExist(err) {
+		t.Errorf("a save without create made the folder: %v", err)
+	}
+}
+
+// A folder that can't be made says so: a 400 naming the row, with the reason, rather
+// than a quiet success.
+func TestSetLibraryPathsCreateFailureIsReported(t *testing.T) {
+	a, base := folderTestAPI(t)
+	// A dangling link stands where a folder above it should be: the folder reads as
+	// missing, and making it fails (even as root, where permissions wouldn't).
+	dangling := filepath.Join(base, "media", "unmounted")
+	if err := os.Symlink(filepath.Join(base, "nowhere"), dangling); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	a.deps.Config.MusicDir = filepath.Join(dangling, "music") // the folder in use
+	for _, tc := range []struct{ field, path string }{
+		{"ebooks", filepath.Join(dangling, "ebooks")}, // a new folder
+		{"music", a.deps.Config.MusicDir},             // the folder in use
+	} {
+		w := putPaths(t, a, map[string]any{tc.field: tc.path, "create": true})
+		var body map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &body)
+		if w.Code != http.StatusBadRequest || body["folder"] != tc.field || !strings.Contains(fmt.Sprint(body["message"]), "couldn't create") {
+			t.Errorf("%s: HTTP %d %+v, want a 400 naming it", tc.field, w.Code, body)
+		}
+	}
+
+	// A folder in use that can't even be looked at is refused too, never a silent 200.
+	blocker := filepath.Join(base, "media", "file")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.deps.Config.TVDir = filepath.Join(blocker, "tv")
+	if w := putPaths(t, a, map[string]any{"tv": a.deps.Config.TVDir, "create": true}); w.Code != http.StatusBadRequest {
+		t.Errorf("a folder under a file: HTTP %d %s, want 400", w.Code, w.Body.String())
+	}
+}
+
 // Saving one folder never fails because a different, untouched folder is odd — here a
 // Music folder whose share isn't mounted right now.
 func TestSetLibraryPathsIgnoresUntouchedOddFolder(t *testing.T) {

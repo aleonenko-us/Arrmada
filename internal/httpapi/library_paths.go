@@ -161,7 +161,8 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 		{"music", keyLibMusic, req.Music, a.libMusic(r)},
 		{"downloads", keyLibDownloads, req.Downloads, a.libDownloads(r)},
 	}
-	var create []string
+	type missingFolder struct{ name, label, path string }
+	var create []missingFolder
 	for _, f := range folders {
 		if f.value == nil {
 			continue
@@ -186,7 +187,27 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if *f.value == "" || *f.value == f.current {
+		if *f.value == "" {
+			continue
+		}
+		if *f.value == f.current {
+			// The folder already in use. "Create it" is offered for it too — on a fresh
+			// install the default folders (/media/library/audiobooks and the rest) are in
+			// use before anything has made them — so the press must make it here. Skipping
+			// it as unchanged used to answer 200 with nothing created and nothing logged.
+			if req.Create {
+				fi, err := os.Stat(*f.value)
+				switch {
+				case errors.Is(err, fs.ErrNotExist):
+					create = append(create, missingFolder{f.name, label, *f.value})
+				case err != nil:
+					a.writeFolderError(w, f.name, fmt.Sprintf("%s: Arrmada can't open %s (%v).", label, *f.value, err), false)
+					return
+				case !fi.IsDir():
+					a.writeFolderError(w, f.name, folderNotDir(label, *f.value), false)
+					return
+				}
+			}
 			continue
 		}
 		if !filepath.IsAbs(*f.value) {
@@ -200,7 +221,7 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 				a.writeFolderError(w, f.name, folderMissing(label, *f.value), true)
 				return
 			}
-			create = append(create, *f.value)
+			create = append(create, missingFolder{f.name, label, *f.value})
 		case err != nil:
 			a.writeFolderError(w, f.name, fmt.Sprintf("%s: Arrmada can't open %s (%v).", label, *f.value, err), false)
 			return
@@ -211,15 +232,26 @@ func (a *api) handleSetLibraryPaths(w http.ResponseWriter, r *http.Request) {
 	}
 	// Folders are made only once every field has passed, as the app user, group-writable
 	// so the download client (often the same PGID) can write into them too.
-	for _, p := range create {
-		if err := os.MkdirAll(p, 0o775); err != nil {
-			a.writeError(w, http.StatusBadRequest, fmt.Sprintf("Couldn't create %s: %v", p, err))
+	// A failure is logged as well as answered: it's the line a support bundle needs.
+	for _, c := range create {
+		if err := os.MkdirAll(c.path, 0o775); err != nil {
+			if a.deps.Log != nil {
+				a.deps.Log.Warn("library folder: couldn't create it", "library", c.name, "path", c.path, "err", err)
+			}
+			a.writeFolderError(w, c.name, fmt.Sprintf("%s: couldn't create %s (%v). Check that the folder above it is mounted and that Arrmada's user (PUID/PGID) can write there.",
+				c.label, c.path, err), false)
 			return
+		}
+		if a.deps.Log != nil {
+			a.deps.Log.Info("library folder created", "library", c.name, "path", c.path)
 		}
 	}
 	ctx := r.Context()
 	for _, f := range folders {
-		if f.value == nil {
+		// A folder sent unchanged is left as it's stored: writing it would pin the
+		// environment's default as a saved folder, so a later change to the environment
+		// would stop reaching it.
+		if f.value == nil || *f.value == f.current {
 			continue
 		}
 		if err := a.deps.Settings.Set(ctx, f.key, *f.value); err != nil {

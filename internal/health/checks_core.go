@@ -176,14 +176,21 @@ func LibraryFoldersCheck(src func(ctx context.Context) LibraryState, probes *Pro
 }
 
 // FolderProblem turns a folder probe into a health line, or "" when the folder is fine.
-// A missing folder whose parent can be written is only a warning — imports create it —
+// A missing folder whose parent can be written is only a warning — it can still be made —
 // but a missing parent means the share isn't mounted at all.
+//
+// Imports never make a missing library folder themselves (a share that isn't mounted
+// looks just like one that was never made, and recreating it would put the library on
+// the container's own disk), so the warning points at Create it rather than promising
+// the folder will appear. The download client does make its own folder.
 func FolderProblem(f Folder, st FolderState) (level, msg string) {
 	switch {
 	case !st.Exists && st.Err != nil:
 		return LevelError, fmt.Sprintf("Arrmada can't look at the %s folder %s: %v.", f.Label, f.Path, st.Err)
+	case !st.Exists && st.ParentExists && st.ParentWritable && f.Role == "downloads":
+		return LevelWarning, fmt.Sprintf("The %s folder %s doesn't exist yet. The download client makes it with the first download; if it should be an existing share, check the container's volume mapping.", f.Label, f.Path)
 	case !st.Exists && st.ParentExists && st.ParentWritable:
-		return LevelWarning, fmt.Sprintf("The %s folder %s doesn't exist yet. Arrmada will create it when it's first needed; if it should be an existing share, check the container's volume mapping.", f.Label, f.Path)
+		return LevelWarning, fmt.Sprintf("The %s folder %s doesn't exist yet, so nothing can be imported into it. Press Create it beside it in Settings → Library; if it should be an existing share, check the container's volume mapping.", f.Label, f.Path)
 	case !st.Exists && st.ParentExists:
 		return LevelError, fmt.Sprintf("The %s folder %s doesn't exist, and Arrmada can't create it (check the container's volume mapping and the share's permissions).", f.Label, f.Path)
 	case !st.Exists:

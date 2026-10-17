@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -53,6 +54,21 @@ func logEnvironment(log *slog.Logger, cfg config.Config) {
 	// The library folders are logged later (logFolders), once the folders picked in the
 	// app are known; here, before the database opens, only the data folder is.
 	logFolder(log, "data", cfg.DataDir)
+}
+
+// ensureDefaultFolders makes the default library folders missing inside the managed
+// library volume (/media/library), so a fresh install's first import has somewhere to
+// land. Only there: a folder the user mounted or picked is never made for them, since a
+// missing one may be a share that isn't mounted yet (libroots.EnsureManagedDefaults).
+func ensureDefaultFolders(ctx context.Context, log *slog.Logger, roots *libroots.Roots) {
+	created, err := roots.EnsureManagedDefaults(ctx, libroots.ManagedLibraryDir)
+	for _, p := range created {
+		log.Info("environment: created the default library folder", "path", p)
+	}
+	if err != nil {
+		log.Warn("environment: couldn't create a default library folder — create it in Settings → Library",
+			"library_dir", libroots.ManagedLibraryDir, "err", err)
+	}
 }
 
 // logFolders records each folder the app will work in — the ones picked in the app,
