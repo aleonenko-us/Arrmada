@@ -28,20 +28,22 @@ func NewRepo(db *sql.DB) *Repo { return &Repo{db: db} }
 
 const seriesCols = `id, tmdb_id, imdb_id, title, year, overview, poster_url, status, network,
 	monitored, quality_profile, extra_json, series_type, tvdb_id, added_at, numbering_source,
-	last_refreshed_at, monitor_new_seasons, library_folder_id`
+	last_refreshed_at, monitor_new_seasons, library_folder_id, title_override, display_title`
 
 func scanSeries(row interface{ Scan(...any) error }) (Series, error) {
 	var (
 		s         Series
 		mon, mns  int
 		extraJSON string
+		display   string
 	)
 	err := row.Scan(&s.ID, &s.TMDBID, &s.IMDBID, &s.Title, &s.Year, &s.Overview, &s.PosterURL,
 		&s.Status, &s.Network, &mon, &s.QualityProfile, &extraJSON, &s.SeriesType, &s.TVDBID, &s.AddedAt, &s.NumberingSource,
-		&s.LastRefreshedAt, &mns, &s.LibraryFolderID)
+		&s.LastRefreshedAt, &mns, &s.LibraryFolderID, &s.TitleOverride, &display)
 	if err != nil {
 		return Series{}, err
 	}
+	s.DisplayTitle = shownTitle(display, s.Title)
 	s.Monitored, s.MonitorNewSeasons = mon != 0, mns != 0
 	if extraJSON != "" {
 		var ex SeriesExtra
@@ -970,7 +972,7 @@ func (r *Repo) HasWantedEpisodes(ctx context.Context, seriesID int64) bool {
 // soonest monitored episode that hasn't aired yet (upcoming).
 type SeriesAcquisition struct {
 	ID             int64
-	Title          string
+	Title          string // the shown title (display_title), for the Wanted view
 	Year           int
 	PosterURL      string
 	QualityProfile string
@@ -991,7 +993,7 @@ type SeriesAcquisition struct {
 // outstanding in either bucket are worth returning; the caller filters.
 func (r *Repo) AcquisitionSummary(ctx context.Context) ([]SeriesAcquisition, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT s.id, s.title, s.year, s.poster_url, s.quality_profile, s.last_search_at, s.search_misses,
+		SELECT s.id, COALESCE(NULLIF(s.display_title, ''), s.title), s.year, s.poster_url, s.quality_profile, s.last_search_at, s.search_misses,
 		  SUM(CASE WHEN e.monitored = 1 AND e.has_file = 0 AND e.season_number > 0
 		           AND e.air_date != '' AND e.air_date <= date('now') THEN 1 ELSE 0 END) AS searching,
 		  MIN(CASE WHEN e.monitored = 1 AND e.has_file = 0 AND e.air_date > date('now')

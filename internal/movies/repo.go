@@ -50,21 +50,23 @@ func (r *Repo) inTx(ctx context.Context, fn func(tx *sql.Tx, r *Repo) error) err
 const movieCols = `id, tmdb_id, imdb_id, title, year, overview, poster_url, runtime, status,
 	monitored, quality_profile, min_availability, has_file, movie_file_path, added_at, extra_json, media_json,
 	source_release, upgrade_hold, converted_from_release, converted_from_size, COALESCE(file_missing_since, ''),
-	library_folder_id`
+	library_folder_id, title_override, display_title`
 
 func (r *Repo) scan(row interface{ Scan(...any) error }) (Movie, error) {
 	var (
 		m                    Movie
 		mon, hf, hold        int
 		extraJSON, mediaJSON string
+		display              string
 	)
 	err := row.Scan(&m.ID, &m.TMDBID, &m.IMDBID, &m.Title, &m.Year, &m.Overview, &m.PosterURL,
 		&m.Runtime, &m.Status, &mon, &m.QualityProfile, &m.MinAvailability, &hf, &m.MovieFilePath,
 		&m.AddedAt, &extraJSON, &mediaJSON, &m.SourceRelease, &hold, &m.ConvertedFromRelease, &m.ConvertedFromSize, &m.FileMissingSince,
-		&m.LibraryFolderID)
+		&m.LibraryFolderID, &m.TitleOverride, &display)
 	if err != nil {
 		return Movie{}, err
 	}
+	m.DisplayTitle = shownTitle(display, m.Title)
 	m.Monitored = mon != 0
 	m.HasFile = hf != 0
 	m.UpgradeHold = hold != 0
@@ -104,7 +106,7 @@ func (r *Repo) SetMediaInfoForPath(ctx context.Context, id int64, path, mediaJSO
 func (r *Repo) ListSummaries(ctx context.Context) ([]MovieSummary, error) {
 	rows, err := r.q().QueryContext(ctx, `SELECT id, title, year, poster_url, monitored, has_file, quality_profile,
 		min_availability, added_at, COALESCE(CASE WHEN json_valid(extra_json) THEN json_extract(extra_json, '$.vote_average') END, 0), media_json,
-		file_missing_since IS NOT NULL
+		file_missing_since IS NOT NULL, display_title
 		FROM movies ORDER BY added_at DESC, id DESC`)
 	if err != nil {
 		return nil, err
@@ -118,13 +120,15 @@ func (r *Repo) ListSummaries(ctx context.Context) ([]MovieSummary, error) {
 			vote      float64
 			mediaJSON string
 			missing   bool
+			display   string
 		)
 		if err := rows.Scan(&s.ID, &s.Title, &s.Year, &s.PosterURL, &mon, &hf, &s.QualityProfile,
-			&s.MinAvailability, &s.AddedAt, &vote, &mediaJSON, &missing); err != nil {
+			&s.MinAvailability, &s.AddedAt, &vote, &mediaJSON, &missing, &display); err != nil {
 			return nil, err
 		}
 		s.Monitored, s.HasFile, s.VoteAverage = mon != 0, hf != 0, vote
-		s.SortTitle = SortTitle(s.Title)
+		s.DisplayTitle = shownTitle(display, s.Title)
+		s.SortTitle = SortTitle(s.DisplayTitle)
 		if s.HasFile {
 			var f *MovieFile
 			if mediaJSON != "" {

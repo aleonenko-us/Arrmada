@@ -5,6 +5,7 @@
 package series
 
 import (
+	"github.com/tristenlammi/arrmada/internal/displaytitle"
 	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 )
@@ -16,6 +17,12 @@ type Series struct {
 	TVDBID    int    `json:"tvdb_id,omitempty"`
 	IMDBID    string `json:"imdb_id,omitempty"`
 	Title     string `json:"title"`
+	// DisplayTitle is the title the app shows (Settings → Library → "Show titles as", or
+	// TitleOverride): presentation only. Title stays the canonical name matching, naming
+	// and scripts use. Never empty.
+	DisplayTitle string `json:"display_title"`
+	// TitleOverride is the per-show "Display title…" pick ("" follows the setting).
+	TitleOverride string `json:"title_override,omitempty"`
 	Year      int    `json:"year"`
 	Overview  string `json:"overview,omitempty"`
 	PosterURL string `json:"poster_url,omitempty"`
@@ -102,6 +109,9 @@ type SeriesExtra struct {
 	// for.
 	LocalTitles []metadata.TranslatedTitle `json:"local_titles,omitempty"`
 	LocalLangs  []string                   `json:"local_langs,omitempty"`
+	// DisplayNames are the names the "Show titles as" setting may show (display.go).
+	// Never used for matching.
+	DisplayNames *displaytitle.Names `json:"display_names,omitempty"`
 }
 
 // IsAnime reports whether the series uses anime (absolute) episode numbering.

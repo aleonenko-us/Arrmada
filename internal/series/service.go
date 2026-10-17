@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/displaytitle"
 	"github.com/tristenlammi/arrmada/internal/eventbus"
 	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
@@ -67,6 +68,9 @@ type Service struct {
 	titlesAgain atomic.Bool
 	// unreadLogged: the search rule has said once that it waits for unread titles.
 	unreadLogged atomic.Bool
+	// displayPolicy is Settings → Library → "Show titles as" (nil = English titles); see
+	// display.go.
+	displayPolicy func() displaytitle.Policy
 }
 
 // SetLibraryChanged installs who hears that a show folder's files changed through a
@@ -424,6 +428,7 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, qualityProfile string
 	}
 	s.syncTMDBAliases(ctx, created.ID, d)
 	s.refreshLocalTitles(ctx, created.ID, d.TMDBID, d.Title)
+	s.refreshDisplayNames(ctx, created.ID, d.TMDBID, d.Title)
 	var monErr error
 	if opts.Seasons != nil {
 		mns := false
@@ -601,6 +606,9 @@ func (s *Service) refresh(ctx context.Context, id int64, opts RefreshOptions) (S
 		s.refreshShow(ctx, sr, d)
 		s.syncTMDBAliases(ctx, id, d)
 		s.refreshLocalTitles(ctx, id, sr.TMDBID, d.Title)
+		// The override is a column of its own and survives; the shown title follows the
+		// fresh names and title.
+		s.refreshDisplayNames(ctx, id, sr.TMDBID, d.Title)
 		if err := s.repo.MarkRefreshed(ctx, id); err != nil {
 			s.log.Warn("series: could not record the refresh time", "series", sr.Title, "err", err)
 		}

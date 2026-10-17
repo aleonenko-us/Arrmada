@@ -209,8 +209,9 @@ func needsLocalTitles(sr Series, langs []string) bool {
 }
 
 // BackfillLocalTitles reads the translated titles of every show not yet read for all the
-// "Also match titles in" languages, one show per every so a large library never bursts
-// TMDB, and returns how many it filled. It runs at start and whenever the languages
+// "Also match titles in" languages, then the display names the "Show titles as" setting
+// needs (display.go), one show per every so a large library never bursts TMDB, and returns
+// how many it filled. It runs at start and whenever the languages or the display setting
 // change; one pass runs at a time, and a call while one runs asks it to go round once more
 // and returns at once with 0. It stops when TMDB isn't configured or ctx ends; a show TMDB
 // can't answer right now is left for the next run.
@@ -226,6 +227,10 @@ func (s *Service) BackfillLocalTitles(ctx context.Context, every time.Duration) 
 			var n int
 			n, err = s.backfillLocalOnce(ctx, every)
 			total += n
+			if err == nil {
+				n, err = s.backfillDisplayOnce(ctx, every)
+				total += n
+			}
 		}
 		s.titlesPass.Unlock()
 		if err != nil {

@@ -1,6 +1,10 @@
 package series
 
-import "context"
+import (
+	"context"
+
+	"github.com/tristenlammi/arrmada/internal/displaytitle"
+)
 
 // UpcomingEpisode is one episode with an air date, for the Calendar module.
 type UpcomingEpisode struct {
@@ -19,13 +23,15 @@ type UpcomingEpisode struct {
 // UpcomingEpisodes returns library episodes airing within [from, to] (inclusive, YYYY-MM-DD),
 // excluding specials. Series monitored flag rides along so the UI can dim unmonitored ones.
 func (s *Service) UpcomingEpisodes(ctx context.Context, from, to string) ([]UpcomingEpisode, error) {
+	// The show's shown title (Settings → Library → "Show titles as").
+	shown := displaytitle.SQL("s")
 	rows, err := s.repo.db.QueryContext(ctx, `
-		SELECT e.air_date, s.id, s.tmdb_id, s.title, s.poster_url, e.season_number, e.episode_number,
+		SELECT e.air_date, s.id, s.tmdb_id, `+shown+`, s.poster_url, e.season_number, e.episode_number,
 		       e.title, e.has_file, s.monitored
 		FROM episodes e JOIN series s ON s.id = e.series_id
 		WHERE e.season_number > 0 AND e.air_date <> ''
 		      AND date(e.air_date) BETWEEN date(?) AND date(?)
-		ORDER BY e.air_date, s.title, e.episode_number`, from, to)
+		ORDER BY e.air_date, `+shown+`, e.episode_number`, from, to)
 	if err != nil {
 		return nil, err
 	}

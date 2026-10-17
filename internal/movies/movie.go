@@ -6,6 +6,7 @@ package movies
 import (
 	"strings"
 
+	"github.com/tristenlammi/arrmada/internal/displaytitle"
 	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/parser"
@@ -17,6 +18,12 @@ type Movie struct {
 	TMDBID          int    `json:"tmdb_id"`
 	IMDBID          string `json:"imdb_id,omitempty"`
 	Title           string `json:"title"`
+	// DisplayTitle is the title the app shows (Settings → Library → "Show titles as", or
+	// TitleOverride): presentation only. Title stays the canonical name matching, naming
+	// and scripts use. Never empty.
+	DisplayTitle string `json:"display_title"`
+	// TitleOverride is the per-title "Display title…" pick ("" follows the setting).
+	TitleOverride   string `json:"title_override,omitempty"`
 	Year            int    `json:"year"`
 	Overview        string `json:"overview,omitempty"`
 	PosterURL       string `json:"poster_url,omitempty"`
@@ -122,7 +129,8 @@ const (
 type MovieSummary struct {
 	ID              int64   `json:"id"`
 	Title           string  `json:"title"`
-	SortTitle       string  `json:"sort_title"` // lowercased, accent-folded, leading The/A/An dropped
+	DisplayTitle    string  `json:"display_title"` // what the app shows (Movie.DisplayTitle)
+	SortTitle       string  `json:"sort_title"`    // of DisplayTitle: lowercased, accent-folded, leading The/A/An dropped
 	Year            int     `json:"year"`
 	PosterURL       string  `json:"poster_url,omitempty"`
 	Monitored       bool    `json:"monitored"`
@@ -215,6 +223,10 @@ type MovieExtra struct {
 	// one taken off simply stops counting.
 	LocalTitles []metadata.TranslatedTitle `json:"local_titles,omitempty"`
 	LocalLangs  []string                   `json:"local_langs,omitempty"`
+	// DisplayNames are the names the "Show titles as" setting may show: the original
+	// title in every script and the translations in the chosen language (display.go).
+	// Never used for matching.
+	DisplayNames *displaytitle.Names `json:"display_names,omitempty"`
 }
 
 // CastMember is one billed actor.
