@@ -125,6 +125,22 @@ func (a *api) widgetKeyState(r *http.Request) widgetKeyState {
 	return st
 }
 
+// widgetKeyFromRequest is the widget key a request presents in X-Api-Key or
+// Authorization: Bearer ("arrw_…"), or "". It is its own reader: a personal API key
+// ("arrk_…") in the same headers is the account middleware's business, and never opens
+// the widget.
+func widgetKeyFromRequest(r *http.Request) string {
+	if k := strings.TrimSpace(r.Header.Get("X-Api-Key")); strings.HasPrefix(k, widgetTokenPrefix) {
+		return k
+	}
+	if scheme, cred, ok := strings.Cut(strings.TrimSpace(r.Header.Get("Authorization")), " "); ok && strings.EqualFold(scheme, "Bearer") {
+		if k := strings.TrimSpace(cred); strings.HasPrefix(k, widgetTokenPrefix) {
+			return k
+		}
+	}
+	return ""
+}
+
 // widgetKeyValid reports whether key is the install's widget key.
 func (a *api) widgetKeyValid(ctx context.Context, key string) bool {
 	if !strings.HasPrefix(key, widgetTokenPrefix) || len(key) > 128 {
@@ -257,7 +273,7 @@ func (a *api) handleHomepageWidget(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !a.widgetKeyValid(r.Context(), apiKeyFromRequest(r)) {
+	if !a.widgetKeyValid(r.Context(), widgetKeyFromRequest(r)) {
 		if l := a.widgetLimiter; l != nil {
 			l.fail(limitKey, "")
 		}

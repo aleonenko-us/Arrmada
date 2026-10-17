@@ -121,7 +121,9 @@ describe("searchSettings", () => {
 
   it("finds the recycle bin, Plex sign-in and the naming cards", () => {
     expect(labels("recycle")).toEqual(["Recycle bin"]);
-    expect(labels("n8n")).toEqual(["Alerts"]);
+    // n8n both hears from Arrmada (Alerts) and calls it (a personal API key).
+    expect(labels("n8n")).toEqual(["Alerts", "Personal API keys"]);
+    expect(labels("api key")).toEqual(expect.arrayContaining(["Personal API keys", "API keys"]));
     expect(labels("webhook")).toContain("Alerts");
     expect(labels("plex")).toContain("Plex sign-in");
     expect(labels("plex path mapping")).toEqual(["Plex library updates"]);

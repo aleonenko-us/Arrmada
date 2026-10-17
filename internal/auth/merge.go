@@ -42,6 +42,9 @@ type MergePreview struct {
 	// device held it.
 	SignedInDevices int `json:"signed_in_devices"`
 	ListeningApps   int `json:"listening_apps"`
+	// Personal API keys are revoked, not moved, for the same reason: a key handed over
+	// would act as the other account.
+	APIKeys int `json:"api_keys"`
 	// TwoFactor: the duplicate had two-factor sign-in on. It is turned off with the
 	// duplicate, not moved: the target's own sign-in (and its own two-factor, if any) is
 	// what protects the merged account, and moving a second authenticator onto it would
@@ -130,6 +133,7 @@ func (s *Service) MergePreview(ctx context.Context, targetID, fromID int64) (Mer
 		{`SELECT COUNT(*) > 0 FROM audio_passwords WHERE user_id = ?`, &p.AudiobookPassword},
 		{`SELECT COUNT(*) FROM sessions WHERE user_id = ?`, &p.SignedInDevices},
 		{`SELECT COUNT(DISTINCT family) FROM audio_tokens WHERE user_id = ? AND revoked = 0`, &p.ListeningApps},
+		{`SELECT COUNT(*) FROM api_keys WHERE user_id = ?`, &p.APIKeys},
 		{`SELECT COUNT(*) > 0 FROM user_totp WHERE user_id = ? AND enabled = 1`, &p.TwoFactor},
 	}
 	for _, c := range counts {
@@ -224,13 +228,16 @@ func (s *Service) MergeDuplicate(ctx context.Context, targetID, fromID int64) er
 			// The duplicate's calendar feed link stops working, like its sessions: it was
 			// made for that account's view, and the person can make a new one in a click.
 			step{"calendar feed", `DELETE FROM calendar_feeds WHERE user_id = ?`, []any{fromID}},
+			// Personal API keys are revoked, never moved: a script holding one would
+			// otherwise start acting as the target account.
+			step{"personal API keys", `DELETE FROM api_keys WHERE user_id = ?`, []any{fromID}},
 			// Two-factor sign-in, its recovery codes and trusted devices are the duplicate's
 			// own and go with it (see MergePreview.TwoFactor); the target's stay as they are.
 			step{"two-factor sign-in", `DELETE FROM user_totp WHERE user_id = ?`, []any{fromID}},
 			step{"two-factor sign-in", `DELETE FROM user_recovery_codes WHERE user_id = ?`, []any{fromID}},
 			step{"two-factor sign-in", `DELETE FROM user_trusted_devices WHERE user_id = ?`, []any{fromID}},
-			// Sessions, API keys, listening-app sign-ins and anything not moved go with the
-			// row (ON DELETE CASCADE).
+			// Sessions, listening-app sign-ins and anything not moved go with the row
+			// (ON DELETE CASCADE).
 			step{"the duplicate account", `DELETE FROM users WHERE id = ?`, []any{fromID}},
 		)
 		for _, st := range steps {

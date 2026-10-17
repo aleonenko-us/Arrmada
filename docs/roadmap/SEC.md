@@ -613,6 +613,17 @@ _Family members stay signed in as long as they keep using the app. An expired or
   - **Risk:** Storing the IP is personal data. It's shown only to its owner and never in admin views. Migrations run automatically on update, so take a DB backup first if SAFE's pre-migration snapshot hasn't landed. APP: placement only; this doesn't block.
   - **Resolves:** system-6
 
+#### Planned (deferred by the owner): personal API keys with Admin access
+
+Personal API keys (Me → Personal API keys, [docs/api.md](../api.md)) shipped with two
+levels, Read only and Full, and reach only the routes marked `key` in the golden table: the
+outside-facing requester surface plus request approvals. The owner has deferred a third
+level, **Admin**, for a staff account's key to reach the staff library routes a script
+would drive the way it drives Radarr's or Sonarr's API (adding and searching titles, the
+queue, wanted). It would never reach security or settings: sign-in, sessions, passwords,
+two-factor, key management, people, outside services' keys, folders, backups, logs or the
+support bundle. Not scheduled.
+
 #### Risks
 
 - Locking 77 routes to staff (SEC-02) can break a requester page if the allowlist misses a call. Mitigations: the import-graph reach check of every requester page's api.* calls, the golden route table, the route-walk test, and a LAN click-through as a requester and as a read-only account before pushing.

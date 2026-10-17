@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,13 +31,44 @@ func userFrom(r *http.Request) (*auth.User, bool) {
 	return u, ok
 }
 
-// authenticate resolves the current user from a session cookie or API key and
-// stashes it in the request context. It never rejects — enforcement is the job
-// of the router's per-route scope check (router.go). Authentication is always
-// enforced: there is no "local development" bypass, so a LAN-reachable instance
-// is never wide open.
+// keyUseCtxKey marks a request made with a personal API key (and which key, what scope).
+const keyUseCtxKey = userCtxKey + 1
+
+func withKeyUse(r *http.Request, k *auth.KeyUse) *http.Request {
+	return r.WithContext(context.WithValue(withUser(r, k.User).Context(), keyUseCtxKey, k))
+}
+
+// keyUseFrom is the personal API key a request came with, if it came with one.
+func keyUseFrom(r *http.Request) (*auth.KeyUse, bool) {
+	k, ok := r.Context().Value(keyUseCtxKey).(*auth.KeyUse)
+	return k, ok && k != nil
+}
+
+// authenticate resolves the current user from a personal API key or a session cookie and
+// stashes it in the request context. Enforcement is the job of the router's per-route
+// scope check (router.go). Authentication is always enforced: there is no "local
+// development" bypass, so a LAN-reachable instance is never wide open.
+//
+// It answers by itself in one case only: a request that presents a personal API key
+// ("arrk_…") that isn't valid gets 401 — or 429 once its address has had too many wrong
+// keys, counted like wrong passwords — rather than quietly going on as nobody. A key in
+// the address (?apikey=arrk_…) is refused outright: addresses end up in proxy logs and
+// browser history. A presented key wins over a cookie, so a key's limits can't be
+// widened by a browser session riding along.
 func (a *api) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if keyInQuery(r) {
+			a.writeError(w, http.StatusBadRequest, "send API keys in the X-Api-Key header (or Authorization: Bearer), never in the address")
+			return
+		}
+		if key := apiKeyFromRequest(r); key != "" {
+			use, ok := a.checkAPIKey(w, r, key)
+			if !ok {
+				return
+			}
+			next.ServeHTTP(w, withKeyUse(r, use))
+			return
+		}
 		var user *auth.User
 		if c, err := r.Cookie(sessionCookieName); err == nil && c.Value != "" {
 			if u, exp, err := a.deps.Auth.ValidateSessionInfo(r.Context(), c.Value); err == nil {
@@ -43,18 +76,84 @@ func (a *api) authenticate(next http.Handler) http.Handler {
 				a.maybeExtendSession(w, r, c.Value, exp)
 			}
 		}
-		if user == nil {
-			if key := apiKeyFromRequest(r); key != "" {
-				if u, err := a.deps.Auth.ValidateAPIKey(r.Context(), key); err == nil {
-					user = u
-				}
-			}
-		}
 		if user != nil {
 			r = withUser(r, user)
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// Wrong personal API keys are counted two ways, both apart from wrong passwords so a broken
+// script can't lock its owner out of signing in:
+//   - per address and key (apiKeyFails, on loginLimiter: 10 in 15 minutes), so one stale
+//     key in a script only slows itself down — every other key behind the same address
+//     (a shared NAT, the n8n host) keeps working;
+//   - per address over every key (apiKeySpray, on keySprayLimiter: keySprayMax in 15
+//     minutes), the ceiling for something trying key after key.
+//
+// Neither ever stops a key that validates: a key is 256 random bits, so guessing one isn't
+// the risk the counts are for, and refusing a right key would only break its owner. The
+// counts shape the answer to wrong ones (429 instead of 401).
+const keySprayMax = 50 // under the limiter's maxFailsKept, which bounds one key's record
+
+func apiKeyFails(ip, key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return "apikey:" + ip + ":" + hex.EncodeToString(sum[:8])
+}
+
+func apiKeySpray(ip string) string { return "apikey-any:" + ip }
+
+// checkAPIKey validates a presented key, answering 429 or 401 itself when it can't be
+// used. A right key always passes; a right one doesn't clear any count either, so holding
+// one key can't wipe out the record of wrong ones.
+func (a *api) checkAPIKey(w http.ResponseWriter, r *http.Request, key string) (*auth.KeyUse, bool) {
+	ip := netutil.ClientIP(r)
+	use, err := a.deps.Auth.ValidateAPIKey(r.Context(), key, ip)
+	if err == nil {
+		return use, true
+	}
+	if !errors.Is(err, auth.ErrNotFound) {
+		a.deps.Log.Error("auth: could not check an API key", "err", err)
+		a.writeError(w, http.StatusInternalServerError, "could not check the API key")
+		return nil, false
+	}
+	perKey, spray := apiKeyFails(ip, key), apiKeySpray(ip)
+	for _, c := range []struct {
+		l   *loginLimiter
+		key string
+	}{{a.loginLimiter, perKey}, {a.keySprayLimiter, spray}} {
+		if c.l == nil {
+			continue
+		}
+		if blocked, retry := c.l.blocked(c.key); blocked {
+			a.tooManyAttempts(w, retry)
+			return nil, false
+		}
+	}
+	if a.loginLimiter != nil {
+		a.loginLimiter.fail(perKey, "")
+	}
+	if a.keySprayLimiter != nil {
+		a.keySprayLimiter.fail(spray, "")
+	}
+	a.writeError(w, http.StatusUnauthorized, "this API key isn't valid: it may have been revoked or have expired")
+	return nil, false
+}
+
+// keyInQuery reports whether the address carries something shaped like a personal API
+// key, under any parameter name.
+func keyInQuery(r *http.Request) bool {
+	if !strings.Contains(r.URL.RawQuery, auth.APIKeyPrefix) {
+		return false
+	}
+	for _, vs := range r.URL.Query() {
+		for _, v := range vs {
+			if auth.LooksLikeAPIKey(strings.TrimSpace(v)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // maybeExtendSession slides a session that's past half its life: the expiry moves to a
@@ -80,12 +179,18 @@ func (a *api) maybeExtendSession(w http.ResponseWriter, r *http.Request, token s
 	a.setSessionCookie(w, r, token, newExp)
 }
 
+// apiKeyFromRequest is the personal API key a request presents in X-Api-Key or
+// Authorization: Bearer, or "". Only a value shaped like one counts: the same headers carry
+// other things (an audiobook app's bearer token, another service's key for a public route),
+// which were never this check's to judge.
 func apiKeyFromRequest(r *http.Request) string {
-	if k := r.Header.Get("X-Api-Key"); k != "" {
+	if k := strings.TrimSpace(r.Header.Get("X-Api-Key")); auth.LooksLikeAPIKey(k) {
 		return k
 	}
-	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-		return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
+	if scheme, cred, ok := strings.Cut(strings.TrimSpace(r.Header.Get("Authorization")), " "); ok && strings.EqualFold(scheme, "Bearer") {
+		if k := strings.TrimSpace(cred); auth.LooksLikeAPIKey(k) {
+			return k
+		}
 	}
 	return ""
 }

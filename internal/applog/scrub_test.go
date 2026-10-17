@@ -14,6 +14,7 @@ func TestRedactText(t *testing.T) {
 		{"dial qbit http://admin:s3cretpw@qbit:8080/api", "dial qbit http://«redacted»@qbit:8080/api"},
 		{"sent to reader_42@kindle.com ok", "sent to «email» ok"},
 		{"password_login=true token=«redacted»", "password_login=true token=«redacted»"},
+		{"n8n step failed with key arrk_abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrst", "n8n step failed with key arrk_«redacted»"},
 	}
 	for _, c := range cases {
 		if got := RedactText(c.in); got != c.want {

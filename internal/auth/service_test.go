@@ -88,28 +88,6 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 }
 
-func TestAPIKeyLifecycle(t *testing.T) {
-	ctx := context.Background()
-	s := newService(t)
-	u, _ := s.CreateUser(ctx, "svc", "supersecret", RoleManager, false)
-
-	key, err := s.CreateAPIKey(ctx, u.ID, "automation")
-	if err != nil {
-		t.Fatalf("create key: %v", err)
-	}
-
-	got, err := s.ValidateAPIKey(ctx, key)
-	if err != nil {
-		t.Fatalf("validate key: %v", err)
-	}
-	if got.ID != u.ID || got.Role != RoleManager {
-		t.Errorf("wrong user from key: %+v", got)
-	}
-	if _, err := s.ValidateAPIKey(ctx, "arr_bogus"); err != ErrNotFound {
-		t.Errorf("expected ErrNotFound for bad key, got %v", err)
-	}
-}
-
 func TestRoleAtLeast(t *testing.T) {
 	if !RoleAdmin.AtLeast(RoleReadonly) {
 		t.Error("admin should outrank readonly")

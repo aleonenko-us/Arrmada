@@ -143,26 +143,63 @@ func TestWidgetRefusesAccountCredentials(t *testing.T) {
 	adminU, admin := s.user(t, "owner", auth.RoleAdmin)
 	kidU, kid := s.user(t, "kid", auth.RoleRequester)
 	makeWidgetKey(t, s, admin)
-	kidKey, err := s.auth.CreateAPIKey(ctx, kidU.ID, "kid's key")
+	kidKey, _, err := s.auth.CreateAPIKey(ctx, kidU.ID, auth.NewAPIKey{Name: "kid's key", Scope: auth.KeyScopeFull})
 	if err != nil {
 		t.Fatal(err)
 	}
-	adminKey, err := s.auth.CreateAPIKey(ctx, adminU.ID, "admin key")
+	adminKey, _, err := s.auth.CreateAPIKey(ctx, adminU.ID, auth.NewAPIKey{Name: "admin key", Scope: auth.KeyScopeFull})
 	if err != nil {
 		t.Fatal(err)
 	}
-	cases := map[string]*httptest.ResponseRecorder{
-		"requester session":  fetchWidget(s, widgetPath, nil, kid),
-		"admin session":      fetchWidget(s, widgetPath, nil, admin),
-		"requester API key":  fetchWidget(s, widgetPath, map[string]string{"X-Api-Key": kidKey}),
-		"admin API key":      fetchWidget(s, widgetPath, map[string]string{"X-Api-Key": adminKey}),
-		"requester bearer":   fetchWidget(s, widgetPath, map[string]string{"Authorization": "Bearer " + kidKey}),
-		"nothing at all":     fetchWidget(s, widgetPath, nil),
-		"requester+kid key?": fetchWidget(s, widgetPath, map[string]string{"X-Api-Key": kidKey}, kid),
-	}
-	for name, rec := range cases {
+	// Sessions and nothing at all: the widget's own 401.
+	for name, rec := range map[string]*httptest.ResponseRecorder{
+		"requester session": fetchWidget(s, widgetPath, nil, kid),
+		"admin session":     fetchWidget(s, widgetPath, nil, admin),
+		"nothing at all":    fetchWidget(s, widgetPath, nil),
+	} {
 		if rec.Code != http.StatusUnauthorized || strings.Contains(rec.Body.String(), `"movies"`) {
 			t.Errorf("%s: HTTP %d %s, want 401 with no data", name, rec.Code, rec.Body)
+		}
+	}
+	// A personal API key is the account middleware's: the widget route isn't one keys may
+	// use, so it's refused (403) before the widget is even asked.
+	for name, rec := range map[string]*httptest.ResponseRecorder{
+		"requester API key":           fetchWidget(s, widgetPath, map[string]string{"X-Api-Key": kidKey}),
+		"admin API key":               fetchWidget(s, widgetPath, map[string]string{"X-Api-Key": adminKey}),
+		"requester bearer":            fetchWidget(s, widgetPath, map[string]string{"Authorization": "Bearer " + kidKey}),
+		"requester session + its key": fetchWidget(s, widgetPath, map[string]string{"X-Api-Key": kidKey}, kid),
+		"admin key as bearer":         fetchWidget(s, widgetPath, map[string]string{"Authorization": "Bearer " + adminKey}),
+	} {
+		if rec.Code != http.StatusForbidden || strings.Contains(rec.Body.String(), `"movies"`) {
+			t.Errorf("%s: HTTP %d %s, want 403 with no data", name, rec.Code, rec.Body)
+		}
+	}
+	// A revoked or made-up personal key: 401 from the middleware.
+	if rec := fetchWidget(s, widgetPath, map[string]string{"X-Api-Key": "arrk_" + strings.Repeat("z", 52)}); rec.Code != http.StatusUnauthorized {
+		t.Errorf("made-up personal key: HTTP %d, want 401", rec.Code)
+	}
+}
+
+// The widget key works in either header, and a personal key riding along in the other
+// header doesn't get in its way or get in through it.
+func TestWidgetKeyReadFromItsOwnHeaders(t *testing.T) {
+	s := newRouteServer(t, nil)
+	_, admin := s.user(t, "owner", auth.RoleAdmin)
+	k := makeWidgetKey(t, s, admin)
+	for name, h := range map[string]map[string]string{
+		"X-Api-Key": {"X-Api-Key": k.Key},
+		"Bearer":    {"Authorization": "Bearer " + k.Key},
+		"bearer":    {"Authorization": "bearer " + k.Key},
+	} {
+		if rec := fetchWidget(s, widgetPath, h); rec.Code != http.StatusOK {
+			t.Errorf("widget key in %s: HTTP %d %s", name, rec.Code, rec.Body)
+		}
+	}
+	for _, v := range []string{"", "arrk_" + strings.Repeat("a", 52), "Basic " + k.Key, "Bearer arrw_"} {
+		r := httptest.NewRequest("GET", widgetPath, nil)
+		r.Header.Set("Authorization", v)
+		if got := widgetKeyFromRequest(r); got != "" && got != "arrw_" {
+			t.Errorf("Authorization %q read as widget key %q", v, got)
 		}
 	}
 }

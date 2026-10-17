@@ -480,9 +480,11 @@ func (s *Service) SetPassword(ctx context.Context, id int64, password string) er
 	// Invalidate every existing session for this user: a password change (often a
 	// response to a suspected compromise) must log out any hijacked session, not
 	// leave 30-day tokens valid. Devices trusted to skip the two-factor code are
-	// forgotten for the same reason.
+	// forgotten for the same reason, and so are personal API keys: a key minted by
+	// whoever had the old password must not outlive it.
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, id)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM user_trusted_devices WHERE user_id = ?`, id)
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ?`, id)
 	return nil
 }
 
@@ -525,7 +527,11 @@ func (s *Service) RevokeUserSessions(ctx context.Context, id int64) (int64, erro
 			return err
 		}
 		n, _ = res.RowsAffected()
-		_, err = tx.ExecContext(ctx, `DELETE FROM user_trusted_devices WHERE user_id = ?`, id)
+		if _, err = tx.ExecContext(ctx, `DELETE FROM user_trusted_devices WHERE user_id = ?`, id); err != nil {
+			return err
+		}
+		// "Everywhere" includes the scripts holding their personal API keys.
+		_, err = tx.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ?`, id)
 		return err
 	})
 	return n, err
@@ -660,46 +666,6 @@ func (s *Service) ExtendSession(ctx context.Context, raw string) (time.Time, err
 func (s *Service) DeleteSession(ctx context.Context, raw string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hashToken(raw))
 	return err
-}
-
-// CreateAPIKey creates a named API key for a user. The raw key is returned once
-// (prefixed "arr_"); only its hash is stored.
-func (s *Service) CreateAPIKey(ctx context.Context, userID int64, name string) (string, error) {
-	raw, err := randToken(32)
-	if err != nil {
-		return "", err
-	}
-	key := "arr_" + raw
-	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO api_keys (user_id, name, key_hash) VALUES (?, ?, ?)`,
-		userID, strings.TrimSpace(name), hashToken(key))
-	if err != nil {
-		return "", err
-	}
-	return key, nil
-}
-
-// ValidateAPIKey returns the user owning the given API key and stamps last-used.
-func (s *Service) ValidateAPIKey(ctx context.Context, key string) (*User, error) {
-	var (
-		u          User
-		disabled   int
-		am, as, ab int
-	)
-	h := hashToken(key)
-	err := s.db.QueryRowContext(ctx, `
-		SELECT u.id, u.username, u.role, u.disabled, u.auto_approve_movie, u.auto_approve_series, u.auto_approve_book
-		FROM api_keys k JOIN users u ON u.id = k.user_id
-		WHERE k.key_hash = ?`, h).Scan(&u.ID, &u.Username, &u.Role, &disabled, &am, &as, &ab)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && disabled != 0) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	u.setAutoApproval(am, as, ab)
-	_, _ = s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE key_hash = ?`, h)
-	return &u, nil
 }
 
 // --- helpers ---

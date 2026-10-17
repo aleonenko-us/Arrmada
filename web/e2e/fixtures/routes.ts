@@ -67,6 +67,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
       { id: "a1b2c3d4e5f6", created_at: new Date(NOW - 86_400_000).toISOString(), last_seen_at: new Date(NOW).toISOString(), device: "Chrome on Android", network: "local", current: true },
       { id: "0f9e8d7c6b5a", created_at: new Date(NOW - 20 * 86_400_000).toISOString(), last_seen_at: new Date(NOW - 3 * 86_400_000).toISOString(), device: "Safari on Mac", network: "203.0.113.x", current: false },
     ] }),
+    // Me → Personal API keys: none yet; making one asks for the password.
+    get("/api/v1/me/api-keys", { keys: [], expiry_days: [0, 30, 90, 365], max: 25, password_required: true }),
     // Me → Account → Two-factor sign-in: off, and not required.
     get("/api/v1/me/2fa", { enabled: false, recovery_codes_left: 0, password_set: true, required: false }),
     // Your own Plex link (sidebar footer, Me page): not linked.
@@ -243,6 +245,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/settings", sys.settings),
     // Settings → Users: two accounts, one a Plex sign-in that still auto-approves shows.
     get("/api/v1/users/plex-blocks", { blocks: [] }),
+    // People & access → Personal API keys: nobody has made one.
+    get("/api/v1/users/api-keys", { keys: [] }),
     get("/api/v1/users/jellyfin-blocks", { blocks: [] }),
     get("/api/v1/users", sys.users),
     get("/api/v1/people", sys.people),

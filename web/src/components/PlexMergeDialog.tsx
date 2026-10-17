@@ -52,6 +52,9 @@ export function PlexMergeDialog({ targetId, fromId, onClose, onMerged }: {
           {(preview.signed_in_devices > 0 || preview.listening_apps > 0) && (
             <p className="m-0 mt-2">Devices signed in as {preview.from} are signed out ({plural(preview.signed_in_devices + preview.listening_apps, "device")}); they sign in again as {preview.to}.</p>
           )}
+          {(preview.api_keys ?? 0) > 0 && (
+            <p className="m-0 mt-2">{preview.from}'s personal API keys are revoked ({plural(preview.api_keys ?? 0, "key")}); a script using one needs a new key made as {preview.to}.</p>
+          )}
           <p className="m-0 mt-2">Where both accounts have the same thing (an inbox message, a followed request, an audiobook place), {preview.to}'s is kept. A copy of the database is taken first, under Backups.</p>
         </>
       ) : !err ? "Checking what would move…" : null}

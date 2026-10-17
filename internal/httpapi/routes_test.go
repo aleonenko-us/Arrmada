@@ -39,7 +39,11 @@ func (s routeSpec) String() string {
 	if s.External {
 		ext = "ext"
 	}
-	return fmt.Sprintf("%s %s %s %s", method, s.Pattern, s.Scope, ext)
+	line := fmt.Sprintf("%s %s %s %s", method, s.Pattern, s.Scope, ext)
+	if s.APIKey {
+		line += " key" // a personal API key may call it (apikey_routes.go)
+	}
+	return line
 }
 
 func routeTable(specs []routeSpec) string {

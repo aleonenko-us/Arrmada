@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PlexMergeDialog } from "../../components/PlexMergeDialog";
+import { AllPersonalApiKeys } from "../../components/PersonalApiKeys";
 import { AutoNumber, AutoToggle, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { Section, inputStyle } from "../../components/settings/ui";
 import { api, type JellyfinBlock, type Person, type PlexBlock, type UserImpact, type UserQuota, type UserRole } from "../../lib/api";
@@ -35,6 +36,9 @@ export function PeopleSettings() {
       <Section id="request-limits" title="Request limits" subtitle="Optional: how much one person can ask for in a stretch of days. Following someone else's request is free, a withdrawn or declined request gives its share back, and admins and managers are never limited. 0 means no limit.">
         <RequestLimits books={booksEnabled} />
         <p className="m-0 text-xs text-ink-faint">Typical household: 10 movies, 5 seasons and 10 books a week. A season request counts each season; asking for a whole show counts all of its seasons. Set a different limit for one person under More on their row.</p>
+      </Section>
+      <Section id="personal-api-keys" title="Personal API keys" subtitle={<>Keys people made on their Me page so a script or app (n8n, Home Assistant) can act as them. A key never does more than its owner may, and revoking one stops it at once. The keys Arrmada uses for outside services such as TMDB are in <Link to={LINKS.apiKeys} style={{ color: "var(--accent-text)" }}>Settings → Connections</Link>.</>}>
+        <AllPersonalApiKeys />
       </Section>
     </div>
   );
@@ -296,7 +300,7 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
   const signOutEverywhere = async () => {
     const ok = await confirm({
       title: `Sign ${p.username} out everywhere?`,
-      body: "Every browser and phone signed in as them will have to sign in again. Their password, requests and audiobook apps stay as they are.",
+      body: "Every browser and phone signed in as them will have to sign in again, and their personal API keys stop working. Their password, requests and audiobook apps stay as they are.",
       confirmLabel: "Sign out everywhere",
       tone: "danger",
     });
@@ -304,7 +308,9 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
     setBusy("signout");
     try {
       const r = await accountApi.signOutEverywhere(p.id);
-      ctx.toast(r.signed_out > 0 ? `Signed out of ${r.signed_out} ${r.signed_out === 1 ? "browser" : "browsers"}.` : "They weren’t signed in anywhere.", { tone: "good" });
+      const keys = r.keys_revoked ?? 0;
+      const keyWords = keys > 0 ? ` ${keys} API ${keys === 1 ? "key" : "keys"} revoked.` : "";
+      ctx.toast((r.signed_out > 0 ? `Signed out of ${r.signed_out} ${r.signed_out === 1 ? "browser" : "browsers"}.` : "They weren’t signed in anywhere.") + keyWords, { tone: "good" });
       ctx.reload();
     } catch (e) { ctx.toast((e as Error).message, { tone: "error" }); }
     finally { setBusy(null); }
@@ -515,6 +521,7 @@ function PersonMore({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContex
           <input type="password" minLength={8} aria-label={`New password for ${p.username}`} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="8+ characters" autoComplete="new-password" className="min-w-0 flex-1 rounded-lg px-3 py-1.5 text-base" style={inputStyle} />
           <Button size="sm" variant="primary" disabled={password.length < 8} busy={pwBusy} busyLabel="Setting…" onClick={setPw}>Set password</Button>
         </div>
+        {!isMe && <span className="text-xs text-ink-faint">Setting it signs them out everywhere and revokes their personal API keys.</span>}
         {pwMsg && <span className="text-sm" style={{ color: pwMsg.ok ? "var(--good-text)" : "var(--reject-text)" }}>{pwMsg.text}</span>}
       </div>
 

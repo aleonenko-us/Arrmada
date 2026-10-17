@@ -65,7 +65,12 @@ func (s *Service) ChangePassword(ctx context.Context, id int64, newPw, keepRaw s
 		ended, _ = res.RowsAffected()
 		// Every browser trusted to skip the two-factor code asks for it again: the new
 		// password may be the answer to someone else knowing the old one.
-		_, err = tx.ExecContext(ctx, `DELETE FROM user_trusted_devices WHERE user_id = ?`, id)
+		if _, err = tx.ExecContext(ctx, `DELETE FROM user_trusted_devices WHERE user_id = ?`, id); err != nil {
+			return err
+		}
+		// Personal API keys go too, for the same reason: one made with the old password
+		// (or a hijacked session) mustn't outlive the change.
+		_, err = tx.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ?`, id)
 		return err
 	})
 	return ended, err

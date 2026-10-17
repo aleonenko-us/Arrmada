@@ -346,7 +346,7 @@ func TestLoginTicket(t *testing.T) {
 	if _, err := s.ValidateSession(ctx, tk); err == nil {
 		t.Error("a ticket validated as a session")
 	}
-	if _, err := s.ValidateAPIKey(ctx, tk); err == nil {
+	if _, err := s.ValidateAPIKey(ctx, tk, ""); err == nil {
 		t.Error("a ticket validated as an API key")
 	}
 }

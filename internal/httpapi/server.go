@@ -184,8 +184,10 @@ type api struct {
 	codeLimit     *codeLimiter  // two-factor code attempts per account (twofactor_limit.go)
 	icsLimiter    *loginLimiter // throttles calendar feed fetches per address (calendar_ics.go)
 	widgetLimiter *loginLimiter // throttles wrong dashboard widget keys per address (widget.go)
-	plexPins      *plexPinGuard // which browser (and account) started each Plex PIN
-	jfQC          *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
+	// keySprayLimiter is the per-address ceiling on wrong personal API keys (auth.go).
+	keySprayLimiter *loginLimiter
+	plexPins        *plexPinGuard // which browser (and account) started each Plex PIN
+	jfQC            *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
 	// transfers caches the downloads feed's title cards and requester names (transfers.go).
 	transfers transferCache
 	// wanted caches Activity → Wanted's answer (wantedcache.go).
@@ -201,7 +203,7 @@ type api struct {
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
 // fallback), and the middleware chain (recover → log → mux).
 func New(d Deps) *http.Server {
-	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), codeLimit: newCodeLimiter(), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetFailMax, time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
+	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), codeLimit: newCodeLimiter(), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetFailMax, time.Minute), keySprayLimiter: newLoginLimiter(keySprayMax, 15*time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
 
 	rt := newRouter(a)
 	a.registerRoutes(rt)
@@ -393,6 +395,13 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/me/sessions/revoke-others", a.signedIn(a.handleRevokeMyOtherSessions).ext())
 	mux.HandleFunc("GET /api/v1/me/sessions", a.signedIn(a.handleMySessions).ext())
 	mux.HandleFunc("DELETE /api/v1/me/sessions/{id}", a.signedIn(a.handleRevokeMySession).ext())
+	// Your personal API keys, for scripts (every role). Never callable with a key.
+	mux.HandleFunc("GET /api/v1/me/api-keys", a.signedIn(a.handleMyAPIKeys).ext())
+	mux.HandleFunc("POST /api/v1/me/api-keys", a.signedIn(a.handleCreateMyAPIKey).ext())
+	mux.HandleFunc("DELETE /api/v1/me/api-keys/{id}", a.signedIn(a.handleRevokeMyAPIKey).ext())
+	// Everyone's personal API keys, for the admin to see and revoke (People & access).
+	mux.HandleFunc("GET /api/v1/users/api-keys", a.requireRole(auth.RoleAdmin, a.handleListAllAPIKeys))
+	mux.HandleFunc("DELETE /api/v1/users/api-keys/{id}", a.requireRole(auth.RoleAdmin, a.handleRevokeAnyAPIKey))
 	// Two-factor sign-in for your own password sign-in: set up (password first), confirm
 	// with a code, turn off or make new recovery codes (password and a code).
 	mux.HandleFunc("GET /api/v1/me/2fa", a.signedIn(a.handleMyTwoFactor).ext())
@@ -642,7 +651,9 @@ func (a *api) registerRoutes(mux *router) {
 	// Owner-withdraw is allowed (own request, still pending), so the route admits
 	// requesters; the handler enforces ownership vs manager.
 	mux.HandleFunc("DELETE /api/v1/requests/{id}", a.requireRole(auth.RoleRequester, a.handleDeleteRequest).ext())
-	mux.HandleFunc("POST /api/v1/requests/import/overseerr", a.requireRole(auth.RoleAdmin, a.handleImportOverseerr).ext())
+	// Admin only, so not ext(): the outside-the-network mark only ever limits non-staff,
+	// and this one takes another server's API key.
+	mux.HandleFunc("POST /api/v1/requests/import/overseerr", a.requireRole(auth.RoleAdmin, a.handleImportOverseerr))
 	// Reported problems: a requester reports one from a title's sheet (from outside the LAN
 	// too) and lists their own; staff list everyone's and close them.
 	mux.HandleFunc("GET /api/v1/issues", a.signedIn(a.handleListIssues).ext())

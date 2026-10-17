@@ -44,6 +44,8 @@ export interface PlexMergePreview {
   audiobook_password: boolean;
   signed_in_devices: number;
   listening_apps: number;
+  /** Personal API keys the duplicate made: revoked, never moved. Older servers omit it. */
+  api_keys?: number;
 }
 
 export interface PlexLink {

@@ -21,16 +21,16 @@ export const accountApi = {
 
   /** password_set: somebody knows a password for this account (false: Plex sign-in only). */
   account: () => req<{ password_set: boolean }>("/api/v1/me/account"),
-  /** current is ignored when the account has no password yet. signed_out: other devices ended. */
+  /** current is ignored when the account has no password yet. signed_out: other devices ended; keys_revoked: personal API keys revoked with it. */
   changePassword: (current: string, next: string) =>
-    req<{ password_set: boolean; signed_out: number }>("/api/v1/me/password", { method: "POST", body: JSON.stringify({ current, new: next }) }),
+    req<{ password_set: boolean; signed_out: number; keys_revoked?: number }>("/api/v1/me/password", { method: "POST", body: JSON.stringify({ current, new: next }) }),
   /** Signs out every other browser; this one stays. */
   signOutOthers: () => req<{ signed_out: number }>("/api/v1/me/sessions/revoke-others", { method: "POST" }),
   /** Where you're signed in (your own sessions only). */
   sessions: () => req<{ sessions: MySession[] }>("/api/v1/me/sessions").then((r) => r.sessions ?? []),
   signOutSession: (id: string) => req<void>(`/api/v1/me/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  /** Admin: sign someone out of every browser. Answers a count, never their devices. */
-  signOutEverywhere: (userId: number) => req<{ signed_out: number }>(`/api/v1/users/${userId}/sessions/revoke`, { method: "POST" }),
+  /** Admin: sign someone out of every browser and revoke their personal API keys. Answers counts, never their devices. */
+  signOutEverywhere: (userId: number) => req<{ signed_out: number; keys_revoked?: number }>(`/api/v1/users/${userId}/sessions/revoke`, { method: "POST" }),
 };
 
 /** One browser you're signed in on. */

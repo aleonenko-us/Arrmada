@@ -1,6 +1,7 @@
 import { Suspense, useCallback, useEffect, useState, type FormEvent } from "react";
 import { Button, useConfirm, useToast } from "../ui";
 import { accountApi, type MySession } from "../lib/accountApi";
+import { API_KEYS_QUERY } from "../lib/apiKeysApi";
 import { formatAgo } from "../lib/format";
 import { lazyPage } from "../lib/lazyPage";
 import { useMe } from "../lib/me";
@@ -61,8 +62,14 @@ function PasswordSetting({ onChanged }: { onChanged: () => void }) {
       reset();
       // A first password means Plex can now be unlinked: the Plex card reads it again.
       if (first) invalidate("me:plex");
+      // The change revoked every personal API key: the keys card reads itself again.
+      invalidate(API_KEYS_QUERY);
       onChanged();
-      toast(r.signed_out > 0 ? `Password ${first ? "set" : "changed"} — ${r.signed_out} other ${r.signed_out === 1 ? "device was" : "devices were"} signed out` : `Password ${first ? "set" : "changed"}`, { tone: "good" });
+      const ended = [
+        r.signed_out > 0 ? `${r.signed_out} other ${r.signed_out === 1 ? "device was" : "devices were"} signed out` : "",
+        (r.keys_revoked ?? 0) > 0 ? `${r.keys_revoked} API ${r.keys_revoked === 1 ? "key was" : "keys were"} revoked` : "",
+      ].filter(Boolean).join(" and ");
+      toast(`Password ${first ? "set" : "changed"}${ended ? ` — ${ended}` : ""}`, { tone: "good" });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -77,7 +84,7 @@ function PasswordSetting({ onChanged }: { onChanged: () => void }) {
         <div className="min-w-0">
           <div className="text-md font-semibold">Password</div>
           <div className="text-sm text-ink-dim">
-            {hasPassword ? "Changing it signs out your other devices." : "You sign in with Plex. Set a password to sign in with your name too — then you can unlink Plex if you like."}
+            {hasPassword ? "Changing it signs out your other devices and revokes your personal API keys." : "You sign in with Plex. Set a password to sign in with your name too — then you can unlink Plex if you like."}
           </div>
         </div>
         {!open && <Button size="sm" onClick={() => setOpen(true)}>{hasPassword ? "Change" : "Set a password"}</Button>}

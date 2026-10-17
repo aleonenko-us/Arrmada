@@ -72,6 +72,8 @@ func (a *api) handleChangeMyPassword(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "Current password is wrong")
 		return
 	}
+	// The change revokes every personal API key too; say how many went.
+	keys, _ := a.deps.Auth.APIKeyCount(r.Context(), u.ID)
 	ended, err := a.deps.Auth.ChangePassword(r.Context(), u.ID, req.New, sessionToken(r))
 	if errors.Is(err, auth.ErrWeakPassword) {
 		a.writeError(w, http.StatusBadRequest, "The new password must be at least 8 characters")
@@ -85,8 +87,8 @@ func (a *api) handleChangeMyPassword(w http.ResponseWriter, r *http.Request) {
 		a.loginLimiter.reset(key, "")
 	}
 	// Who and how, never the password.
-	a.deps.Log.Info("account: password changed by its owner", "user_id", u.ID, "first_password", !has, "other_sessions_ended", ended)
-	a.writeJSON(w, http.StatusOK, map[string]any{"password_set": true, "signed_out": ended})
+	a.deps.Log.Info("account: password changed by its owner", "user_id", u.ID, "first_password", !has, "other_sessions_ended", ended, "keys_revoked", keys)
+	a.writeJSON(w, http.StatusOK, map[string]any{"password_set": true, "signed_out": ended, "keys_revoked": keys})
 }
 
 // handleRevokeMyOtherSessions signs the caller out of every other browser, keeping this

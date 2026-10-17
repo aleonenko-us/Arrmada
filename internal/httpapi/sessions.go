@@ -63,6 +63,8 @@ func (a *api) handleRevokeUserSessions(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "could not load the user")
 		return
 	}
+	// Everywhere includes their personal API keys; say how many went.
+	keys, _ := a.deps.Auth.APIKeyCount(r.Context(), id)
 	n, err := a.deps.Auth.RevokeUserSessions(r.Context(), id)
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not sign them out")
@@ -72,6 +74,6 @@ func (a *api) handleRevokeUserSessions(w http.ResponseWriter, r *http.Request) {
 	if me, ok := userFrom(r); ok && me != nil {
 		by = me.ID
 	}
-	a.deps.Log.Info("users: signed out everywhere by an admin", "user_id", id, "by_user_id", by, "sessions_ended", n)
-	a.writeJSON(w, http.StatusOK, map[string]any{"signed_out": n})
+	a.deps.Log.Info("users: signed out everywhere by an admin", "user_id", id, "by_user_id", by, "sessions_ended", n, "keys_revoked", keys)
+	a.writeJSON(w, http.StatusOK, map[string]any{"signed_out": n, "keys_revoked": keys})
 }
