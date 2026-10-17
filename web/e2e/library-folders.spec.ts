@@ -245,8 +245,11 @@ test.describe("scanning an extra folder (GitHub #3)", () => {
     await card.getByRole("button", { name: "Add a folder…" }).first().click();
     await page.getByRole("button", { name: "Select this folder" }).click();
     await expect(card.getByText("This folder has 5 items. Scan it now to add what's already there?")).toBeVisible();
+    const reviewReads = api.callsTo("GET", "/api/v1/movies/unmatched").length;
     await card.getByRole("button", { name: "Scan now" }).click();
     await expect(card.getByText("Found 4 titles; 1 needs review")).toBeVisible();
+    // The needs-review list (in Media folders) reloads for what the scan couldn't identify.
+    await expect.poll(() => api.callsTo("GET", "/api/v1/movies/unmatched").length).toBeGreaterThan(reviewReads);
     await expect(card.getByRole("link", { name: "Review them ↑" })).toHaveAttribute("href", "#needs-review");
     expect(api.callsTo("POST", "/api/v1/movies/scan").map((c) => c.body)).toEqual([{ root: "/media/kids" }]);
     // The scan's end reloads the folders: the row counts what it added.
@@ -261,6 +264,7 @@ test.describe("scanning an extra folder (GitHub #3)", () => {
         libraryFoldersMulti.series.folders[0],
         { ...libraryFoldersMulti.series.folders[1], titles: 0, on_disk: 12 },
         { id: 5, media: "series", path: "/mnt/cartoons", label: "Cartoons", rule: "", position: 2, default: false, titles: 3, disk: "missing" },
+        { id: 6, media: "series", path: "/mnt/nas/shows", label: "NAS", rule: "", position: 3, default: false, titles: 8, disk: "unknown" },
       ] },
     };
     await override(page, api, [
@@ -275,6 +279,9 @@ test.describe("scanning an extra folder (GitHub #3)", () => {
     await expect(card.getByText("12 folders here aren't in the library yet.")).toBeVisible();
     await expect(card.getByText("Can't find this folder — is its drive or share mounted?")).toBeVisible();
     await expect(card.getByRole("button", { name: "Scan the Cartoons folder" })).toHaveCount(0);
+    // A dead share (it didn't answer in time) says so and isn't offered a scan either.
+    await expect(card.getByText("This folder is not responding — check its drive or share.")).toBeVisible();
+    await expect(card.getByRole("button", { name: "Scan the NAS folder" })).toHaveCount(0);
     // The main folders scan from Media folders, not here.
     await expect(card.getByRole("button", { name: /^Scan the (Movies|TV) folder$/ })).toHaveCount(0);
 

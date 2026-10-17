@@ -371,6 +371,9 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "movie.scan", Target: scope.target(), Class: jobs.ClassLibraryScan, Timeout: max(libraryScanTimeout, movies.ScanBudget(n)),
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			if err := scope.recheck(libfolders.MediaMovie); err != nil {
+				return nil, err
+			}
 			// Progress rides the job: the runner records it and announces it as job.updated
 			// (at most once a second) on the one live socket the page already has.
 			opts.Progress = func(done, total int) {
@@ -384,11 +387,14 @@ func (a *api) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 			}
 			a.deps.Log.Info("library scan complete", "imported", res.Imported, "attached", res.Attached, "duplicates", len(res.Duplicates),
 				"skipped", res.Skipped, "unmatched", len(res.Unmatched))
-			// The scan just read the whole folder, so the disks are awake: notice files that
+			// The scan just read the whole library, so the disks are awake: notice files that
 			// vanished now rather than at tomorrow's check (it marks nothing if the folder
-			// looks unmounted).
-			if _, err := a.deps.Movies.CheckMissingFiles(ctx); err != nil {
-				a.deps.Log.Warn("missing-file check after the library scan failed", "err", err)
+			// looks unmounted). Not after a scan of one folder: the check covers every folder,
+			// and the others' disks weren't asked whether they're there.
+			if scope.Root == "" {
+				if _, err := a.deps.Movies.CheckMissingFiles(ctx); err != nil {
+					a.deps.Log.Warn("missing-file check after the library scan failed", "err", err)
+				}
 			}
 			a.deps.Bus.Publish("library.scanned", map[string]any{"media": "movie", "imported": res.Imported, "unmatched": len(res.Unmatched),
 				"attached": res.Attached, "duplicates": len(res.Duplicates)})

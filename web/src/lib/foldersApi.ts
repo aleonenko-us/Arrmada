@@ -26,9 +26,9 @@ export interface LibraryFolder {
   /**
    * An extra folder on disk (only from listWithDisk): "ok" with on_disk, the entries a scan
    * would look at; "empty" (a new folder, or a share that isn't mounted — never counted);
-   * "missing".
+   * "missing"; "unknown" (it didn't answer in time: a dead share).
    */
-  disk?: "ok" | "empty" | "missing";
+  disk?: "ok" | "empty" | "missing" | "unknown";
   on_disk?: number;
 }
 

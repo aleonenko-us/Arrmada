@@ -711,6 +711,9 @@ func (a *api) handleScanSeriesLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "series.scan", Target: scope.target(), Class: jobs.ClassLibraryScan, Timeout: libraryScanTimeout,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			if err := scope.recheck(libfolders.MediaSeries); err != nil {
+				return nil, err
+			}
 			// Progress rides the job (job.updated on the live socket), as the movie scan's does.
 			res, err := a.deps.Series.ScanLibrary(ctx, scope.Root, func(done, total int) {
 				if total > 0 {

@@ -6,7 +6,7 @@ import { useQuery } from "../../lib/query";
 import { jobDone, jobFailed } from "../../lib/useJob";
 import { foundLine, scanLine, unmatchedOf, useLibraryScan } from "../../lib/useLibraryScan";
 import { Button, IconButton, useConfirm, useToast } from "../../ui";
-import { FolderPicker } from "../Library";
+import { FolderPicker, needsReviewChanged } from "../Library";
 
 const field = { background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
 
@@ -286,12 +286,18 @@ function FolderScan({ f, fresh }: { f: LibraryFolder; fresh: boolean }) {
   const scan = useLibraryScan(
     f.media === "movie" ? "movie.scan" : "series.scan",
     () => foldersApi.scan(f.media, f.path),
-    () => foldersChanged(), // the title counts and what's on disk changed
+    () => {
+      foldersChanged(); // the title counts and what's on disk changed
+      needsReviewChanged(); // and so may the needs-review list in Media folders
+    },
     `folder:${f.id}`,
   );
   if (!f.disk) return null; // not looked at (yet)
   if (f.disk === "missing") {
     return <div className="mt-1.5 text-sm" style={{ color: "var(--reject-text)" }}>Can't find this folder — is its drive or share mounted?</div>;
+  }
+  if (f.disk === "unknown") {
+    return <div className="mt-1.5 text-sm" style={{ color: "var(--reject-text)" }}>This folder is not responding — check its drive or share.</div>;
   }
   if (f.disk === "empty") {
     return f.titles > 0

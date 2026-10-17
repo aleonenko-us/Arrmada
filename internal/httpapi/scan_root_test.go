@@ -14,13 +14,15 @@ import (
 	"github.com/tristenlammi/arrmada/internal/eventbus"
 	"github.com/tristenlammi/arrmada/internal/jobs"
 	"github.com/tristenlammi/arrmada/internal/libfolders"
+	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/libroots"
+	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/series"
 )
 
 // scanRootServer is a route server with real temp Movies and TV folders and extra ones:
 // Kids (Movies, one film folder in it), Anime (TV, one show in it) and Cartoons (TV,
-// empty). A real series service that recognises nothing sits behind the TV scan.
+// empty). Real movie and series services that recognise nothing sit behind the scans.
 type scanRootServer struct {
 	*routeServer
 	base                  string
@@ -70,8 +72,34 @@ func newScanRootServer(t *testing.T, jr JobRunner) scanRootServer {
 		svc := series.NewService(d.Store.DB(), noSeriesMeta{}, d.Config.TVDir, d.Log)
 		svc.SetFolders(d.Folders)
 		d.Series = svc
+		mv := movies.NewService(d.Store.DB(), arrMeta{available: true}, nil, d.Config.MoviesDir, "", nil, d.Log)
+		mv.SetFolders(d.Folders)
+		d.Movies = mv
 	})
 	return out
+}
+
+// runScan starts a scan (on the real runner) and waits for its job to end.
+func (s scanRootServer) runScan(t *testing.T, c *http.Cookie, path, body string) jobs.Job {
+	t.Helper()
+	rec := s.doBody("POST", path, body, c)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("scan %s: HTTP %d %s", body, rec.Code, rec.Body)
+	}
+	var started struct {
+		JobID int64 `json:"job_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &started)
+	ctx, stop := context.WithTimeout(context.Background(), 60*time.Second) // a ceiling for slow -race runners
+	defer stop()
+	if err := s.runner.Wait(ctx, started.JobID); err != nil {
+		t.Fatalf("scan job never finished: %v", err)
+	}
+	job, err := s.runner.Get(context.Background(), started.JobID)
+	if err != nil || job.Status != jobs.StatusSucceeded {
+		t.Fatalf("scan job = %+v, %v", job, err)
+	}
+	return job
 }
 
 // sparseVideo writes a file big enough to count as an episode, using no disk.
@@ -155,28 +183,7 @@ func TestScanOneFolder(t *testing.T) {
 func TestScanOneFolderScansOnlyIt(t *testing.T) {
 	s := newScanRootServer(t, nil)
 	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
-	// run starts a scan and waits for its job to end.
-	run := func(body string) jobs.Job {
-		t.Helper()
-		rec := s.doBody("POST", "/api/v1/series/scan", body, mgr)
-		if rec.Code != http.StatusAccepted {
-			t.Fatalf("scan %s: HTTP %d %s", body, rec.Code, rec.Body)
-		}
-		var started struct {
-			JobID int64 `json:"job_id"`
-		}
-		_ = json.Unmarshal(rec.Body.Bytes(), &started)
-		ctx, stop := context.WithTimeout(context.Background(), 60*time.Second) // a ceiling for slow -race runners
-		defer stop()
-		if err := s.runner.Wait(ctx, started.JobID); err != nil {
-			t.Fatalf("scan job never finished: %v", err)
-		}
-		job, err := s.runner.Get(context.Background(), started.JobID)
-		if err != nil || job.Status != jobs.StatusSucceeded {
-			t.Fatalf("scan job = %+v, %v", job, err)
-		}
-		return job
-	}
+	run := func(body string) jobs.Job { return s.runScan(t, mgr, "/api/v1/series/scan", body) }
 	run("")
 	if got := len(s.deps.Series.LastUnmatched()); got != 2 {
 		t.Fatalf("after the full scan %d folders need review, want 2 (one per folder)", got)
@@ -255,5 +262,111 @@ func TestLibraryFoldersDisk(t *testing.T) {
 		if f.Default && f.Disk != "" {
 			t.Errorf("the main TV folder = %q, want it left to Media folders", f.Disk)
 		}
+	}
+}
+
+// A scan of one folder doesn't run the missing-file check afterwards: that check covers
+// every Movies folder, and the scan only looked at one. A whole-library scan still does.
+func TestFolderScanSkipsTheMissingFileCheck(t *testing.T) {
+	s := newScanRootServer(t, nil)
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+	ctx := context.Background()
+	mainDir := s.deps.Config.MoviesDir
+	sparseVideo(t, filepath.Join(mainDir, "Heat (1995)", "Heat.1995.mkv"))
+	sparseVideo(t, filepath.Join(mainDir, "Other (2001)", "Other.2001.mkv")) // keeps the folder looking mounted
+	if err := s.deps.Movies.ImportFolderAs(ctx, mainDir, "Heat (1995)", 949); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(mainDir, "Heat (1995)")); err != nil { // Heat's file is gone
+		t.Fatal(err)
+	}
+	missing := func() string {
+		m, err := s.deps.Movies.GetByTMDB(ctx, 949)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m.FileMissingSince
+	}
+
+	s.runScan(t, mgr, "/api/v1/movies/scan", rootBody(s.kids.Path))
+	if got := missing(); got != "" {
+		t.Errorf("after a scan of Kids, Heat is marked missing since %s; want the check left to whole-library scans", got)
+	}
+	s.runScan(t, mgr, "/api/v1/movies/scan", "")
+	if missing() == "" {
+		t.Error("after a whole-library scan Heat isn't marked missing")
+	}
+}
+
+// A scan of one folder that waited its turn looks at the folder again when it starts: a
+// share that went away meanwhile fails the job, saying so, and nothing is scanned.
+func TestQueuedFolderScanRechecksTheFolder(t *testing.T) {
+	fj := newFakeJobs(false)
+	s := newScanRootServer(t, fj)
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+	for _, c := range []struct{ path, root string }{
+		{"/api/v1/movies/scan", s.kids.Path},
+		{"/api/v1/series/scan", s.anime.Path},
+	} {
+		if rec := s.doBody("POST", c.path, rootBody(c.root), mgr); rec.Code != http.StatusAccepted {
+			t.Fatalf("%s: HTTP %d %s", c.path, rec.Code, rec.Body)
+		}
+	}
+	specs := fj.specs()
+	// Kids is unmounted (an empty mount point), Anime's share is gone altogether.
+	if err := os.RemoveAll(filepath.Join(s.kids.Path, "Film (2020)")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(s.anime.Path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := specs[0].Fn(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "nothing to scan") {
+		t.Errorf("Kids scan = %v, want it failed as empty", err)
+	}
+	if _, err := specs[1].Fn(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "can't be found") {
+		t.Errorf("Anime scan = %v, want it failed as missing", err)
+	}
+	if n := len(s.deps.Series.LastUnmatched()); n != 0 {
+		t.Errorf("%d folders need review after scans that never ran", n)
+	}
+}
+
+// A dead hard-mounted share never answers: Settings → Library shows the folder as not
+// responding (the others still answer), and a scan of it is refused rather than hung.
+func TestDeadShareIsNotResponding(t *testing.T) {
+	s := newScanRootServer(t, newFakeJobs(false))
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+	orig := probeFolders
+	probeFolders = func(dirs []string) []library.Probe {
+		out := orig(dirs)
+		for i, d := range dirs {
+			if filepath.Clean(d) == filepath.Clean(s.kids.Path) {
+				out[i] = library.Probe{State: library.FolderUnknown}
+			}
+		}
+		return out
+	}
+	t.Cleanup(func() { probeFolders = orig })
+
+	rec := s.do("GET", "/api/v1/library/folders?disk=1", mgr)
+	var got foldersBody
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range append(got.Movie.Folders, got.Series.Folders...) {
+		switch f.ID {
+		case s.kids.ID:
+			if f.Disk != diskUnknown || f.OnDisk != 0 {
+				t.Errorf("Kids = %q/%d, want unknown and uncounted", f.Disk, f.OnDisk)
+			}
+		case s.anime.ID:
+			if f.Disk != diskOK {
+				t.Errorf("Anime = %q, want ok", f.Disk)
+			}
+		}
+	}
+	rec = s.doBody("POST", "/api/v1/movies/scan", rootBody(s.kids.Path), mgr)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "isn't responding") {
+		t.Errorf("scan of a dead share: HTTP %d %s, want 409", rec.Code, rec.Body)
 	}
 }

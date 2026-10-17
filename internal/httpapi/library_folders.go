@@ -33,51 +33,61 @@ type folderView struct {
 	// Disk and OnDisk are filled for the extra folders only when asked (?disk=1, Settings →
 	// Library): adding a folder doesn't import what's already in it, so the card offers a
 	// scan. Disk is "ok" with OnDisk the entries a scan would look at, "empty" (nothing
-	// there: a new folder, or a share that isn't mounted — never counted or scanned) or
-	// "missing".
+	// there: a new folder, or a share that isn't mounted — never counted or scanned),
+	// "missing" or "unknown" (it didn't answer in time: a dead share).
 	Disk   string `json:"disk,omitempty"`
 	OnDisk int    `json:"on_disk,omitempty"`
 }
 
 // What a folder looks like on disk (folderView.Disk).
 const (
-	diskOK      = "ok"
-	diskEmpty   = "empty"
-	diskMissing = "missing"
+	diskOK      = library.FolderOK
+	diskEmpty   = library.FolderEmpty
+	diskMissing = library.FolderMissing
+	diskUnknown = library.FolderUnknown
 )
 
-// folderOnDisk says whether dir is there and, when it looks mounted, how many entries a
-// library scan of it would look at: for Movies every entry but the hidden ones (a film
-// can sit loose), for TV the show folders. One listing of the folder.
-func folderOnDisk(media, dir string) (string, int) {
-	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
-		return diskMissing, 0
-	}
-	if !library.FolderLooksMounted(dir) {
-		return diskEmpty, 0
-	}
-	entries, err := movies.ScanFolders(dir) // every entry but the bins and hidden folders
-	if err != nil {
-		return diskMissing, 0
-	}
+// probeFolders looks at folders on disk within a time limit (library.ProbeFolders); a
+// test swaps it for a share that doesn't answer.
+var probeFolders = func(dirs []string) []library.Probe { return library.ProbeFolders(dirs, library.ProbeTimeout) }
+
+// onDisk turns a look at a folder into its state and how many entries a library scan of
+// it would look at: for Movies every entry but the hidden ones (a film can sit loose), for
+// TV the show folders.
+func onDisk(media string, p library.Probe) (string, int) {
 	n := 0
-	for _, e := range entries {
+	for _, e := range p.Entries {
 		if media == libfolders.MediaSeries && !e.IsDir() {
 			continue
 		}
 		n++
 	}
-	return diskOK, n
+	return p.State, n
 }
 
-// withDisk fills Disk and OnDisk on a library's extra folders.
-func withDisk(set libraryFolders, media string) libraryFolders {
-	for i, f := range set.Folders {
-		if !f.Default {
-			set.Folders[i].Disk, set.Folders[i].OnDisk = folderOnDisk(media, f.Path)
+// folderOnDisk is one folder's onDisk, looked at within the time limit.
+func folderOnDisk(media, dir string) (string, int) {
+	return onDisk(media, probeFolders([]string{dir})[0])
+}
+
+// withDisk fills Disk and OnDisk on the libraries' extra folders, all looked at at once so
+// a dead share costs the page one time limit, not one per folder.
+func withDisk(movie, tv *libraryFolders) {
+	var rows []*folderView
+	var dirs []string
+	for _, set := range []*libraryFolders{movie, tv} {
+		for i := range set.Folders {
+			if f := &set.Folders[i]; !f.Default {
+				rows, dirs = append(rows, f), append(dirs, f.Path)
+			}
 		}
 	}
-	return set
+	if len(dirs) == 0 {
+		return
+	}
+	for k, p := range probeFolders(dirs) {
+		rows[k].Disk, rows[k].OnDisk = onDisk(rows[k].Media, p)
+	}
 }
 
 // scanScope is what one library scan covers: Root "" for every folder of the library,
@@ -130,18 +140,38 @@ func (a *api) scanScope(w http.ResponseWriter, r *http.Request, media, root stri
 		if f.Path == "" || filepath.Clean(f.Path) != filepath.Clean(root) {
 			continue
 		}
-		switch state, _ := folderOnDisk(media, f.Path); state {
-		case diskMissing:
-			a.writeError(w, http.StatusConflict, f.Path+" can't be found — is its drive or share mounted? Nothing was scanned.")
-			return scanScope{}, false
-		case diskEmpty:
-			a.writeError(w, http.StatusConflict, f.Path+" is empty (or its drive or share isn't mounted), so there's nothing to scan.")
+		if err := notScannable(media, f.Path); err != nil {
+			a.writeError(w, http.StatusConflict, err.Error())
 			return scanScope{}, false
 		}
 		return scanScope{Root: f.Path, ID: f.ID, Label: f.Label}, true
 	}
 	a.writeError(w, http.StatusBadRequest, "that isn't one of the "+noun+" folders — reload and try again")
 	return scanScope{}, false
+}
+
+// notScannable says why folder dir mustn't be scanned now (missing, empty-looking or not
+// answering), or nil when it may.
+func notScannable(media, dir string) error {
+	switch state, _ := folderOnDisk(media, dir); state {
+	case diskMissing:
+		return errors.New(dir + " can't be found — is its drive or share mounted? Nothing was scanned.")
+	case diskEmpty:
+		return errors.New(dir + " is empty (or its drive or share isn't mounted), so there's nothing to scan.")
+	case diskUnknown:
+		return errors.New(dir + " isn't responding — check its drive or share. Nothing was scanned.")
+	}
+	return nil
+}
+
+// recheck runs when a scan of one folder finally starts: it may have waited its turn
+// behind another library scan, and the share can have gone meanwhile. A folder that now
+// looks missing, unmounted or dead fails the job, saying so, before anything is read.
+func (s scanScope) recheck(media string) error {
+	if s.Root == "" {
+		return nil
+	}
+	return notScannable(media, s.Root)
 }
 
 // libraryFolders is one library's folders.
@@ -205,7 +235,7 @@ func (a *api) handleSetFolderDownloads(w http.ResponseWriter, r *http.Request) {
 func (a *api) handleLibraryFolders(w http.ResponseWriter, r *http.Request) {
 	movie, tv := a.foldersOf(r.Context(), libfolders.MediaMovie), a.foldersOf(r.Context(), libfolders.MediaSeries)
 	if r.URL.Query().Get("disk") == "1" {
-		movie, tv = withDisk(movie, libfolders.MediaMovie), withDisk(tv, libfolders.MediaSeries)
+		withDisk(&movie, &tv)
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{"movie": movie, "series": tv})
 }

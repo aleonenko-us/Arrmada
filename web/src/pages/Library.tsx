@@ -29,6 +29,12 @@ const ROWS: { key: PathKey; label: string; hint: string; scan?: () => Promise<{ 
 ];
 const noScan = () => Promise.resolve({});
 
+const NEEDS_REVIEW_CHANGED = "arrmada:needs-review-changed";
+/** A scan elsewhere on the page finished: the needs-review lists reload. */
+export function needsReviewChanged() {
+  window.dispatchEvent(new Event(NEEDS_REVIEW_CHANGED));
+}
+
 export function LibraryFolders() {
   const [paths, setPaths] = useState<LibraryPaths | null>(null);
   const [reviewKey, setReviewKey] = useState(0); // bump to reload the unmatched lists
@@ -42,6 +48,13 @@ export function LibraryFolders() {
   const reloadReview = () => setReviewKey((k) => k + 1);
   useLiveEvent("library.scanned", reloadReview);
   useOnReconnect(reloadReview);
+  // A scan of one extra folder (More Movies and TV folders, below) says so directly, so the
+  // list follows it even without a live socket.
+  useEffect(() => {
+    const reload = () => setReviewKey((k) => k + 1);
+    window.addEventListener(NEEDS_REVIEW_CHANGED, reload);
+    return () => window.removeEventListener(NEEDS_REVIEW_CHANGED, reload);
+  }, []);
 
   useEffect(() => { api.libraryPaths().then(setPaths).catch(() => toast("Could not load library paths", { tone: "error" })); }, [toast]);
   // A scan summary's "need review →" lands here; the list renders only once the folders
