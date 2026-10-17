@@ -88,7 +88,7 @@ export function PersonalApiKeys() {
                   <span className="font-mono">{k.hint}</span> · Made {ago(k.created_at) || "a while ago"} · {k.last_used_at ? `Last used ${ago(k.last_used_at)}${networkLabel(k.last_used_network)}` : "Never used"}{k.expired ? "" : ` · ${expiryLabel(k)}`}
                 </div>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => revoke(k)} busy={busy === k.id} busyLabel="…" aria-label={`Revoke ${k.name}`}>{k.expired ? "Remove" : "Revoke"}</Button>
+              <Button size="sm" variant="ghost" onClick={() => revoke(k)} busy={busy === k.id} busyLabel="…" aria-label={`${k.expired ? "Remove" : "Revoke"} ${k.name}`}>{k.expired ? "Remove" : "Revoke"}</Button>
             </li>
           ))}
         </ul>
