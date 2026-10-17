@@ -72,6 +72,9 @@ GET /api/v1/books/discover/subjects/{name} user ext
 GET /api/v1/books/discover/trending user ext
 GET /api/v1/books/duplicates staff -
 GET /api/v1/books/lookup staff -
+GET /api/v1/books/naming/presets staff -
+GET /api/v1/books/naming/preview staff -
+GET /api/v1/books/organize staff -
 GET /api/v1/books/search-missing staff -
 GET /api/v1/books/upgrade staff -
 GET /api/v1/books/{id} staff -
@@ -313,6 +316,7 @@ POST /api/v1/books staff -
 POST /api/v1/books/author staff -
 POST /api/v1/books/duplicates/ignore staff -
 POST /api/v1/books/duplicates/merge staff -
+POST /api/v1/books/organize staff -
 POST /api/v1/books/scan staff -
 POST /api/v1/books/search-missing staff -
 POST /api/v1/books/series-backfill staff -

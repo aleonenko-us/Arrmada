@@ -63,7 +63,7 @@ func (a *api) seriesMonitorDefault(ctx context.Context) string {
 func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	quota := requests.GlobalLimits(func(key string) string { return a.deps.Settings.Get(ctx, key, "") })
-	a.writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"search_on_add":           a.deps.Settings.GetBool(ctx, keySearchOnAdd, true),
 		"series_monitor_default":  a.seriesMonitorDefault(ctx),
 		"naming_movie_folder":     a.deps.Settings.Get(ctx, keyNamingFolder, library.DefaultMovieFolder),
@@ -125,7 +125,12 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// The address people reach Arrmada at from outside (https://arrmada.example.com):
 		// alerts link back with it and the calendar feed's link is built from it.
 		"app_public_url": a.deps.Settings.PublicURL(ctx),
-	})
+	}
+	// The audiobook and ebook folder/file templates (books_naming.go).
+	for k, v := range a.bookNamingSettings(ctx) {
+		out[k] = v
+	}
+	a.writeJSON(w, http.StatusOK, out)
 }
 
 // qualityRanking is the ranking mode in effect (quality_ranking: v2 unless "v1" was saved
@@ -171,6 +176,12 @@ type settingsUpdate struct {
 	NamingSeriesFolder   *string `json:"naming_series_folder"`
 	NamingSeriesSeason   *string `json:"naming_series_season"`
 	NamingSeriesEpisode  *string `json:"naming_series_episode"`
+	// Book naming (books_naming.go): checked as templates before anything is saved.
+	NamingAudiobookFolder *string `json:"naming_audiobook_folder"`
+	NamingAudiobookFile   *string `json:"naming_audiobook_file"`
+	NamingAudiobookTrack  *string `json:"naming_audiobook_track"`
+	NamingEbookFolder     *string `json:"naming_ebook_folder"`
+	NamingEbookFile       *string `json:"naming_ebook_file"`
 	WriteNFO             *bool   `json:"write_nfo"`
 	DownloadArtwork      *bool   `json:"download_artwork"`
 	BooksEnabled         *bool   `json:"books_enabled"`
@@ -349,6 +360,10 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if msg := checkBookNaming(&req); msg != "" {
+		a.writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	if msg := validQuota(req.QuotaDays, req.QuotaMovies, req.QuotaSeasons, req.QuotaBooks); msg != "" {
 		a.writeError(w, http.StatusBadRequest, msg)
 		return
@@ -429,6 +444,11 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.NamingSeriesEpisode != nil && !save(a.deps.Settings.Set(ctx, keyNamingSeriesEpisode, *req.NamingSeriesEpisode)) {
 		return
+	}
+	for _, f := range bookNamingFields {
+		if p := bookNamingUpdate(&req)[f.key]; p != nil && !save(a.deps.Settings.Set(ctx, f.key, *p)) {
+			return
+		}
 	}
 	if req.WriteNFO != nil && !save(a.deps.Settings.SetBool(ctx, keyWriteNFO, *req.WriteNFO)) {
 		return

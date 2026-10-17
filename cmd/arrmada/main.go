@@ -90,6 +90,21 @@ func (p libPrefs) SeriesNaming() library.SeriesNaming {
 		EpisodeFile:  p.s.Get(ctx, "naming_series_episode", library.DefaultEpisodeFile),
 	}
 }
+func (p libPrefs) AudiobookNaming() library.BookNaming {
+	ctx := context.Background()
+	return library.BookNaming{
+		Folder: p.s.Get(ctx, "naming_audiobook_folder", library.DefaultAudiobookFolder),
+		File:   p.s.Get(ctx, "naming_audiobook_file", library.DefaultAudiobookFile),
+		Track:  p.s.Get(ctx, "naming_audiobook_track", library.DefaultAudiobookTrack),
+	}
+}
+func (p libPrefs) EbookNaming() library.BookNaming {
+	ctx := context.Background()
+	return library.BookNaming{
+		Folder: p.s.Get(ctx, "naming_ebook_folder", library.DefaultEbookFolder),
+		File:   p.s.Get(ctx, "naming_ebook_file", library.DefaultEbookFile),
+	}
+}
 func (p libPrefs) WriteNFO() bool { return p.s.GetBool(context.Background(), "write_nfo", false) }
 func (p libPrefs) DownloadArtwork() bool {
 	return p.s.GetBool(context.Background(), "download_artwork", false)
@@ -606,6 +621,7 @@ func main() {
 		return seriesSvc.EpisodeTitleByName(context.Background(), seriesTitle, year, season, episode)
 	})
 	bookImporter.SetSeriesNaming(prefs) // user-configurable series folder / season / episode formats
+	bookImporter.SetBookNaming(prefs)   // user-configurable audiobook and ebook folder / file names
 	// A new series folder can carry the show's ids ("Show (2022) {tvdb-12345}", the Plex
 	// recommended scheme); existing folders are reused as they are.
 	bookImporter.SetSeriesIDsFunc(func(seriesTitle string, year int) library.SeriesIDs {

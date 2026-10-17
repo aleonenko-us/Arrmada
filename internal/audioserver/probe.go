@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/tristenlammi/arrmada/internal/library"
 )
@@ -355,36 +354,9 @@ func mimeFor(ext string) string {
 	return "application/octet-stream"
 }
 
-// naturalLess orders "Chapter 2" before "Chapter 10".
-func naturalLess(a, b string) bool {
-	a, b = strings.ToLower(a), strings.ToLower(b)
-	for a != "" && b != "" {
-		ra, rb := rune(a[0]), rune(b[0])
-		if unicode.IsDigit(ra) && unicode.IsDigit(rb) {
-			na, restA := leadingNumber(a)
-			nb, restB := leadingNumber(b)
-			if na != nb {
-				return na < nb
-			}
-			a, b = restA, restB
-			continue
-		}
-		if ra != rb {
-			return ra < rb
-		}
-		a, b = a[1:], b[1:]
-	}
-	return len(a) < len(b)
-}
-
-func leadingNumber(s string) (int64, string) {
-	i := 0
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-	}
-	n, _ := strconv.ParseInt(s[:i], 10, 64)
-	return n, s[i:]
-}
+// naturalLess orders "Chapter 2" before "Chapter 10". It is library.NaturalLess — the one
+// play order — so a book rename, which numbers tracks by it, can never reorder what plays.
+func naturalLess(a, b string) bool { return library.NaturalLess(a, b) }
 
 func firstNonEmpty(v ...string) string {
 	for _, s := range v {

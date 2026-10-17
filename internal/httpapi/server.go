@@ -781,6 +781,12 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/books/upgrade", a.requireRole(auth.RoleManager, a.handleStartBookUpgrade))
 	mux.HandleFunc("GET /api/v1/books/upgrade", a.requireRole(auth.RoleManager, a.handleBookUpgradeStatus))
 	mux.HandleFunc("POST /api/v1/books/scan", a.requireRole(auth.RoleManager, a.handleScanBookLibrary))
+	// Book naming: the settings page's presets and live preview, then a library-wide
+	// rename preview and its background apply.
+	mux.HandleFunc("GET /api/v1/books/naming/presets", a.requireRole(auth.RoleManager, a.handleBookNamingPresets))
+	mux.HandleFunc("GET /api/v1/books/naming/preview", a.requireRole(auth.RoleManager, a.handleBookNamingPreview))
+	mux.HandleFunc("GET /api/v1/books/organize", a.requireRole(auth.RoleManager, a.handleBookOrganizePreview))
+	mux.HandleFunc("POST /api/v1/books/organize", a.requireRole(auth.RoleManager, a.handleBookOrganizeApply))
 	mux.HandleFunc("POST /api/v1/books/search-missing", a.requireRole(auth.RoleManager, a.handleStartBookSweep))
 	mux.HandleFunc("GET /api/v1/books/search-missing", a.requireRole(auth.RoleManager, a.handleBookSweepStatus))
 	mux.HandleFunc("POST /api/v1/books/author", a.requireRole(auth.RoleManager, a.handleAddAuthor))

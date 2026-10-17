@@ -1153,7 +1153,12 @@ func (c *Coordinator) importBookEdition(ctx context.Context, b books.Book, kind 
 	if len(files) == 0 {
 		return false
 	}
-	bi, err := c.imp.Using(ctx).ImportBookEdition(b.Author, b.Title, files)
+	name := bookName(b, nil, kind == books.KindAudiobook)
+	if err := c.bookImportRefusal(ctx, b, name, files); err != nil {
+		c.log.Warn("book: import failed", "title", b.Title, "edition", kind, "err", err)
+		return false
+	}
+	bi, err := c.imp.Using(ctx).ImportBook(name, files)
 	if err != nil {
 		c.log.Warn("book: import failed", "title", b.Title, "edition", kind, "err", err)
 		return false
@@ -1377,7 +1382,7 @@ func (c *Coordinator) RescanBook(ctx context.Context, bookID int64) {
 		return
 	}
 	var ebooks, audio []library.FoundFile
-	for _, f := range c.imp.BookLibraryFiles(b.Author, b.Title) {
+	for _, f := range c.imp.BookLibraryFiles(bookName(b, nil, false), editionFormat(b.Ebook), editionFormat(b.Audiobook)) {
 		if library.IsAudiobookFile(f.Path) {
 			audio = append(audio, f)
 		} else {
@@ -1455,7 +1460,12 @@ func (c *Coordinator) ManualImportBook(ctx context.Context, bookID, versionID in
 	if library.IsAudiobookFile(path) {
 		kind = books.KindAudiobook
 	}
-	bi, err := c.imp.ImportBookEdition(b.Author, b.Title, []library.FoundFile{{Path: path}})
+	name := bookName(b, nil, kind == books.KindAudiobook)
+	files := []library.FoundFile{{Path: path}}
+	if err := c.bookImportRefusal(ctx, b, name, files); err != nil {
+		return err
+	}
+	bi, err := c.imp.ImportBook(name, files)
 	if err != nil {
 		return err
 	}
@@ -1547,63 +1557,6 @@ func (c *Coordinator) removeBookFile(path string) error {
 	return nil
 }
 
-// BookRename renames single-file editions to their canonical library path, returning
-// how many moved. Multi-file (folder) editions are left as-is.
-func (c *Coordinator) BookRename(ctx context.Context, bookID int64) (int, error) {
-	if c.books == nil || c.imp == nil {
-		return 0, errBooksNotReady
-	}
-	b, err := c.books.Get(ctx, bookID)
-	if err != nil {
-		return 0, err
-	}
-	moved := 0
-	for _, e := range []struct {
-		kind string
-		f    *books.BookFile
-	}{{books.KindEbook, b.Ebook}, {books.KindAudiobook, b.Audiobook}} {
-		if e.f == nil || e.f.Path == "" {
-			continue
-		}
-		if fi, err := os.Stat(e.f.Path); err == nil && fi.IsDir() {
-			continue // folder edition — leave it
-		}
-		target := c.imp.BookEditionCanonical(b.Author, b.Title, e.f.Path)
-		if target == "" || target == e.f.Path {
-			continue
-		}
-		if err := c.imp.Move(e.f.Path, target); err != nil {
-			c.log.Warn("book: rename failed", "from", e.f.Path, "err", err)
-			continue
-		}
-		_ = c.books.MarkImported(ctx, bookID, e.kind, target, e.f.Format, e.f.SizeBytes, 1)
-		moved++
-	}
-	for _, v := range b.AudioVersions {
-		if v.File == nil || v.File.Path == "" {
-			continue
-		}
-		if fi, err := os.Stat(v.File.Path); err == nil && fi.IsDir() {
-			continue
-		}
-		target := c.imp.BookEditionCanonical(b.Author, v.FolderTitle(b.Title), v.File.Path)
-		if target == "" || target == v.File.Path {
-			continue
-		}
-		if err := c.imp.Move(v.File.Path, target); err != nil {
-			c.log.Warn("book: rename failed", "from", v.File.Path, "err", err)
-			continue
-		}
-		_ = c.books.SetAudioVersionFile(ctx, v.ID, target, v.File.Format, v.File.SizeBytes, 1)
-		moved++
-	}
-	if moved > 0 {
-		c.books.AddEvent(ctx, bookID, "renamed", fmt.Sprintf("Renamed %d file%s to the canonical scheme", moved, plural(moved)))
-		c.bookFilesChanged(ctx, bookID)
-	}
-	return moved, nil
-}
-
 // BookScanResult summarizes a book library scan.
 type BookScanResult struct {
 	Imported  int      `json:"imported"`
@@ -1644,8 +1597,16 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 	}
 	byKey := map[string]*pending{}
 	var order []string
+	known := knownBookPaths(allBooks)
 	for _, bf := range folders {
 		if bf.Title == "" || (len(bf.Ebooks) == 0 && len(bf.Audiobooks) == 0) {
+			continue
+		}
+		// Every file here is already a book's: nothing to catalogue. Without this a folder
+		// a naming scheme wrote ("02 - Golden Son" under a series folder) was looked up by
+		// its name all over again, and listed as unmatched when the name didn't read back.
+		if known.covers(bf) {
+			res.Skipped++
 			continue
 		}
 		// "<Title> (<Label>)" is one of a book's audiobook versions, not a book of its

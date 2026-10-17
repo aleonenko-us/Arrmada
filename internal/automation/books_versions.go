@@ -227,7 +227,12 @@ func (c *Coordinator) importAudioVersion(ctx context.Context, b books.Book, v bo
 	if len(files) == 0 {
 		return false
 	}
-	bi, err := c.imp.Using(ctx).ImportBookEdition(b.Author, v.FolderTitle(b.Title), files)
+	name := bookName(b, &v, true)
+	if err := c.bookImportRefusal(ctx, b, name, files); err != nil {
+		c.log.Warn("book: import failed", "title", b.Title, "version", v.Label, "err", err)
+		return false
+	}
+	bi, err := c.imp.Using(ctx).ImportBook(name, files)
 	if err != nil {
 		c.log.Warn("book: import failed", "title", b.Title, "version", v.Label, "err", err)
 		return false
@@ -280,7 +285,7 @@ func (c *Coordinator) recordVersionFiles(ctx context.Context, b books.Book, v bo
 func (c *Coordinator) rescanAudioVersions(ctx context.Context, b books.Book) {
 	for _, v := range b.AudioVersions {
 		var audio []library.FoundFile
-		for _, f := range c.imp.BookLibraryFiles(b.Author, v.FolderTitle(b.Title)) {
+		for _, f := range c.imp.BookLibraryFiles(bookName(b, &v, true), "", editionFormat(v.File)) {
 			if library.IsAudiobookFile(f.Path) {
 				audio = append(audio, f)
 			}
