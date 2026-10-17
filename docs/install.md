@@ -93,6 +93,10 @@ Run the same line again with an option, on the server that has Arrmada:
 - `--media /new/folder` — mount a different media folder (or add one to an install that
   started on managed storage). The old mounts are kept in `docker-compose.override.yml.bak`.
 - `--transcode /mnt/cache/transcode` — move Convert's scratch folder.
+- `ARRMADA_MEDIA_HOST=/mnt/user/arrmada-media` in `.env`, then `sh update.sh` — move
+  Arrmada's own managed media (`/media`: its downloads and library, a Docker volume until
+  now) to a folder on the host. qBittorrent and SABnzbd follow it
+  ([Configuration](configuration.md#media-in-a-folder-of-your-own-env-only)).
 - `--with-prowlarr` — add Prowlarr.
 - `--with-sabnzbd` — add SABnzbd for Usenet. Nothing else is restarted, and it's
   added to whatever `COMPOSE_PROFILES` already lists (`prowlarr,sabnzbd`, say). An install
@@ -149,15 +153,29 @@ One file, no git. In an empty folder on the server (e.g. `/mnt/user/appdata/arrm
 curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/docker-compose.example.yml -o docker-compose.yml
 ```
 
-Open it and change the lines marked `←`:
+The file reads its settings from a `.env` next to it, so you don't edit the file itself and
+a newer copy can replace it without losing anything. Put your two folders there (full
+paths), plus any other line you want to change from its default:
 
-| Line | What to put there |
-|---|---|
-| `PUID` / `PGID` | The user and group that own your media folder (`ls -ln` shows the numbers; Unraid: 99 / 100) |
-| `TZ` | Your timezone, e.g. `Europe/London` — schedules such as overnight encoding run on it |
-| `- "7878:7878"` | The left number is the web page's port; change it if something (Radarr) already has 7878 |
-| `- /path/to/arrmada/data:/data` | Where the database lives (left side, a full path, e.g. `/mnt/user/appdata/arrmada/data` on Unraid). Its own folder — never your media |
-| `- &media /path/to/your/media:/storage` | The folder that holds your libraries **and** downloads, so imports hardlink. It's `/storage` inside; never mount media at `/data` |
+```sh
+ARRMADA_DATA_HOST=/mnt/user/appdata/arrmada/data
+ARRMADA_STORAGE_HOST=/mnt/user/data
+```
+
+| Setting | Default | What it is |
+|---|---|---|
+| `ARRMADA_DATA_HOST` | `/path/to/arrmada/data` | Where the database lives (a full path, e.g. `/mnt/user/appdata/arrmada/data` on Unraid). Its own folder — never your media |
+| `ARRMADA_STORAGE_HOST` | `/path/to/your/media` | The folder that holds your libraries **and** downloads, so imports hardlink. It's `/storage` inside; never mount media at `/data` |
+| `ARRMADA_MEDIA_HOST` | the `arrmada-media` volume | Optional: a host folder for `/media`, Arrmada's own downloads and library ([Configuration](configuration.md#media-in-a-folder-of-your-own-env-only)) |
+| `ARRMADA_PUID` / `ARRMADA_PGID` | `1000` | The user and group that own your media folder (`ls -ln` shows the numbers; Unraid: 99 / 100) |
+| `TZ` | `Etc/UTC` | Your timezone, e.g. `Europe/London` — schedules such as overnight encoding run on it |
+| `ARRMADA_PORT` | `7878` | The web page's port; change it if something (Radarr) already has 7878 |
+| `ARRMADA_AUDIOBOOK_PORT` | `13379` | The audiobook server's port, for listening apps |
+| `ARRMADA_QBIT_PORT` | `6881` | BitTorrent's port; forward it on your router (TCP and UDP) |
+
+The two folders have to be set: their defaults are placeholders, kept only so a stack that
+has been running on them keeps its database. (You can also write your paths into the file
+in place of those defaults, the way it used to be done.)
 
 Then `docker compose up -d`, open `http://<server>:7878`, create your admin account and
 follow the setup (TMDB key, library folders under `/storage`, Plex, indexers). The bundled
@@ -176,10 +194,19 @@ The same file works as a Portainer stack:
 1. **Stacks → Add stack**, give it a name, and either pick **Web editor** and paste
    [`docker-compose.example.yml`](../docker-compose.example.yml), or pick **Repository** with
    `https://github.com/tristenlammi/Arrmada` and compose path `docker-compose.example.yml`.
-2. Change the lines marked `←` as above. Keep the folders full paths (`/mnt/user/…`): a stack
-   has no folder of its own, so a relative path like `./data` would end up inside Portainer's
-   own volume, hidden, and gone with the stack.
+2. Under **Environment variables**, add the settings from the table above: at least
+   `ARRMADA_DATA_HOST` and `ARRMADA_STORAGE_HOST`. (**Load variables from .env file** takes a
+   `.env` you already have.) Keep the folders full paths (`/mnt/user/…`): a stack has no
+   folder of its own, so a relative path like `./data` would end up inside Portainer's own
+   volume, hidden, and gone with the stack. With the variables, a **Repository** stack works
+   too: it can't edit the file, and doesn't need to.
 3. **Deploy the stack**, then open `http://<server>:7878`.
+
+A Repository stack set up before these variables existed ran on the file's placeholder
+folders (`/path/to/arrmada/data` and `/path/to/your/media` on the host), and it keeps them:
+with no variables set, the file mounts exactly what it did. To move it to real folders, stop
+the stack, move `/path/to/arrmada/data` to the new place first (it holds the database), then
+set the variables and redeploy.
 
 To update, use the stack's **Pull and redeploy** (re-pull the image). Like plain
 `docker compose`, that skips `update.sh`'s pre-update backup and roll-back; the app still
@@ -196,7 +223,8 @@ cd Arrmada
 docker compose up -d
 ```
 
-To change ports or the run-as user there, put the settings from
+To change ports, the run-as user or where the database (`ARRMADA_DATA_HOST`) and media
+(`ARRMADA_MEDIA_HOST`) live there, put the settings from
 [Configuration](configuration.md) in a `.env` next to `docker-compose.yml`; if that `.env` sets
 `ARRMADA_PORT`, also add `ARRMADA_APP_IMAGE=ghcr.io/tristenlammi/arrmada:stable` (see
 [Updating](updating.md#upgrading-from-v010-or-earlier) for why). Update with

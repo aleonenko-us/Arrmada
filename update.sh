@@ -168,13 +168,14 @@ refresh_download() {
   fi
   _data=$(grep -E '^ARRMADA_DATA_HOST=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r"'"'"' ')
   _media=$(grep -E '^ARRMADA_STORAGE_HOST=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r"'"'"' ')
+  _mhost=$(grep -E '^ARRMADA_MEDIA_HOST=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r"'"'"' ')
   for _src in "$_top"/* "$_top"/.[!.]*; do
     [ -e "$_src" ] || continue
     _name=$(basename "$_src")
     case "$_name" in
       .env | .env.* | docker-compose.override.yml* | data | transcode | .arrmada-* | .git) continue ;;
     esac
-    if under "$_data" "$_name" || under "$_media" "$_name"; then
+    if under "$_data" "$_name" || under "$_media" "$_name" || under "$_mhost" "$_name"; then
       continue
     fi
     rm -rf "./$_name"
@@ -1001,6 +1002,20 @@ fi
 # the name docker-compose.yml runs, so the rollback tags and every step after this one
 # work on it exactly as they do on a local build. A switch to the releases runs as the
 # stable channel straight away; its .env lines are written once it's up.
+#
+# One exception: with ARRMADA_MEDIA_HOST in .env (media in a folder of yours rather than
+# the managed volume), the media init runs first. It only makes the downloads and library
+# folders that aren't there yet, so a folder newly set in .env has them before the app
+# starts on it, and it refuses a folder that overlaps the database's.
+case "$(env_get ARRMADA_MEDIA_HOST)" in
+  /* | ./* | ../* | \~*)
+    if ! docker compose run --rm --no-deps -T arrmada-media-init </dev/null; then
+      say "" >&2
+      say "✗ Couldn't set up the media folder (ARRMADA_MEDIA_HOST in .env; see above). Arrmada is" >&2
+      say "  still running the version it was. Fix the line, then run ./update.sh again." >&2
+      exit 1
+    fi ;;
+esac
 UP_OK=1
 if [ -n "$MIGRATE" ]; then
   ARRMADA_CHANNEL=stable
@@ -1125,6 +1140,45 @@ if [ -n "$MIGRATE" ]; then
   say "This install now follows the published releases: ARRMADA_CHANNEL=stable is in .env (the"
   say "  .env from before is $ENV_BACKUP). Updates download each new release instead of compiling."
   say "  To follow main instead (compiled here on every update): ARRMADA_CHANNEL=main in .env."
+fi
+
+# The companions that share /media with the app (qBittorrent, and SABnzbd when it's on) have
+# to see the same folder it does, or downloads land where the app never looks. Only the app
+# was restarted above, so after ARRMADA_MEDIA_HOST changes in .env each running companion
+# still on the old one is recreated on the new one (that one container, nothing else). One
+# that's stopped is left stopped: `docker compose up -d` gives it the new folder when it
+# next starts it.
+# media_source CONTAINER -> what CONTAINER has at /media: a host folder, or a volume's name.
+media_source() {
+  docker inspect -f '{{range .Mounts}}{{if eq .Destination "/media"}}{{if .Name}}{{.Name}}{{else}}{{.Source}}{{end}}{{end}}{{end}}' "$1" 2>/dev/null || true
+}
+# media_name SOURCE -> how to say it: the folder, or "the Docker volume NAME".
+media_name() {
+  case "$1" in
+    /*) say "$1" ;;
+    *) say "the Docker volume $1" ;;
+  esac
+}
+_app_media=$(media_source Arrmada-app)
+if [ -n "$_app_media" ]; then
+  for _c in arrmada-qbittorrent:Arrmada-qbittorrent arrmada-sabnzbd:Arrmada-sabnzbd; do
+    _svc=${_c%%:*}
+    _was=$(media_source "${_c#*:}")
+    if [ -z "$_was" ] || [ "$_was" = "$_app_media" ] ||
+      [ "$(docker inspect -f '{{.State.Running}}' "${_c#*:}" 2>/dev/null)" != true ]; then
+      continue
+    fi
+    say "Moving $_svc to the media Arrmada now uses ($(media_name "$_app_media"))…"
+    if docker compose up -d --no-deps "$_svc" </dev/null; then
+      if [ "$(media_source "${_c#*:}")" = "$_was" ]; then
+        say "  It still has $(media_name "$_was"): docker-compose.override.yml mounts that for it, so it stays."
+      else
+        say "  What was in its old media ($(media_name "$_was")) is still there; move it across if you want it."
+      fi
+    else
+      say "! $_svc couldn't be restarted on the new media folder. Run: docker compose up -d $_svc" >&2
+    fi
+  done
 fi
 
 # A build kept by an earlier --rollback is superseded by this one.

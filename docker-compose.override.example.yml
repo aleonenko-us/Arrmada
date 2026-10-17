@@ -4,6 +4,9 @@
 # (Compose merges it automatically), pick ONE setup, edit the host paths, run ./update.sh,
 # then pick each library folder in Settings → Library.
 #
+# To keep Arrmada's own /media (its downloads + library) in a host folder instead of the
+# managed volume, you need no override: set ARRMADA_MEDIA_HOST in .env (docs/configuration.md).
+#
 # ⚠  NEVER mount media at /data — that path holds Arrmada's own database + config.
 #    (Keep the DB in appdata instead via ARRMADA_DATA_HOST=/mnt/user/appdata/arrmada in .env.)
 

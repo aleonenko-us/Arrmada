@@ -57,13 +57,22 @@ In an empty folder on the server:
 curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/docker-compose.example.yml -o docker-compose.yml
 ```
 
-Edit the lines marked `←` (your media folder, the user and group, your timezone, the port),
-then run `docker compose up -d`, open **`http://<your-server>:7878`** and follow the setup.
+Next to it, a `.env` with your folders (full paths), and the other settings marked `←` in
+the file if you want to change them (the user and group, your timezone, the port):
+
+```sh
+ARRMADA_DATA_HOST=/srv/arrmada/data     # Arrmada's database and settings
+ARRMADA_STORAGE_HOST=/srv/media         # your libraries and downloads
+```
+
+Then run `docker compose up -d`, open **`http://<your-server>:7878`** and follow the setup.
+The compose file itself stays as downloaded, so updating it never loses your settings.
 To update: `docker compose pull && docker compose up -d`. That skips the installer's
 pre-update backup and automatic roll-back; the app still copies its database before any
 upgrade of it. [More →](docs/install.md#docker-compose-without-the-installer)
 
-Using Portainer? The same file works as a stack: [Using Portainer →](docs/install.md#using-portainer)
+Using Portainer? The same file works as a stack, with the same lines as its environment
+variables: [Using Portainer →](docs/install.md#using-portainer)
 
 ### On Unraid, from the Docker page
 

@@ -101,7 +101,7 @@ services:
       # can hardlink instead of copy: the download keeps seeding while the same
       # bytes appear in the library, costing no extra disk. Hardlinks only work
       # within a single filesystem — that's the whole reason both are subfolders
-      # of one mount. (On Unraid: map one share, e.g. /mnt/user/data → /media.)
+      # of one mount. (To use one share, e.g. /mnt/user/data, set ARRMADA_MEDIA_HOST in .env.)
       # Default managed library; override in .env (e.g. per-library MOVIES/TV dirs
       # under /storage) to import onto your own array instead of the managed volume.
       ARRMADA_LIBRARY_DIR: "${ARRMADA_LIBRARY_DIR:-/media/library}"
@@ -132,9 +132,13 @@ services:
       # App database/config. Defaults to a managed Docker volume; set ARRMADA_DATA_HOST in
       # .env to a host path (e.g. /mnt/user/appdata/arrmada on Unraid) to keep it in appdata.
       - ${ARRMADA_DATA_HOST:-arrmada-data}:/data
-      # Managed media (downloads + library) for the self-contained setup. To use an existing
-      # library, see docker-compose.override.example.yml (mounts it at its own path, NOT /data).
-      - arrmada-media:/media
+      # Media (downloads + library) at /media. Defaults to a managed Docker volume; set
+      # ARRMADA_MEDIA_HOST in .env to a host folder (e.g. /mnt/user/data) to keep it there
+      # instead. Every service below that shares media mounts the same line, so a file's path
+      # is the same in each and imports hardlink. Never the ARRMADA_DATA_HOST folder.
+      # install.sh's --media mounts your own folder at /storage instead (its
+      # docker-compose.override.yml; see docker-compose.override.example.yml).
+      - ${ARRMADA_MEDIA_HOST:-arrmada-media}:/media
       # The optional bundled SABnzbd's config, read-only: Arrmada reads its API key from
       # here, so the key is never in .env. Empty (and unused) while SABnzbd isn't switched on.
       - arrmada-sab-config:/bundled/sabnzbd:ro
@@ -147,16 +151,44 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # One-shot: create the media subfolders and hand them to uid/gid 1000 (the
-  # user both Arrmada and qBittorrent run as) so both can write and hardlink.
+  # One-shot: create the media subfolders and hand them to the user both Arrmada and
+  # qBittorrent run as, so both can write and hardlink. The managed volume is Arrmada's own,
+  # so all of it changes owner. A folder of yours (ARRMADA_MEDIA_HOST) keeps its owners:
+  # only the folders made here are handed over, and it may not be the database's folder.
   arrmada-media-init:
     image: alpine:3.20
     container_name: Arrmada-media-init
-    command: >
-      sh -c "mkdir -p /media/downloads/incomplete /media/library &&
-             chown -R ${ARRMADA_PUID:-1000}:${ARRMADA_PGID:-1000} /media"
+    environment:
+      PUID: "${ARRMADA_PUID:-1000}"
+      PGID: "${ARRMADA_PGID:-1000}"
+      MEDIA_HOST: "${ARRMADA_MEDIA_HOST:-}"
+      DATA_HOST: "${ARRMADA_DATA_HOST:-}"
+    command:
+      - sh
+      - -c
+      - |
+        case "$$MEDIA_HOST" in
+          /* | ./* | ../* | \~*) ;;
+          *)
+            mkdir -p /media/downloads/incomplete /media/library &&
+              chown -R "$$PUID:$$PGID" /media
+            exit ;;
+        esac
+        m=$${MEDIA_HOST%/}; d=$${DATA_HOST%/}; overlap=""
+        if [ -n "$$d" ]; then
+          case "$$m/" in "$$d/"*) overlap=1 ;; esac
+          case "$$d/" in "$$m/"*) overlap=1 ;; esac
+        fi
+        if [ -n "$$overlap" ]; then
+          echo "ARRMADA_MEDIA_HOST ($$m) and ARRMADA_DATA_HOST ($$d) overlap. Media never goes in the database's folder: point ARRMADA_MEDIA_HOST at another folder in .env." >&2
+          exit 1
+        fi
+        [ -n "$$(ls -A /media)" ] || chown "$$PUID:$$PGID" /media
+        for p in /media/downloads /media/downloads/incomplete /media/library; do
+          [ -d "$$p" ] || { mkdir "$$p" && chown "$$PUID:$$PGID" "$$p"; } || exit 1
+        done
     volumes:
-      - arrmada-media:/media
+      - ${ARRMADA_MEDIA_HOST:-arrmada-media}:/media
     restart: "no"
 
   # One-shot: seed qBittorrent's config the first time (downloads path, and login-free
@@ -187,7 +219,7 @@ services:
       - arrmada-qbt-config:/config
       # Same shared media volume, same path as Arrmada — so a file's path is
       # identical in both containers and hardlinks resolve.
-      - arrmada-media:/media
+      - ${ARRMADA_MEDIA_HOST:-arrmada-media}:/media
     ports:
       # qBittorrent's own WebUI ← .env (install.sh auto-picks a free host port so it
       # won't clash with an existing qBit on 8080). Arrmada manages qBit over the
@@ -245,7 +277,7 @@ services:
     volumes:
       - arrmada-sab-config:/config
       # Same shared media volume, same path as Arrmada, like qBittorrent.
-      - arrmada-media:/media
+      - ${ARRMADA_MEDIA_HOST:-arrmada-media}:/media
     ports:
       - "${ARRMADA_SABNZBD_PORT:-8085}:8080"
     depends_on:

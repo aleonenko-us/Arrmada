@@ -132,7 +132,10 @@ or follow [Troubleshooting](troubleshooting.md#qbittorrent-login).
    database; on main, compiles the code.
 5. **Keeps the version that was running** as the Docker image `arrmada:previous`.
 6. **Restarts only the app** and waits until it answers. qBittorrent, FlareSolverr and
-   Prowlarr keep running.
+   Prowlarr keep running. The one exception is `ARRMADA_MEDIA_HOST` in `.env`: with it, the
+   media folders are made first (and a folder overlapping the database's is refused before
+   anything restarts), and when the media folder changed, qBittorrent and SABnzbd are
+   restarted on the new one too, so they keep seeing what the app sees.
 7. **Goes back by itself if the new version doesn't start** (see below).
 
 A new version may upgrade the database's tables when it starts. Before any such change the

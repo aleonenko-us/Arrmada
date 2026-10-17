@@ -9,7 +9,10 @@ There are two ways to run Arrmada on Unraid:
   ones off and use yours.
 - **The Compose install** ([Install](install.md)). The same app with qBittorrent and
   FlareSolverr as containers of their own, through the Docker Compose Manager plugin, plus
-  the optional Prowlarr and SABnzbd.
+  the optional Prowlarr and SABnzbd. Its folders are lines in the stack's `.env`
+  (`ARRMADA_DATA_HOST`, and `ARRMADA_MEDIA_HOST` for media in a share rather than in
+  `docker.img`), so the compose file itself never needs editing
+  ([Configuration](configuration.md#media-in-a-folder-of-your-own-env-only)).
 
 Both keep the same kind of database, but there's no switch from one to the other: choose one.
 

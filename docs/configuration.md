@@ -52,7 +52,8 @@ left alone too.
 | `ARRMADA_IMAGE` | The published image `update.sh` downloads on the stable channel (`ghcr.io/tristenlammi/arrmada:stable` when unset) ([Updating](updating.md#published-image-or-compiled-here)) |
 | `ARRMADA_APP_IMAGE` | The image `docker compose` runs. `arrmada:dev` (what the installer writes) is whatever `update.sh` built or downloaded — leave it. Without the line, a plain `docker compose up -d` runs the published image ([Updating](updating.md#upgrading-from-v010-or-earlier)) |
 | `ARRMADA_DATA_HOST` | Where the database, its backups and settings live on the host |
-| `ARRMADA_STORAGE_HOST` | Your media folder (for reference; the mount itself is in `docker-compose.override.yml`) |
+| `ARRMADA_STORAGE_HOST` | The media folder the installer mounted at `/storage` (for reference; the mount itself is in `docker-compose.override.yml`, so change it with `install.sh --media`) |
+| `ARRMADA_MEDIA_HOST` | A host folder for `/media`, Arrmada's own downloads and library, in place of the managed Docker volume; every service that shares media follows it ([below](#media-in-a-folder-of-your-own-env-only)) |
 | `ARRMADA_PUID`, `ARRMADA_PGID` | The user and group Arrmada and qBittorrent run as. On Unraid, 99 and 100 |
 | `TZ` | Timezone. Schedules — the Convert window especially — run on this clock ([list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 | `COMPOSE_PROFILES` | The optional companions to run, a comma list: `prowlarr` (Prowlarr), `sabnzbd` (SABnzbd, for Usenet), e.g. `prowlarr,sabnzbd`. `update.sh` never changes it |
@@ -135,6 +136,53 @@ land on the same physical disk; otherwise the import falls back to a copy (the l
 "imported by COPY"). If a share suddenly refuses new folders ("permission denied" on a
 library that used to work), one disk's copy of the folder is owned by root — fix it through
 the share path: `chown 99:100` and `chmod 775` on the library parent folders.
+
+### Media in a folder of your own, `.env` only
+
+Arrmada has two places for media inside the container:
+
+- `/media` is its own: the downloads and library it makes when you give it no media folder
+  (`/media/downloads`, `/media/library`). By default it's a Docker volume, `arrmada-media`.
+- `/storage` is your media folder, when the installer was given one (`--media`). Its mount is
+  in `docker-compose.override.yml`, which the installer writes.
+
+To keep `/media` in a host folder instead of the volume, without any override file, add one
+line to `.env` and run `sh update.sh`:
+
+```sh
+ARRMADA_MEDIA_HOST=/mnt/user/arrmada-media
+```
+
+Arrmada, qBittorrent, SABnzbd and the one-shot that makes the folders all mount that line, so
+a file has the same path in each and imports hardlink. The paths inside the container don't
+change (still `/media/...`), so the folders already saved in the app keep working. When the
+folder is new or empty it's handed to the user Arrmada runs as; when it already holds files,
+only the `downloads` and `library` folders Arrmada makes are, and your own files keep their
+owners. Use a full path. A folder that is, holds or sits inside the `ARRMADA_DATA_HOST`
+folder is refused: media never goes with the database. Don't point it at the folder already
+mounted at `/storage` either: that works, but two mounts of one folder can't hardlink between
+them, so pick one place for each library and its downloads.
+
+`update.sh` moves qBittorrent (and SABnzbd) to the new folder along with the app. What was in
+the volume stays there. To bring it across, do the move with everything stopped instead, in
+Arrmada's folder:
+
+```sh
+docker compose stop
+docker volume ls | grep arrmada-media          # its full name, e.g. arrmada_arrmada-media
+docker run --rm -v arrmada_arrmada-media:/from -v /mnt/user/arrmada-media:/to alpine cp -a /from/. /to/
+# now add the ARRMADA_MEDIA_HOST line to .env, then start everything on the new folder:
+docker compose up -d
+```
+
+Remove the line (and run `update.sh`) to go back to the volume. Leave it out entirely and
+nothing changes: `/media` stays the `arrmada-media` volume it has always been.
+
+`/storage` has no `.env` switch of its own: Compose can't leave a mount out when a variable
+is empty, and an empty `/storage` would look like a media folder to the setup. Use
+`install.sh --media` (or the override file below) for it, or put everything in `/media` with
+`ARRMADA_MEDIA_HOST`. The [plain Compose file](install.md#docker-compose-without-the-installer)
+always has a media folder, so there `/storage` is set from `.env` too (`ARRMADA_STORAGE_HOST`).
 
 ### Other layouts
 
