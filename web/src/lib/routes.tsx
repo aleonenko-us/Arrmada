@@ -8,7 +8,7 @@ import { ModuleGate } from "../components/ModuleGate";
 import { SetupGate } from "../components/SetupGate";
 import { lazyPage } from "./lazyPage";
 import { LINKS } from "./links";
-import { legacyActivityPath, type LegacyActivityPage } from "./activity";
+import type { LegacyActivityPage } from "./activity";
 
 // The staff console's frame (sidebar, Needs-you polling, restart banner) is its own
 // chunk too: a requester's phone loads only the small requester shell with Discover.
@@ -46,6 +46,8 @@ const Calendar = lazyPage(() => import("../pages/Calendar"), "Calendar");
 const Logs = lazyPage(() => import("../pages/Logs"), "Logs");
 const Me = lazyPage(() => import("../pages/Me"), "Me");
 const NotFound = lazyPage(() => import("../pages/NotFound"), "NotFound");
+// Staff-only redirects: their address table stays out of a requester's first load.
+const ActivityRedirect = lazyPage(() => import("../components/ActivityRedirect"), "ActivityRedirect");
 
 // Three shells, one table each. Staff get the whole console; requesters and outside
 // visitors get the small requester shell. The server enforces the same split, so these
@@ -98,11 +100,6 @@ function discover(element: ReactNode): RouteObject {
 function legacyActivity(path: string, from: LegacyActivityPage): RouteObject {
   const handle: RouteHandle = { title: "Activity" };
   return { path, element: <ActivityRedirect from={from} />, handle, errorElement: <RouteError /> };
-}
-
-function ActivityRedirect({ from }: { from: LegacyActivityPage }) {
-  const { search, hash } = useLocation();
-  return <Navigate to={legacyActivityPath(from, search, hash)} replace />;
 }
 
 function TvRedirect() {

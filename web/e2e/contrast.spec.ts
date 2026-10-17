@@ -95,6 +95,31 @@ const shots: Shot[] = [
   { persona: "admin", path: "/activity/queue", label: "usenet", setup: (page, api) => mockUsenet(page, api) },
   { persona: "admin", path: "/activity/queue?show=finishing", label: "usenet", setup: (page, api) => mockUsenet(page, api) },
   { persona: "admin", path: "/settings/downloads", label: "usenet", setup: (page, api) => mockUsenet(page, api) },
+  // The command palette: groups, posters, the highlighted row and the matched letters.
+  {
+    persona: "admin",
+    path: "/movies",
+    label: "palette",
+    open: async (page) => {
+      // The shortcut works once the shell's palette host is up; press until it opens.
+      const dialog = page.getByRole("dialog", { name: "Search" });
+      await expect(async () => {
+        if (!(await dialog.isVisible())) await page.keyboard.press("Control+K");
+        await expect(dialog).toBeVisible({ timeout: 500 });
+      }).toPass();
+      await dialog.getByRole("combobox").fill("the");
+      await expect(page.getByRole("dialog", { name: "Search" }).getByRole("group", { name: "Library" })).toBeVisible();
+    },
+  },
+  {
+    persona: "requester",
+    path: "/discover",
+    label: "palette",
+    open: async (page) => {
+      await page.getByRole("button", { name: "Search everything" }).click();
+      await expect(page.getByRole("dialog", { name: "Search" }).getByRole("group", { name: "Pages and settings" })).toBeVisible();
+    },
+  },
 ];
 
 // The open list of a native <select> is drawn by the browser outside the page, so axe

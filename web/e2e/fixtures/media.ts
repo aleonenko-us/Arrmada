@@ -4,6 +4,7 @@ import type {
 } from "../../src/lib/api";
 import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
 import type { JellyfinConfig, JellyfinSave, JellyfinTestResult } from "../../src/lib/jellyfinApi";
+import type { LibraryHit } from "../../src/lib/palette";
 import { NOW, day } from "./clock";
 
 const poster = (n: number) => `https://image.tmdb.org/t/p/w500/e2e-lib-${n}.jpg`;
@@ -56,6 +57,18 @@ export function calendar(url: URL): { items: CalendarItem[]; start: string; end:
 }
 
 // The library list is slim summaries (MOV-10): no cast, overview or file paths.
+// librarySearch answers GET /api/v1/library/search from the movies and series above: every title
+// containing what was typed (the server's own matching is tested in Go).
+export function librarySearch(url: URL): { results: LibraryHit[] } {
+  const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+  if (!q) return { results: [] };
+  const rows: LibraryHit[] = [
+    ...movies.movies.map((m): LibraryHit => ({ kind: "movie", id: m.id, title: m.title, year: m.year, poster_url: m.poster_url })),
+    ...series.series.map((s): LibraryHit => ({ kind: "series", id: s.id, title: s.title, year: s.year, poster_url: s.poster_url })),
+  ];
+  return { results: rows.filter((r) => r.title.toLowerCase().includes(q)).slice(0, 20) };
+}
+
 export const movies: { movies: MovieSummary[]; metadata_available: boolean; client_health?: { ok: boolean } } = {
   client_health: { ok: true },
   metadata_available: true,

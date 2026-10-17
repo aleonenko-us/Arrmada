@@ -10,6 +10,8 @@ import { NotificationBell } from "./NotificationBell";
 import { nextTheme, THEME_LABEL, useTheme, type ThemePref } from "../lib/theme";
 import { Scrim } from "../ui/Scrim";
 import { VersionBadge } from "./VersionBadge";
+import { SearchBar } from "./PaletteHost";
+import { signOut as endSession } from "../lib/session";
 
 const PlexAccountLink = lazy(() => import("./PlexAccountLink"));
 const JellyfinAccountLink = lazy(() => import("./JellyfinAccountLink"));
@@ -101,10 +103,7 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
       .then((a) => setAudioDot(a.enabled ? (a.running ? "var(--good)" : "var(--reject)") : null))
       .catch(() => {});
   }, []);
-  const signOut = async () => {
-    try { await api.logout(); } catch { /* ignore — clearing the session locally is enough */ }
-    window.location.href = "/";
-  };
+  const signOut = () => { void endSession(user?.id); };
   // Hide nav entries for modules an admin has turned off, and admin-only pages (Logs)
   // from managers.
   const nav = visibleNav({ admin: isAdmin(user), booksEnabled, musicEnabled });
@@ -133,6 +132,11 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
           </span>
           <span className="text-lg font-extrabold tracking-[0.12em]">ARRMADA</span>
           {bell && <div className="ml-auto"><NotificationBell placement="side" /></div>}
+        </div>
+        {/* Search everything (⌘K / Ctrl K): titles, pages, settings and a few actions. */}
+        <div className="flex-none px-2.5 pb-1">
+          {/* As a drawer it closes first: the palette takes over the screen. */}
+          <SearchBar onOpen={onClose} />
         </div>
 
         <nav className="relative flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2.5 pb-3 pt-2">

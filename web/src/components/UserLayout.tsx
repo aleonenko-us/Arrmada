@@ -1,10 +1,11 @@
-import { Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { FleetMark } from "./FleetMark";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { PageSkeleton } from "./PageSkeleton";
 import { NotificationBell } from "./NotificationBell";
 import { BottomTabs } from "./BottomTabs";
+import { SearchButton } from "./SearchButton";
 import { PushPromptHost } from "./PushPromptHost";
 import { PlayerHost } from "../lib/playerStub";
 import { useMe } from "../lib/me";
@@ -14,6 +15,11 @@ import { requesterNav, sectionFor } from "../lib/requesterNav";
 import { Menu } from "../ui/Menu";
 import { useScrollMemory } from "../lib/useScrollMemory";
 import { nextTheme, THEME_LABEL, useTheme } from "../lib/theme";
+
+// The command palette's host (the ⌘K / Ctrl K listener) loads right after the shell, not
+// with it; only the search button is in the first load. If its chunk can't load, the shell
+// carries on without the palette rather than failing.
+const PaletteHost = lazy(() => import("./PaletteHost").then((m) => ({ default: m.PaletteHost }), () => ({ default: () => null })));
 
 // UserLayout is the requester-facing shell, and what installs as the PWA on phones. Wider
 // screens get a slim branded top bar with the places inline; a phone gets the mark, the
@@ -57,6 +63,7 @@ export function UserLayout() {
           ))}
         </nav>
         <div className="flex flex-none items-center gap-2">
+          <SearchButton />
           <NotificationBell />
           {/* The kit's menu: arrow keys, Escape and focus back to the avatar. */}
           <Menu
@@ -72,7 +79,7 @@ export function UserLayout() {
               { label: "Audiobook apps & password", onSelect: () => navigate("/audiobooks?tab=apps") },
               // Cycles System → Light → Dark in place; the menu stays open to show the result.
               { label: `Theme: ${THEME_LABEL[theme]}`, title: `Switch to ${THEME_LABEL[nextTheme(theme)]}`, keepOpen: true, onSelect: () => setTheme(nextTheme(theme)) },
-              { label: "Sign out", tone: "danger", onSelect: signOut },
+              { label: "Sign out", tone: "danger", onSelect: () => { void signOut(user?.id); } },
             ]}
           />
         </div>
@@ -94,6 +101,8 @@ export function UserLayout() {
       <PlayerHost />
       {/* "Get notified when it's ready?" once, right after a first request. */}
       <PushPromptHost />
+      {/* ⌘K / Ctrl K, and the search button above. */}
+      <Suspense fallback={null}><PaletteHost /></Suspense>
     </div>
   );
 }

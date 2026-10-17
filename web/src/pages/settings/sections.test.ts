@@ -156,6 +156,14 @@ describe("searchSettings", () => {
     expect(labels("jellyfin quick")).toEqual(["Jellyfin sign-in"]);
   });
 
+  it("finds the command palette for every staff member", () => {
+    for (const q of ["shortcut", "command palette", "ctrl k"]) {
+      expect(labels(q)).toEqual(["Search everything"]);
+      expect(labels(q, manager)).toEqual(["Search everything"]);
+    }
+    expect(SEARCH_INDEX.filter((e) => e.palette).map((e) => e.label)).toEqual(["Search everything"]);
+  });
+
   it("has a unique anchor per card", () => {
     const anchors = SEARCH_INDEX.map((e) => e.anchor);
     expect(new Set(anchors).size).toBe(anchors.length);
