@@ -132,7 +132,9 @@ func probeEncoder(ctx context.Context, ffmpeg string, e Encoder) error {
 		args = append(args, "-vf", "format=nv12,hwupload")
 	}
 	args = append(args, "-c:v", e.Name, "-f", "null", "-")
-	out, err := toolrun.Command(ctx, toolrun.Normal, ffmpeg, args...).CombinedOutput()
+	cmd := toolrun.Command(ctx, toolrun.Normal, ffmpeg, args...)
+	cmd.Env = libvaEnv(args) // the same VA driver a real encode on this device gets
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
 	}
@@ -182,7 +184,7 @@ func cpuEncoder(codec string) Encoder {
 // gpuVendors reads the PCI vendor of each DRM render node so we prefer the right encoder
 // per GPU (QSV is Intel-only; AMD goes through VAAPI). Empty on non-Linux / no GPU.
 func gpuVendors() (intel, amd, any bool) {
-	entries, err := os.ReadDir("/sys/class/drm")
+	entries, err := os.ReadDir(drmClassDir)
 	if err != nil {
 		return
 	}
@@ -190,7 +192,7 @@ func gpuVendors() (intel, amd, any bool) {
 		if !strings.HasPrefix(e.Name(), "renderD") {
 			continue
 		}
-		b, err := os.ReadFile("/sys/class/drm/" + e.Name() + "/device/vendor")
+		b, err := os.ReadFile(drmClassDir + "/" + e.Name() + "/device/vendor")
 		if err != nil {
 			continue
 		}
@@ -231,10 +233,10 @@ func renderDevices() []RenderDevice {
 			continue
 		}
 		d := RenderDevice{Path: "/dev/dri/" + name}
-		if link, err := os.Readlink("/sys/class/drm/" + name + "/device"); err == nil {
+		if link, err := os.Readlink(drmClassDir + "/" + name + "/device"); err == nil {
 			d.PCI = filepathBase(link)
 		}
-		if v, err := os.ReadFile("/sys/class/drm/" + name + "/device/vendor"); err == nil {
+		if v, err := os.ReadFile(drmClassDir + "/" + name + "/device/vendor"); err == nil {
 			d.Vendor = vendorName(strings.TrimSpace(string(v)))
 		}
 		out = append(out, d)

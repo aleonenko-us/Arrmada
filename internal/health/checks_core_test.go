@@ -80,9 +80,10 @@ func TestLibraryFoldersCheck(t *testing.T) {
 		}
 	}
 	st := LibraryState{
-		Folders: []Folder{{Role: "movies", Label: "Movies", Path: movies}, {Role: "tv", Label: "TV", Path: tv}, {Role: "music", Label: "Music", Path: music}},
-		All:     []Folder{{Role: "movies", Label: "Movies", Path: movies}, {Role: "tv", Label: "TV", Path: tv}, {Role: "music", Label: "Music", Path: music}},
-		DataDir: data,
+		Folders:  []Folder{{Role: "movies", Label: "Movies", Path: movies}, {Role: "tv", Label: "TV", Path: tv}, {Role: "music", Label: "Music", Path: music}},
+		All:      []Folder{{Role: "movies", Label: "Movies", Path: movies}, {Role: "tv", Label: "TV", Path: tv}, {Role: "music", Label: "Music", Path: music}},
+		DataDir:  data,
+		Recorded: func(context.Context, string) (int, error) { return 0, nil },
 	}
 	got := run(LibraryFoldersCheck(func(context.Context) LibraryState { return st }, NewProbeCache(0)))
 	byKey := map[string]Finding{}
@@ -102,5 +103,42 @@ func TestLibraryFoldersCheck(t *testing.T) {
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
 			t.Errorf("the check created %s", p)
 		}
+	}
+}
+
+// A missing folder suggests Create it only when it's known to have held nothing. One
+// with files on record is a share that isn't mounted: the advice is the mount, in red.
+// When the records can't be read, the advice covers both and doesn't press Create it.
+func TestLibraryFoldersCheckMissingFolderThatHeldFiles(t *testing.T) {
+	base := t.TempDir()
+	tv := filepath.Join(base, "tv") // missing, parent writable
+	folders := []Folder{{Role: "tv", Label: "TV", Path: tv}}
+	check := func(rec func(context.Context, string) (int, error)) Finding {
+		t.Helper()
+		st := LibraryState{Folders: folders, All: folders, DataDir: filepath.Join(base, "data"), Recorded: rec}
+		got := run(LibraryFoldersCheck(func(context.Context) LibraryState { return st }, NewProbeCache(0)))
+		if len(got) != 1 {
+			t.Fatalf("findings = %+v, want one", got)
+		}
+		return got[0]
+	}
+	held := check(func(_ context.Context, folder string) (int, error) {
+		if folder != tv {
+			t.Errorf("asked about %s", folder)
+		}
+		return 42, nil
+	})
+	if held.Level != LevelError || !strings.Contains(held.Message, "42 files") || !strings.Contains(held.Message, "not mounted") || strings.Contains(held.Message, "Create it") {
+		t.Errorf("a missing folder that held files: %+v", held)
+	}
+	unknown := check(func(context.Context, string) (int, error) { return 0, errors.New("database is locked") })
+	if strings.Contains(unknown.Message, "Create it") || !strings.Contains(unknown.Message, "mounted") {
+		t.Errorf("records unreadable: %+v", unknown)
+	}
+	if fresh := check(func(context.Context, string) (int, error) { return 0, nil }); !strings.Contains(fresh.Message, "Create it") {
+		t.Errorf("a folder that never held anything: %+v", fresh)
+	}
+	if _, err := os.Stat(tv); !os.IsNotExist(err) {
+		t.Errorf("the check created %s", tv)
 	}
 }

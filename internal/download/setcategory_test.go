@@ -22,6 +22,8 @@ func TestQBittorrentSetCategory(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		switch r.URL.Path {
+		case "/api/v2/torrents/setAutoManagement":
+			calls = append(calls, "manual "+r.FormValue("hashes")+" "+r.FormValue("enable"))
 		case "/api/v2/torrents/setCategory":
 			calls = append(calls, "set "+r.FormValue("hashes")+" "+r.FormValue("category"))
 			if !created {
@@ -40,7 +42,8 @@ func TestQBittorrentSetCategory(t *testing.T) {
 	if err := q.SetCategory(context.Background(), dc, "abc123", "arrmada-tv"); err != nil {
 		t.Fatalf("SetCategory: %v", err)
 	}
-	want := []string{"set abc123 arrmada-tv", "create arrmada-tv", "set abc123 arrmada-tv"}
+	// Automatic management goes off first, so the category's folder never moves the files.
+	want := []string{"manual abc123 false", "set abc123 arrmada-tv", "create arrmada-tv", "set abc123 arrmada-tv"}
 	if len(calls) != len(want) {
 		t.Fatalf("calls = %q, want %q", calls, want)
 	}
@@ -51,7 +54,7 @@ func TestQBittorrentSetCategory(t *testing.T) {
 	}
 	// Once it exists, one call does it.
 	calls = nil
-	if err := q.SetCategory(context.Background(), dc, "abc123", "arrmada-tv"); err != nil || len(calls) != 1 {
+	if err := q.SetCategory(context.Background(), dc, "abc123", "arrmada-tv"); err != nil || len(calls) != 2 {
 		t.Errorf("second SetCategory: err %v calls %q", err, calls)
 	}
 }

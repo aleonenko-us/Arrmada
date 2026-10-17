@@ -45,6 +45,8 @@ type personRow struct {
 	AudioAllowed     bool `json:"audio_allowed"`
 	AudioPasswordSet bool `json:"audio_password_set"`
 	AudioDevices     int  `json:"audio_devices"`
+	// TwoFactor: their password sign-in asks for a code too (an admin can reset it).
+	TwoFactor bool `json:"two_factor"`
 }
 
 // handlePeople — GET /api/v1/people (admin): everyone once, with role, auto-approve, Plex
@@ -63,6 +65,11 @@ func (a *api) handlePeople(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	activity, err := a.deps.Auth.SessionActivityByUser(ctx)
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not list people")
+		return
+	}
+	twoFactor, err := a.deps.Auth.TwoFactorUsers(ctx)
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not list people")
 		return
@@ -113,6 +120,7 @@ func (a *api) handlePeople(w http.ResponseWriter, r *http.Request) {
 			AudioEligible: !u.Disabled && u.Role.AtLeast(auth.RoleRequester),
 			AudioAllowed:  !denied[u.ID], AudioPasswordSet: withPassword[u.ID],
 			AudioLast: audioLast[u.ID], AudioDevices: audioDevices[u.ID], ListenLast: listenLast[u.ID],
+			TwoFactor: twoFactor[u.ID],
 		}
 		if q, ok := quotas[u.ID]; ok {
 			p.Quota = q

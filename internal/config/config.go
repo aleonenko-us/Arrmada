@@ -118,6 +118,17 @@ type Config struct {
 	Channel string
 }
 
+// The folder each library defaults to inside LibraryDir. Nothing in the app makes them:
+// a missing library folder may be a share that isn't mounted, so the app never creates
+// one on its own (Create it in Settings → Library does, on request).
+const (
+	SubdirMovies     = "movies"
+	SubdirTV         = "tvshows"
+	SubdirEbooks     = "ebooks"
+	SubdirAudiobooks = "audiobooks"
+	SubdirMusic      = "music"
+)
+
 // Load builds a Config from environment variables, falling back to defaults.
 // Every key is prefixed ARRMADA_ so it never collides with other services.
 func Load() (Config, error) {
@@ -156,11 +167,11 @@ func Load() (Config, error) {
 	// module's scan walking the others' files. A conventional per-type subfolder is what
 	// people set these to by hand anyway, so it's the better default — and each is still
 	// overridable by env var or in Settings → Library.
-	c.MoviesDir = env("ARRMADA_MOVIES_DIR", filepath.Join(c.LibraryDir, "movies"))
-	c.TVDir = env("ARRMADA_TV_DIR", filepath.Join(c.LibraryDir, "tvshows"))
-	c.EbooksDir = env("ARRMADA_EBOOKS_DIR", filepath.Join(c.LibraryDir, "ebooks"))
-	c.AudiobooksDir = env("ARRMADA_AUDIOBOOKS_DIR", filepath.Join(c.LibraryDir, "audiobooks"))
-	c.MusicDir = env("ARRMADA_MUSIC_DIR", filepath.Join(c.LibraryDir, "music"))
+	c.MoviesDir = env("ARRMADA_MOVIES_DIR", filepath.Join(c.LibraryDir, SubdirMovies))
+	c.TVDir = env("ARRMADA_TV_DIR", filepath.Join(c.LibraryDir, SubdirTV))
+	c.EbooksDir = env("ARRMADA_EBOOKS_DIR", filepath.Join(c.LibraryDir, SubdirEbooks))
+	c.AudiobooksDir = env("ARRMADA_AUDIOBOOKS_DIR", filepath.Join(c.LibraryDir, SubdirAudiobooks))
+	c.MusicDir = env("ARRMADA_MUSIC_DIR", filepath.Join(c.LibraryDir, SubdirMusic))
 
 	// The all-in-one image sets its own (empty while its qBittorrent is switched off).
 	if c.QbittorrentLogin == "" && c.AIOQbittorrentURL == "" {

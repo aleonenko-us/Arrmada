@@ -9,6 +9,8 @@ export const systemApi = {
     req<{ status: string; job_id: number; existing: boolean }>(`/api/v1/system/tasks/${encodeURIComponent(name)}/run`, {
       method: "POST",
     }),
+  // Stops a queued or running job (a library scan). 409 when it has already finished.
+  cancelJob: (id: number) => req<{ status: string; job_id: number }>(`/api/v1/jobs/${id}/cancel`, { method: "POST" }),
   // Recent jobs under the tasks: searches, scans, imports and Run nows, newest first.
   recentJobs: (limit = 50) => req<{ jobs: RecentJob[] }>(`/api/v1/system/jobs?limit=${limit}`).then((r) => r.jobs),
   // Database backups — admin only (a backup holds every secret the app has).

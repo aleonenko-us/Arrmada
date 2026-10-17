@@ -25,10 +25,14 @@ var (
 // install it's the managed Docker volume, not a share anyone picked.
 func (a *api) importRoots(ctx context.Context) []string {
 	var roots []string
-	for _, r := range a.roots().All(ctx) {
+	rs := a.roots()
+	for _, r := range rs.All(ctx) {
 		roots = append(roots, r.Path)
 	}
-	return roots
+	// A library folder's downloads folder that was cleared, replaced or removed with its
+	// folder: the torrents already saved there keep seeding there, and Needs you and
+	// Import into… must still import them. Each was vetted when it was set.
+	return append(roots, rs.FormerDownloads(ctx)...)
 }
 
 // importListTimeout bounds one manual-import listing. The walks also stop at

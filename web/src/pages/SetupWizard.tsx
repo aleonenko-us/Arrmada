@@ -319,7 +319,11 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
 
   const keyStatus = (id: string): APIKeyStatus | undefined => state.keys.find((k) => k.id === id);
   const tmdb = keyStatus("tmdb");
-  const managedOnly = state.mounts.length > 0 && !state.mounts.includes("/storage");
+  // No /storage: media is under /media, which is either Arrmada's managed volume or a host
+  // folder the owner named in .env (ARRMADA_MEDIA_HOST). Only the first gets the warning.
+  const noStorage = state.mounts.length > 0 && !state.mounts.includes("/storage");
+  const managedOnly = noStorage && !state.media_host_folder;
+  const mediaFolder = noStorage && !!state.media_host_folder;
   const stepIndex = STEPS.findIndex((s) => s.id === step);
   const restartFirst = state.restart_needed && state.can_restart;
 
@@ -453,6 +457,11 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
             <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--avoid)", color: "var(--avoid-text)" }}>
               Arrmada is using its own managed storage — no media folder was given at install. To use your existing library, run the install line again on the server with <code className="font-mono">--media</code> and your media folder, for example <code className="font-mono">… | sh -s -- --media /mnt/user/data</code>. It mounts the folder and restarts Arrmada; then pick each library here.
             </div>
+          )}
+          {mediaFolder && (
+            <p className="mb-3 text-sm text-ink-dim">
+              Your media folder is mounted at <code className="font-mono">/media</code>: pick each library inside it.
+            </p>
           )}
           <div className="flex flex-col gap-2.5">
             {FOLDERS.map((f) => (

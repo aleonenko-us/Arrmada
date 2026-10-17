@@ -19,6 +19,10 @@ export interface LibraryFolder {
   default: boolean;
   /** Titles that belong to it. */
   titles: number;
+  /** Its own downloads folder ("" = the Downloads folder): torrents for its titles save there. */
+  downloads?: string;
+  /** Set when that folder isn't on the library folder's filesystem (imports copy). */
+  downloads_warning?: string;
 }
 
 export interface LibraryFolderSet {
@@ -70,6 +74,9 @@ export const foldersApi = {
   order: (media: FolderMedia, ids: number[]) =>
     req<LibraryFolderSet>("/api/v1/system/library/folders/order", { method: "PUT", body: JSON.stringify({ media, ids }) }),
   remove: (id: number) => req<void>(`/api/v1/system/library/folders/${id}`, { method: "DELETE" }),
+  /** Gives a folder (0: the main one) its own downloads folder, or clears it with "". */
+  setDownloads: (media: FolderMedia, id: number, path: string) =>
+    req<{ folder: LibraryFolder; warning?: string }>("/api/v1/system/library/folders/downloads", { method: "PUT", body: JSON.stringify({ media, id, path }) }),
   /** Moves the title's files to the folder: a job to follow. */
   move: (media: FolderMedia, id: number, folderId: number) =>
     req<JobRef & { folder?: string }>(`/api/v1/${media === "movie" ? "movies" : "series"}/${id}/move`, { method: "POST", body: JSON.stringify({ folder_id: folderId }) }),

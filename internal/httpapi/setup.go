@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/config"
@@ -140,6 +141,10 @@ func suggestFolders(mounts []string) map[string]string {
 // librariesChosen reports whether anyone has pointed the libraries somewhere: in the
 // app, or with the per-library environment variables an older installer wrote.
 func (a *api) librariesChosen(ctx context.Context) bool {
+	// Confirmed in the app, even when the folders confirmed were the defaults.
+	if a.deps.Settings.GetBool(ctx, libroots.KeyFoldersConfirmed, false) {
+		return true
+	}
 	for _, k := range []string{keyLibMovies, keyLibTV} {
 		if strings.TrimSpace(a.deps.Settings.Get(ctx, k, "")) != "" {
 			return true
@@ -239,7 +244,9 @@ func (a *api) handleSetupState(w http.ResponseWriter, r *http.Request) {
 		"restart_needed":   rs.Needed,
 		"can_restart":      rs.CanRestart,
 		"mounts":           mounts,
-		"suggestions":      suggestFolders(mounts),
+		// /media is a folder of the owner's (ARRMADA_MEDIA_HOST), not the managed volume.
+		"media_host_folder": slices.Contains(mounts, "/media") && isHostFolder("/media"),
+		"suggestions":       suggestFolders(mounts),
 	})
 }
 

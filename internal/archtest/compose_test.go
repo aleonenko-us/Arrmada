@@ -15,7 +15,9 @@ type composeService struct {
 	containerName string
 	env           map[string]string
 	volumes       []string
-	ports         []string
+	// rawVolumes are the volume lines as written, before any ${VAR:-default} is resolved.
+	rawVolumes []string
+	ports      []string
 	// optional: the service is under a compose profile (Prowlarr, SABnzbd), started only
 	// when asked for.
 	optional bool
@@ -75,7 +77,7 @@ func readCompose(t *testing.T, path string) map[string]*composeService {
 			services[svc] = &composeService{env: map[string]string{}}
 		case anchor != "" && indent == 2:
 			k, v, _ := strings.Cut(trimmed, ":")
-			anchors[anchor][k] = unquote(v)
+			anchors[anchor][k] = withDefaults(unquote(v))
 		case svc != "" && indent == 4:
 			k, v, _ := strings.Cut(trimmed, ":")
 			v = strings.TrimSpace(v)
@@ -116,9 +118,11 @@ func readCompose(t *testing.T, path string) map[string]*composeService {
 				} else if strings.HasPrefix(item, "*") {
 					item = scalars[item[1:]]
 				}
-				item = withDefaults(unquote(item))
+				raw := unquote(item)
+				item = withDefaults(raw)
 				if section == "volumes" {
 					s.volumes = append(s.volumes, item)
+					s.rawVolumes = append(s.rawVolumes, raw)
 				} else {
 					s.ports = append(s.ports, item)
 				}
@@ -381,6 +385,161 @@ func TestComposeExampleMatchesCompose(t *testing.T) {
 			if !e[p] {
 				t.Errorf("%s: docker-compose.yml publishes %s, the example doesn't", svc, p)
 			}
+		}
+	}
+}
+
+// mediaLine is the one way every service mounts the shared media: the managed volume, or
+// the folder ARRMADA_MEDIA_HOST names in .env.
+const mediaLine = "${ARRMADA_MEDIA_HOST:-arrmada-media}:/media"
+
+// TestMediaMountsShareOneLine: everything that shares /media (the app, qBittorrent, SABnzbd
+// and the init that makes its folders) mounts it from the same line in both compose files,
+// so setting ARRMADA_MEDIA_HOST moves all of them together and a file's path stays the same
+// in each (imports hardlink). With nothing in .env it's still the arrmada-media volume, as
+// it always was. ARRMADA_MEDIA_HOST never mounts anywhere but /media (never /data, the
+// database).
+func TestMediaMountsShareOneLine(t *testing.T) {
+	root := repoRoot(t)
+	check := func(file string, want []string) {
+		t.Helper()
+		got := []string{}
+		for name, s := range readCompose(t, filepath.Join(root, file)) {
+			for _, v := range s.rawVolumes {
+				if strings.Contains(v, "ARRMADA_MEDIA_HOST") && v != mediaLine {
+					t.Errorf("%s: %s mounts %q; ARRMADA_MEDIA_HOST goes only in %q", file, name, v, mediaLine)
+				}
+				if mountTarget(withDefaults(v)) != "/media" {
+					continue
+				}
+				if v != mediaLine {
+					t.Errorf("%s: %s mounts %q at /media, want %q", file, name, v, mediaLine)
+				}
+				got = append(got, name)
+			}
+		}
+		slices.Sort(got)
+		slices.Sort(want)
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: services mounting /media are %v, want %v", file, got, want)
+		}
+	}
+	check("docker-compose.yml", []string{"arrmada-app", "arrmada-media-init", "arrmada-qbittorrent", "arrmada-sabnzbd"})
+	check("docker-compose.example.yml", []string{"arrmada-app", "arrmada-media-init", "arrmada-qbittorrent"})
+	// The example's SABnzbd is commented out; uncommented it has to mount the same line.
+	if ex := readText(t, filepath.Join(root, "docker-compose.example.yml")); !strings.Contains(ex, `#     - "`+mediaLine+`"`) {
+		t.Errorf("the example's commented-out SABnzbd should mount %q", mediaLine)
+	}
+	if !strings.Contains(readText(t, filepath.Join(root, "docker-compose.yml")), "\n  arrmada-media:\n") {
+		t.Error("docker-compose.yml no longer declares the arrmada-media volume, the default for /media")
+	}
+}
+
+// TestComposeExampleKeepsItsMounts: the example's folders come from .env now, but with
+// nothing set they are exactly the ones the file always had. A Portainer stack deployed
+// from the repository can't edit the file, so it has run on those; it must keep the same
+// database and media on its next redeploy, not start over somewhere else.
+func TestComposeExampleKeepsItsMounts(t *testing.T) {
+	ex := readCompose(t, filepath.Join(repoRoot(t), "docker-compose.example.yml"))
+	for svc, want := range map[string][]string{
+		"arrmada-app":         {"/path/to/arrmada/data:/data", "/path/to/your/media:/storage", "arrmada-media:/media"},
+		"arrmada-qbittorrent": {"/path/to/your/media:/storage", "arrmada-media:/media"},
+	} {
+		for _, w := range want {
+			if !slices.Contains(ex[svc].volumes, w) {
+				t.Errorf("%s: with nothing in .env the example should mount %s; it has %v", svc, w, ex[svc].volumes)
+			}
+		}
+	}
+	for svc, want := range map[string]map[string]string{
+		"arrmada-app":         {"PUID": "1000", "PGID": "1000", "TZ": "Etc/UTC", "ARRMADA_AUDIOBOOK_HOST_PORT": "13379", "ARRMADA_QBIT_PORT": "6881"},
+		"arrmada-qbittorrent": {"PUID": "1000", "PGID": "1000", "TZ": "Etc/UTC"},
+	} {
+		for k, v := range want {
+			if got := ex[svc].env[k]; got != v {
+				t.Errorf("%s: %s is %q with nothing in .env, want %q (what the example always had)", svc, k, got, v)
+			}
+		}
+	}
+	for svc, want := range map[string][]string{
+		"arrmada-app":         {"7878:7878", "13379:13378"},
+		"arrmada-qbittorrent": {"6881:6881", "6881:6881/udp"},
+	} {
+		for _, w := range want {
+			if !slices.Contains(ex[svc].ports, w) {
+				t.Errorf("%s: with nothing in .env the example should publish %s; it has %v", svc, w, ex[svc].ports)
+			}
+		}
+	}
+}
+
+// TestMediaInitScriptsAgree: both compose files make the media folders with the same
+// script. In the managed volume (the default) it hands all of /media to the app's user as it
+// always did; in a folder of the user's (ARRMADA_MEDIA_HOST) it changes the owner of nothing
+// it didn't make, and refuses a folder that overlaps the database's.
+func TestMediaInitScriptsAgree(t *testing.T) {
+	root := repoRoot(t)
+	main := serviceScript(readText(t, filepath.Join(root, "docker-compose.yml")), "arrmada-media-init", false)
+	ex := serviceScript(readText(t, filepath.Join(root, "docker-compose.example.yml")), "arrmada-media-init", false)
+	if len(main) < 10 {
+		t.Fatalf("docker-compose.yml's arrmada-media-init script not found (%d lines)", len(main))
+	}
+	if strings.Join(main, "\n") != strings.Join(ex, "\n") {
+		t.Errorf("the example's arrmada-media-init script differs from docker-compose.yml's:\n--- docker-compose.yml\n%s\n--- example\n%s",
+			strings.Join(main, "\n"), strings.Join(ex, "\n"))
+	}
+	joined := strings.Join(main, "\n")
+	// Which branch runs comes from the mount table, never from the variable: a path written
+	// into the compose file, an NFS volume or a Windows path is still a folder of the user's.
+	if !strings.Contains(joined, "/proc/self/mountinfo") || !strings.Contains(joined, "/volumes/[^/]+/_data$$") {
+		t.Errorf("the media init should tell the managed volume from a folder by the mount table:\n%s", joined)
+	}
+	// The managed volume's branch is the block that exits before the host-folder part.
+	const managedStart = "if printf '%s\\n' \"$$mr\" | grep -Eq"
+	before, rest, ok := strings.Cut(joined, managedStart)
+	if !ok {
+		t.Fatalf("the media init script has no managed-volume branch:\n%s", joined)
+	}
+	managed, hostPart, ok := strings.Cut(rest, "\nfi\n")
+	if !ok {
+		t.Fatalf("the media init script's managed branch has no end:\n%s", joined)
+	}
+	if !strings.Contains(managed, `chown -R "$$PUID:$$PGID" /media`) || !strings.Contains(managed, "exit") {
+		t.Errorf("the managed volume should still be handed over whole (chown -R), then exit:\n%s", managed)
+	}
+	if strings.Contains(before, "chown") || strings.Contains(hostPart, "chown -R") {
+		t.Errorf("the media init chowns a folder of the user's recursively:\n%s", joined)
+	}
+	// Refusals come first, so neither branch runs on a relative value or an overlap with the
+	// database's folder (mounted read-only to compare by device and folder).
+	for _, want := range []string{`. | ./* | .. | ../*)`, `$$5 == "/data"`, "overlap=1", "exit 1"} {
+		if !strings.Contains(before, want) {
+			t.Errorf("the media init's checks before either branch have no %q:\n%s", want, before)
+		}
+	}
+	// The managed volume starts with a folder per library (the app no longer makes them: on a
+	// host folder that isn't mounted yet it would make them on the wrong disk); a folder of
+	// the user's never gets any, the libraries there are picked in the app.
+	for _, lib := range []string{"movies", "tvshows", "ebooks", "audiobooks", "music"} {
+		if !strings.Contains(managed, "/media/library/"+lib) {
+			t.Errorf("the managed volume's init should make /media/library/%s:\n%s", lib, managed)
+		}
+		if strings.Contains(hostPart, "/media/library/"+lib) {
+			t.Errorf("the media init makes /media/library/%s in a folder of the user's:\n%s", lib, hostPart)
+		}
+	}
+	for _, want := range []string{"/media/downloads/incomplete", "/media/library"} {
+		if !strings.Contains(hostPart, want) {
+			t.Errorf("the host-folder part of the media init has no %q:\n%s", want, hostPart)
+		}
+	}
+	// Both files mount the database's folder into the init read-only, the same one the app has.
+	for file, want := range map[string]string{
+		"docker-compose.yml":         "${ARRMADA_DATA_HOST:-arrmada-data}:/data:ro",
+		"docker-compose.example.yml": "${ARRMADA_DATA_HOST:-/path/to/arrmada/data}:/data:ro",
+	} {
+		if !slices.Contains(readCompose(t, filepath.Join(root, file))["arrmada-media-init"].rawVolumes, want) {
+			t.Errorf("%s: arrmada-media-init should mount %s", file, want)
 		}
 	}
 }

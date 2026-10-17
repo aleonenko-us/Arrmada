@@ -40,6 +40,9 @@ type FolderState struct {
 	ParentExists   bool
 	ParentWritable bool
 	Err            error
+	// Recorded is how many files Arrmada has on record inside a missing folder (the
+	// library check fills it; a probe never does). RecordedUnknown when it couldn't tell.
+	Recorded int
 }
 
 // ProbeFolder looks at path without changing anything that matters: it never creates the
@@ -207,4 +210,35 @@ func LibraryFolders(cfg config.Config, booksOn, musicOn bool, extra ...libroots.
 	}
 	add("downloads", "Downloads", cfg.DownloadsDir)
 	return out
+}
+
+// DownloadFolders lists the library folders' own downloads folders (GitHub #11) as
+// folders to check, after the Downloads folder: role "downloads-<library>" for a default
+// folder's, "downloads-<library>-<id>" for an extra one's. One shared by several library
+// folders, or that is the Downloads folder itself, is listed once.
+func DownloadFolders(downloads string, own []libroots.FolderDownloads) []Folder {
+	var out []Folder
+	seen := map[string]bool{}
+	if strings.TrimSpace(downloads) != "" {
+		seen[filepath.Clean(downloads)] = true
+	}
+	for _, d := range own {
+		p := strings.TrimSpace(d.Path)
+		if p == "" || seen[filepath.Clean(p)] {
+			continue
+		}
+		seen[filepath.Clean(p)] = true
+		role := "downloads-" + libroots.LibraryName(d.Media)
+		if d.ID != 0 {
+			role = fmt.Sprintf("%s-%d", role, d.ID)
+		}
+		out = append(out, Folder{Role: role, Label: "Downloads for " + d.LibraryLabel, Path: p})
+	}
+	return out
+}
+
+// IsDownloads reports whether a folder from LibraryFolders or DownloadFolders is a
+// downloads folder rather than a library.
+func IsDownloads(f Folder) bool {
+	return f.Role == "downloads" || strings.HasPrefix(f.Role, "downloads-")
 }

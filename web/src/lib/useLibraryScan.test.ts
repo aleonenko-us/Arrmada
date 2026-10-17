@@ -60,6 +60,19 @@ describe("useLibraryScan", () => {
     expect(scanLine("Movies", result.current)).toEqual({ text: "Movies: Scanning 100 / 400 folders · 25%", tone: "dim" });
   });
 
+  it("stops the scan it's following (a big library's can run for hours)", async () => {
+    const running = job("running", { id: 9, progress: 0.25, message: "Scanning 100 / 400 folders" });
+    vi.spyOn(api, "jobs").mockResolvedValue([running]);
+    vi.spyOn(api, "job").mockResolvedValue(running);
+    const { systemApi } = await import("./systemApi");
+    const cancel = vi.spyOn(systemApi, "cancelJob").mockResolvedValue({ status: "cancelling", job_id: 9 });
+    const { result } = renderHook(() => useLibraryScan("movie.scan", vi.fn()));
+    await waitFor(() => expect(result.current.job?.id).toBe(9));
+    await act(async () => { await result.current.stop(); });
+    expect(cancel).toHaveBeenCalledWith(9);
+    expect(result.current.note).toBeNull();
+  });
+
   it("asks nothing for a row without a scan", () => {
     const jobs = vi.spyOn(api, "jobs").mockResolvedValue([]);
     renderHook(() => useLibraryScan("", vi.fn()));
@@ -68,7 +81,7 @@ describe("useLibraryScan", () => {
 });
 
 describe("scanLine", () => {
-  const scan = (over: Partial<LibraryScan>): LibraryScan => ({ start: async () => {}, running: false, job: null, note: null, ...over });
+  const scan = (over: Partial<LibraryScan>): LibraryScan => ({ start: async () => {}, stop: async () => {}, running: false, job: null, note: null, ...over });
 
   it("says a scan is waiting its turn behind another", () => {
     expect(scanLine("TV Shows", scan({ running: true, job: job("queued") }))?.text).toBe("TV Shows: waiting for another library scan to finish…");
@@ -77,5 +90,9 @@ describe("scanLine", () => {
   it("shows a failed scan's error, and nothing before any scan", () => {
     expect(scanLine("Music", scan({ job: job("failed", { error: "music folder isn't mounted" }) }))).toEqual({ text: "Scan failed: music folder isn't mounted", tone: "error" });
     expect(scanLine("Music", scan({}))).toBeNull();
+  });
+
+  it("says a stopped scan stopped", () => {
+    expect(scanLine("TV Shows", scan({ job: job("cancelled") }))).toEqual({ text: "Scan stopped.", tone: "dim" });
   });
 });

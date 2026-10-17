@@ -60,10 +60,18 @@ func logEnvironment(log *slog.Logger, cfg config.Config) {
 // in the log the user already exports. cfg holds the folders as resolved at startup
 // (libroots.Roots.Config); a folder changed later applies live and is logged by the
 // Settings save instead.
-func logFolders(log *slog.Logger, cfg config.Config, booksOn, musicOn bool, extra ...libroots.Extra) {
-	folders := health.LibraryFolders(cfg, booksOn, musicOn, extra...)
+func logFolders(log *slog.Logger, cfg config.Config, booksOn, musicOn bool, own []libroots.FolderDownloads, extra ...libroots.Extra) {
+	folders := append(health.LibraryFolders(cfg, booksOn, musicOn, extra...), health.DownloadFolders(cfg.DownloadsDir, own)...)
 	for _, f := range folders {
 		logFolder(log, f.Role, f.Path)
+	}
+	// A library folder's own downloads folder only does its job on the library's
+	// filesystem (GitHub #11).
+	for _, d := range own {
+		if same, ok := health.SameFilesystem(d.Path, d.Library); ok && !same {
+			log.Warn("environment: a library folder's downloads folder is on another filesystem — its imports will be copied, not hardlinked",
+				"library", d.Library, "downloads", d.Path)
+		}
 	}
 
 	// The download disk guard measures the downloads folder alone. If that folder is
@@ -72,7 +80,7 @@ func logFolders(log *slog.Logger, cfg config.Config, booksOn, musicOn bool, extr
 	// different.
 	var shared []string
 	for _, f := range folders {
-		if f.Role == "downloads" {
+		if health.IsDownloads(f) {
 			continue
 		}
 		if same, ok := health.SameFilesystem(cfg.DownloadsDir, f.Path); ok && same {

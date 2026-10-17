@@ -319,6 +319,8 @@ func main() {
 	// the download client checks, manual import — includes them from here on.
 	libFolders := libfolders.New(st.DB(), roots, cfg.DataDir)
 	roots.WithExtras(libFolders.Extras)
+	// The default Movies and TV folders' own downloads folders are settings (GitHub #11).
+	libFolders.SetSettingWriter(settingsSvc.Set)
 	rootFuncs := library.RootFuncs{
 		Movie:     libroots.Func(roots.Movies),
 		TV:        libroots.Func(roots.TV),
@@ -331,16 +333,13 @@ func main() {
 	// downloads folder or SABnzbd's own completed folder — never a library or the database.
 	downloads.SetMovieCategory(cfg.DownloadCategory)
 	downloads.SetFolders(func(ctx context.Context) download.PathEnv {
-		env := download.PathEnv{Downloads: roots.Downloads(ctx), DataDir: cfg.DataDir}
-		for _, lib := range roots.Libraries(ctx) {
-			env.Libraries = append(env.Libraries, lib.Path)
-		}
-		return env
+		return httpapi.DownloadPathEnv(ctx, roots, cfg.DataDir)
 	})
 	httpapi.LogLibraryDirs(context.Background(), roots, cfg, log)
 	logFolders(log, roots.Config(context.Background()),
 		settingsSvc.GetBool(context.Background(), settings.KeyModuleBooks, true),
 		settingsSvc.GetBool(context.Background(), settings.KeyModuleMusic, settings.ModuleMusicDefault),
+		roots.PerFolderDownloads(context.Background()),
 		roots.Extras(context.Background())...)
 	// Catalogue answers are kept in SQLite across restarts and served stale while a
 	// refresh runs, so Discover opens instantly even right after a deploy.
@@ -524,6 +523,9 @@ func main() {
 	coordinator.SetOutbox(box) // series and book imports queue their follow-up work
 	// Every grab's save path and the free-space check read the downloads folder live.
 	coordinator.SetDownloadsDirFunc(libroots.Func(roots.Downloads))
+	// ...except a torrent for a title whose library folder has its own downloads folder,
+	// which saves there, on the library's disk, so its import is a hardlink (GitHub #11).
+	coordinator.SetFolderDownloadsFunc(roots.OwnDownloads)
 	// Movie grabs are filed under the category the movie import sweep reads, whatever a
 	// download client's own settings say.
 	coordinator.SetMovieCategory(cfg.DownloadCategory)
@@ -764,6 +766,14 @@ func main() {
 	// plus one queue read, so it costs nothing to run often.
 	diskGuard := download.NewDiskGuard(downloads, settingsSvc, modLog(log, "download"), cfg.DownloadsDir)
 	diskGuard.SetDirFunc(libroots.Func(roots.Downloads)) // watches the folder in use now
+	// ...and every library folder's own downloads folder, each volume on its own.
+	diskGuard.SetDirsFunc(func() []string {
+		var out []string
+		for _, d := range roots.DownloadFolders(context.Background()) {
+			out = append(out, d.Path)
+		}
+		return out
+	})
 	sched.Register("downloads-disk-guard", time.Minute, true, diskGuard.Check, scheduler.Label("Watch download disk space"), scheduler.Description("Pauses downloads while the downloads drive is too full."))
 	// A torrent the guard paused is waiting for space, not stalled: its clock holds.
 	coordinator.SetGuardHeld(diskGuard.Held)
