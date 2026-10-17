@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HOMEPAGE_KEY_VAR, homepageYaml } from "./homepageYaml";
+import { HOMEPAGE_KEY_VAR, homepageYaml, LAN_PLACEHOLDER, widgetOrigin } from "./homepageYaml";
 
 describe("homepageYaml", () => {
   it("fills in the address and the key", () => {
@@ -21,6 +21,13 @@ describe("homepageYaml", () => {
     expect(blocks.match(/- field: /g)).toHaveLength(4);
     expect(blocks).not.toContain("display:");
     expect(list).toContain("display: list");
+  });
+
+  it("puts a placeholder in for an outside address", () => {
+    expect(widgetOrigin(true, "https://arrmada.example.com/api/v1/widget/homepage", "https://arrmada.example.com")).toBe(LAN_PLACEHOLDER);
+    expect(widgetOrigin(true, undefined, "https://arrmada.example.com")).toBe(LAN_PLACEHOLDER);
+    expect(widgetOrigin(false, "http://192.168.1.10:7878/api/v1/widget/homepage", "x")).toBe("http://192.168.1.10:7878");
+    expect(widgetOrigin(false, undefined, "http://192.168.1.10:7878")).toBe("http://192.168.1.10:7878");
   });
 
   it("never mixes tabs into the YAML", () => {

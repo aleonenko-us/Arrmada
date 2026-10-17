@@ -16,7 +16,9 @@ anyone watches or listens to.
 
 As an admin, open **Settings → System → Dashboard widget** and press **Make widget key**.
 The card shows a ready-to-paste `services.yaml` entry with your address and the new key
-filled in, plus **Copy entry** and **Copy key only** buttons.
+filled in, plus **Copy entry** and **Copy key only** buttons. If you opened Arrmada on an
+outside address (your tunnel or reverse proxy), the entry has `http://ARRMADA-LAN-ADDRESS:PORT`
+in its place — replace it with the LAN address (see [Which address](#which-address)).
 
 The key is shown **once**. Arrmada keeps only a fingerprint of it, so it can't be read back
 later — not from the app, the database, a backup or a support bundle. If you lose it, press
@@ -147,7 +149,7 @@ address you open Arrmada on.
   "requests_pending": 2,
   "needs_you": 5,
   "health": { "status": "warning", "problems": 1, "errors": 0, "warnings": 1 },
-  "disk": { "free_bytes": 2199023255552, "total_bytes": 8796093022208,
+  "disk": { "ok": true, "free_bytes": 2199023255552, "total_bytes": 8796093022208,
             "lowest_free_bytes": 429496729600, "lowest_free_pct": 12.5 },
   "version": "v0.2.0", "update_available": true, "latest_version": "v0.3.0"
 }
@@ -172,13 +174,15 @@ Use dots for nested fields (`queue.downloading`).
 | `health.status` | `ok`, `warning` or `error` — the worst health finding (Settings → Status). | `text`, with `remap` |
 | `health.problems`, `health.errors`, `health.warnings` | How many health findings, and of which kind. | `number` |
 | `disk.free_bytes`, `disk.total_bytes` | Free and total space over the library and download disks, each disk counted once. | `bytes` |
+| `disk.ok` | `false` when no disk could be read yet; the disk numbers are then 0. A disk that stops answering (a dead network share) leaves its last reading in place. | `text` |
 | `disk.lowest_free_bytes`, `disk.lowest_free_pct` | Free space on the fullest of those disks — the one to watch. | `bytes` / `percent` |
 | `version` | The running version. | `text` |
 | `update_available` | `true` when Settings → Status says an update is out; always `false` while that check is off. | `text`, with `remap` |
 | `latest_version` | The newest release the update check knows of (empty while it's off). | `text` |
 
-`requests_pending`, `needs_you` and the health counts are as of Arrmada's last check, usually
-less than a minute old.
+The answer is worked out at most every 15 seconds and shared by every dashboard asking, so
+it can be up to 15 seconds old. `requests_pending`, `needs_you` and the health counts are as
+of Arrmada's last check, usually less than a minute old.
 
 ## Security
 
@@ -190,6 +194,7 @@ less than a minute old.
   so the key can't tell anyone what's in your library or who watches what.
 - **Sent as a header** (`X-Api-Key`, or `Authorization: Bearer`), never in the address, so it
   stays out of logs. A key in the address is refused.
-- **Home network only**, and each address may fetch it at most 120 times a minute.
+- **Home network only.** An address that sends 30 wrong keys in a minute is told to wait;
+  the right key is never limited, so another device getting it wrong can't lock Homepage out.
 - Treat the key like a password anyway: anyone who has it, on your network, can see the
   counts. If it leaks, make a new one.

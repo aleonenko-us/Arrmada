@@ -12,6 +12,18 @@ export const HOMEPAGE_KEY_VAR = "{{HOMEPAGE_VAR_ARRMADA_WIDGET_KEY}}";
 
 export const WIDGET_PATH = "/api/v1/widget/homepage";
 
+// Stands in for Arrmada's address when the page is open on an outside address: the widget
+// only answers on the home network, so Homepage needs the LAN one (the server says the same).
+export const LAN_PLACEHOLDER = "http://ARRMADA-LAN-ADDRESS:PORT";
+
+// widgetOrigin is the address to put in the entry: the placeholder when on an outside
+// address, else the one the server gave with a new key, else the one this page is on.
+export function widgetOrigin(outside: boolean, madeURL: string | undefined, here: string): string {
+  if (outside) return LAN_PLACEHOLDER;
+  if (madeURL) return madeURL.endsWith(WIDGET_PATH) ? madeURL.slice(0, -WIDGET_PATH.length) : madeURL;
+  return here;
+}
+
 // homepageYaml is one service in a "Media" group. origin is Arrmada's address as Homepage's
 // server reaches it (no trailing slash); key the widget key, or the variable when empty.
 export function homepageYaml(origin: string, key: string): string {

@@ -182,7 +182,7 @@ type api struct {
 	start         time.Time
 	loginLimiter  *loginLimiter // throttles auth attempts (login/setup/plex-pin)
 	icsLimiter    *loginLimiter // throttles calendar feed fetches per address (calendar_ics.go)
-	widgetLimiter *loginLimiter // throttles dashboard widget fetches per address (widget.go)
+	widgetLimiter *loginLimiter // throttles wrong dashboard widget keys per address (widget.go)
 	plexPins      *plexPinGuard // which browser (and account) started each Plex PIN
 	jfQC          *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
 	// transfers caches the downloads feed's title cards and requester names (transfers.go).
@@ -193,12 +193,14 @@ type api struct {
 	kindle kindleQuota
 	// handImports remembers what each running Needs-you import was asked to do (handimport.go).
 	handImports handImports
+	// widget keeps the dashboard widget's answer and its disk reading (widget.go).
+	widget widgetRuntime
 }
 
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
 // fallback), and the middleware chain (recover → log → mux).
 func New(d Deps) *http.Server {
-	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetPerMinute, time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
+	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetFailMax, time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
 
 	rt := newRouter(a)
 	a.registerRoutes(rt)

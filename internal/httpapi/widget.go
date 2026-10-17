@@ -11,11 +11,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/buildinfo"
 	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/netutil"
+	"github.com/tristenlammi/arrmada/internal/safego"
 )
 
 // The dashboard widget: a small read-only summary for gethomepage.dev (or any dashboard
@@ -37,51 +39,99 @@ import (
 //   - It's sent as the X-Api-Key header (or Authorization: Bearer), never in the address, so
 //     it stays out of request logs. Like most of the app it's LAN-only; Homepage normally
 //     runs beside Arrmada.
-//   - Each address may fetch it widgetPerMinute times a minute; a wrong key gets the same
-//     401 whether or not a key has been made.
+//   - Only wrong keys count against an address (widgetFailMax a minute), so a misconfigured
+//     client on the LAN can't use up Homepage's turns. A wrong key gets the same 401
+//     whether or not a key has been made.
+//   - The answer is kept for widgetTTL and worked out once for everyone waiting, so a
+//     dashboard open in many tabs costs one set of reads, and a disk that hangs (a dead
+//     network mount) holds up neither the answer nor more readings piling up behind it.
 
 const (
-	// Settings keys, both kept out of support bundles by their names (support.go): the
-	// hash as a credential, the time as private.
-	keyWidgetTokenHash    = "widget_token_hash"
-	keyWidgetTokenCreated = "widget_key_created_at"
+	// keyWidgetToken is the settings key holding "<created unix>:<sha256 hex>" — one value,
+	// so a new key and its time are written together. "token" keeps it out of support
+	// bundles (support.go).
+	keyWidgetToken = "widget_token"
 	// widgetTokenPrefix marks a widget key apart from an account API key ("arr_").
 	widgetTokenPrefix = "arrw_"
 	widgetTokenBytes  = 32
-	// widgetPerMinute is how often one address may fetch the widget. Homepage refreshes
-	// every 10 s by default for each open dashboard tab; this only stops a flood.
-	widgetPerMinute = 120
-	// widgetTimeout bounds one answer: the download client is the only live call.
+	// widgetFailMax is how many wrong keys one address may send a minute before it's told
+	// to wait. A right key is never limited (the cache makes it cheap).
+	widgetFailMax = 30
+	// widgetTimeout bounds working out one answer: the download client is a live call.
 	widgetTimeout = 5 * time.Second
+	// widgetTTL is how long one answer is reused. Homepage polls every 10–60 s per tab.
+	widgetTTL = 15 * time.Second
+	// widgetDiskWait is how long an answer waits for the disk readings before using the
+	// last ones (or none).
+	widgetDiskWait = 2 * time.Second
 )
+
+// widgetPlaceholderOrigin stands in for Arrmada's address in the services.yaml entry when
+// the admin is on an outside address, which Homepage can't use (the widget is LAN-only).
+const widgetPlaceholderOrigin = "http://ARRMADA-LAN-ADDRESS:PORT"
+
+// widgetRuntime is the widget's cached answer and its disk prober.
+type widgetRuntime struct {
+	mu       sync.Mutex
+	at       time.Time      // when val was worked out; zero = never
+	val      homepageWidget // the last answer
+	inflight chan struct{}  // closed when the answer being worked out is ready
+
+	disk widgetDiskProbe
+	// volumes measures the library disks; nil = storageVolumes. Tests swap it.
+	volumes func(context.Context) []storageVolume
+}
+
+// widgetDiskProbe runs the disk readings off the request, one at a time.
+type widgetDiskProbe struct {
+	mu      sync.Mutex
+	running chan struct{} // closed when the reading in progress finishes; nil = none
+	last    widgetDisk
+}
 
 func hashWidgetToken(tok string) string {
 	sum := sha256.Sum256([]byte(tok))
 	return hex.EncodeToString(sum[:])
 }
 
+// widgetKeyRecord is the saved key: its hash and when it was made. ok is false when no key
+// is set.
+func (a *api) widgetKeyRecord(ctx context.Context) (created int64, hash string, ok bool) {
+	if a.deps.Settings == nil {
+		return 0, "", false
+	}
+	at, h, found := strings.Cut(a.deps.Settings.Get(ctx, keyWidgetToken, ""), ":")
+	if !found || len(h) != sha256.Size*2 {
+		return 0, "", false
+	}
+	created, _ = strconv.ParseInt(at, 10, 64)
+	return created, h, true
+}
+
 // widgetKeyState is GET /system/widget-key: whether a key exists and since when — never
-// the key, which isn't stored.
+// the key, which isn't stored. Outside says the admin is on an outside address, which
+// can't go in Homepage's config.
 type widgetKeyState struct {
 	Enabled   bool  `json:"enabled"`
 	CreatedAt int64 `json:"created_at,omitempty"`
+	Outside   bool  `json:"outside"`
 }
 
-func (a *api) widgetKeyState(ctx context.Context) widgetKeyState {
-	if a.deps.Settings == nil || a.deps.Settings.Get(ctx, keyWidgetTokenHash, "") == "" {
-		return widgetKeyState{}
+func (a *api) widgetKeyState(r *http.Request) widgetKeyState {
+	st := widgetKeyState{Outside: a.classifyExternal(r)}
+	if at, _, ok := a.widgetKeyRecord(r.Context()); ok {
+		st.Enabled, st.CreatedAt = true, at
 	}
-	at, _ := strconv.ParseInt(a.deps.Settings.Get(ctx, keyWidgetTokenCreated, ""), 10, 64)
-	return widgetKeyState{Enabled: true, CreatedAt: at}
+	return st
 }
 
 // widgetKeyValid reports whether key is the install's widget key.
 func (a *api) widgetKeyValid(ctx context.Context, key string) bool {
-	if a.deps.Settings == nil || !strings.HasPrefix(key, widgetTokenPrefix) || len(key) > 128 {
+	if !strings.HasPrefix(key, widgetTokenPrefix) || len(key) > 128 {
 		return false
 	}
-	want := a.deps.Settings.Get(ctx, keyWidgetTokenHash, "")
-	if want == "" {
+	_, want, ok := a.widgetKeyRecord(ctx)
+	if !ok {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(hashWidgetToken(key)), []byte(want)) == 1
@@ -89,11 +139,12 @@ func (a *api) widgetKeyValid(ctx context.Context, key string) bool {
 
 // handleWidgetKey is GET /api/v1/system/widget-key (admin).
 func (a *api) handleWidgetKey(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, http.StatusOK, a.widgetKeyState(r.Context()))
+	a.writeJSON(w, http.StatusOK, a.widgetKeyState(r))
 }
 
 // handleRotateWidgetKey makes a new widget key, replacing any earlier one, and answers with
-// it — the only time it's shown — and the widget's address as this request reached it.
+// it — the only time it's shown — and the widget's address as this request reached it (a
+// placeholder when that's an outside address, which Homepage can't use).
 func (a *api) handleRotateWidgetKey(w http.ResponseWriter, r *http.Request) {
 	if a.deps.Settings == nil {
 		a.writeError(w, http.StatusInternalServerError, "settings unavailable")
@@ -106,20 +157,20 @@ func (a *api) handleRotateWidgetKey(w http.ResponseWriter, r *http.Request) {
 	}
 	key := widgetTokenPrefix + base64.RawURLEncoding.EncodeToString(b)
 	now := time.Now().Unix()
-	ctx := r.Context()
-	// The time first: a failure between the two writes leaves the old key working, never a
-	// half-made new one.
-	if err := a.deps.Settings.Set(ctx, keyWidgetTokenCreated, strconv.FormatInt(now, 10)); err != nil {
+	// One write: the key and its time can't be left half-changed by a failure or by another
+	// admin's reset or turn-off at the same moment.
+	if err := a.deps.Settings.Set(r.Context(), keyWidgetToken, strconv.FormatInt(now, 10)+":"+hashWidgetToken(key)); err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not save the widget key")
 		return
 	}
-	if err := a.deps.Settings.Set(ctx, keyWidgetTokenHash, hashWidgetToken(key)); err != nil {
-		a.writeError(w, http.StatusInternalServerError, "could not save the widget key")
-		return
+	outside := a.classifyExternal(r)
+	origin := baseURL(r)
+	if outside {
+		origin = widgetPlaceholderOrigin
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{
-		"enabled": true, "created_at": now, "key": key,
-		"url": baseURL(r) + "/api/v1/widget/homepage",
+		"enabled": true, "created_at": now, "key": key, "outside": outside,
+		"url": origin + "/api/v1/widget/homepage",
 	})
 }
 
@@ -129,13 +180,11 @@ func (a *api) handleRevokeWidgetKey(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "settings unavailable")
 		return
 	}
-	ctx := r.Context()
-	if err := a.deps.Settings.Set(ctx, keyWidgetTokenHash, ""); err != nil {
+	if err := a.deps.Settings.Set(r.Context(), keyWidgetToken, ""); err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not turn the widget key off")
 		return
 	}
-	_ = a.deps.Settings.Set(ctx, keyWidgetTokenCreated, "")
-	a.writeJSON(w, http.StatusOK, widgetKeyState{})
+	a.writeJSON(w, http.StatusOK, widgetKeyState{Outside: a.classifyExternal(r)})
 }
 
 // homepageWidget is GET /api/v1/widget/homepage. Every field is a number, a yes/no or a
@@ -189,8 +238,10 @@ type widgetHealth struct {
 }
 
 // widgetDisk is the library and download disks, each filesystem once. Free/Total add them
-// up; LowestFree* is the fullest one, the one about to cause trouble.
+// up; LowestFree* is the fullest one, the one about to cause trouble. OK is false when no
+// disk could be read yet (a reading that hangs leaves the last one in place).
 type widgetDisk struct {
+	OK              bool    `json:"ok"`
 	FreeBytes       uint64  `json:"free_bytes"`
 	TotalBytes      uint64  `json:"total_bytes"`
 	LowestFreeBytes uint64  `json:"lowest_free_bytes"`
@@ -199,20 +250,77 @@ type widgetDisk struct {
 
 // handleHomepageWidget is GET /api/v1/widget/homepage, opened only by the widget key.
 func (a *api) handleHomepageWidget(w http.ResponseWriter, r *http.Request) {
+	limitKey := "widget:" + netutil.ClientIP(r)
 	if l := a.widgetLimiter; l != nil {
-		if ok, retry := l.allow("widget:" + netutil.ClientIP(r)); !ok {
+		if blocked, retry := l.blocked(limitKey); blocked {
 			a.tooManyAttempts(w, retry)
 			return
 		}
 	}
 	if !a.widgetKeyValid(r.Context(), apiKeyFromRequest(r)) {
+		if l := a.widgetLimiter; l != nil {
+			l.fail(limitKey, "")
+		}
 		a.writeError(w, http.StatusUnauthorized, "a valid widget key is required (Settings → System → Dashboard widget)")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), widgetTimeout)
-	defer cancel()
+	out, ok := a.cachedWidget(r.Context())
+	if !ok {
+		a.writeError(w, http.StatusServiceUnavailable, "the widget is busy — try again in a moment")
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
-	a.writeJSON(w, http.StatusOK, a.homepageWidget(ctx))
+	a.writeJSON(w, http.StatusOK, out)
+}
+
+// cachedWidget is the answer, reused for widgetTTL. Only one caller works it out at a time;
+// the rest wait for that one (or give up with their own request). ok is false when the
+// caller's request ended first.
+func (a *api) cachedWidget(ctx context.Context) (homepageWidget, bool) {
+	c := &a.widget
+	for {
+		c.mu.Lock()
+		if !c.at.IsZero() && time.Since(c.at) < widgetTTL {
+			v := c.val
+			c.mu.Unlock()
+			return v, true
+		}
+		if ch := c.inflight; ch != nil {
+			c.mu.Unlock()
+			select {
+			case <-ch:
+				continue
+			case <-ctx.Done():
+				return homepageWidget{}, false
+			}
+		}
+		ch := make(chan struct{})
+		c.inflight = ch
+		c.mu.Unlock()
+		return a.refreshWidget(ch), true
+	}
+}
+
+// refreshWidget works out a fresh answer and stores it, then wakes everyone waiting on ch.
+// It runs on the app's context, not the request's, so the first caller hanging up doesn't
+// spoil the answer for the others.
+func (a *api) refreshWidget(ch chan struct{}) (v homepageWidget) {
+	c := &a.widget
+	stored := false
+	defer func() {
+		c.mu.Lock()
+		if stored {
+			c.val, c.at = v, time.Now()
+		}
+		c.inflight = nil
+		c.mu.Unlock()
+		close(ch)
+	}()
+	ctx, cancel := context.WithTimeout(a.runCtx(), widgetTimeout)
+	defer cancel()
+	v = a.homepageWidget(ctx)
+	stored = true
+	return v
 }
 
 func (a *api) homepageWidget(ctx context.Context) homepageWidget {
@@ -224,6 +332,7 @@ func (a *api) homepageWidget(ctx context.Context) homepageWidget {
 			Total: lc.MoviesMissing + lc.EpisodesMissing + lc.BooksMissing,
 		},
 		Version: buildinfo.Version,
+		Disk:    a.widgetDisk(),
 	}
 
 	if a.deps.Downloads != nil {
@@ -264,16 +373,6 @@ func (a *api) homepageWidget(ctx context.Context) homepageWidget {
 		out.Health.Status = "ok"
 	}
 
-	// Fullest first, so the first volume is the tightest.
-	for i, v := range a.storageVolumes(ctx) {
-		out.Disk.FreeBytes += v.FreeBytes
-		out.Disk.TotalBytes += v.TotalBytes
-		if i == 0 {
-			out.Disk.LowestFreeBytes = v.FreeBytes
-			out.Disk.LowestFreePct = math.Round((100-v.UsedPct)*10) / 10
-		}
-	}
-
 	if st := a.deps.Updates.Status(ctx); st.Enabled {
 		out.UpdateAvailable = st.Available
 		if st.Latest != nil {
@@ -281,4 +380,58 @@ func (a *api) homepageWidget(ctx context.Context) homepageWidget {
 		}
 	}
 	return out
+}
+
+// widgetDisk reads the library disks off the request and waits up to widgetDiskWait for
+// it. A statfs on a dead network mount can block for minutes and can't be cancelled, so a
+// reading that's still running is never started again: the answer uses the last reading
+// until it finishes, and at most one reading is ever stuck.
+func (a *api) widgetDisk() widgetDisk {
+	p := &a.widget.disk
+	p.mu.Lock()
+	done := p.running
+	if done == nil {
+		done = make(chan struct{})
+		p.running = done
+		measure := a.widget.volumes
+		if measure == nil {
+			measure = a.storageVolumes
+		}
+		safego.Go(a.deps.Log, "widget disk reading", func() {
+			var d widgetDisk
+			defer func() {
+				p.mu.Lock()
+				p.last = d // a reading that panicked leaves OK false
+				p.running = nil
+				p.mu.Unlock()
+				close(done)
+			}()
+			d = diskTotals(measure(a.runCtx()))
+		})
+	}
+	p.mu.Unlock()
+
+	timer := time.NewTimer(widgetDiskWait)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.last
+}
+
+// diskTotals adds up the volumes (fullest first, so the first is the tightest).
+func diskTotals(vols []storageVolume) widgetDisk {
+	d := widgetDisk{OK: len(vols) > 0}
+	for i, v := range vols {
+		d.FreeBytes += v.FreeBytes
+		d.TotalBytes += v.TotalBytes
+		if i == 0 {
+			d.LowestFreeBytes = v.FreeBytes
+			d.LowestFreePct = math.Round((100-v.UsedPct)*10) / 10
+		}
+	}
+	return d
 }

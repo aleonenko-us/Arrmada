@@ -6,10 +6,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/auth"
+	"github.com/tristenlammi/arrmada/internal/diskspace"
 )
 
 type madeWidgetKey struct {
@@ -66,8 +71,9 @@ func TestWidgetKeyLifecycle(t *testing.T) {
 		t.Fatalf("made = %+v", k)
 	}
 	// Only a hash is kept, and the state never gives the key back.
-	stored := s.deps.Settings.Get(context.Background(), keyWidgetTokenHash, "")
-	if stored == "" || stored == k.Key || strings.Contains(stored, k.Key) || len(stored) != 64 {
+	stored := s.deps.Settings.Get(context.Background(), keyWidgetToken, "")
+	at, hash, _ := strings.Cut(stored, ":")
+	if at != strconv.FormatInt(k.CreatedAt, 10) || hash != hashWidgetToken(k.Key) || strings.Contains(stored, k.Key) {
 		t.Errorf("stored %q", stored)
 	}
 	if rec := s.do("GET", "/api/v1/system/widget-key", admin); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), k.Key) || !strings.Contains(rec.Body.String(), `"enabled":true`) {
@@ -255,7 +261,7 @@ func TestWidgetCountsOnly(t *testing.T) {
 	walk("", doc)
 	sort.Strings(paths)
 	want := []string{
-		"books", "disk.free_bytes", "disk.lowest_free_bytes", "disk.lowest_free_pct", "disk.total_bytes",
+		"books", "disk.free_bytes", "disk.lowest_free_bytes", "disk.lowest_free_pct", "disk.ok", "disk.total_bytes",
 		"episodes", "health.errors", "health.problems", "health.status", "health.warnings",
 		"latest_version", "movies", "needs_you",
 		"queue.down_speed", "queue.downloading", "queue.errored", "queue.ok", "queue.paused", "queue.seeding", "queue.stalled", "queue.total", "queue.up_speed",
@@ -267,26 +273,251 @@ func TestWidgetCountsOnly(t *testing.T) {
 	}
 }
 
-// A flood from one address is cut off; Homepage's normal polling is far below the limit.
-func TestWidgetRateLimited(t *testing.T) {
+// fetchWidgetFrom is fetchWidget from a given LAN address.
+func fetchWidgetFrom(s *routeServer, ip string, headers map[string]string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("GET", "http://arrmada.local"+widgetPath, nil)
+	r.RemoteAddr = ip + ":5000"
+	for k, v := range headers {
+		r.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	s.h.ServeHTTP(rec, r)
+	return rec
+}
+
+// Only wrong keys count: Homepage polling with the right key is never limited, and a
+// misconfigured client on another address can't use up Homepage's turns.
+func TestWidgetLimitsOnlyWrongKeys(t *testing.T) {
 	s := newRouteServer(t, nil)
 	_, admin := s.user(t, "owner", auth.RoleAdmin)
 	k := makeWidgetKey(t, s, admin)
-	h := map[string]string{"X-Api-Key": k.Key}
-	for i := 0; i < widgetPerMinute; i++ {
-		if rec := fetchWidget(s, widgetPath, h); rec.Code != http.StatusOK {
-			t.Fatalf("fetch %d: HTTP %d", i+1, rec.Code)
+	good := map[string]string{"X-Api-Key": k.Key}
+	bad := map[string]string{"X-Api-Key": widgetTokenPrefix + "wrong"}
+	const homepage, other = "192.168.1.30", "192.168.1.40"
+	for i := 0; i < 4*widgetFailMax; i++ {
+		if rec := fetchWidgetFrom(s, homepage, good); rec.Code != http.StatusOK {
+			t.Fatalf("right key, fetch %d: HTTP %d", i+1, rec.Code)
 		}
 	}
-	if rec := fetchWidget(s, widgetPath, h); rec.Code != http.StatusTooManyRequests {
-		t.Errorf("fetch past the limit: HTTP %d, want 429", rec.Code)
+	for i := 0; i < widgetFailMax; i++ {
+		if rec := fetchWidgetFrom(s, other, bad); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("wrong key %d: HTTP %d, want 401", i+1, rec.Code)
+		}
+	}
+	if rec := fetchWidgetFrom(s, other, bad); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("wrong key past the limit: HTTP %d, want 429", rec.Code)
+	}
+	if rec := fetchWidgetFrom(s, homepage, good); rec.Code != http.StatusOK {
+		t.Errorf("Homepage after another address's failures: HTTP %d, want 200", rec.Code)
 	}
 }
 
-// The widget key's settings stay out of a support bundle.
+// The widget key's setting stays out of a support bundle.
 func TestWidgetKeyWithheldFromBundle(t *testing.T) {
-	split := bundleSettings(map[string]string{keyWidgetTokenHash: strings.Repeat("a", 64), keyWidgetTokenCreated: "1700000000"})
+	split := bundleSettings(map[string]string{keyWidgetToken: "1700000000:" + strings.Repeat("a", 64)})
 	if len(split.doc.Included) != 0 {
 		t.Errorf("included in bundle: %v", split.doc.Included)
+	}
+}
+
+// Resets and turn-offs racing each other leave one whole record: either no key, or a key
+// that one of the resets handed out, with that reset's time.
+func TestWidgetKeyRotateRevokeRace(t *testing.T) {
+	s := newRouteServer(t, nil)
+	_, admin := s.user(t, "owner", auth.RoleAdmin)
+	var (
+		mu   sync.Mutex
+		made = map[string]int64{}
+		wg   sync.WaitGroup
+	)
+	for i := 0; i < 24; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if i%3 == 2 {
+				s.do("DELETE", "/api/v1/system/widget-key", admin)
+				return
+			}
+			rec := s.do("POST", "/api/v1/system/widget-key", admin)
+			var k madeWidgetKey
+			if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &k) != nil {
+				t.Errorf("reset: HTTP %d %s", rec.Code, rec.Body)
+				return
+			}
+			mu.Lock()
+			made[k.Key] = k.CreatedAt
+			mu.Unlock()
+		}(i)
+	}
+	wg.Wait()
+
+	stored := s.deps.Settings.Get(context.Background(), keyWidgetToken, "")
+	working := 0
+	for key, at := range made {
+		if fetchWidget(s, widgetPath, map[string]string{"X-Api-Key": key}).Code == http.StatusOK {
+			working++
+			if stored != strconv.FormatInt(at, 10)+":"+hashWidgetToken(key) {
+				t.Errorf("stored %q doesn't match the working key's own record", stored)
+			}
+		}
+	}
+	switch {
+	case stored == "" && working != 0:
+		t.Errorf("turned off, yet %d keys work", working)
+	case stored != "" && working != 1:
+		t.Errorf("%d keys work, want exactly one (stored %q)", working, stored)
+	}
+}
+
+// widgetAPI is an api with a widget key's worth of dependencies and a counting disk reader.
+func widgetAPI(t *testing.T, measure func(context.Context) []storageVolume) *api {
+	t.Helper()
+	a := dashAPI(t)
+	a.widget.volumes = measure
+	return a
+}
+
+// One answer is reused for widgetTTL, and callers arriving together share one working-out.
+func TestWidgetCacheAndSingleFlight(t *testing.T) {
+	var calls atomic.Int32
+	release := make(chan struct{})
+	a := widgetAPI(t, func(context.Context) []storageVolume {
+		calls.Add(1)
+		<-release
+		return []storageVolume{{Roots: []string{"Movies"}, Usage: diskspace.Usage{TotalBytes: 100, FreeBytes: 40, UsedPct: 60}}}
+	})
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	results := make(chan homepageWidget, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if v, ok := a.cachedWidget(ctx); ok {
+				results <- v
+			}
+		}()
+	}
+	time.Sleep(100 * time.Millisecond) // let them all arrive while the first is reading
+	close(release)
+	wg.Wait()
+	close(results)
+	n := 0
+	for v := range results {
+		n++
+		if !v.Disk.OK || v.Disk.FreeBytes != 40 || v.Disk.LowestFreePct != 40 {
+			t.Errorf("disk = %+v", v.Disk)
+		}
+	}
+	if n != 8 {
+		t.Errorf("%d of 8 callers got an answer", n)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("disk read %d times for 8 callers at once, want 1", got)
+	}
+
+	// Within the TTL: the same answer, nothing read again.
+	a.cachedWidget(ctx)
+	if got := calls.Load(); got != 1 {
+		t.Errorf("disk read %d times within the TTL, want 1", got)
+	}
+	// Past it: worked out again.
+	a.widget.mu.Lock()
+	a.widget.at = time.Now().Add(-widgetTTL - time.Second)
+	a.widget.mu.Unlock()
+	a.cachedWidget(ctx)
+	if got := calls.Load(); got != 2 {
+		t.Errorf("disk read %d times after the TTL, want 2", got)
+	}
+}
+
+// A disk that hangs (a dead network mount) doesn't hold the answer up, and a reading still
+// stuck is never started again — they can't pile up.
+func TestWidgetHungDiskDoesNotPileUp(t *testing.T) {
+	var calls atomic.Int32
+	hang := make(chan struct{})
+	t.Cleanup(func() { close(hang) })
+	a := widgetAPI(t, func(context.Context) []storageVolume {
+		calls.Add(1)
+		<-hang
+		return nil
+	})
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		start := time.Now()
+		v, ok := a.cachedWidget(ctx)
+		if !ok {
+			t.Fatal("no answer")
+		}
+		if d := time.Since(start); d > widgetDiskWait+2*time.Second {
+			t.Errorf("answer %d took %v with a hung disk", i+1, d)
+		}
+		if v.Disk.OK {
+			t.Errorf("disk = %+v with no reading ever finished", v.Disk)
+		}
+		a.widget.mu.Lock()
+		a.widget.at = time.Time{} // expire it
+		a.widget.mu.Unlock()
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("%d disk readings started while one hung, want 1", got)
+	}
+}
+
+// Folders on one filesystem fold together by device id even when free space moved between
+// the readings; without an id, identical totals still fold.
+func TestFoldVolumesByDevice(t *testing.T) {
+	u := func(free uint64) diskspace.Usage {
+		return diskspace.Usage{TotalBytes: 1000, FreeBytes: free, UsedBytes: 1000 - free, UsedPct: float64(1000-free) / 10}
+	}
+	vols := foldVolumes([]measuredRoot{
+		{label: "Movies", path: "/m", usage: u(400), dev: 7, devOK: true},
+		{label: "TV", path: "/t", usage: u(399), dev: 7, devOK: true}, // a download wrote in between
+		{label: "Downloads", path: "/d", usage: u(900), dev: 9, devOK: true},
+		{label: "Ebooks", path: "/e", usage: u(500)},
+		{label: "Music", path: "/u", usage: u(500)},
+	})
+	if len(vols) != 3 {
+		t.Fatalf("got %d volumes, want 3: %+v", len(vols), vols)
+	}
+	if strings.Join(vols[0].Roots, ",") != "Movies,TV" || strings.Join(vols[1].Roots, ",") != "Ebooks,Music" || strings.Join(vols[2].Roots, ",") != "Downloads" {
+		t.Errorf("roots = %v / %v / %v", vols[0].Roots, vols[1].Roots, vols[2].Roots)
+	}
+	if d := diskTotals(vols); d.FreeBytes != 400+500+900 || d.TotalBytes != 3000 || d.LowestFreeBytes != 400 {
+		t.Errorf("totals = %+v (one filesystem counted twice?)", d)
+	}
+}
+
+// An admin on an outside address gets a placeholder for Arrmada's address: Homepage can
+// only use a LAN one.
+func TestWidgetKeyOutsideAddressPlaceholder(t *testing.T) {
+	s := newRouteServer(t, nil)
+	_, admin := s.user(t, "owner", auth.RoleAdmin)
+	call := func(method, ip string) map[string]any {
+		r := httptest.NewRequest(method, "https://arrmada.example.com/api/v1/system/widget-key", nil)
+		r.RemoteAddr = ip + ":5000"
+		r.AddCookie(admin)
+		rec := httptest.NewRecorder()
+		s.h.ServeHTTP(rec, r)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s from %s: HTTP %d %s", method, ip, rec.Code, rec.Body)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	out := call("POST", "203.0.113.9")
+	if out["outside"] != true || out["url"] != widgetPlaceholderOrigin+widgetPath {
+		t.Errorf("from outside: %v", out)
+	}
+	if st := call("GET", "203.0.113.9"); st["outside"] != true {
+		t.Errorf("state from outside: %v", st)
+	}
+	home := call("POST", "192.168.1.20")
+	if home["outside"] != false || home["url"] != "https://arrmada.example.com"+widgetPath {
+		t.Errorf("from home: %v", home)
 	}
 }

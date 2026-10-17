@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
-import { Section } from "../../components/settings/ui";
+import { Note, Section } from "../../components/settings/ui";
 import { req } from "../../lib/api";
 import { Button, useConfirm, useToast } from "../../ui";
 import { Field } from "../../ui/Field";
 import { Textarea } from "../../ui/Textarea";
-import { homepageYaml, HOMEPAGE_KEY_VAR } from "./homepageYaml";
+import { homepageYaml, HOMEPAGE_KEY_VAR, LAN_PLACEHOLDER, widgetOrigin } from "./homepageYaml";
 
 // The dashboard widget card on Settings → System: a key for gethomepage.dev's customapi
 // widget, and the services.yaml entry to paste. Like the calendar feed, the server keeps
 // only a fingerprint of the key, so it's shown once, when it's made; after that the YAML
 // reads the key from a Homepage variable instead.
 
-interface KeyState { enabled: boolean; created_at?: number }
+// outside: this page is open on an outside address, which Homepage can't use.
+interface KeyState { enabled: boolean; created_at?: number; outside?: boolean }
 interface MadeKey extends KeyState { key: string; url: string }
 
 const widgetApi = {
@@ -66,9 +67,9 @@ export function HomepageWidgetSection() {
   };
 
   // The address Homepage's server should use: the one this page was opened on, which is
-  // usually the LAN address. (The server answers with the same when a key is made.)
-  const origin = made ? made.url.replace(/\/api\/v1\/widget\/homepage$/, "") : window.location.origin;
-  const yaml = homepageYaml(origin, made?.key ?? "");
+  // usually the LAN address — or a placeholder to replace when it's an outside address.
+  const outside = !!(made?.outside ?? state?.outside);
+  const yaml = homepageYaml(widgetOrigin(outside, made?.url, window.location.origin), made?.key ?? "");
 
   return (
     <Section
@@ -89,6 +90,11 @@ export function HomepageWidgetSection() {
           )}
           {(made || state.enabled) && (
             <>
+              {outside && (
+                <Note tone="warn">
+                  You’re on an outside address, which Homepage can’t use — the widget only answers on your home network. Replace <code className="font-mono text-xs">{LAN_PLACEHOLDER}</code> with the address Homepage reaches Arrmada on, such as <code className="font-mono text-xs">http://192.168.1.10:7878</code> or the container’s name.
+                </Note>
+              )}
               <Field label="services.yaml" hint="Change the address if Homepage reaches Arrmada another way, such as its container name.">
                 <Textarea readOnly value={yaml} rows={Math.min(yaml.split("\n").length, 28)} onFocus={(e) => e.currentTarget.select()} className="w-full px-3 py-2 font-mono text-sm" spellCheck={false} wrap="off" />
               </Field>
