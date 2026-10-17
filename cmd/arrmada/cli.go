@@ -43,7 +43,7 @@ var cliCommands = []cliCommand{
 	{name: "backup", args: "[--kind manual|pre-update]", summary: "copy the database to <data>/backups while the app keeps running", dataDir: true, run: cmdBackup},
 	{name: "schema", summary: "compare the database's schema with this build's (exit 3: a newer build upgraded it)", dataDir: true, run: cmdSchema},
 	{name: "reset-password", args: "<email> [--password-stdin]", summary: "give a locked-out account a new password and sign it out everywhere", dataDir: true, run: cmdResetPassword},
-	{name: "reset-2fa", args: "<email>", summary: "turn off two-factor sign-in for an account whose authenticator and recovery codes are lost", dataDir: true, run: cmdResetTwoFactor},
+	{name: "reset-2fa", args: "<email> [--policy-off] | --policy-off", summary: "turn off two-factor sign-in for an account whose authenticator and recovery codes are lost", dataDir: true, run: cmdResetTwoFactor},
 	{name: "restore", args: "<backup name | path to .db or .db.gz> | --cancel", summary: "check a backup and put it in place the next time Arrmada starts", dataDir: true,
 		run: func(_ context.Context, c *cli, args []string) int {
 			return restoreCommand(c.cfg.DataDir, args, c.stdout, c.stderr)

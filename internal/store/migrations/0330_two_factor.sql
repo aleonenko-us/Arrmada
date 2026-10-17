@@ -1,4 +1,4 @@
--- 0329_two_factor: optional two-factor sign-in (TOTP, RFC 6238) for Arrmada's own
+-- 0330_two_factor: optional two-factor sign-in (TOTP, RFC 6238) for Arrmada's own
 -- password sign-in. Plex and Jellyfin sign-in, API keys and the audiobook apps are not
 -- covered: they never use the Arrmada password.
 --

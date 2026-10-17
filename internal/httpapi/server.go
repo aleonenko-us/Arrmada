@@ -181,6 +181,7 @@ type api struct {
 	deps         Deps
 	start        time.Time
 	loginLimiter *loginLimiter // throttles auth attempts (login/setup/plex-pin)
+	codeLimit    *codeLimiter  // two-factor code attempts per account (twofactor_limit.go)
 	icsLimiter   *loginLimiter // throttles calendar feed fetches per address (calendar_ics.go)
 	plexPins     *plexPinGuard // which browser (and account) started each Plex PIN
 	jfQC         *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
@@ -197,7 +198,7 @@ type api struct {
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
 // fallback), and the middleware chain (recover → log → mux).
 func New(d Deps) *http.Server {
-	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
+	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), codeLimit: newCodeLimiter(), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
 
 	rt := newRouter(a)
 	a.registerRoutes(rt)

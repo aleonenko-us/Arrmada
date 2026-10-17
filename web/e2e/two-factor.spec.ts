@@ -228,7 +228,7 @@ test.describe("sign-in page", () => {
     await step.getByLabel("Trust this device for 30 days").check();
     await step.getByRole("button", { name: "Verify" }).click();
     await expect(page).toHaveURL(/\/requests$/, { timeout: 10_000 });
-    expect(api.callsTo("POST", "/api/v1/auth/login/code").at(-1)?.body).toEqual({ ticket: "ticket-1", code: fake.recovery[3].toUpperCase(), trust_device: true });
+    expect(api.callsTo("POST", "/api/v1/auth/login/code").slice(-1)[0]?.body).toEqual({ ticket: "ticket-1", code: fake.recovery[3].toUpperCase(), trust_device: true });
 
     // The same recovery code again: refused.
     await page.goto("/");

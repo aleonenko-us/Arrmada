@@ -48,7 +48,7 @@ function TwoFactorPolicy() {
   return (
     <AutoToggle
       label="Require two-factor for admins"
-      hint="An admin signing in with a password who hasn't set it up is asked to, before anything else. Admins already signed in stay signed in, and an admin who signs in with Plex or Jellyfin isn't asked."
+      hint="An admin signing in with a password who hasn't set it up is asked to, before anything else. Admins already signed in stay signed in. It doesn't cover admins who sign in with Plex or Jellyfin: those servers check who they are, and no code is asked for."
       save={save}
     />
   );

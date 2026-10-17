@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/tristenlammi/arrmada/internal/auth"
+	"github.com/tristenlammi/arrmada/internal/settings"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
 
@@ -197,5 +198,59 @@ func TestCLIResetTwoFactor(t *testing.T) {
 	}
 	if code, _, _ := runTestCLI(t, "", "reset-2fa"); code != exitUsage {
 		t.Errorf("no email: exit %d, want 2", code)
+	}
+}
+
+// With "Require two-factor for admins" on, reset-2fa says the admin will be asked to set
+// it up again at once and how to switch the requirement off; --policy-off does that, with
+// or without an account.
+func TestCLIResetTwoFactorPolicyOff(t *testing.T) {
+	dir := testDataDir(t)
+	ctx := context.Background()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := auth.NewService(st.DB())
+	if _, err := a.CreateUser(ctx, "owner@example.com", "old-password", auth.RoleAdmin, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := settings.NewService(st.DB()).SetBool(ctx, settings.KeyTwoFactorAdmins, true); err != nil {
+		t.Fatal(err)
+	}
+	enable := `INSERT INTO user_totp (user_id, secret, enabled) SELECT id, 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP', 1 FROM users`
+	if _, err := st.DB().Exec(enable); err != nil {
+		t.Fatal(err)
+	}
+	_ = st.Close()
+	policy := func() bool {
+		st, err := store.Open(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		return settings.NewService(st.DB()).GetBool(ctx, settings.KeyTwoFactorAdmins, false)
+	}
+
+	code, stdout, stderr := runTestCLI(t, "", "reset-2fa", "owner@example.com")
+	if code != exitOK || !strings.Contains(stdout, "set it up again straight away") || !strings.Contains(stdout, "arrmada reset-2fa --policy-off") {
+		t.Errorf("reset with the policy on: exit %d %q %q", code, stdout, stderr)
+	}
+	if !policy() {
+		t.Fatal("the policy went off without --policy-off")
+	}
+
+	code, stdout, stderr = runTestCLI(t, "", "reset-2fa", "--policy-off")
+	if code != exitOK || !strings.Contains(stdout, "now off") || !strings.Contains(stdout, "Restart Arrmada") {
+		t.Errorf("--policy-off: exit %d %q %q", code, stdout, stderr)
+	}
+	if policy() {
+		t.Error("the policy is still on")
+	}
+	if code, stdout, _ := runTestCLI(t, "", "reset-2fa", "owner@example.com", "--policy-off"); code != exitOK || !strings.Contains(stdout, "already off") || !strings.Contains(stdout, "wasn't on") {
+		t.Errorf("both again: exit %d %q", code, stdout)
+	}
+	if code, _, _ := runTestCLI(t, "", "reset-2fa", "a@example.com", "b@example.com"); code != exitUsage {
+		t.Errorf("two emails: exit %d, want 2", code)
 	}
 }

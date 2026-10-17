@@ -7,7 +7,7 @@ import (
 	"testing/fstest"
 )
 
-// 0329 is additive: existing accounts keep signing in with just their password (no
+// 0330 is additive: existing accounts keep signing in with just their password (no
 // two-factor rows), and the new rows go with their account when it's deleted.
 func TestTwoFactorMigration(t *testing.T) {
 	ctx := context.Background()
@@ -19,7 +19,7 @@ func TestTwoFactorMigration(t *testing.T) {
 	}
 	before := fstest.MapFS{}
 	for _, n := range names {
-		if n >= "0329_two_factor" {
+		if n >= "0330_two_factor" {
 			break
 		}
 		body, err := fs.ReadFile(all, n)
@@ -29,7 +29,7 @@ func TestTwoFactorMigration(t *testing.T) {
 		before[n] = &fstest.MapFile{Data: body}
 	}
 	if err := runMigrations(ctx, db, before); err != nil {
-		t.Fatalf("migrate to 0328: %v", err)
+		t.Fatalf("migrate to just before 0330: %v", err)
 	}
 	if _, err := db.Exec(`INSERT INTO users (id, username, password_hash, role) VALUES (1, 'owner', 'h', 'admin'), (2, 'kid', 'h', 'requester')`); err != nil {
 		t.Fatal(err)

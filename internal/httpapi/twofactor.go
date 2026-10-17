@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +14,8 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/netutil"
+	"github.com/tristenlammi/arrmada/internal/notify"
+	"github.com/tristenlammi/arrmada/internal/settings"
 )
 
 // Two-factor sign-in (TOTP). Signing in with a password on an account that has it on
@@ -25,7 +29,7 @@ import (
 // don't use the Arrmada password.
 
 // keyTwoFactorAdmins is the "Require two-factor for admins" setting.
-const keyTwoFactorAdmins = "two_factor_admins"
+const keyTwoFactorAdmins = settings.KeyTwoFactorAdmins
 
 // trustCookieName is the "trust this device for 30 days" cookie (auth/trust.go).
 const trustCookieName = "arrmada_trusted"
@@ -77,60 +81,80 @@ func (a *api) finishPasswordSignIn(w http.ResponseWriter, r *http.Request, u *au
 	a.writeJSON(w, http.StatusOK, map[string]any{"two_factor": step, "ticket": ticket, "expires_in": int(auth.TicketTTL.Seconds())})
 }
 
-// codeAllowed applies the sign-in limits to a code attempt for userID: the address's
-// failures (shared with wrong passwords), and the account's own — ten in fifteen minutes,
-// and a growing pause after five in the hour. Unlike the password's per-name pause, this
-// one applies on the LAN too: only someone who knows the password gets this far.
-func (a *api) codeAllowed(w http.ResponseWriter, r *http.Request, userID int64) bool {
-	l := a.loginLimiter
-	if l == nil {
-		return true
-	}
-	for _, key := range []string{"login:" + netutil.ClientIP(r), twoFactorKey(userID)} {
-		if ok, retry := l.blocked(key); ok {
+// checkCode runs check (a code verification for u) under the code limits: the address's
+// failures, shared with wrong passwords (ten in fifteen minutes), and the account's own
+// (twofactor_limit.go: reserved before the check, so simultaneous guesses can't slip
+// through, and one attempt per account at a time). It returns check's error, or ok=false
+// when the attempt was turned away (the 429 is already written). Unlike the password's
+// per-name pause, the account's limits apply on the LAN too: only someone who knows the
+// password gets this far.
+func (a *api) checkCode(w http.ResponseWriter, r *http.Request, u *auth.User, check func() error) (ok bool, err error) {
+	ip := netutil.ClientIP(r)
+	if l := a.loginLimiter; l != nil {
+		if blocked, retry := l.blocked("login:" + ip); blocked {
 			a.tooManyAttempts(w, retry)
-			return false
+			return false, nil
 		}
 	}
-	if ok, retry := l.delayed(twoFactorKey(userID)); ok {
+	if allowed, retry := a.codeLimit.begin(u.ID); !allowed {
 		a.tooManyAttempts(w, retry)
-		return false
+		return false, nil
 	}
-	return true
+	out := codeNeutral
+	defer func() {
+		n := a.codeLimit.end(u.ID, out)
+		switch out {
+		case codeWrong:
+			a.codeFailed(r, u, ip, n)
+		case codeRight:
+			if l := a.loginLimiter; l != nil {
+				l.reset("login:"+ip, strings.ToLower(u.Username))
+			}
+		}
+	}()
+	err = check()
+	switch {
+	case err == nil:
+		out = codeRight
+	case errors.Is(err, auth.ErrBadCode):
+		out = codeWrong
+	}
+	return true, err
 }
 
-// codeFailed records a wrong code against the address and the account, and warns when
-// one account collects many: its password is probably known to someone else.
-func (a *api) codeFailed(r *http.Request, u *auth.User) {
-	l := a.loginLimiter
-	if l == nil {
+// codeFailed records a wrong code against the address, and at every twoFactorAlertAt
+// wrong codes in the hour for one account warns: its password was right each time, so
+// someone else probably knows it. The warning goes to the log, the staff's live feed
+// (security.two_factor_failures, like security.login_failures) and the alert catalog
+// (once per account, hour and count).
+func (a *api) codeFailed(r *http.Request, u *auth.User, ip string, n int) {
+	if l := a.loginLimiter; l != nil {
+		l.fail("login:"+ip, strings.ToLower(u.Username))
+	}
+	if n == 0 || n%twoFactorAlertAt != 0 {
 		return
 	}
-	name := strings.ToLower(u.Username)
-	ip := netutil.ClientIP(r)
-	l.fail("login:"+ip, name)
-	if n := l.fail(twoFactorKey(u.ID), ""); n%twoFactorAlertAt == 0 {
-		a.deps.Log.Warn("many wrong two-factor codes for one account: its password is right, so someone may know it",
-			"user_id", u.ID, "failures_last_hour", n, "last_ip", ip)
+	a.deps.Log.Warn("many wrong two-factor codes for one account: its password is right, so someone may know it",
+		"user_id", u.ID, "failures_last_hour", n, "last_ip", ip)
+	if a.deps.Bus != nil {
+		a.deps.Bus.Publish(notify.EventTwoFactorFailures, map[string]any{"user_id": u.ID, "count": n})
+	}
+	if a.deps.Notify != nil {
+		dedupe := fmt.Sprintf("%s:%d:%d:%d", notify.EventTwoFactorFailures, u.ID, time.Now().Unix()/3600, n)
+		if _, err := a.deps.Notify.EmitOnce(r.Context(), notify.EventTwoFactorFailures, dedupe, map[string]any{"count": n}); err != nil {
+			a.deps.Log.Warn("couldn't send the wrong two-factor codes alert", "err", err)
+		}
 	}
 }
-
-// codeSucceeded clears the account's code failures (and its name's from the address).
-func (a *api) codeSucceeded(r *http.Request, u *auth.User) {
-	if l := a.loginLimiter; l != nil {
-		l.reset(twoFactorKey(u.ID), "")
-		l.reset("login:"+netutil.ClientIP(r), strings.ToLower(u.Username))
-	}
-}
-
-func twoFactorKey(userID int64) string { return "2fa:" + strconv.FormatInt(userID, 10) }
 
 // writeCodeError answers a failed code check.
 func (a *api) writeCodeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, auth.ErrBadCode):
 		a.writeError(w, http.StatusUnauthorized, "That code isn't right. Check the time on your phone, or use a recovery code.")
-	case errors.Is(err, auth.ErrTicket), errors.Is(err, auth.ErrTwoFactorOff), errors.Is(err, auth.ErrTwoFactorSetup):
+	// ErrTwoFactorOn: a setup ticket for an account that turned it on meanwhile (another
+	// tab finished first).
+	case errors.Is(err, auth.ErrTicket), errors.Is(err, auth.ErrTwoFactorOff), errors.Is(err, auth.ErrTwoFactorSetup), errors.Is(err, auth.ErrTwoFactorOn):
 		// reason tells the sign-in page to go back to the password rather than ask again.
 		a.writeJSON(w, http.StatusUnauthorized, map[string]string{"status": "error", "message": auth.ErrTicket.Error(), "reason": "ticket"})
 	default:
@@ -157,14 +181,15 @@ func (a *api) handleLoginCode(w http.ResponseWriter, r *http.Request) {
 		a.writeCodeError(w, err)
 		return
 	}
-	if !a.codeAllowed(w, r, u.ID) {
+	var recovery bool
+	ok, err := a.checkCode(w, r, u, func() (err error) {
+		recovery, err = a.deps.Auth.VerifySecondFactor(ctx, u.ID, body.Code)
+		return err
+	})
+	if !ok {
 		return
 	}
-	recovery, err := a.deps.Auth.VerifySecondFactor(ctx, u.ID, body.Code)
 	if err != nil {
-		if errors.Is(err, auth.ErrBadCode) {
-			a.codeFailed(r, u)
-		}
 		a.writeCodeError(w, err)
 		return
 	}
@@ -172,7 +197,6 @@ func (a *api) handleLoginCode(w http.ResponseWriter, r *http.Request) {
 		a.writeCodeError(w, auth.ErrTicket)
 		return
 	}
-	a.codeSucceeded(r, u)
 	if recovery {
 		left := 0
 		if st, err := a.deps.Auth.TwoFactor(ctx, u.ID); err == nil {
@@ -199,6 +223,12 @@ func (a *api) handleLoginSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := a.deps.Auth.CheckLoginTicket(r.Context(), body.Ticket, auth.TicketEnrol)
+	if err == nil {
+		// Set up meanwhile (another tab): this ticket has nothing left to do.
+		if on, onErr := a.deps.Auth.TwoFactorEnabled(r.Context(), u.ID); onErr != nil || on {
+			err = cmp.Or(onErr, auth.ErrTwoFactorOn)
+		}
+	}
 	if err != nil {
 		a.writeCodeError(w, err)
 		return
@@ -223,14 +253,15 @@ func (a *api) handleLoginSetupConfirm(w http.ResponseWriter, r *http.Request) {
 		a.writeCodeError(w, err)
 		return
 	}
-	if !a.codeAllowed(w, r, u.ID) {
+	var codes []string
+	ok, err := a.checkCode(w, r, u, func() (err error) {
+		codes, err = a.deps.Auth.ConfirmTOTP(ctx, u.ID, body.Code)
+		return err
+	})
+	if !ok {
 		return
 	}
-	codes, err := a.deps.Auth.ConfirmTOTP(ctx, u.ID, body.Code)
 	if err != nil {
-		if errors.Is(err, auth.ErrBadCode) {
-			a.codeFailed(r, u)
-		}
 		a.writeCodeError(w, err)
 		return
 	}
@@ -238,7 +269,6 @@ func (a *api) handleLoginSetupConfirm(w http.ResponseWriter, r *http.Request) {
 		a.writeCodeError(w, auth.ErrTicket)
 		return
 	}
-	a.codeSucceeded(r, u)
 	a.deps.Log.Info("account: two-factor sign-in turned on at sign-in (required for admins)", "user_id", u.ID)
 	token, expires, err := a.deps.Auth.CreateSessionFrom(ctx, u.ID, auth.SessionClient{UserAgent: r.UserAgent(), IP: netutil.ClientIP(r)})
 	if err != nil {
@@ -246,6 +276,7 @@ func (a *api) handleLoginSetupConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.setSessionCookie(w, r, token, expires)
+	w.Header().Set("Cache-Control", "no-store") // the recovery codes, shown once
 	a.writeJSON(w, http.StatusOK, map[string]any{"user": u, "recovery_codes": codes})
 }
 
@@ -355,12 +386,15 @@ func (a *api) checkMyPassword(w http.ResponseWriter, r *http.Request, u *auth.Us
 // checkMyCode checks a current authenticator or recovery code for the caller, under the
 // sign-in code limits. It writes the answer and returns false when it's wrong or limited.
 func (a *api) checkMyCode(w http.ResponseWriter, r *http.Request, u *auth.User, code string) bool {
-	if !a.codeAllowed(w, r, u.ID) {
+	ok, err := a.checkCode(w, r, u, func() error {
+		_, err := a.deps.Auth.VerifySecondFactor(r.Context(), u.ID, code)
+		return err
+	})
+	if !ok {
 		return false
 	}
-	if _, err := a.deps.Auth.VerifySecondFactor(r.Context(), u.ID, code); err != nil {
+	if err != nil {
 		if errors.Is(err, auth.ErrBadCode) {
-			a.codeFailed(r, u)
 			a.writeError(w, http.StatusBadRequest, "That code isn't right")
 			return false
 		}
@@ -371,7 +405,6 @@ func (a *api) checkMyCode(w http.ResponseWriter, r *http.Request, u *auth.User, 
 		a.writeError(w, http.StatusInternalServerError, "could not check the code")
 		return false
 	}
-	a.codeSucceeded(r, u)
 	return true
 }
 
@@ -421,13 +454,16 @@ func (a *api) handleMyTwoFactorConfirm(w http.ResponseWriter, r *http.Request) {
 	if !a.decodeJSON(w, r, &body) {
 		return
 	}
-	if !a.codeAllowed(w, r, u.ID) {
+	var codes []string
+	ok, err := a.checkCode(w, r, u, func() (err error) {
+		codes, err = a.deps.Auth.ConfirmTOTP(r.Context(), u.ID, body.Code)
+		return err
+	})
+	if !ok {
 		return
 	}
-	codes, err := a.deps.Auth.ConfirmTOTP(r.Context(), u.ID, body.Code)
 	switch {
 	case errors.Is(err, auth.ErrBadCode):
-		a.codeFailed(r, u)
 		a.writeError(w, http.StatusBadRequest, "That code isn't right. Check the time on your phone and try the newest code.")
 		return
 	case errors.Is(err, auth.ErrTwoFactorOn):
@@ -440,8 +476,8 @@ func (a *api) handleMyTwoFactorConfirm(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "could not turn on two-factor sign-in")
 		return
 	}
-	a.codeSucceeded(r, u)
 	a.deps.Log.Info("account: two-factor sign-in turned on by its owner", "user_id", u.ID)
+	w.Header().Set("Cache-Control", "no-store") // the recovery codes, shown once
 	a.writeJSON(w, http.StatusOK, map[string]any{"recovery_codes": codes})
 }
 
@@ -496,6 +532,7 @@ func (a *api) handleMyRecoveryCodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.deps.Log.Info("account: new two-factor recovery codes made by their owner", "user_id", u.ID)
+	w.Header().Set("Cache-Control", "no-store") // the recovery codes, shown once
 	a.writeJSON(w, http.StatusOK, map[string]any{"recovery_codes": codes})
 }
 

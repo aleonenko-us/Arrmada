@@ -54,6 +54,14 @@ an admin can reset it in Settings → People & access, or run
 `docker exec -it Arrmada-app arrmada reset-2fa you@example.com` — see
 [Backups → Locked out?](backups.md#locked-out).
 
+**Every two-factor code is refused, though the app shows it.**
+Codes depend on the time. Arrmada accepts the code for the current 30 seconds and the ones
+either side, so the server's clock and the phone's may differ by about 45 seconds at most.
+Check the host's clock is set automatically (NTP: `timedatectl` on Linux shows
+"System clock synchronized: yes") and the phone's time is set automatically. After several
+wrong codes the sign-in page asks you to wait a little before trying again; that count is
+kept in memory, so restarting Arrmada clears it.
+
 <a id="qbittorrent-login"></a>
 **qBittorrent's page asks for a username and password.**
 Arrmada gave it a password ([Configuration → qBittorrent's login](configuration.md#qbittorrents-login)).
