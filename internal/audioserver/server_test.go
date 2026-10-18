@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -443,6 +444,64 @@ func TestLoginLimitPerAccount(t *testing.T) {
 	if code, _ := h.do("POST", "/login", map[string]string{"username": "reader", "password": "listen-pass-1"},
 		map[string]string{"Cf-Connecting-Ip": "203.0.113.200"}); code != 429 {
 		t.Fatalf("11th attempt on one account from a new address: HTTP %d, want 429", code)
+	}
+}
+
+// fakeThrottle records what /login told it, and holds sign-ins while hold is set.
+type fakeThrottle struct {
+	mu                sync.Mutex
+	hold              bool
+	failed, succeeded []string
+}
+
+func (f *fakeThrottle) Wait(_ *http.Request, _ string) (bool, time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.hold, 42 * time.Second
+}
+
+func (f *fakeThrottle) Failed(_ *http.Request, u string) {
+	f.mu.Lock()
+	f.failed = append(f.failed, u)
+	f.mu.Unlock()
+}
+
+func (f *fakeThrottle) Succeeded(_ *http.Request, u string) {
+	f.mu.Lock()
+	f.succeeded = append(f.succeeded, u)
+	f.mu.Unlock()
+}
+
+// With a throttle set, /login answers to it alone: only wrong passwords are reported as
+// failures, a held sign-in gets 429 with Retry-After, and the old attempt cap is gone (a
+// listening app signing in over and over is never shut out by its own successes).
+func TestLoginUsesTheThrottle(t *testing.T) {
+	h := newHarness(t)
+	f := &fakeThrottle{}
+	h.srv.SetThrottle(f)
+	for i := 0; i < 15; i++ {
+		if code, _ := h.do("POST", "/login", map[string]string{"username": "reader", "password": "listen-pass-1"}, nil); code != 200 {
+			t.Fatalf("sign-in %d: HTTP %d", i, code)
+		}
+	}
+	if code, _ := h.do("POST", "/login", map[string]string{"username": "reader", "password": "wrong"}, nil); code != 401 {
+		t.Fatalf("wrong password: HTTP %d", code)
+	}
+	f.mu.Lock()
+	if len(f.succeeded) != 15 || len(f.failed) != 1 || f.failed[0] != "reader" {
+		t.Errorf("succeeded %d, failed %v", len(f.succeeded), f.failed)
+	}
+	f.hold = true
+	f.mu.Unlock()
+	r, _ := http.NewRequest("POST", h.http.URL+"/login", strings.NewReader(`{"username":"reader","password":"listen-pass-1"}`))
+	r.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 429 || res.Header.Get("Retry-After") != "43" {
+		t.Errorf("held sign-in: HTTP %d, Retry-After %q", res.StatusCode, res.Header.Get("Retry-After"))
 	}
 }
 

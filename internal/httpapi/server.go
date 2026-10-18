@@ -211,6 +211,11 @@ type api struct {
 func New(d Deps) *http.Server {
 	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), codeLimit: newCodeLimiter(), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetFailMax, time.Minute), keySprayLimiter: newLoginLimiter(keySprayMax, 15*time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
 
+	// The listening apps' sign-in shares the e-readers' limits and keys (appsignin.go).
+	if d.AudioServer != nil {
+		d.AudioServer.SetThrottle(appSignIn{a})
+	}
+
 	rt := newRouter(a)
 	a.registerRoutes(rt)
 	if d.Health != nil {

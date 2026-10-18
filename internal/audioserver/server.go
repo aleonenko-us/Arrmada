@@ -47,7 +47,8 @@ type Server struct {
 	images   *imageCache
 	coverDir string
 	Accounts *Accounts
-	limiter  *loginLimiter
+	limiter  *loginLimiter // only while no throttle is set (tests, tools)
+	throttle atomic.Pointer[throttleRef]
 	catalog  catalogCache
 	warming  atomic.Bool // stops overlapping Warm runs (the schedule, switching on, an import)
 	warm     warmState   // books whose files changed, and items with nothing to read (warm.go)
@@ -80,6 +81,29 @@ func New(o Options) *Server {
 	s.Accounts = newAccounts(o.DB, o.Users, s.Allowed)
 	s.loadTrace(context.Background())
 	return s
+}
+
+// Throttle is the sign-in limiter for /login, shared with Arrmada's own sign-in and the
+// OPDS catalogue (the app's httpapi sets it): Wait says whether a sign-in for username must
+// wait first (and how long), Failed records a wrong password, Succeeded a right one.
+type Throttle interface {
+	Wait(r *http.Request, username string) (bool, time.Duration)
+	Failed(r *http.Request, username string)
+	Succeeded(r *http.Request, username string)
+}
+
+type throttleRef struct{ Throttle }
+
+// SetThrottle puts t in charge of sign-in attempts, in place of the simple attempt cap
+// (ten a minute per address and per account) the server falls back on without one. Only
+// wrong passwords count against t's limits, so an app signing in again and again is never
+// shut out by its own successes.
+func (s *Server) SetThrottle(t Throttle) {
+	if t == nil {
+		s.throttle.Store(nil)
+		return
+	}
+	s.throttle.Store(&throttleRef{t})
 }
 
 // Allowed reports whether a user may use the audiobook server: requester or above, not
@@ -283,7 +307,8 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := netutil.ClientIP(r)
-	if !s.limiter.allow("ip:" + ip) {
+	th := s.throttle.Load()
+	if th == nil && !s.limiter.allow("ip:"+ip) {
 		writeError(w, http.StatusTooManyRequests, "Too many login attempts, try again in a minute")
 		return
 	}
@@ -302,10 +327,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	} else if !readJSON(w, r, &body) {
 		return
 	}
-	// A second limit per account, so many addresses can't take turns guessing one
-	// person's password.
 	userKey := "user:" + strings.ToLower(strings.TrimSpace(body.Username))
-	if !s.limiter.allow(userKey) {
+	if th != nil {
+		if wait, retry := th.Wait(r, body.Username); wait {
+			w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
+			writeError(w, http.StatusTooManyRequests, "Too many login attempts, try again in a bit")
+			return
+		}
+	} else if !s.limiter.allow(userKey) {
+		// A second limit per account, so many addresses can't take turns guessing one
+		// person's password.
 		writeError(w, http.StatusTooManyRequests, "Too many login attempts, try again in a minute")
 		return
 	}
@@ -315,12 +346,24 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, err.Error())
 			return
 		}
+		if !errors.Is(err, errBadLogin) {
+			s.log.Error("audiobook server: couldn't check a sign-in", "err", err)
+			writeError(w, http.StatusInternalServerError, "Couldn't check the sign-in")
+			return
+		}
+		if th != nil {
+			th.Failed(r, body.Username)
+		}
 		s.log.Info("audiobook server: failed sign-in", "username", body.Username, "ip", ip)
 		writeError(w, http.StatusUnauthorized, "Invalid username or password")
 		return
 	}
-	s.limiter.reset("ip:" + ip)
-	s.limiter.reset(userKey)
+	if th != nil {
+		th.Succeeded(r, body.Username)
+	} else {
+		s.limiter.reset("ip:" + ip)
+		s.limiter.reset(userKey)
+	}
 	s.log.Info("audiobook server: signed in", "user", u.Username, "client", clientName(r))
 	// Apps that don't ask for the refresh token in the reply get it as a cookie, as
 	// Audiobookshelf does, and refresh with that.
@@ -439,7 +482,8 @@ func clientName(r *http.Request) string {
 	return name
 }
 
-// loginLimiter allows 10 attempts a minute per key (an address, or an account).
+// loginLimiter allows 10 attempts a minute per key (an address, or an account): the
+// fallback for a server nobody gave a Throttle.
 type loginLimiter struct {
 	mu   sync.Mutex
 	hits map[string][]time.Time

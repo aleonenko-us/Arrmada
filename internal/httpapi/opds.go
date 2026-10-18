@@ -3,11 +3,8 @@ package httpapi
 import (
 	"context"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/tristenlammi/arrmada/internal/books"
-	"github.com/tristenlammi/arrmada/internal/netutil"
 	"github.com/tristenlammi/arrmada/internal/opds"
 	"github.com/tristenlammi/arrmada/internal/requests"
 )
@@ -16,13 +13,13 @@ import (
 // public and reachable from outside the network as far as the router is concerned: the
 // catalogue signs every request in itself, with HTTP Basic and the person's audiobook
 // password. Wrong passwords go through the same limiter as Arrmada's own sign-in, under
-// keys of their own.
+// the keys the audiobook server's sign-in shares (appsignin.go).
 
 // registerOPDS adds the catalogue's routes, each by its own pattern so the request log
 // names "GET /opds/books/{id}/file", never the book.
 func (a *api) registerOPDS(mux *router) {
 	d := opds.Deps{
-		Throttle:  opdsThrottle{a},
+		Throttle:  appSignIn{a},
 		Enabled:   a.booksEnabled,
 		Requested: a.opdsRequested,
 		BaseURL:   baseURL,
@@ -80,51 +77,3 @@ func baseURL(r *http.Request) string {
 	return scheme + "://" + r.Host
 }
 
-// opdsThrottle applies Arrmada's login limits to e-reader sign-ins: 10 wrong passwords
-// per address in 15 minutes, and from outside the LAN a growing pause per username after
-// 5 in an hour. The keys are the catalogue's own, so a right audiobook password never
-// clears failures recorded against someone's Arrmada password.
-type opdsThrottle struct{ a *api }
-
-func opdsKeys(r *http.Request, username string) (ip, name, ipKey, userKey string) {
-	ip = netutil.ClientIP(r)
-	name = strings.ToLower(strings.TrimSpace(username))
-	return ip, name, "opds:" + ip, "opds-user:" + name
-}
-
-func (t opdsThrottle) Wait(r *http.Request, username string) (bool, time.Duration) {
-	l := t.a.loginLimiter
-	if l == nil {
-		return false, 0
-	}
-	_, _, ipKey, userKey := opdsKeys(r, username)
-	if ok, retry := l.blocked(ipKey); ok {
-		return true, retry
-	}
-	if t.a.classifyExternal(r) {
-		return l.delayed(userKey)
-	}
-	return false, 0
-}
-
-func (t opdsThrottle) Failed(r *http.Request, username string) {
-	l := t.a.loginLimiter
-	if l == nil {
-		return
-	}
-	ip, name, ipKey, userKey := opdsKeys(r, username)
-	l.fail(ipKey, name)
-	if n := l.fail(userKey, name); n >= loginAlertAt && n%loginAlertAt == 0 {
-		t.a.loginFailuresAlert(name, n, ip)
-	}
-}
-
-func (t opdsThrottle) Succeeded(r *http.Request, username string) {
-	l := t.a.loginLimiter
-	if l == nil {
-		return
-	}
-	_, name, ipKey, userKey := opdsKeys(r, username)
-	l.reset(userKey, "")
-	l.reset(ipKey, name)
-}
