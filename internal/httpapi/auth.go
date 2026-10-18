@@ -244,6 +244,14 @@ func (a *api) handleLogin(w http.ResponseWriter, r *http.Request) {
 	name := strings.ToLower(strings.TrimSpace(body.Username))
 	ipKey, userKey := "login:"+ip, "login-user:"+name
 	l := a.loginLimiter
+	// One check at a time per address and username: the limits below only hear of a wrong
+	// password after bcrypt, so guesses sent all at once would otherwise all get past them.
+	release, ok := a.turns.acquire(r.Context(), ipKey, userKey)
+	if !ok {
+		a.tooManyAttempts(w, time.Second)
+		return
+	}
+	defer release()
 	// Two limits, both counting wrong passwords only. Per address: 10 failures in 15
 	// minutes. Per username: a back-off that grows after 5 failures in an hour, applied
 	// only to sign-ins from outside the LAN, so a stranger guessing the owner's name on

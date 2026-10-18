@@ -156,7 +156,7 @@ func TestOPDSFailuresAreThrottled(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 10; i++ {
-		if rec := h.get("/opds", "kid", "guess-guess", lanAddr, nil); rec.Code != http.StatusUnauthorized {
+		if rec := h.get("/opds", "kid", fmt.Sprintf("guess-%d", i), lanAddr, nil); rec.Code != http.StatusUnauthorized {
 			t.Fatalf("guess %d: HTTP %d", i, rec.Code)
 		}
 	}
@@ -247,10 +247,10 @@ func TestAudioServerLoginSharesTheOPDSLimits(t *testing.T) {
 	// Ten wrong ones from one address, half through each door: the address is blocked
 	// on both, even with the right password.
 	for i := 0; i < 5; i++ {
-		if code := login("wrong-wrong", "192.168.1.40:5000"); code != http.StatusUnauthorized {
+		if code := login(fmt.Sprintf("wrong-a%d", i), "192.168.1.40:5000"); code != http.StatusUnauthorized {
 			t.Fatalf("wrong %d: HTTP %d", i, code)
 		}
-		if rec := h.get("/opds", "gran", "wrong-wrong", "192.168.1.40:5000", nil); rec.Code != http.StatusUnauthorized {
+		if rec := h.get("/opds", "gran", fmt.Sprintf("wrong-b%d", i), "192.168.1.40:5000", nil); rec.Code != http.StatusUnauthorized {
 			t.Fatalf("wrong reader %d: HTTP %d", i, rec.Code)
 		}
 	}

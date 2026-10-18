@@ -192,6 +192,11 @@ type api struct {
 	keySprayLimiter *loginLimiter
 	plexPins        *plexPinGuard // which browser (and account) started each Plex PIN
 	jfQC            *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
+	// turns lets one password check at a time through per address and username; appKnown and
+	// appWrong are the app sign-ins' known addresses and counted wrong passwords (signinguard.go).
+	turns    *turnGate
+	appKnown *knownAddrs
+	appWrong *wrongSeen
 	// transfers caches the downloads feed's title cards and requester names (transfers.go).
 	transfers transferCache
 	// wanted caches Activity → Wanted's answer (wantedcache.go).
@@ -209,7 +214,8 @@ type api struct {
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
 // fallback), and the middleware chain (recover → log → mux).
 func New(d Deps) *http.Server {
-	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), codeLimit: newCodeLimiter(), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetFailMax, time.Minute), keySprayLimiter: newLoginLimiter(keySprayMax, 15*time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
+	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), codeLimit: newCodeLimiter(), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetFailMax, time.Minute), keySprayLimiter: newLoginLimiter(keySprayMax, 15*time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard(),
+		turns: newTurnGate(), appKnown: newKnownAddrs(), appWrong: newWrongSeen()}
 
 	// The listening apps' sign-in shares the e-readers' limits and keys (appsignin.go).
 	if d.AudioServer != nil {

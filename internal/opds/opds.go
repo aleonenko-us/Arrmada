@@ -41,12 +41,14 @@ type Authenticator interface {
 	Authenticate(ctx context.Context, username, password string) (*auth.User, error)
 }
 
-// Throttle is the sign-in limiter, shared with Arrmada's own login. Wait says whether a
-// sign-in for username must wait first (and for how long); Failed records a wrong
-// password; Succeeded clears that username's failures.
+// Throttle is the sign-in limiter, shared with Arrmada's own login and the audiobook
+// server. Turn waits for the sign-in's turn and says whether it must wait instead (and
+// for how long); when it may go ahead, done is called once the password has been checked,
+// after Failed (a wrong password, given so a repeat of the same one counts once) or
+// Succeeded.
 type Throttle interface {
-	Wait(r *http.Request, username string) (bool, time.Duration)
-	Failed(r *http.Request, username string)
+	Turn(r *http.Request, username string) (done func(), wait bool, retry time.Duration)
+	Failed(r *http.Request, username, password string)
 	Succeeded(r *http.Request, username string)
 }
 
@@ -169,8 +171,11 @@ func (h *Handler) signedIn(next userHandler) http.HandlerFunc {
 			challenge(w)
 			return
 		}
+		done := func() {}
 		if h.d.Throttle != nil {
-			if wait, retry := h.d.Throttle.Wait(r, name); wait {
+			var wait bool
+			var retry time.Duration
+			if done, wait, retry = h.d.Throttle.Turn(r, name); wait {
 				w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
 				http.Error(w, "Too many sign-in attempts. Try again in a bit.", http.StatusTooManyRequests)
 				return
@@ -179,22 +184,27 @@ func (h *Handler) signedIn(next userHandler) http.HandlerFunc {
 		u, err := h.d.Auth.Authenticate(r.Context(), name, pass)
 		switch {
 		case err == nil:
+			if h.d.Throttle != nil {
+				h.d.Throttle.Succeeded(r, name)
+			}
+			// The turn is only for the check: the feed or download goes on without it.
+			done()
 		case errors.Is(err, audioserver.ErrNoAccess):
+			done()
 			http.Error(w, "This account can't use the e-reader catalogue. Ask an admin.", http.StatusForbidden)
 			return
 		case errors.Is(err, audioserver.ErrBadLogin):
 			if h.d.Throttle != nil {
-				h.d.Throttle.Failed(r, name)
+				h.d.Throttle.Failed(r, name, pass)
 			}
+			done()
 			challenge(w)
 			return
 		default:
+			done()
 			h.d.Log.Warn("opds: sign-in check failed", "err", err)
 			http.Error(w, "Couldn't check the sign-in.", http.StatusInternalServerError)
 			return
-		}
-		if h.d.Throttle != nil {
-			h.d.Throttle.Succeeded(r, name)
 		}
 		next(w, r, u)
 	})

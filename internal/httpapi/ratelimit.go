@@ -17,12 +17,9 @@ import (
 //     all day never uses up anyone's budget. Counting every attempt used to let a
 //     stranger keep the owner's username locked out simply by trying it.
 type loginLimiter struct {
-	mu    sync.Mutex
-	hits  map[string][]int64     // allow keys → attempt unix-nanos within the window
-	fails map[string][]loginFail // failure keys → recent failures, oldest first
-	// known: keys (a username at an address) → the last right password from there, for
-	// letting a person's own devices past their username's pause (appsignin.go).
-	known   map[string]int64
+	mu      sync.Mutex
+	hits    map[string][]int64     // allow keys → attempt unix-nanos within the window
+	fails   map[string][]loginFail // failure keys → recent failures, oldest first
 	max     int
 	window  time.Duration
 	lastGC  int64
@@ -48,16 +45,12 @@ const (
 	userFreeFails = 5
 	userDelayBase = 30 * time.Second
 	userDelayCap  = 15 * time.Minute
-
-	// knownMemory is how long a right password from an address keeps that address known.
-	knownMemory = 30 * 24 * time.Hour
 )
 
 func newLoginLimiter(max int, window time.Duration) *loginLimiter {
 	return &loginLimiter{
 		hits:    map[string][]int64{},
 		fails:   map[string][]loginFail{},
-		known:   map[string]int64{},
 		max:     max,
 		window:  window,
 		nowNano: func() int64 { return time.Now().UnixNano() },
@@ -80,12 +73,6 @@ func (l *loginLimiter) gc(now int64) {
 	for k, fs := range l.fails {
 		if len(fs) == 0 || fs[len(fs)-1].at < failCut {
 			delete(l.fails, k)
-		}
-	}
-	knownCut := now - knownMemory.Nanoseconds()
-	for k, at := range l.known {
-		if at < knownCut {
-			delete(l.known, k)
 		}
 	}
 	l.lastGC = now
@@ -187,25 +174,6 @@ func (l *loginLimiter) fail(key, tag string) int {
 	// Copy so the slice doesn't pin an ever-growing backing array.
 	l.fails[key] = append([]loginFail(nil), fs...)
 	return len(l.recent(key, now-failMemory.Nanoseconds()))
-}
-
-// remember marks key known: a right password just came from it. Only right passwords
-// add entries, so the map grows with real sign-ins, never with an attacker's tries.
-func (l *loginLimiter) remember(key string) {
-	now := l.nowNano()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.gc(now)
-	l.known[key] = now
-}
-
-// isKnown reports whether key had a right password within knownMemory.
-func (l *loginLimiter) isKnown(key string) bool {
-	now := l.nowNano()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	at, ok := l.known[key]
-	return ok && now-at < knownMemory.Nanoseconds()
 }
 
 // reset clears key's failures after a successful sign-in. With a tag, only the

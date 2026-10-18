@@ -84,11 +84,13 @@ func New(o Options) *Server {
 }
 
 // Throttle is the sign-in limiter for /login, shared with Arrmada's own sign-in and the
-// OPDS catalogue (the app's httpapi sets it): Wait says whether a sign-in for username must
-// wait first (and how long), Failed records a wrong password, Succeeded a right one.
+// OPDS catalogue (the app's httpapi sets it). Turn waits for the sign-in's turn and says
+// whether it must wait instead (429, for retry); when it may go ahead, done is called once
+// the password has been checked, after Failed (a wrong password, given so a repeat of the
+// same one counts once) or Succeeded.
 type Throttle interface {
-	Wait(r *http.Request, username string) (bool, time.Duration)
-	Failed(r *http.Request, username string)
+	Turn(r *http.Request, username string) (done func(), wait bool, retry time.Duration)
+	Failed(r *http.Request, username, password string)
 	Succeeded(r *http.Request, username string)
 }
 
@@ -329,11 +331,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	userKey := "user:" + strings.ToLower(strings.TrimSpace(body.Username))
 	if th != nil {
-		if wait, retry := th.Wait(r, body.Username); wait {
+		done, wait, retry := th.Turn(r, body.Username)
+		if wait {
 			w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
 			writeError(w, http.StatusTooManyRequests, "Too many login attempts, try again in a bit")
 			return
 		}
+		defer done()
 	} else if !s.limiter.allow(userKey) {
 		// A second limit per account, so many addresses can't take turns guessing one
 		// person's password.
@@ -352,7 +356,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if th != nil {
-			th.Failed(r, body.Username)
+			th.Failed(r, body.Username, body.Password)
 		}
 		s.log.Info("audiobook server: failed sign-in", "username", body.Username, "ip", ip)
 		writeError(w, http.StatusUnauthorized, "Invalid username or password")

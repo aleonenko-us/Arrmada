@@ -452,15 +452,20 @@ type fakeThrottle struct {
 	mu                sync.Mutex
 	hold              bool
 	failed, succeeded []string
+	open              int // turns handed out and not yet given back
 }
 
-func (f *fakeThrottle) Wait(_ *http.Request, _ string) (bool, time.Duration) {
+func (f *fakeThrottle) Turn(_ *http.Request, _ string) (func(), bool, time.Duration) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.hold, 42 * time.Second
+	if f.hold {
+		return nil, true, 42 * time.Second
+	}
+	f.open++
+	return func() { f.mu.Lock(); f.open--; f.mu.Unlock() }, false, 0
 }
 
-func (f *fakeThrottle) Failed(_ *http.Request, u string) {
+func (f *fakeThrottle) Failed(_ *http.Request, u, _ string) {
 	f.mu.Lock()
 	f.failed = append(f.failed, u)
 	f.mu.Unlock()
@@ -488,8 +493,8 @@ func TestLoginUsesTheThrottle(t *testing.T) {
 		t.Fatalf("wrong password: HTTP %d", code)
 	}
 	f.mu.Lock()
-	if len(f.succeeded) != 15 || len(f.failed) != 1 || f.failed[0] != "reader" {
-		t.Errorf("succeeded %d, failed %v", len(f.succeeded), f.failed)
+	if len(f.succeeded) != 15 || len(f.failed) != 1 || f.failed[0] != "reader" || f.open != 0 {
+		t.Errorf("succeeded %d, failed %v, turns still held %d", len(f.succeeded), f.failed, f.open)
 	}
 	f.hold = true
 	f.mu.Unlock()

@@ -121,30 +121,6 @@ func TestClassifyExternalForwarded(t *testing.T) {
 	}
 }
 
-// A known address stays known for 30 days after its last right password, then is
-// forgotten (and garbage-collected).
-func TestLoginLimiterKnown(t *testing.T) {
-	l := newLoginLimiter(3, 15*time.Minute)
-	now := int64(0)
-	l.nowNano = func() int64 { return now }
-	if l.isKnown("k") {
-		t.Fatal("known before any sign-in")
-	}
-	l.remember("k")
-	now += (29 * 24 * time.Hour).Nanoseconds()
-	if !l.isKnown("k") {
-		t.Error("forgotten after 29 days")
-	}
-	now += (2 * 24 * time.Hour).Nanoseconds()
-	if l.isKnown("k") {
-		t.Error("still known after 31 days")
-	}
-	l.remember("other") // runs the gc
-	if _, ok := l.known["k"]; ok {
-		t.Error("expired entry not collected")
-	}
-}
-
 // The failure-counting side of the limiter: only fail() counts, reset clears, and a
 // tagged reset clears only that username's failures from an address.
 func TestLoginLimiterFailures(t *testing.T) {

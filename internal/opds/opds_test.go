@@ -100,16 +100,21 @@ type harness struct {
 }
 
 // countingThrottle stands in for the login limiter: it counts and can be told to refuse.
+// Every turn Turn hands out must be given back (open counts them).
 type countingThrottle struct {
-	failed, succeeded int
-	refuse            bool
+	failed, succeeded, open int
+	refuse                  bool
 }
 
-func (c *countingThrottle) Wait(*http.Request, string) (bool, time.Duration) {
-	return c.refuse, 30 * time.Second
+func (c *countingThrottle) Turn(*http.Request, string) (func(), bool, time.Duration) {
+	if c.refuse {
+		return nil, true, 30 * time.Second
+	}
+	c.open++
+	return func() { c.open-- }, false, 0
 }
-func (c *countingThrottle) Failed(*http.Request, string)    { c.failed++ }
-func (c *countingThrottle) Succeeded(*http.Request, string) { c.succeeded++ }
+func (c *countingThrottle) Failed(*http.Request, string, string) { c.failed++ }
+func (c *countingThrottle) Succeeded(*http.Request, string)      { c.succeeded++ }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
@@ -688,6 +693,9 @@ func TestBasicAuth(t *testing.T) {
 		}
 		if got := x.throttle.failed > before; got != c.fails {
 			t.Errorf("%s: counted as a failure = %v, want %v", c.name, got, c.fails)
+		}
+		if x.throttle.open != 0 {
+			t.Errorf("%s: %d sign-in turns never given back", c.name, x.throttle.open)
 		}
 	}
 
