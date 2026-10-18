@@ -10,6 +10,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
+	"github.com/tristenlammi/arrmada/internal/kepub"
 	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/quality"
@@ -128,6 +129,9 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// Require two-factor for admins: an admin signing in with a password who hasn't
 		// set it up must do so before any session is made (twofactor.go).
 		"two_factor_admins": a.deps.Settings.GetBool(ctx, keyTwoFactorAdmins, false),
+		// Convert EPUB to KEPUB for Kobo (Settings → Book server): the shelf's Kobo download
+		// and the KEPUB link in the OPDS feeds. On by default.
+		"books_kepub": a.deps.Settings.GetBool(ctx, kepub.KeyEnabled, true),
 	}
 	// "Show titles as" (displaytitles.go).
 	for k, v := range a.displaySettings(ctx) {
@@ -224,6 +228,7 @@ type settingsUpdate struct {
 	NetworkPreference         *string   `json:"download_network_preference"`
 	PublicURL                 *string   `json:"app_public_url"`
 	TwoFactorAdmins           *bool     `json:"two_factor_admins"`
+	BooksKepub                *bool     `json:"books_kepub"`
 }
 
 // adminSettingChange names the first admin-only setting req would change, or "" if it
@@ -279,6 +284,8 @@ func (a *api) adminSettingChange(ctx context.Context, req *settingsUpdate) strin
 		return "Arrmada's outside address"
 	case boolChanged(req.TwoFactorAdmins, st.GetBool(ctx, keyTwoFactorAdmins, false)):
 		return "whether admins must use two-factor sign-in"
+	case boolChanged(req.BooksKepub, st.GetBool(ctx, kepub.KeyEnabled, true)):
+		return "the Kobo (KEPUB) conversion"
 	}
 	return ""
 }
@@ -426,6 +433,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.PublicURL != nil && !save(a.deps.Settings.Set(ctx, settings.KeyPublicURL, publicURL)) {
+		return
+	}
+	if req.BooksKepub != nil && !save(a.deps.Settings.SetBool(ctx, kepub.KeyEnabled, *req.BooksKepub)) {
 		return
 	}
 	if req.DefaultCategories != nil && !save(a.deps.Settings.SetBool(ctx, indexer.KeyDefaultCategories, *req.DefaultCategories)) {

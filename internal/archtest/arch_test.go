@@ -276,7 +276,7 @@ func TestNoBackgroundContextInHandlers(t *testing.T) {
 // exec.LookPath (finding a tool) is fine.
 func TestToolsThroughRunner(t *testing.T) {
 	root := repoRoot(t)
-	for _, rel := range []string{"internal/convert", "internal/subtitles", "internal/mediainfo", "internal/extract"} {
+	for _, rel := range []string{"internal/convert", "internal/subtitles", "internal/mediainfo", "internal/extract", "internal/kepub"} {
 		fset, files := parseDir(t, filepath.Join(root, filepath.FromSlash(rel)))
 		for _, f := range files {
 			ast.Inspect(f, func(n ast.Node) bool {

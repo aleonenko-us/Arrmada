@@ -47,6 +47,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/insights"
 	"github.com/tristenlammi/arrmada/internal/issues"
 	"github.com/tristenlammi/arrmada/internal/jobs"
+	"github.com/tristenlammi/arrmada/internal/kepub"
 	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/libroots"
@@ -1432,6 +1433,12 @@ func main() {
 		KeyVerifiers: keyVerifiers,
 		AudioServer:  audioSrv,
 		AudioManager: audioMgr,
+		// KEPUBs for Kobo's stock reader, made on demand into a bounded cache under the data
+		// folder (never next to the library file). Settings → Book server switches it off.
+		Kepub: kepub.New(kepub.Options{
+			Dir:     filepath.Join(cfg.DataDir, "cache", "kepub"),
+			Enabled: func(ctx context.Context) bool { return settingsSvc.GetBool(ctx, kepub.KeyEnabled, true) },
+		}),
 		// Setup's OpenSubtitles check: the key, username and password typed together.
 		SubtitleLoginVerifier: subsProvider.VerifyLogin,
 		Restart: func() {

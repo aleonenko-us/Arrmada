@@ -127,6 +127,8 @@ type MyEbook struct {
 	// Kindle: Amazon's Send to Kindle email takes this format (books.KindleAccepts), so the
 	// button is offered; otherwise it's shown disabled with the format named.
 	Kindle bool `json:"kindle"`
+	// Kepub: "Download for Kobo (KEPUB)" is offered — an EPUB, with the conversion on.
+	Kepub bool `json:"kepub,omitempty"`
 }
 
 // handleMyBooks lists the library's books that have a file, plus the caller's own
@@ -163,6 +165,7 @@ func (a *api) handleMyBooks(w http.ResponseWriter, r *http.Request) {
 		all, _ = a.deps.Books.List(r.Context())
 	}
 	shelf := []MyBook{}
+	kepubOn := a.kepubReady(r.Context())
 	have := map[string]bool{}
 	haveID := map[int64]bool{}
 	for _, b := range all {
@@ -180,7 +183,8 @@ func (a *api) handleMyBooks(w http.ResponseWriter, r *http.Request) {
 			mb.Subjects = b.Subjects[:min(3, len(b.Subjects))]
 		}
 		if ebook {
-			mb.Ebook = &MyEbook{Format: b.Ebook.Format, SizeBytes: b.Ebook.SizeBytes, Kindle: books.KindleAccepts(b.Ebook.Format)}
+			mb.Ebook = &MyEbook{Format: b.Ebook.Format, SizeBytes: b.Ebook.SizeBytes, Kindle: books.KindleAccepts(b.Ebook.Format),
+				Kepub: kepubOn && kepubFormat(b.Ebook.Format)}
 		}
 		if b.SeriesName != "" {
 			mb.Series = b.SeriesName
@@ -250,8 +254,10 @@ func (a *api) handleMyBooks(w http.ResponseWriter, r *http.Request) {
 
 // handleBookEbook sends a book's ebook file as a download to any signed-in account
 // that can request (read-only accounts are for watching the calendar, not the shelf).
+// ?format=kepub sends an EPUB converted for Kobo's stock reader (kepub.go), or the EPUB
+// itself when that can't be done.
 //
-//	GET /api/v1/books/{id}/ebook
+//	GET /api/v1/books/{id}/ebook[?format=kepub]
 func (a *api) handleBookEbook(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.pathID(w, r)
 	if !ok {
@@ -274,6 +280,9 @@ func (a *api) handleBookEbook(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.deps.Log.Warn("ebook download: file missing", "book", b.Title, "path", b.Ebook.Path, "err", err)
 		a.writeError(w, http.StatusNotFound, "the ebook file is missing on disk")
+		return
+	}
+	if r.URL.Query().Get("format") == "kepub" && a.serveKepub(w, r, b, path) {
 		return
 	}
 	ext := strings.ToLower(filepath.Ext(path))

@@ -187,6 +187,7 @@ func (a *api) handleGetBook(w http.ResponseWriter, r *http.Request) {
 	a.setBookCatalogue(r.Context(), &b)
 	a.setBookAliases(r.Context(), &b)
 	setEbookKindle(&b)
+	setEbookKepub(&b, a.kepubReady(r.Context()))
 	a.writeJSON(w, http.StatusOK, b)
 }
 
@@ -266,6 +267,7 @@ func (a *api) handleRefreshBook(w http.ResponseWriter, r *http.Request) {
 	a.setBookCatalogue(r.Context(), &b)
 	a.setBookAliases(r.Context(), &b)
 	setEbookKindle(&b)
+	setEbookKepub(&b, a.kepubReady(r.Context()))
 	a.writeJSON(w, http.StatusOK, b)
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/adultfilter"
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/books"
+	"github.com/tristenlammi/arrmada/internal/kepub"
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
 
@@ -308,8 +309,10 @@ func issued(b books.Book) string {
 // --- entries -------------------------------------------------------------------------
 
 // bookEntry is one book in an acquisition feed: what it is, its cover, and where to
-// download it. authorHref is its author's feed ("" when it has none).
-func bookEntry(b books.Book, authorHref string, now time.Time) entry {
+// download it. authorHref is its author's feed ("" when it has none). kepub adds a second
+// download, a KEPUB for Kobo's stock reader, to an EPUB; readers that don't know the type
+// (KOReader, Moon+) keep taking the EPUB.
+func bookEntry(b books.Book, authorHref string, now time.Time, withKepub bool) entry {
 	e := entry{
 		Title:   b.Title,
 		ID:      fmt.Sprintf("urn:arrmada:book:%d", b.ID),
@@ -349,7 +352,18 @@ func bookEntry(b books.Book, authorHref string, now time.Time) entry {
 	ext := ebookExt(b)
 	e.Links = append(e.Links, link{Rel: relAcquisition, Href: base + "/file", Type: contentType(ext),
 		Title: strings.ToUpper(strings.TrimPrefix(ext, "."))})
+	if withKepub && ext == ".epub" {
+		e.Links = append(e.Links, link{Rel: relAcquisition, Href: base + "/kepub", Type: kepub.ContentType, Title: "KEPUB (Kobo)"})
+	}
 	return e
+}
+
+// isKobo reports whether a request comes from Kobo's own software, which reads a KEPUB
+// best. KOReader running on a Kobo names the device in its User-Agent too, but renders
+// EPUB itself, so it keeps getting the EPUB.
+func isKobo(ua string) bool {
+	ua = strings.ToLower(ua)
+	return strings.Contains(ua, "kobo") && !strings.Contains(ua, "koreader")
 }
 
 // navEntry is one row of a navigation feed: a link to another feed.
@@ -546,8 +560,9 @@ func (h *Handler) acquisition(w http.ResponseWriter, r *http.Request, id, title,
 	f := newFeed(id, title, now)
 	lo, hi := paged(f, len(list), pageOf(r), path, extra, acqType)
 	authorHref := h.authorHrefs(ctx, list[lo:hi])
+	withKepub := h.kepubReady(ctx)
 	for _, b := range list[lo:hi] {
-		f.Entries = append(f.Entries, bookEntry(b, authorHref[b.ID], now))
+		f.Entries = append(f.Entries, bookEntry(b, authorHref[b.ID], now, withKepub))
 	}
 	h.write(w, f, acqType)
 }
@@ -758,8 +773,24 @@ func (h *Handler) book(w http.ResponseWriter, r *http.Request) (books.Book, bool
 }
 
 // file sends the ebook, named "Title - Author.epub", with its media type. Nothing about
-// the download is logged: who read what is nobody's business.
+// the download is logged: who read what is nobody's business. Kobo's own software is
+// sent an EPUB as a KEPUB (isKobo), while the setting is on.
 func (h *Handler) file(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+	h.sendFile(w, r, isKobo(r.UserAgent()))
+}
+
+// kepubFile is the KEPUB download the feeds offer beside an EPUB. With the setting
+// switched off since the feed was read, or a book that isn't an EPUB, it sends the file
+// as it is rather than fail the reader's download.
+func (h *Handler) kepubFile(w http.ResponseWriter, r *http.Request, _ *auth.User) {
+	h.sendFile(w, r, true)
+}
+
+func (h *Handler) kepubReady(ctx context.Context) bool {
+	return h.d.Kepub != nil && h.d.Kepub.Ready(ctx)
+}
+
+func (h *Handler) sendFile(w http.ResponseWriter, r *http.Request, wantKepub bool) {
 	b, ok := h.book(w, r)
 	if !ok {
 		return
@@ -768,6 +799,22 @@ func (h *Handler) file(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	if err != nil {
 		http.Error(w, "The ebook file is missing on the server.", http.StatusNotFound)
 		return
+	}
+	if wantKepub && kepub.IsEPUB(path) && h.kepubReady(r.Context()) {
+		kf, err := h.d.Kepub.Open(r.Context(), b.ID, path)
+		if err == nil {
+			defer kf.Close()
+			if st, err := kf.Stat(); err == nil {
+				w.Header().Set("Content-Type", kepub.ContentType)
+				w.Header().Set("Content-Disposition", books.AttachmentHeader(books.EbookDownloadName(b, kepub.Ext)))
+				w.Header().Set("Cache-Control", "private, no-store")
+				http.ServeContent(w, r, "", st.ModTime(), kf)
+				return
+			}
+		} else if kepub.Failed(err) && r.Context().Err() == nil {
+			// No book and no person in the line: only that a conversion failed and why.
+			h.d.Log.Warn("opds: couldn't make a KEPUB, sending the EPUB", "err", err)
+		}
 	}
 	f, err := os.Open(path)
 	if err != nil {

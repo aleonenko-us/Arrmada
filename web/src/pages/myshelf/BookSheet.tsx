@@ -58,6 +58,12 @@ export function BookSheet({ book, shelf, listen, onClose, onOpen }: {
             </a>
           )}
           {book.ebook && <KindleButton book={book} />}
+          {/* A KEPUB, converted on the server, for Kobo's own reader (page numbers, stats). */}
+          {book.ebook?.kepub && (
+            <a href={`${api.ebookDownloadURL(book.book_id)}?format=kepub`} download className="rounded-lg px-4 py-2 text-md font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }} title="An EPUB made for Kobo's own reader: copy it onto the Kobo over USB">
+              Download for Kobo (KEPUB)
+            </a>
+          )}
         </div>
 
         {(book.audiobooks ?? []).length > 0 && (

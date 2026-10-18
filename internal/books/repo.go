@@ -35,6 +35,9 @@ type BookFile struct {
 	// Kindle: Send to Kindle's email takes this ebook's format (KindleAccepts). Set only
 	// where a page offers the send (the staff book page); never stored.
 	Kindle bool `json:"kindle,omitempty"`
+	// Kepub: the page may offer "Download for Kobo (KEPUB)" — an EPUB, with the conversion
+	// on. Set only where a page offers it; never stored.
+	Kepub bool `json:"kepub,omitempty"`
 }
 
 // Book is one book in the library. It can carry an ebook edition, an audiobook
