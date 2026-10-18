@@ -528,6 +528,7 @@ PUT /api/v1/audioserver/users/{id} admin -
 PUT /api/v1/book-authors/{id} staff -
 PUT /api/v1/books/{id}/audio-versions/{vid} staff -
 PUT /api/v1/books/{id}/cover staff -
+PUT /api/v1/books/{id}/details staff -
 PUT /api/v1/books/{id}/keep-catalogue staff -
 PUT /api/v1/books/{id}/metadata staff -
 PUT /api/v1/books/{id}/monitor staff -

@@ -3,6 +3,7 @@ package books
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -239,30 +240,40 @@ func CleanNarrator(s string) (string, error) {
 }
 
 // SetNarrator records who reads the book's standard audiobook, typed by hand ("" hands
-// it back to the files' tags).
+// it back to the files' tags). The narrator is one of the book's edited details.
 func (s *Service) SetNarrator(ctx context.Context, id int64, narrator string) error {
 	n, err := CleanNarrator(narrator)
 	if err != nil {
 		return err
 	}
-	return s.repo.SetAudiobookNarrator(ctx, id, n)
+	req := EditRequest{Reset: []string{FieldNarrator}}
+	if n != "" {
+		req = EditRequest{Set: map[string]json.RawMessage{FieldNarrator: jsonOf(n)}}
+	}
+	_, err = s.EditDetails(ctx, id, req)
+	return err
 }
 
 // TouchMeta marks a book's details as changed now (see Repo.TouchMeta), so listening
 // apps fetch its cover again.
 func (s *Service) TouchMeta(ctx context.Context, id int64) error { return s.repo.TouchMeta(ctx, id) }
 
-// OverrideMetadata applies a manual metadata correction (title/author/year/description/cover).
+// OverrideMetadata applies a manual metadata correction (title/author/year/description/
+// cover) — the older all-at-once form of EditDetails, kept for API callers. The details
+// become hand edits (the catalogue's values stay underneath); the cover is set as the
+// cover picker sets it.
 func (s *Service) OverrideMetadata(ctx context.Context, id int64, title, author string, year int, description, coverURL string) error {
-	before, _ := s.repo.Get(ctx, id)
-	if err := s.repo.UpdateDetails(ctx, id, strings.TrimSpace(title), strings.TrimSpace(author), year, description, coverURL); err != nil {
+	before, err := s.repo.Get(ctx, id)
+	if err != nil {
 		return err
 	}
-	s.repo.AddEvent(ctx, id, "edited", "Metadata corrected by hand")
-	// A corrected author is another person, or at least another spelling: the link
-	// follows the name now on the book.
-	if !strings.EqualFold(strings.TrimSpace(before.Author), strings.TrimSpace(author)) {
-		s.linkAuthor(ctx, id, strings.TrimSpace(author), "", true)
+	if _, err := s.EditDetails(ctx, id, EditRequest{Set: map[string]json.RawMessage{
+		FieldTitle: jsonOf(title), FieldAuthor: jsonOf(author), FieldYear: jsonOf(year), FieldDescription: jsonOf(description),
+	}}); err != nil {
+		return err
+	}
+	if coverURL != before.CoverURL {
+		return s.repo.SetCoverURL(ctx, id, coverURL)
 	}
 	return nil
 }
@@ -429,6 +440,10 @@ func (s *Service) refresh(ctx context.Context, id int64) (_ Book, fetchErr, err 
 		s.log.Warn("book refresh: couldn't record the check", "title", b.Title, "err", err)
 	}
 	if derr == nil {
+		// Compared and written as the catalogue has the book: a detail edited by hand
+		// keeps its edit, and the catalogue's new value only goes underneath it.
+		shownAuthor := b.Author
+		b = b.Matched()
 		if d.Description != "" {
 			b.Description = d.Description
 		}
@@ -448,19 +463,26 @@ func (s *Service) refresh(ctx context.Context, id int64) (_ Book, fetchErr, err 
 		authorChanged := false
 		if d.Author != "" && !strings.EqualFold(d.Author, b.Author) {
 			old := b.Author
-			if err := s.repo.UpdateDetails(ctx, b.ID, b.Title, d.Author, b.Year, b.Description, b.CoverURL); err == nil {
+			if err := s.repo.SetMatched(ctx, b.ID, map[string]any{FieldAuthor: d.Author}); err == nil {
 				b.Author = d.Author
 				authorChanged = true
-				s.repo.AddEvent(ctx, b.ID, "refreshed", "Author corrected: "+old+" → "+d.Author)
+				if b.Edited(FieldAuthor) {
+					s.repo.AddEvent(ctx, b.ID, "refreshed", "The catalogue's author is now "+d.Author+" (your edit, "+shownAuthor+", is kept)")
+				} else {
+					s.repo.AddEvent(ctx, b.ID, "refreshed", "Author corrected: "+old+" → "+d.Author)
+				}
 			}
 		}
 		// The catalogue's key for the author on file links the book to its author by
-		// identity; a corrected author is relinked.
-		key := ""
-		if d.Author != "" && strings.EqualFold(d.Author, b.Author) {
-			key = d.AuthorKey
+		// identity; a corrected author is relinked. An author edited by hand decides the
+		// link itself (EditDetails), so the catalogue's doesn't move it.
+		if !b.Edited(FieldAuthor) {
+			key := ""
+			if d.Author != "" && strings.EqualFold(d.Author, b.Author) {
+				key = d.AuthorKey
+			}
+			s.linkAuthor(ctx, b.ID, b.Author, key, authorChanged)
 		}
-		s.linkAuthor(ctx, b.ID, b.Author, key, authorChanged)
 		// A series the catalogue knows outranks one guessed from a release name, and
 		// books added before series keys existed pick theirs up here.
 		if d.SeriesName != "" && (b.SeriesKey == "" || d.SeriesKey != "") {
@@ -542,6 +564,10 @@ func MatcherOver(all []Book) func(releaseName string) (Book, bool) {
 type foldedBook struct {
 	book          Book
 	title, author titleForms
+	// The catalogue's title and author when they were edited by hand: releases are
+	// named either way (an edit usually corrects the catalogue to what trackers use, but
+	// not always), so either names the book.
+	matchedTitle, matchedAuthor *titleForms
 }
 
 type foldedLibrary []foldedBook
@@ -549,9 +575,36 @@ type foldedLibrary []foldedBook
 func foldLibrary(all []Book) foldedLibrary {
 	out := make(foldedLibrary, 0, len(all))
 	for _, b := range all {
-		out = append(out, foldedBook{book: b, title: titleFormsOf(b.Title), author: titleFormsOf(b.Author)})
+		fb := foldedBook{book: b, title: titleFormsOf(b.Title), author: titleFormsOf(b.Author)}
+		if b.Edited(FieldTitle) || b.Edited(FieldAuthor) {
+			m := b.Matched()
+			if t := titleFormsOf(m.Title); m.Title != b.Title && t.key() != "" {
+				fb.matchedTitle = &t
+			}
+			if a := titleFormsOf(m.Author); m.Author != b.Author && a.key() != "" {
+				fb.matchedAuthor = &a
+			}
+		}
+		out = append(out, fb)
 	}
 	return out
+}
+
+// titleIn reports whether the book's title — or the catalogue's, when edited — is in the
+// name, and how long the matched one is (the longest wins between books).
+func (fb foldedBook) titleIn(rel nameForms) (bool, int) {
+	ok, n := false, 0
+	if fb.title.in(rel) {
+		ok, n = true, len(fb.title.key())
+	}
+	if fb.matchedTitle != nil && fb.matchedTitle.in(rel) && len(fb.matchedTitle.key()) > n {
+		ok, n = true, len(fb.matchedTitle.key())
+	}
+	return ok, n
+}
+
+func (fb foldedBook) authorIn(rel nameForms) bool {
+	return fb.author.anyIn(rel) || (fb.matchedAuthor != nil && fb.matchedAuthor.anyIn(rel))
 }
 
 // matchRelease is MatchByRelease's pure core (separated so it's table-testable).
@@ -567,11 +620,11 @@ func (lib foldedLibrary) match(releaseName string) (Book, bool) {
 	var best Book
 	found, bestAuthor, bestLen := false, false, 0
 	for _, fb := range lib {
-		if !fb.title.in(rel) {
+		in, n := fb.titleIn(rel)
+		if !in {
 			continue
 		}
-		authorOK := fb.author.anyIn(rel)
-		n := len(fb.title.key())
+		authorOK := fb.authorIn(rel)
 		if !found || betterMatch(authorOK, n, bestAuthor, bestLen) {
 			best, found, bestAuthor, bestLen = fb.book, true, authorOK, n
 		}
@@ -601,11 +654,16 @@ func containsWords(hay, needle string) bool {
 //
 // fallback carries what the picker already knew (title/author/year/cover), because the work
 // endpoint doesn't return a publish year and often has no cover.
-func (s *Service) Rematch(ctx context.Context, id int64, olKey string, fallback metadata.BookResult) (Book, error) {
-	before, err := s.repo.Get(ctx, id)
+//
+// Details edited by hand stay edited unless clearEdits (the person's answer when the book
+// was re-matched to a different book): the new work's details go underneath them.
+func (s *Service) Rematch(ctx context.Context, id int64, olKey string, fallback metadata.BookResult, clearEdits bool) (Book, error) {
+	shown, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return Book{}, err
 	}
+	// The old key's identity is what the catalogue said, not the edits.
+	before := shown.Matched()
 	d, err := s.meta.GetBook(ctx, olKey)
 	if err != nil {
 		return Book{}, fmt.Errorf("fetch metadata: %w", err)
@@ -638,11 +696,23 @@ func (s *Service) Rematch(ctx context.Context, id int64, olKey string, fallback 
 	if next.ReleaseDate == "" && keepOld {
 		next.ReleaseDate = before.ReleaseDate // the same book; this catalogue just doesn't say
 	}
-	if err := s.repo.Rematch(ctx, id, next, keepOld); err != nil {
+	if err := s.repo.Rematch(ctx, id, next, keepOld, clearEdits); err != nil {
 		return Book{}, err
 	}
-	s.linkAuthor(ctx, id, next.Author, authorKey, !strings.EqualFold(before.Author, next.Author))
+	// An author edited by hand (and kept) decides the author link; otherwise the new
+	// work's author does.
+	if clearEdits || !shown.Edited(FieldAuthor) {
+		relink := !strings.EqualFold(before.Author, next.Author) || shown.Edited(FieldAuthor)
+		s.linkAuthor(ctx, id, next.Author, authorKey, relink)
+	}
 	s.repo.AddEvent(ctx, id, "matched", fmt.Sprintf("Re-matched from %q to %q (%s)", before.Title, next.Title, next.OLKey))
+	if len(shown.Edits) > 0 {
+		if clearEdits {
+			s.repo.AddEvent(ctx, id, "edited", "Details edited by hand were cleared with the re-match")
+		} else {
+			s.repo.AddEvent(ctx, id, "edited", "Details edited by hand were kept through the re-match")
+		}
+	}
 	s.log.Info("book re-matched", "id", id, "from", before.Title, "to", next.Title, "ol_key", next.OLKey)
 	return s.repo.Get(ctx, id)
 }

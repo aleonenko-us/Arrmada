@@ -126,6 +126,9 @@ func (e bookEdition) versionID() int64 {
 
 func (e bookEdition) key() string { return editionKey(e.book.ID, e.versionID(), e.kind) }
 
+// BookEditionKey names the edition a planned rename is for, the same across plans.
+func BookEditionKey(it BookRenameItem) string { return editionKey(it.BookID, it.VersionID, it.Kind) }
+
 func editionKey(bookID, versionID int64, kind string) string {
 	return strconv.FormatInt(bookID, 10) + ":" + strconv.FormatInt(versionID, 10) + ":" + kind
 }

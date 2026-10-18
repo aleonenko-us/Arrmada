@@ -168,7 +168,7 @@ func TestLinkedRequestSurvivesRematch(t *testing.T) {
 	if _, err := s.repo.db.ExecContext(ctx, `INSERT INTO request_subscribers (request_id, user_id, user_name) VALUES (?, 8, 'bob')`, req.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.books.(*books.Service).Rematch(ctx, b.ID, "hc:42", metadata.BookResult{}); err != nil {
+	if _, err := s.books.(*books.Service).Rematch(ctx, b.ID, "hc:42", metadata.BookResult{}, false); err != nil {
 		t.Fatal(err)
 	}
 	giveEbook(t, repo, ctx, b.ID)
@@ -258,7 +258,7 @@ func TestCreateWithAliasKeyAttachesToExistingRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.books.(*books.Service).Rematch(ctx, b.ID, "hc:42", metadata.BookResult{}); err != nil {
+	if _, err := s.books.(*books.Service).Rematch(ctx, b.ID, "hc:42", metadata.BookResult{}, false); err != nil {
 		t.Fatal(err)
 	}
 	first, sub, err := s.Create(ctx, Request{MediaType: "book", OLKey: "OL1W", Title: "Dune", Author: "Frank Herbert",

@@ -97,6 +97,9 @@ type entry struct {
 	Updated    string     `xml:"updated"`
 	Authors    []person   `xml:"author,omitempty"`
 	Issued     string     `xml:"dc:issued,omitempty"`
+	Language   string     `xml:"dc:language,omitempty"`
+	Publisher  string     `xml:"dc:publisher,omitempty"`
+	Identifier string     `xml:"dc:identifier,omitempty"`
 	Categories []category `xml:"category,omitempty"`
 	Summary    *text      `xml:"summary,omitempty"`
 	Content    *text      `xml:"content,omitempty"`
@@ -313,8 +316,15 @@ func bookEntry(b books.Book, authorHref string, now time.Time) entry {
 	e := entry{
 		Title:   b.Title,
 		ID:      fmt.Sprintf("urn:arrmada:book:%d", b.ID),
-		Updated: stamp(addedAt(b, now)),
+		Updated: stamp(updatedAt(b, now)),
 		Issued:  issued(b),
+		// Details edited by hand on the book page (language is a canonical code, which
+		// reads as the BCP 47 tag dc:language wants).
+		Language:  b.Language,
+		Publisher: b.Publisher,
+	}
+	if b.ISBN != "" {
+		e.Identifier = "urn:isbn:" + b.ISBN
 	}
 	if b.Author != "" {
 		e.Authors = []person{{Name: b.Author, URI: authorHref}}
@@ -362,6 +372,19 @@ func navEntry(id, title, about, href, kind, rel string, now time.Time) entry {
 	}
 	return entry{Title: title, ID: "urn:arrmada:opds:" + id, Updated: stamp(now),
 		Content: &text{Type: "text", Body: about}, Links: links}
+}
+
+// updatedAt is when the book's entry last changed: its details (an edit, a refresh, a new
+// cover — meta_updated_at) or, before any of that, when it was added. Readers that cache
+// a catalogue see a newer <updated> and take the new details.
+func updatedAt(b books.Book, now time.Time) time.Time {
+	t := addedAt(b, now)
+	if b.MetaUpdatedAt > 0 {
+		if m := time.UnixMilli(b.MetaUpdatedAt).UTC(); m.After(t) {
+			return m
+		}
+	}
+	return t
 }
 
 func addedAt(b books.Book, now time.Time) time.Time {

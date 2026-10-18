@@ -1244,7 +1244,15 @@ func (a *api) handleOverrideBookMetadata(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if !narratorOnly {
-		if err := a.deps.Books.OverrideMetadata(r.Context(), id, req.Title, req.Author, req.Year, req.Overview, req.CoverURL); err != nil {
+		err := a.deps.Books.OverrideMetadata(r.Context(), id, req.Title, req.Author, req.Year, req.Overview, req.CoverURL)
+		switch {
+		case errors.Is(err, books.ErrNotFound):
+			a.writeError(w, http.StatusNotFound, "book not found")
+			return
+		case errors.Is(err, books.ErrEditInvalid):
+			a.writeError(w, http.StatusBadRequest, editMessage(err))
+			return
+		case err != nil:
 			a.writeError(w, http.StatusInternalServerError, "could not update metadata")
 			return
 		}
@@ -1253,11 +1261,15 @@ func (a *api) handleOverrideBookMetadata(w http.ResponseWriter, r *http.Request)
 		if err := a.deps.Books.SetNarrator(r.Context(), id, *req.Narrator); errors.Is(err, books.ErrNotFound) {
 			a.writeError(w, http.StatusNotFound, "book not found")
 			return
+		} else if errors.Is(err, books.ErrEditInvalid) {
+			a.writeError(w, http.StatusBadRequest, editMessage(err))
+			return
 		} else if err != nil {
 			a.writeError(w, http.StatusInternalServerError, "could not update the narrator")
 			return
 		}
 	}
+	a.bookDetailsChanged()
 	a.writeJSON(w, http.StatusOK, map[string]any{"status": "updated"})
 }
 
@@ -1375,6 +1387,9 @@ func (a *api) handleRematchBook(w http.ResponseWriter, r *http.Request) {
 		Author   string `json:"author"`
 		Year     int    `json:"year"`
 		CoverURL string `json:"cover_url"`
+		// Edits says what happens to details edited by hand: "keep" (the default — the
+		// new work's details go underneath them) or "clear".
+		Edits string `json:"edits"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
@@ -1383,9 +1398,13 @@ func (a *api) handleRematchBook(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "ol_key is required")
 		return
 	}
+	if req.Edits != "" && req.Edits != "keep" && req.Edits != "clear" {
+		a.writeError(w, http.StatusBadRequest, "edits must be keep or clear")
+		return
+	}
 	b, err := a.deps.Books.Rematch(r.Context(), id, strings.TrimSpace(req.OLKey), metadata.BookResult{
 		Key: req.OLKey, Title: req.Title, Author: req.Author, Year: req.Year, CoverURL: req.CoverURL,
-	})
+	}, req.Edits == "clear")
 	switch {
 	case errors.Is(err, books.ErrNotFound):
 		a.writeError(w, http.StatusNotFound, "book not found")
@@ -1399,5 +1418,6 @@ func (a *api) handleRematchBook(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadGateway, "could not re-match: "+err.Error())
 		return
 	}
+	a.bookDetailsChanged()
 	a.writeJSON(w, http.StatusOK, b)
 }

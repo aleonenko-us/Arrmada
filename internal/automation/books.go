@@ -640,7 +640,29 @@ func bookQuery(b books.Book) string {
 // The title check downstream still keeps only this book's releases.
 //
 // Author and title also travel as parts, for an indexer whose caps take t=book.
+//
+// A title or author edited by hand is searched first: an edit is most often a correction
+// to what trackers call the book (a catalogue's illustrator credited as the author, a
+// UK title for a US release). When that finds nothing, the catalogue's own title and
+// author — kept underneath the edit — are tried too, so an edit can only widen the
+// search. Either way the book is the same book: its catalogue keys never change, and the
+// title check downstream accepts a release named either way.
 func (c *Coordinator) searchBook(ctx context.Context, b books.Book, edition string) (indexer.SearchResult, error) {
+	res, err := c.searchBookAs(ctx, b, edition)
+	if err != nil || len(res.Releases) > 0 {
+		return res, err
+	}
+	m := b.Matched()
+	if m.Title == b.Title && m.Author == b.Author {
+		return res, err
+	}
+	c.log.Info("book: nothing under the edited details — trying the catalogue's", "title", m.Title, "author", m.Author)
+	return c.searchBookAs(ctx, m, edition)
+}
+
+// searchBookAs is one round of searchBook for one set of names: author + title, then the
+// title alone.
+func (c *Coordinator) searchBookAs(ctx context.Context, b books.Book, edition string) (indexer.SearchResult, error) {
 	res, err := c.search(ctx, indexer.SearchQuery{
 		Text: bookQuery(b), Author: b.Author, BookTitle: b.Title,
 		MediaType: indexer.MediaBook, BookEdition: edition, Limit: 60})

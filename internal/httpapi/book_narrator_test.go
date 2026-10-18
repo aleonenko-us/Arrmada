@@ -12,8 +12,7 @@ import (
 )
 
 // The narrator is typed on the Books page: alone on the metadata route (the rest of
-// the book untouched, no "corrected by hand" event), with a full correction, or on an
-// audiobook version.
+// the book untouched), with a full correction, or on an audiobook version.
 func TestBookNarratorEdits(t *testing.T) {
 	s := bookCardServer(t)
 	ctx := context.Background()
@@ -31,8 +30,12 @@ func TestBookNarratorEdits(t *testing.T) {
 	if got.AudiobookNarrator != "Jeff Hays" || got.Title != "Dungeon Crawler Carl" || got.Author != "Matt Dinniman" {
 		t.Fatalf("after a narrator-only edit: %+v", got)
 	}
-	if evs, _ := s.deps.Books.Events(ctx, b.ID, 10); len(evs) != 0 {
+	// The narrator is one of the book's hand-edited details now, logged as one.
+	if evs, _ := s.deps.Books.Events(ctx, b.ID, 10); len(evs) != 1 || evs[0].Detail != "Details edited by hand: narrator" {
 		t.Fatalf("a narrator edit logged %+v", evs)
+	}
+	if !got.Edited(books.FieldNarrator) || got.Edited(books.FieldTitle) {
+		t.Fatalf("edited fields after a narrator-only edit: %v", got.Edits)
 	}
 	if rec := s.doBody("PUT", path, `{"narrator":"`+strings.Repeat("x", 201)+`"}`, cookie); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a 201-character narrator: HTTP %d", rec.Code)

@@ -300,17 +300,29 @@ func SQL(alias string) string {
 // characters (C0 and C1), the bidi controls that would reorder the text around it on a
 // page (U+202A–202E, U+2066–2069, U+200E/200F, U+061C), line and paragraph separators,
 // and a title with nothing visible in it (spaces or zero-width characters only).
-func CleanOverride(raw string) (string, bool) {
+func CleanOverride(raw string) (string, bool) { return CleanText(raw, MaxOverride, false) }
+
+// CleanText is CleanOverride's rules with a length of the caller's choosing, for other
+// text typed by hand to show in place of a catalogue's (a book's edited details).
+// multiline lets line breaks and tabs through (a description), with CRLF read as one
+// break; every other control and bidi character is still refused.
+func CleanText(raw string, max int, multiline bool) (string, bool) {
 	s := strings.TrimSpace(raw)
+	if multiline {
+		s = strings.ReplaceAll(s, "\r\n", "\n")
+	}
 	if s == "" {
 		return "", true
 	}
-	if utf8.RuneCountInString(s) > MaxOverride {
+	if utf8.RuneCountInString(s) > max {
 		return "", false
 	}
 	visible := false
 	for _, r := range s {
-		if unicode.IsControl(r) || bidiControl(r) || r == '\u2028' || r == '\u2029' {
+		if multiline && (r == '\n' || r == '\t') {
+			continue
+		}
+		if unicode.IsControl(r) || bidiControl(r) || r == ' ' || r == ' ' {
 			return "", false
 		}
 		if unicode.IsGraphic(r) && !unicode.IsSpace(r) && !unicode.Is(unicode.Cf, r) {

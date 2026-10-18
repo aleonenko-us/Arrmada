@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/listening"
 	"github.com/tristenlammi/arrmada/internal/store"
@@ -284,10 +285,51 @@ func carryOverTx(ctx context.Context, tx *sql.Tx, keep, drop Book) error {
 	// deliberately stays the kept book's own: the stamp says when the KEPT key was looked
 	// up, and an empty one only means the refresh job looks at it soon.
 	releaseDate := orStr(keep.ReleaseDate, drop.ReleaseDate)
-	_, err := tx.ExecContext(ctx,
+	if _, err := tx.ExecContext(ctx,
 		`UPDATE books SET monitored = ?, series_name = ?, series_position = ?, series_key = ?,
 		        description = ?, cover_url = ?, subjects_json = ?, release_date = ?, author_id = ? WHERE id = ?`,
-		b2i(monitored), seriesName, seriesPos, seriesKey, description, cover, subjectsJSON(subjects), cleanReleaseDate(releaseDate), authorID, keep.ID)
+		b2i(monitored), seriesName, seriesPos, seriesKey, description, cover, subjectsJSON(subjects), cleanReleaseDate(releaseDate), authorID, keep.ID); err != nil {
+		return err
+	}
+	return carryEditsTx(ctx, tx, keep.ID, drop)
+}
+
+// carryEditsTx gives the kept book the dropped one's hand edits (0334_book_edits) for the
+// fields the kept book hasn't edited itself: an edit is something the person typed, and a
+// merge shouldn't lose it. What the kept book showed for such a field goes underneath as
+// its catalogue value, so Reset brings it back. The kept book's own edits win.
+func carryEditsTx(ctx context.Context, tx *sql.Tx, keepID int64, drop Book) error {
+	if len(drop.Edits) == 0 {
+		return nil
+	}
+	keep, err := getTx(ctx, tx, keepID)
+	if err != nil {
+		return err
+	}
+	edits := Edits{}
+	for k, v := range keep.Edits {
+		edits[k] = v
+	}
+	var sets []string
+	var args []any
+	for _, f := range editFields {
+		if !drop.Edited(f.name) || keep.Edited(f.name) {
+			continue
+		}
+		edits[f.name] = f.get(&keep)
+		sets = append(sets, f.column+" = ?")
+		args = append(args, f.arg(f.get(&drop)))
+	}
+	if len(sets) == 0 {
+		return nil
+	}
+	raw, err := encodeEdits(edits)
+	if err != nil {
+		return err
+	}
+	sets = append(sets, "edits_json = ?", "edited_at = MAX(?, edited_at + 1)")
+	args = append(args, raw, time.Now().UnixMilli(), keepID)
+	_, err = tx.ExecContext(ctx, `UPDATE books SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...)
 	return err
 }
 
@@ -363,13 +405,7 @@ func uniqueLabel(label string, taken map[string]bool) string {
 }
 
 // bookTx loads one book row inside a transaction.
-func bookTx(ctx context.Context, tx *sql.Tx, id int64) (Book, error) {
-	b, err := scan(tx.QueryRowContext(ctx, `SELECT `+cols+` FROM books WHERE id = ?`, id))
-	if errors.Is(err, sql.ErrNoRows) {
-		return Book{}, ErrNotFound
-	}
-	return b, err
-}
+func bookTx(ctx context.Context, tx *sql.Tx, id int64) (Book, error) { return getTx(ctx, tx, id) }
 
 // versionsTx loads a book's audio versions inside a transaction.
 func versionsTx(ctx context.Context, tx *sql.Tx, bookID int64) ([]AudioVersion, error) {

@@ -16,7 +16,7 @@
 * $.libraryItems[].id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 * $.libraryItems[].libraryId idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 * $.libraryItems[].media.id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
-* $.libraryItems[].media.metadata.language null Arrmada keeps no language for a book; null, as Audiobookshelf sends when it has none
+* $.libraryItems[].media.metadata.language null the test books have no language set (a hand edit sets one); null, as Audiobookshelf sends when it has none
 * $.mediaProgress[].id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 * $.mediaProgress[].libraryItemId idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 * $.mediaProgress[].mediaItemId idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
@@ -32,7 +32,7 @@
 * $[].entities[].id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 * $[].entities[].libraryId idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 * $[].entities[].media.id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
-* $[].entities[].media.metadata.language null Arrmada keeps no language for a book; null, as Audiobookshelf sends when it has none
+* $[].entities[].media.metadata.language null the test books have no language set (a hand edit sets one); null, as Audiobookshelf sends when it has none
 authorize_after $.user.bookmarks[].libraryItemId idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 authorize_after $.user.mediaProgress[].id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 authorize_after $.user.mediaProgress[].libraryItemId idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
@@ -56,7 +56,7 @@ item $.media.audioFiles[].trackNumFromMeta null null when the file has no track 
 item $.media.id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 item $.media.libraryItemId idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 item $.media.metadata.authors[].id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
-item $.media.metadata.language null Arrmada keeps no language for a book; null, as Audiobookshelf sends when it has none
+item $.media.metadata.language null the test books have no language set (a hand edit sets one); null, as Audiobookshelf sends when it has none
 item $.media.metadata.series[].id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 item $.media.tracks[].metaTags.* missing only the tags a file actually carries are sent, as Audiobookshelf does (the recorded file had more)
 item $.media.tracks[].metaTags.* null only the tags a file actually carries are sent, as Audiobookshelf does (the recorded file had more)
@@ -68,7 +68,7 @@ library $.library.folders[].libraryId idshape Arrmada's own ids (b12, u3, arrmad
 library $.library.id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 library_items $.results[].folderId idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 library_items $.results[].media.id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
-library_items $.results[].media.metadata.language null Arrmada keeps no language for a book; null, as Audiobookshelf sends when it has none
+library_items $.results[].media.metadata.language null the test books have no language set (a hand edit sets one); null, as Audiobookshelf sends when it has none
 listening_stats $.dayOfWeek.Sunday missing keyed by day / weekday / book; Arrmada answers empty breakdowns (the listening log has no book column on purpose)
 listening_stats $.days.2026-10-11 missing keyed by day / weekday / book; Arrmada answers empty breakdowns (the listening log has no book column on purpose)
 listening_stats $.items.55555555-5555-4555-8555-555555555555 missing keyed by day / weekday / book; Arrmada answers empty breakdowns (the listening log has no book column on purpose)
@@ -88,13 +88,13 @@ play $.libraryItem.media.audioFiles[].trackNumFromMeta null null when the file h
 play $.libraryItem.media.id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 play $.libraryItem.media.libraryItemId idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 play $.libraryItem.media.metadata.authors[].id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
-play $.libraryItem.media.metadata.language null Arrmada keeps no language for a book; null, as Audiobookshelf sends when it has none
+play $.libraryItem.media.metadata.language null the test books have no language set (a hand edit sets one); null, as Audiobookshelf sends when it has none
 play $.libraryItem.media.metadata.series[].id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 play $.libraryItem.media.tracks[].metaTags.* missing only the tags a file actually carries are sent, as Audiobookshelf does (the recorded file had more)
 play $.libraryItem.media.tracks[].metaTags.* null only the tags a file actually carries are sent, as Audiobookshelf does (the recorded file had more)
 play $.libraryItem.media.tracks[].trackNumFromMeta null null when the file has no track tag, as Audiobookshelf sends then
 play $.mediaMetadata.authors[].id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
-play $.mediaMetadata.language null Arrmada keeps no language for a book; null, as Audiobookshelf sends when it has none
+play $.mediaMetadata.language null the test books have no language set (a hand edit sets one); null, as Audiobookshelf sends when it has none
 play $.mediaMetadata.series[].id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 progress_get $.mediaItemId idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 progress_patch $body body answers with the place actually kept (a held jump back isn't the one sent) instead of "OK"; Lissen's tests read it
@@ -102,4 +102,4 @@ series_paged $.results[].books[].folderId idshape Arrmada's own ids (b12, u3, ar
 series_paged $.results[].books[].id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 series_paged $.results[].books[].libraryId idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
 series_paged $.results[].books[].media.id idshape Arrmada's own ids (b12, u3, arrmada-audiobooks, au…/se…), kept for the devices that have them and their downloads; UUID ids only via AUD-14
-series_paged $.results[].books[].media.metadata.language null Arrmada keeps no language for a book; null, as Audiobookshelf sends when it has none
+series_paged $.results[].books[].media.metadata.language null the test books have no language set (a hand edit sets one); null, as Audiobookshelf sends when it has none

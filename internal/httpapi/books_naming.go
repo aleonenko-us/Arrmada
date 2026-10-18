@@ -122,10 +122,29 @@ type bookOrganizeSummary struct {
 	Skipped int `json:"skipped"`
 }
 
-// handleBookOrganizePreview is the dry run over every book: counts, then the editions that
-// would move and the conflicts, a page at a time, and a token naming exactly this plan.
-// Nothing moves.
+// organizeScope is the books a rename preview or apply covers: every book, or one
+// (?book_id= on the preview, "book_id" in the apply's body) — the book page's "Preview
+// rename" after an edit to its details. ok is false for a book id that isn't a number.
+func organizeScope(raw string) (ids []int64, ok bool) {
+	if raw == "" || raw == "0" {
+		return nil, true
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return nil, false
+	}
+	return []int64{id}, true
+}
+
+// handleBookOrganizePreview is the dry run over every book (or one, ?book_id=): counts,
+// then the editions that would move and the conflicts, a page at a time, and a token
+// naming exactly this plan. Nothing moves.
 func (a *api) handleBookOrganizePreview(w http.ResponseWriter, r *http.Request) {
+	ids, ok := organizeScope(r.URL.Query().Get("book_id"))
+	if !ok {
+		a.writeError(w, http.StatusBadRequest, "book_id must be a book's id")
+		return
+	}
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if offset < 0 {
@@ -137,7 +156,7 @@ func (a *api) handleBookOrganizePreview(w http.ResponseWriter, r *http.Request) 
 	if limit > organizePageMax {
 		limit = organizePageMax
 	}
-	plan, err := a.deps.Automation.BookRenamePlan(r.Context(), nil)
+	plan, err := a.deps.Automation.BookRenamePlan(r.Context(), ids)
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not preview the rename")
 		return
@@ -171,7 +190,8 @@ func (a *api) handleBookOrganizePreview(w http.ResponseWriter, r *http.Request) 
 // token — the scheme or the library changed — it answers 409 and nothing moves.
 func (a *api) handleBookOrganizeApply(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Token string `json:"token"`
+		Token  string `json:"token"`
+		BookID int64  `json:"book_id"` // 0 = every book, as previewed
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
@@ -180,7 +200,12 @@ func (a *api) handleBookOrganizeApply(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "token is required: preview first")
 		return
 	}
-	plan, err := a.deps.Automation.BookRenamePlan(r.Context(), nil)
+	ids, ok := organizeScope(strconv.FormatInt(req.BookID, 10))
+	if !ok {
+		a.writeError(w, http.StatusBadRequest, "book_id must be a book's id")
+		return
+	}
+	plan, err := a.deps.Automation.BookRenamePlan(r.Context(), ids)
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not check the rename")
 		return
