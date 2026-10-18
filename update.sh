@@ -436,7 +436,10 @@ reopen_bundled_qbit() {
   _made=$(docker compose run --rm --no-deps -T --entrypoint sh arrmada-app \
     -c 'if [ -f /data/qbittorrent-login.json ]; then echo yes; else echo no; fi' 2>/dev/null </dev/null | tr -d '\r' | tail -n 1)
   [ "$_made" = no ] && return 0
+  # The marker first: it tells the next Arrmada with the switch that this access was put
+  # back on purpose (it's Arrmada's to take away again), not set up by you since.
   if [ "$_made" = yes ] && [ -f docker/qbittorrent/reopen.sh ] &&
+    docker compose run --rm --no-deps -T --entrypoint sh arrmada-app -c 'touch /data/qbittorrent-reopened' >/dev/null 2>&1 </dev/null &&
     docker compose stop arrmada-qbittorrent >/dev/null 2>&1 &&
     docker compose run --rm --no-deps -T arrmada-qbittorrent-init sh /seed/reopen.sh >/dev/null 2>&1 </dev/null &&
     docker compose start arrmada-qbittorrent >/dev/null 2>&1; then
@@ -451,10 +454,29 @@ reopen_bundled_qbit() {
   say "  the login on qBittorrent's card in Settings → Connections (Edit); it's in the data folder:" >&2
   say "    docker exec Arrmada-app cat /data/qbittorrent-login.json" >&2
   say "  or switch its login-free access from the Docker network back on:" >&2
+  say "    docker compose run --rm --no-deps --entrypoint sh arrmada-app -c 'touch /data/qbittorrent-reopened'" >&2
   say "    docker compose stop arrmada-qbittorrent" >&2
   say "    docker compose run --rm --no-deps arrmada-qbittorrent-init sh /seed/reopen.sh" >&2
   say "    docker compose start arrmada-qbittorrent" >&2
   say "    docker compose restart arrmada-app" >&2
+}
+
+# tighten_env: .env can hold a key or token (ARRMADA_PLEX_TOKEN), and new installs make it
+# readable by its owner only. An older one is tightened the same way when it's yours and
+# you're not root: the owner keeps reading and writing it (so docker compose and this
+# script still can), and its owner never changes. A root-owned one is left as it is, since
+# other users on the server may be running docker compose with it.
+tighten_env() {
+  [ -f .env ] || return 0
+  _uid=$(id -u)
+  [ "$_uid" != 0 ] || return 0
+  _owner=$(stat -c %u .env 2>/dev/null) || return 0
+  _mode=$(stat -c %a .env 2>/dev/null) || return 0
+  [ "$_owner" = "$_uid" ] || return 0
+  case "$_mode" in *00) return 0 ;; esac
+  if chmod go-rwx .env 2>/dev/null; then
+    say "  .env is now readable by you only (it can hold a key or token)."
+  fi
 }
 
 # qbit_page_notice: installs from before 2026-10-18 publish qBittorrent's own page on every
@@ -1059,6 +1081,8 @@ if [ -n "$RUNNING_IMAGE" ]; then
   fi
   docker image tag "$RUNNING_IMAGE" arrmada:previous
 fi
+
+tighten_env
 
 # Settings that were removed: the app never sees them now, so say so here.
 if grep -qE '^ARRMADA_BASE_URL=.*[^/[:space:]"'"'"']' .env; then

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/connstatus"
@@ -32,8 +33,12 @@ type Service struct {
 	// transports caches which transports have a client to send to (HasTransport).
 	transports transportCache
 	// ownNets is the networks Arrmada's container is on (qbitauth.go); nil reads its
-	// interfaces. Tests set it.
-	ownNets func() []*net.IPNet
+	// interfaces. lookupHost resolves qBittorrent's host; nil uses DNS. Tests set them.
+	ownNets    func() []*net.IPNet
+	lookupHost func(host string) []net.IP
+	// qbitHeld says why the last SecureBundledQbit left an open qBittorrent alone on
+	// purpose ("" when it didn't), for the health line.
+	qbitHeld atomic.Pointer[string]
 }
 
 // transportCache remembers HasTransport's answer until a client is created, edited or

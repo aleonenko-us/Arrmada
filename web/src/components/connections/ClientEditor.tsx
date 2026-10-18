@@ -419,9 +419,10 @@ function BuiltInQbit({ port, builtIn, local, admin }: { port?: string; builtIn: 
       )}
       {port && local && (
         <p className="m-0 break-words text-ink-dim">
-          qBittorrent’s own page answers on this server only, at <span className="font-mono">http://127.0.0.1:{port}</span>. To open it
-          from another computer, add <span className="font-mono">ARRMADA_QBIT_WEBUI_BIND=0.0.0.0</span> to .env and run{" "}
-          <span className="font-mono">docker compose up -d arrmada-qbittorrent</span>.
+          qBittorrent’s own page is published on this server only, at <span className="font-mono">http://127.0.0.1:{port}</span> (an
+          install from before October 2026 keeps it open to your whole network until qBittorrent’s container is recreated; update.sh
+          says how). To open it from other computers, add <span className="font-mono">ARRMADA_QBIT_WEBUI_BIND=0.0.0.0</span> to .env
+          and run <span className="font-mono">docker compose up -d arrmada-qbittorrent</span>.
         </p>
       )}
       {admin && <ShowLogin app="qBittorrent" />}

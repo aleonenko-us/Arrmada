@@ -31,10 +31,13 @@ it shares with Arrmada (the installer writes that network's own subnet into its 
 config), so Arrmada can sign in to give it the password. Installs from before October 2026
 were set up with every private range instead (`10.0.0.0/8`, `172.16.0.0/12`,
 `192.168.0.0/16`), which covers your home network too; Arrmada replaces that with the
-password at its next start. It does so even if you removed qBittorrent's card or pointed it
-at another qBittorrent, as long as the bundled container still runs and lets Arrmada in.
-While a whitelist that broad is still on, the log says so at every start and **Settings →
-Status** shows a warning.
+password at its next start. It does so even if you removed qBittorrent's card (or switched
+it off), as long as the bundled container still runs and lets Arrmada in, and no other
+qBittorrent client is switched on in Arrmada: one may be reaching this same qBittorrent
+under another address (`localhost`, its container's name, the server's own address), and a
+password it doesn't have would shut it out. Then it's left for you to do. While a whitelist
+that broad is still on, the log says so at every start and **Settings → Status** shows a
+warning that says why it was left.
 
 Nothing else on the Docker network gets in without the password, including FlareSolverr's
 browser, which opens tracker pages. CSRF protection is on (Arrmada switches it on once for
@@ -50,12 +53,17 @@ on its card in Arrmada (**Edit**), or Arrmada can't get in; **Show its login** k
 the one Arrmada made.
 
 The "Bypass authentication for clients in whitelisted IP subnets" option is yours to use,
-with one exception: turned back on with a list Arrmada set up itself — the old private
-ranges above, or exactly the Docker network's own subnet — Arrmada takes it for its
-login-free access and switches it off again at its next start. Use your own subnets (just
-your LAN's, say) and it's left alone. An install that already had its own subnets there
-before this update is left alone too. **Settings → Status** warns about any whitelist that
-covers a `/16` or more beyond the Docker network.
+with one exception: turned back on with the old private ranges above, Arrmada takes it for
+its old login-free access and switches it off again at its next start. The Docker network's
+own subnet is yours too once Arrmada has given qBittorrent its password (to let your other
+containers in, say); Arrmada takes that one back only when `update.sh --rollback --with-db`
+or the [troubleshooting steps](troubleshooting.md#qbittorrent-login) switched it on, which
+leave a marker (`qbittorrent-reopened` in the data folder) saying so. Even then it switches
+a whitelist off only while qBittorrent still takes the login Arrmada kept: a password
+changed since is never overwritten (the log and Settings → Status say so instead). Use
+your own subnets (just your LAN's, say) and they're left alone. An install that already had
+its own subnets there before this update is left alone too. **Settings → Status** warns
+about any whitelist that covers a `/16` or more beyond the Docker network.
 
 ### qBittorrent's own page
 

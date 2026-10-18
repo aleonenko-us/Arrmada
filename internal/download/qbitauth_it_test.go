@@ -27,7 +27,7 @@ func TestSecureBundledQbitSeededLive(t *testing.T) {
 		t.Fatalf("the seeded config: %+v, %v (want open to this network only)", e, err)
 	}
 	p, _, _ := newQbitAuthAPI(base).anonymousPrefs(ctx)
-	if !svc.isDockerWhitelist(p.Whitelist) {
+	if !svc.isDockerWhitelist(ctx, base, p.Whitelist) {
 		t.Fatalf("the seeded whitelist %q isn't this network's own subnet (%v)", p.Whitelist, svc.localNets())
 	}
 	registerBundled(t, svc, base, "", "")

@@ -547,10 +547,23 @@ existing_install() {
       if [ -n "$_img" ]; then pull_image "$_img" || die "Couldn't download $_img."; else stamp_build; fi
     fi
     say "Starting Arrmada…"
+    _qbit_open=""
+    if [ -z "$(env_get ARRMADA_QBIT_WEBUI_BIND)" ]; then
+      case "$(docker port Arrmada-qbittorrent 8080/tcp 2>/dev/null | head -n 1)" in
+        0.0.0.0:* | "[::]:"* | :::*) _qbit_open=1 ;;
+      esac
+    fi
     docker compose up -d </dev/null || fail_start
     wait_healthy || fail_start
     say ""
     say "✓ Arrmada is running.  Open http://$(host_ip):$(env_get ARRMADA_PORT)"
+    if [ -n "$_qbit_open" ]; then
+      # Starting the stack recreated qBittorrent onto docker-compose.yml's default.
+      say ""
+      say "  qBittorrent's own page now answers on this server only (it was open to your whole"
+      say "  network). To open it to your network again, add ARRMADA_QBIT_WEBUI_BIND=0.0.0.0 to .env"
+      say "  and run: docker compose up -d arrmada-qbittorrent"
+    fi
     if [ -n "$SABNZBD" ]; then
       _sp=$(env_get ARRMADA_SABNZBD_PORT)
       say ""

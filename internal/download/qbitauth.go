@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -99,34 +100,85 @@ type BundledLoginKeeper interface {
 	// Make generates a new password for username and saves the login before returning it,
 	// so a password is never given to qBittorrent without being kept first.
 	Make(username string) (password string, err error)
+	// Reopened says whether update.sh (--rollback --with-db) or the troubleshooting steps
+	// switched qBittorrent's login-free access for the Docker network back on, on purpose,
+	// for Arrmada to secure again (a marker beside the login: qbittorrent-reopened).
+	Reopened() Reopen
+	// ClearReopened removes that marker once it has been acted on.
+	ClearReopened() error
 }
+
+// Reopen is why qBittorrent's login-free access for the Docker network was switched back on.
+type Reopen int
+
+const (
+	// ReopenNone: no marker. The Docker network's subnet is Arrmada's only before the
+	// switch has been done.
+	ReopenNone Reopen = iota
+	// ReopenRollback: update.sh put it back for an older build (empty marker). Arrmada
+	// takes it back, but never overwrites a password changed since.
+	ReopenRollback
+	// ReopenReset: the owner asked Arrmada to give qBittorrent its password again
+	// (troubleshooting: the marker says "reset"), overwriting whatever it has.
+	ReopenReset
+)
+
+// ErrQbitKeptLoginStale means the whitelist is one Arrmada set up, but qBittorrent no
+// longer takes the login Arrmada kept (someone changed its password since). Nothing was
+// changed: overwriting the password would shut out whoever changed it.
+var ErrQbitKeptLoginStale = errors.New("the bundled qBittorrent's password isn't the one Arrmada kept")
 
 // seedWhitelist is the subnet whitelist the Compose bundle's first qBittorrent config had.
 var seedWhitelist = []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
 
-// isArrmadaWhitelist says list is a whitelist Arrmada seeded, so Arrmada's to replace with a
-// password: the old seed's private ranges, or the Docker network's own subnet that
+// isArrmadaWhitelist says list is a whitelist Arrmada set up, so Arrmada's to replace with
+// a password: the old seed's private ranges, or the Docker network's own subnet that
 // docker/qbittorrent/init.sh (a new install) and reopen.sh (update.sh --rollback --with-db,
-// troubleshooting) write. Any other list is the owner's.
-func (s *Service) isArrmadaWhitelist(list string) bool {
-	return sameSubnets(list, seedWhitelist) || s.isDockerWhitelist(list)
+// troubleshooting) write. The Docker subnet counts only while ours may be: before the
+// switch has ever been done (fresh), or when reopen.sh's marker says it was just put back
+// on purpose. After the switch, the same subnet is an owner's choice (letting their other
+// containers in, say) and theirs to keep. Any other list is the owner's.
+func (s *Service) isArrmadaWhitelist(ctx context.Context, url, list string, fresh bool) bool {
+	return sameSubnets(list, seedWhitelist) || (fresh && s.isDockerWhitelist(ctx, url, list))
 }
 
 // isDockerWhitelist says every subnet in list is exactly one of the networks Arrmada's own
-// container is on: the Docker network it shares with qBittorrent.
-func (s *Service) isDockerWhitelist(list string) bool {
+// container is on, and one qBittorrent (url's host) is on too: the network they share.
+func (s *Service) isDockerWhitelist(ctx context.Context, url, list string) bool {
 	subs := splitSubnets(list)
 	if len(subs) == 0 {
 		return false
 	}
 	own := s.localNets()
+	qbit := s.hostAddrs(ctx, url)
 	for _, sub := range subs {
 		_, n, err := net.ParseCIDR(sub)
-		if err != nil || !hasNet(own, n) {
+		if err != nil || !hasNet(own, n) || !slices.ContainsFunc(qbit, n.Contains) {
 			return false
 		}
 	}
 	return true
+}
+
+// hostAddrs is the addresses url's host resolves to (qBittorrent's on the Docker network).
+func (s *Service) hostAddrs(ctx context.Context, rawURL string) []net.IP {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Hostname() == "" {
+		return nil
+	}
+	if s.lookupHost != nil {
+		return s.lookupHost(u.Hostname())
+	}
+	if ip := net.ParseIP(u.Hostname()); ip != nil {
+		return []net.IP{ip}
+	}
+	lctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIP(lctx, "ip", u.Hostname())
+	if err != nil {
+		return nil
+	}
+	return ips
 }
 
 // localNets is the networks Arrmada's container is on, from its interfaces' addresses.
@@ -160,18 +212,23 @@ func hasNet(nets []*net.IPNet, n *net.IPNet) bool {
 }
 
 // cardlessQbit is the client SecureBundledQbit works with when no card points at url: the
-// login Arrmada keeps, or none. Name is empty when there's nothing to do: a client of the
-// owner's signs in to url (their card relies on whatever access it has now), or qBittorrent
-// already asks Arrmada's network for a password. That is asked without signing in, so a
-// qBittorrent with a password of the owner's never counts a failed login against Arrmada.
+// login Arrmada keeps, or none. Name is empty when there's nothing to do. That's so while
+// any qBittorrent card of the owner's is switched on: it may well reach this same
+// qBittorrent under another address (a trailing slash, localhost for 127.0.0.1, the
+// container's name or IP, the server's LAN address and published port), and a password it
+// doesn't have would shut it out (and get its address banned). The health line says why
+// it was left (BundledQbitExposure). It's also so when qBittorrent already asks Arrmada's
+// network for a password, which is found out without signing in, so a qBittorrent with a
+// password of the owner's never counts a failed login against Arrmada.
 func (s *Service) cardlessQbit(ctx context.Context, api *qbitAuthAPI, url string, keeper BundledLoginKeeper) (Client, error) {
 	clients, err := s.repo.List(ctx)
 	if err != nil {
 		return Client{}, err
 	}
 	for _, c := range clients {
-		if c.Kind == KindQbittorrent && c.URL == url {
-			s.log.Info("bundled qBittorrent: a client of yours signs in to it, so Arrmada leaves its login settings alone", "name", c.Name)
+		if c.Kind == KindQbittorrent && c.Enabled {
+			s.log.Info("bundled qBittorrent: it has no card of its own, and a qBittorrent client of yours is switched on (it may reach this one under another address), so Arrmada leaves its login settings alone", "name", c.Name)
+			s.holdQbit(fmt.Sprintf("your download client “%s” may sign in to it without a password, and would be shut out", c.Name))
 			return Client{}, nil
 		}
 	}
@@ -196,6 +253,19 @@ type QbitExposure struct {
 	Broad []string
 	// OldSeed: the whitelist is exactly the one the first Compose config had.
 	OldSeed bool
+	// Held says why Arrmada's last start left it as it is on purpose ("" when it didn't).
+	Held string
+}
+
+// holdQbit records why SecureBundledQbit left an open qBittorrent alone on purpose ("" to
+// clear it), for BundledQbitExposure.
+func (s *Service) holdQbit(why string) { s.qbitHeld.Store(&why) }
+
+func (s *Service) qbitHeldReason() string {
+	if p := s.qbitHeld.Load(); p != nil {
+		return *p
+	}
+	return ""
 }
 
 // BundledQbitExposure asks the qBittorrent at url, without signing in, whether it lets
@@ -206,7 +276,7 @@ func (s *Service) BundledQbitExposure(ctx context.Context, url string) (QbitExpo
 	if err != nil || !open {
 		return QbitExposure{}, err
 	}
-	e := QbitExposure{Open: true}
+	e := QbitExposure{Open: true, Held: s.qbitHeldReason()}
 	if !p.WhitelistEnabled {
 		return e, nil // in some other way (it only bypasses for localhost): nothing to name
 	}
@@ -233,14 +303,28 @@ func (s *Service) BundledQbitExposure(ctx context.Context, url string) (QbitExpo
 // The bundled card switched off is secured all the same (and given the login, ready for
 // when it's back on). With no card at url (removed, or pointed at another qBittorrent) the
 // container is still there and still open, so it's secured with the login Arrmada keeps,
-// but only while it lets Arrmada in without a password: one that already asks for one is
-// left alone, and so is one a client of the owner's signs in to (it would be shut out).
-// Once done it isn't redone, unless qBittorrent's config was started over with a
-// whitelist Arrmada seeded (isArrmadaWhitelist).
+// but only while it lets Arrmada in without a password, and only while no qBittorrent card
+// is switched on at all (cardlessQbit): one may reach it under another address.
+// Once done it isn't redone, unless the whitelist is Arrmada's again (the old seed's, or
+// the Docker network's put back by reopen.sh: isArrmadaWhitelist) and qBittorrent still
+// takes the login Arrmada kept: a password changed since is never overwritten
+// (ErrQbitKeptLoginStale), and the health line says why it was left.
 func (s *Service) SecureBundledQbit(ctx context.Context, url string, keeper BundledLoginKeeper) (SecureOutcome, error) {
 	if s.flags == nil {
 		return SecureSkipped, errors.New("no settings to keep the progress in")
 	}
+	s.holdQbit("")
+	reopened := keeper.Reopened()
+	out, err := s.secureBundledQbit(ctx, url, keeper, reopened)
+	if err == nil && reopened != ReopenNone {
+		if cerr := keeper.ClearReopened(); cerr != nil {
+			s.log.Warn("bundled qBittorrent: couldn't remove the reopened marker", "err", cerr)
+		}
+	}
+	return out, err
+}
+
+func (s *Service) secureBundledQbit(ctx context.Context, url string, keeper BundledLoginKeeper, reopened Reopen) (SecureOutcome, error) {
 	c, ok, err := s.repo.BundledOf(ctx, KindQbittorrent)
 	if err != nil {
 		return SecureSkipped, err
@@ -276,6 +360,7 @@ func (s *Service) SecureBundledQbit(ctx context.Context, url string, keeper Bund
 		if err := s.flags.Set(ctx, KeyBundledQbitCSRF, "1"); err != nil {
 			return SecureSkipped, err
 		}
+		s.log.Info("bundled qBittorrent: switched its CSRF protection and localhost login on (once; switch them off again in qBittorrent if you need to)", "name", c.Name, "has_card", card)
 	}
 
 	// A check cut short last time may have left the reverse-proxy settings borrowed. The
@@ -325,7 +410,7 @@ func (s *Service) SecureBundledQbit(ctx context.Context, url string, keeper Bund
 			return SecureAlready, s.saveQbitAuthState(ctx, qbitAuthState{Phase: qbitAuthSecured})
 		}
 		return SecureAlready, nil
-	case !s.isArrmadaWhitelist(p.Whitelist):
+	case !s.isArrmadaWhitelist(ctx, url, p.Whitelist, st.Phase != qbitAuthSecured || reopened != ReopenNone):
 		// A whitelist the owner set up (changed from the seed's, or turned on again with
 		// subnets of their own): theirs to keep. Only one Arrmada seeded is its to replace.
 		if st.Phase != qbitAuthSecured {
@@ -354,6 +439,29 @@ func (s *Service) SecureBundledQbit(ctx context.Context, url string, keeper Bund
 			verified, outcome = vs, SecureKeptPassword
 		} else {
 			s.log.Warn("bundled qBittorrent: the login on its card doesn't work; Arrmada is giving it a password of its own", "name", c.Name)
+		}
+	}
+
+	// The login Arrmada kept: when qBittorrent still takes it, nothing needs changing. When
+	// it doesn't after the switch was done (or after update.sh's reopen), someone changed
+	// the password since: overwriting it would shut them out, so everything is left as it
+	// is. Only the owner's own reset (troubleshooting) overwrites it.
+	if verified == nil && haveSaved {
+		vs, ok, err := s.checkQbitLogin(ctx, api, sess, p, saved, savedPass)
+		if err != nil {
+			return SecureSkipped, err
+		}
+		switch {
+		case ok:
+			verified, user, pass = vs, saved, savedPass
+			if card {
+				if err := s.adoptBundledLogin(ctx, c, user, pass); err != nil {
+					return SecureSkipped, err
+				}
+			}
+		case reopened != ReopenReset && (st.Phase == qbitAuthSecured || reopened == ReopenRollback):
+			s.holdQbit("its password isn't the one Arrmada kept (was it changed in qBittorrent?), and Arrmada won't overwrite it")
+			return SecureSkipped, ErrQbitKeptLoginStale
 		}
 	}
 

@@ -130,6 +130,32 @@ func (f loginFile) Load() (string, string, bool, error) {
 	return l.Username, l.Password, true, nil
 }
 
+// reopenedMarker is the file update.sh (--rollback --with-db) and the troubleshooting steps
+// leave beside the login when they switch qBittorrent's Docker-network access back on.
+func (f loginFile) reopenedMarker() string {
+	return filepath.Join(filepath.Dir(f.path), "qbittorrent-reopened")
+}
+
+// Reopened is what the marker says: there and empty after update.sh's rollback, "reset"
+// when the owner asked Arrmada to give qBittorrent its password again.
+func (f loginFile) Reopened() download.Reopen {
+	b, err := os.ReadFile(f.reopenedMarker())
+	switch {
+	case err != nil:
+		return download.ReopenNone
+	case strings.TrimSpace(string(b)) == "reset":
+		return download.ReopenReset
+	}
+	return download.ReopenRollback
+}
+
+func (f loginFile) ClearReopened() error {
+	if err := os.Remove(f.reopenedMarker()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 func (f loginFile) Make(username string) (string, error) {
 	l, err := aio.NewLogin(username)
 	if err != nil {
@@ -174,8 +200,13 @@ func secureBundledQbit(ctx context.Context, log *slog.Logger, downloads *downloa
 		log.Warn("could not reach the bundled qBittorrent to give it a password; it still lets Arrmada in as before, and Arrmada tries again at its next start", "err", last)
 	case errors.Is(last, download.ErrQbitLoginRefused):
 		log.Warn("the bundled qBittorrent asks for a password Arrmada doesn't have: enter it on its card in Settings → Connections (see docs/troubleshooting.md)", "err", last)
+	case errors.Is(last, download.ErrQbitKeptLoginStale):
+		log.Warn("the bundled qBittorrent lets the Docker network in without a password again, but its password isn't the one Arrmada kept, so Arrmada left it as it is: enter its current login on its card in Settings → Connections, or switch the whitelist off in qBittorrent (Tools → Options → WebUI)", "err", last)
 	case last != nil:
 		log.Warn("could not give the bundled qBittorrent a password; it still lets Arrmada in as before, and Arrmada tries again at its next start", "err", last)
+	case out == download.SecureNewPassword && !hasBundledCard(ctx, downloads, cfg.QbittorrentURL):
+		// No card to show it on: say where it is.
+		log.Info("the bundled qBittorrent now asks for a password, which Arrmada made; it has no card in Settings → Connections, so read it with: docker exec Arrmada-app cat /data/qbittorrent-login.json (Restore bundled qBittorrent brings the card back with it)")
 	case out == download.SecureNewPassword:
 		log.Info("the bundled qBittorrent now asks for a password, which Arrmada made and signs in with; an admin can see it on its card in Settings → Connections")
 	case out == download.SecureKeptPassword:
@@ -192,8 +223,14 @@ func secureBundledQbit(ctx context.Context, log *slog.Logger, downloads *downloa
 // whitelist still lets whole networks in without a password, asked without signing in
 // (download.Service.BundledQbitExposure), so it clears by itself once that's fixed.
 func bundledQbitCheck(downloads *download.Service, cfg config.Config) health.Check {
-	return health.BundledQbitCheck(func(ctx context.Context) ([]string, bool, error) {
+	return health.BundledQbitCheck(func(ctx context.Context) (health.QbitExposure, error) {
 		exp, err := downloads.BundledQbitExposure(ctx, cfg.QbittorrentURL)
-		return exp.Broad, exp.OldSeed, err
+		return health.QbitExposure{Broad: exp.Broad, OldSeed: exp.OldSeed, Held: exp.Held}, err
 	})
+}
+
+// hasBundledCard says the bundled qBittorrent's card is there and points at url.
+func hasBundledCard(ctx context.Context, downloads *download.Service, url string) bool {
+	c, ok, err := downloads.BundledClient(ctx, download.KindQbittorrent)
+	return err == nil && ok && c.URL == url
 }

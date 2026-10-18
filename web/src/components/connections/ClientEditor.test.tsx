@@ -192,7 +192,8 @@ describe("built-in qBittorrent", () => {
     vi.spyOn(downloadClientApi, "downloadClientStatus").mockResolvedValue({ listen_port: 6881 });
     render(<ClientEditor client={qb({ url: "http://arrmada-qbittorrent:8080", ui_port: "8081", built_in: undefined, ui_local: true })} onSaved={() => {}} admin />);
     expect(screen.queryByRole("link", { name: /:8081/ })).toBeNull();
-    expect(screen.getByText(/answers on this server only/)).toBeTruthy();
+    expect(screen.getByText(/published on this server only/)).toBeTruthy();
+    expect(screen.getByText(/until qBittorrent’s container is recreated/)).toBeTruthy();
     expect(screen.getByText("http://127.0.0.1:8081")).toBeTruthy();
     expect(screen.getByText("ARRMADA_QBIT_WEBUI_BIND=0.0.0.0")).toBeTruthy();
   });
