@@ -38,7 +38,17 @@ func TestUpdateDownloadClient(t *testing.T) {
 	_, kid := s.user(t, "kid@example.com", auth.RoleRequester)
 	path := fmt.Sprintf("/api/v1/downloadclients/%d", c.ID)
 
+	// A new address with the password left blank is refused, and nothing is saved: the
+	// saved password only ever goes to the address it was saved for.
 	rec := s.doBody("PUT", path, `{"name":"qb home","kind":"qbittorrent","url":"http://qb:9090","username":"me","password":"","enabled":false}`, mgr)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "Enter the password again for the new address") {
+		t.Fatalf("new address, blank password: HTTP %d %s", rec.Code, rec.Body)
+	}
+	if stored, _ := dl.Get(ctx, c.ID); stored.URL != "http://qb:8080" || stored.Name != "qb" || !stored.Enabled {
+		t.Fatalf("a refused edit changed the client: %+v", stored)
+	}
+
+	rec = s.doBody("PUT", path, `{"name":"qb home","kind":"qbittorrent","url":"http://QB:8080/","username":"me","password":"","enabled":false}`, mgr)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("edit: HTTP %d %s", rec.Code, rec.Body)
 	}
@@ -52,7 +62,7 @@ func TestUpdateDownloadClient(t *testing.T) {
 		Bundled bool   `json:"bundled"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &got)
-	if got.Name != "qb home" || got.URL != "http://qb:9090" || got.Enabled || got.Bundled {
+	if got.Name != "qb home" || got.URL != "http://QB:8080/" || got.Enabled || got.Bundled {
 		t.Errorf("response = %+v", got)
 	}
 	if stored, _ := dl.Get(ctx, c.ID); stored.Password != "old-secret" {

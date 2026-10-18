@@ -165,6 +165,10 @@ func (a *api) handleUpdateInsightsConfig(w http.ResponseWriter, r *http.Request)
 		u = *req.URL
 	}
 	if err := a.deps.Insights.SetConfig(r.Context(), u, req.Token, req.Enabled, req.PollSeconds); err != nil {
+		if errors.Is(err, insights.ErrTokenForNewAddress) {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		a.writeError(w, http.StatusInternalServerError, "could not save Plex settings")
 		return
 	}
@@ -183,7 +187,12 @@ func (a *api) handleInsightsTest(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	a.writeJSON(w, http.StatusOK, a.deps.Insights.Test(ctx, req.URL, req.Token))
+	res, err := a.deps.Insights.Test(ctx, req.URL, req.Token)
+	if err != nil {
+		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	a.writeJSON(w, http.StatusOK, res)
 }
 
 // handleInsightsPlexAuthStart begins a "Sign in with Plex" flow: returns the PIN id

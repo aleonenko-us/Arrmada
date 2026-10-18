@@ -10,12 +10,17 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/jobs"
+	"github.com/tristenlammi/arrmada/internal/netsafe"
 )
 
 const (
 	keyProwlarrURL = indexer.SettingProwlarrURL
 	keyProwlarrKey = indexer.SettingProwlarrKey
 )
+
+// errKeyForNewAddress is the refusal for a changed address with the key left blank: the
+// saved key is only ever sent to the address it was saved with.
+const errKeyForNewAddress = "Enter the API key again for the new address — the saved key is only sent to the address it was saved for."
 
 // prowlarrUIPort is the host port Prowlarr's web UI is published on. install.sh picks the
 // first free one of 9696-9698 and compose passes it in as ARRMADA_PROWLARR_HOST_PORT; the
@@ -72,7 +77,8 @@ func (a *api) handleProwlarrSettings(w http.ResponseWriter, r *http.Request) {
 
 // handleProwlarrSync pulls indexers from Prowlarr and mirrors them into Arrmada.
 // Body {url, api_key} are optional — a blank URL falls back to the configured
-// default, and a blank key reuses the stored one. Successful values are saved.
+// default, and a blank key reuses the stored one, but only for the stored address (a new
+// address needs its key typed). Successful values are saved.
 // add_flaresolverr_proxy adds Arrmada's FlareSolverr to a Prowlarr that isn't the
 // bundled one (the bundled one always gets it).
 func (a *api) handleProwlarrSync(w http.ResponseWriter, r *http.Request) {
@@ -85,13 +91,20 @@ func (a *api) handleProwlarrSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	saved := a.deps.Settings.Get(ctx, keyProwlarrURL, a.deps.Config.ProwlarrURL)
 	url := req.URL
 	if url == "" {
-		url = a.deps.Settings.Get(ctx, keyProwlarrURL, a.deps.Config.ProwlarrURL)
+		url = saved
 	}
 	key := req.APIKey
 	if key == "" {
+		// The saved key only ever goes back to the address it was saved for: otherwise
+		// anyone who can run a sync could point it at their own server and read the key.
 		key = a.deps.Settings.Get(ctx, keyProwlarrKey, "")
+		if key != "" && !netsafe.SameEndpoint(url, saved) {
+			a.writeError(w, http.StatusBadRequest, errKeyForNewAddress)
+			return
+		}
 	}
 	// The FlareSolverr URL Prowlarr is pointed at is the one in Settings (env as fallback).
 	flare := ""

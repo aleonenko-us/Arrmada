@@ -97,12 +97,14 @@ func (s *Service) PollPlexAuth(ctx context.Context, pinID int) (PlexAuthResult, 
 		if id, name, err := s.probe(ctx, url, token); err == nil && (listErr != nil || ownsMachine(cands, id)) {
 			s.saveIdentity(ctx, id, name)
 			s.enableIfUnset(ctx)
+			s.clearUnbound(ctx)
 			res.ServerName = name
 			return res, nil
 		}
 	}
 	if listErr != nil {
 		s.log.Warn("insights: could not list your Plex servers after sign-in", "err", listErr)
+		s.markUnbound(ctx, nil) // the address is theirs to type
 		return res, nil
 	}
 	var answering []ServerChoice
@@ -122,6 +124,7 @@ func (s *Service) PollPlexAuth(ctx context.Context, pinID int) (PlexAuthResult, 
 	switch len(answering) {
 	case 0:
 		s.log.Warn("insights: signed in with Plex, but none of your servers answered", "servers", len(cands))
+		s.markUnbound(ctx, nil) // the address is theirs to type
 	case 1:
 		ch := answering[0]
 		if err := s.settings.Set(ctx, keyURL, ch.URL); err != nil {
@@ -129,9 +132,11 @@ func (s *Service) PollPlexAuth(ctx context.Context, pinID int) (PlexAuthResult, 
 		}
 		s.saveIdentity(ctx, ch.MachineID, ch.Name)
 		s.enableIfUnset(ctx)
+		s.clearUnbound(ctx)
 		res.ServerName = ch.Name
 	default:
 		res.Choices = answering
+		s.markUnbound(ctx, answering) // one of these is picked next
 	}
 	return res, nil
 }

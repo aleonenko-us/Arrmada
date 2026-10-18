@@ -6,6 +6,7 @@ import { Button } from "../../ui";
 import { PathCheckLine, PathMappings } from "./PathMappings";
 import { Labeled } from "./IndexerEditor";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
+import { secretMoved } from "../../lib/sameEndpoint";
 
 // The download-client form, moved from the old Download clients page into the cards on
 // Settings → Connections. It adds a client — qBittorrent for torrents or SABnzbd for
@@ -44,6 +45,10 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const kindName = useId();
+  // The stored secret only ever goes to the address it was saved for: a changed URL needs
+  // it typed again (the server refuses the edit otherwise).
+  const moved = !!editing && secretMoved({ saved: true, typed: password, url, savedUrl: editing.url });
+  const movedHint = `New address: enter its ${usenet ? "API key" : "password"}. The saved one is only sent to the address it was saved for.`;
   // Dirty once the form differs from how it opened.
   const shape = JSON.stringify([kind, name, url, username, password, priority]);
   const [opened] = useState(shape);
@@ -118,14 +123,14 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
             <Labeled label="URL" hint="As reached from Arrmada, e.g. http://sabnzbd:8080">
               <input className={field} style={fieldStyle} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://sabnzbd:8080" inputMode="url" autoComplete="off" required />
             </Labeled>
-            <Labeled label="API key" hint="SABnzbd → Config → General → API Key">
+            <Labeled label="API key" hint={moved ? movedHint : "SABnzbd → Config → General → API Key"}>
               <input
                 type="password"
                 className={field}
                 style={fieldStyle}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={editing ? "unchanged; leave blank to keep" : undefined}
+                placeholder={moved ? "enter the API key for the new address" : editing ? "unchanged; leave blank to keep" : undefined}
                 autoComplete="off"
                 required={!editing}
               />
@@ -146,14 +151,14 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
             <Labeled label="Username">
               <input className={field} style={fieldStyle} value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" />
             </Labeled>
-            <Labeled label="Password">
+            <Labeled label="Password" hint={moved ? movedHint : undefined}>
               <input
                 type="password"
                 className={field}
                 style={fieldStyle}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={editing ? "unchanged; leave blank to keep" : undefined}
+                placeholder={moved ? "enter the password for the new address" : editing ? "unchanged; leave blank to keep" : undefined}
                 autoComplete="new-password"
               />
             </Labeled>

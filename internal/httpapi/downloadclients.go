@@ -15,6 +15,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/libroots"
+	"github.com/tristenlammi/arrmada/internal/netsafe"
 	"github.com/tristenlammi/arrmada/internal/scheduler"
 )
 
@@ -259,6 +260,16 @@ func (a *api) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Request)
 	// save the rest and leave a qBittorrent row answering as something else.
 	if download.Kind(req.Kind) != cur.Kind {
 		a.writeError(w, http.StatusBadRequest, "a download client's kind can't be changed — add a new client instead")
+		return
+	}
+	// A blank password keeps the saved one (SABnzbd's API key lives there too), and that
+	// only ever goes to the address it was saved for.
+	if req.Password == "" && cur.Password != "" && !netsafe.SameEndpoint(req.URL, cur.URL) {
+		msg := errPasswordForNewAddress
+		if cur.Kind == download.KindSABnzbd {
+			msg = errKeyForNewAddress
+		}
+		a.writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	enabled := cur.Enabled

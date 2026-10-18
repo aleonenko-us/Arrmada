@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 import { indexerApi } from "../../lib/indexerApi";
 import { prowlarrLastSyncLine, prowlarrSyncMessage, prowlarrUILink } from "../../lib/indexerStatus";
 import { useQuery } from "../../lib/query";
+import { secretMoved } from "../../lib/sameEndpoint";
 
 // ProwlarrPanel opens inside the Prowlarr card: pull Prowlarr's indexers in as Torznab
 // feeds (and from then on every hour). Re-syncing keeps what was set here; indexers
-// disabled or removed in Prowlarr are turned off. A blank key reuses the saved one.
+// disabled or removed in Prowlarr are turned off. A blank key reuses the saved one, but only
+// at the saved address: a changed URL needs its key typed again.
 
 // isBundledProwlarr: the Prowlarr that ships with Arrmada, by its compose service name.
 function isBundledProwlarr(u: string): boolean {
@@ -32,6 +34,8 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
   // The bundled Prowlarr is Arrmada's own and always gets Arrmada's FlareSolverr; any other
   // Prowlarr is someone's own setup and is only changed when this box is ticked.
   const bundled = isBundledProwlarr(url);
+  // The saved key is only sent to the address it was saved for (the server refuses otherwise).
+  const keyMoved = secretMoved({ saved: hasKey, typed: apiKey, url, savedUrl: info.data?.url ?? url });
   // Re-read after a sync (clicked or the hourly one) so "Last synced" stays current.
   const info = useQuery("prowlarr-info", () => indexerApi.prowlarrInfo(), { staleMs: 60_000 });
 
@@ -97,9 +101,10 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
             style={fieldStyle}
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder={hasKey ? "•••••••• (leave blank to reuse)" : `${bundled ? `Bundled Prowlarr (port ${port})` : "Prowlarr"} → Settings → General`}
+            placeholder={keyMoved ? "Enter the key for the new address" : hasKey ? "•••••••• (leave blank to reuse)" : `${bundled ? `Bundled Prowlarr (port ${port})` : "Prowlarr"} → Settings → General`}
             autoComplete="off"
           />
+          {keyMoved && <span className="text-xs" style={{ color: "var(--accent-text)" }}>New address: enter its API key. The saved key is only sent to the address it was saved for.</span>}
         </label>
       </div>
       <p className="mt-2.5 text-xs text-ink-faint">

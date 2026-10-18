@@ -5,12 +5,14 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
+	"github.com/tristenlammi/arrmada/internal/netsafe"
 )
 
 // indexerView is an indexer as the Indexers page reads it: its settings (secrets are
@@ -242,6 +244,12 @@ func (a *api) handleUpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "invalid kind")
 		return
 	}
+	// A blank key or password keeps the saved one, which only ever goes to the address it
+	// was saved for.
+	if msg := savedSecretMoves(kind, req.URL, req.APIKey, req.Password, old); msg != "" {
+		a.writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	// Turning a row into a usenet indexer is adding one, and needs a usenet client the same.
 	if kind == indexer.KindNewznab && old.Kind != indexer.KindNewznab && !a.usenetClient(r.Context()) {
 		a.writeError(w, http.StatusBadRequest, errNeedsUsenetClient)
@@ -354,8 +362,12 @@ func (a *api) handleTestIndexerSettings(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		// A secret saved for one kind means nothing to another, so it's only filled in
-		// for the same kind.
+		// for the same kind, and never sent to an address other than its own.
 		if stored.Kind == idx.Kind {
+			if msg := savedSecretMoves(idx.Kind, idx.URL, idx.APIKey, idx.Password, stored); msg != "" {
+				a.writeError(w, http.StatusBadRequest, msg)
+				return
+			}
 			if idx.APIKey == "" {
 				idx.APIKey = stored.APIKey
 				// A MyAnonaMouse session can be rotated by the site on any request; keeping
@@ -397,6 +409,26 @@ func (a *api) handleTestIndexerSettings(w http.ResponseWriter, r *http.Request) 
 	}
 	a.writeJSON(w, http.StatusOK, out)
 }
+
+// savedSecretMoves is the refusal ("" = fine) for an edit or test that would send an
+// indexer's saved key or password to a different address: a new address with the secret
+// left blank. TorrentLeech and MyAnonaMouse always talk to their own site, so their
+// address field sends nothing anywhere; nor does an empty address.
+func savedSecretMoves(kind indexer.Kind, newURL, apiKey, password string, stored indexer.Indexer) string {
+	if kind == indexer.KindTorrentLeech || kind == indexer.KindMAM || strings.TrimSpace(newURL) == "" || netsafe.SameEndpoint(newURL, stored.URL) {
+		return ""
+	}
+	switch {
+	case apiKey == "" && stored.APIKey != "":
+		return errKeyForNewAddress
+	case password == "" && stored.Password != "":
+		return errPasswordForNewAddress
+	}
+	return ""
+}
+
+// errPasswordForNewAddress is errKeyForNewAddress for a saved password.
+const errPasswordForNewAddress = "Enter the password again for the new address — the saved password is only sent to the address it was saved for."
 
 // pathID parses the {id} path segment, writing a 400 on failure.
 func (a *api) pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
