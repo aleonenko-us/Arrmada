@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/mediaserver"
+	"github.com/tristenlammi/arrmada/internal/notify"
 	"github.com/tristenlammi/arrmada/internal/plex"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
@@ -283,7 +284,8 @@ func (s *Service) publish(topic string, sess plex.Session) {
 		title = sess.ShowTitle + " · " + sess.Title
 	}
 	data := map[string]any{
-		"user": sess.UserName, "title": title, "player": sess.PlayerName,
+		// A Jellyfin user name can be an email; an alert never carries one.
+		"user": notify.PersonName(sess.UserName), "title": title, "player": sess.PlayerName,
 		"platform": sess.Platform, "decision": sess.Decision(),
 		"user_id": sess.UserID, "rating_key": sess.RatingKey, "session_key": sess.SessionKey,
 		"grandparent_title": sess.ShowTitle, "media_type": sess.Type, "year": sess.Year,

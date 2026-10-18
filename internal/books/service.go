@@ -97,19 +97,6 @@ func (s *Service) Detail(ctx context.Context, key string) (*metadata.BookDetails
 	return s.meta.GetBook(ctx, key)
 }
 
-// CatalogueCover is the catalogue's own cover for a work: "" without a catalogue, an
-// answer or a cover. A book request's cover comes from here, never from the requester.
-func (s *Service) CatalogueCover(ctx context.Context, key string) string {
-	if s.meta == nil || key == "" {
-		return ""
-	}
-	d, err := s.meta.GetBook(ctx, key)
-	if err != nil || d == nil {
-		return ""
-	}
-	return d.CoverURL
-}
-
 // List returns the library, each book with its extra audio versions.
 func (s *Service) List(ctx context.Context) ([]Book, error) {
 	list, err := s.repo.List(ctx)

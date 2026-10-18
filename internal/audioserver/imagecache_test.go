@@ -45,6 +45,9 @@ func TestImageCacheOnlyRasterImages(t *testing.T) {
 		case "/cover.png":
 			w.Header().Set("Content-Type", "image/png")
 			_, _ = w.Write([]byte(pngBytes))
+		case "/loose.jpg":
+			w.Header().Set("Content-Type", "image/jpg")
+			_, _ = w.Write([]byte("\xff\xd8\xff\xe0\x00\x10JFIF\x00 fake jpeg"))
 		case "/evil.svg":
 			w.Header().Set("Content-Type", "image/svg+xml")
 			_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`))
@@ -64,6 +67,11 @@ func TestImageCacheOnlyRasterImages(t *testing.T) {
 	if h.Get("Content-Type") != "image/png" || h.Get("X-Content-Type-Options") != "nosniff" ||
 		h.Get("Content-Security-Policy") != imageCSP || h.Get("Cache-Control") != "private, max-age=604800" {
 		t.Fatalf("png headers: %v", h)
+	}
+
+	// A loose spelling of the type is fine: the bytes decide, and what's served says so.
+	if rec := serveImage(c, srv.URL+"/loose.jpg"); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("image/jpg: %d %v", rec.Code, rec.Header())
 	}
 
 	for _, p := range []string{"/evil.svg", "/disguised.png"} {

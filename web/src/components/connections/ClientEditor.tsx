@@ -47,7 +47,7 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
   const kindName = useId();
   // The stored secret only ever goes to the address it was saved for: a changed URL needs
   // it typed again (the server refuses the edit otherwise).
-  const moved = !!editing && secretMoved({ saved: true, typed: password, url, savedUrl: editing.url });
+  const moved = !!editing && secretMoved({ saved: !!editing.auth_saved, typed: password, url, savedUrl: editing.url });
   const movedHint = `New address: enter its ${usenet ? "API key" : "password"}. The saved one is only sent to the address it was saved for.`;
   // Dirty once the form differs from how it opened.
   const shape = JSON.stringify([kind, name, url, username, password, priority]);

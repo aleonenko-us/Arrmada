@@ -62,6 +62,11 @@ func ValidEndpoint(endpoint string) error {
 	if pushHosts[host] {
 		return nil
 	}
+	// Chrome sometimes hands out an FCM endpoint on another Google host
+	// (https://jmt17.google.com/fcm/send/…): taken for FCM's own path only.
+	if p := u.EscapedPath(); strings.HasSuffix(host, ".google.com") && strings.HasPrefix(p, "/fcm/") && !strings.Contains(p, "..") {
+		return nil
+	}
 	for _, sfx := range pushHostSuffixes {
 		if strings.HasSuffix(host, sfx) {
 			return nil

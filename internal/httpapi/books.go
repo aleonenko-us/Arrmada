@@ -658,6 +658,26 @@ func webCoverURL(u string) bool {
 	return err == nil && (p.Scheme == "http" || p.Scheme == "https") && p.Host != "" && p.User == nil
 }
 
+// catalogueCoverHosts are where the book catalogues serve covers: Open Library, Hardcover,
+// and Google Books (its thumbnails, and the image hosts they sometimes point at).
+var catalogueCoverHosts = []string{"covers.openlibrary.org", "hardcover.app", "books.google.com", "googleusercontent.com"}
+
+// catalogueCoverURL reports whether u is a web cover on a catalogue's own image host
+// (the host itself or one under it).
+func catalogueCoverURL(u string) bool {
+	if !webCoverURL(u) {
+		return false
+	}
+	p, _ := url.Parse(strings.TrimSpace(u))
+	host := strings.ToLower(strings.TrimSuffix(p.Hostname(), "."))
+	for _, h := range catalogueCoverHosts {
+		if host == h || strings.HasSuffix(host, "."+h) {
+			return p.Port() == ""
+		}
+	}
+	return false
+}
+
 // fallbackCover is a cover URL sent along as a fallback for the catalogue's own (adding,
 // rematching): kept when it's a web address, otherwise dropped.
 func fallbackCover(u string) string {

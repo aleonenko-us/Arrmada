@@ -9,47 +9,39 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/books"
-	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/requests"
 	"github.com/tristenlammi/arrmada/internal/series"
 )
 
-// coverCatalogue answers GetBook with a fixed cover.
-type coverCatalogue struct {
-	metadata.BookProvider
-	cover string
-}
-
-func (coverCatalogue) Available() bool { return true }
-
-func (c coverCatalogue) GetBook(_ context.Context, key string) (*metadata.BookDetails, error) {
-	return &metadata.BookDetails{BookResult: metadata.BookResult{Key: key, Title: "Dune", CoverURL: c.cover}}, nil
-}
-
-// P1/N4: a book request's cover is the catalogue's, whatever the requester sent — their
-// own URL would be fetched by Arrmada and shown to staff.
-func TestBookRequestCoverComesFromTheCatalogue(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		cat  metadata.BookProvider
-		want string
+// P1/N4: a book request keeps the requester's cover only when it's on a catalogue's own
+// image host (what Books Discover showed them); anything else would be fetched by Arrmada
+// and shown to staff, so it's dropped.
+func TestBookRequestCoverOnlyFromCatalogueHosts(t *testing.T) {
+	for i, tc := range []struct {
+		poster, want string
 	}{
-		{"catalogue cover", coverCatalogue{cover: "https://covers.openlibrary.org/b/id/1-L.jpg"}, "https://covers.openlibrary.org/b/id/1-L.jpg"},
-		{"no catalogue", nil, ""},
+		{"https://covers.openlibrary.org/b/id/1-L.jpg", "https://covers.openlibrary.org/b/id/1-L.jpg"},
+		{"https://assets.hardcover.app/edition/1/cover.jpg", "https://assets.hardcover.app/edition/1/cover.jpg"},
+		{"https://books.google.com/books/content?id=x&img=1", "https://books.google.com/books/content?id=x&img=1"},
+		{"http://169.254.169.254/latest/meta-data/evil.svg", ""},
+		{"https://covers.openlibrary.org.evil.example/x.jpg", ""},
+		{"https://covers.openlibrary.org:8443/x.jpg", ""},
+		{"https://evil.example/covers.openlibrary.org/x.jpg", ""},
+		{"javascript:alert(1)", ""},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.poster, func(t *testing.T) {
 			root := t.TempDir()
 			s := newRouteServer(t, func(d *Deps) {
 				db := d.Store.DB()
-				d.Books = books.NewService(db, tc.cat, d.Log)
+				d.Books = books.NewService(db, nil, d.Log)
 				mv := movies.NewService(db, nil, nil, root, "", nil, d.Log)
 				sr := series.NewService(db, nil, root, d.Log)
 				d.Requests = requests.NewService(db, mv, sr, d.Books, nil, nil, nil, "", d.Log)
 			})
 			_, cookie := s.user(t, "reader@example.com", auth.RoleRequester)
 			rec := s.doJSON("POST", "/api/v1/requests", cookie,
-				`{"media_type":"book","ol_key":"OL1W","title":"Dune","author":"Frank Herbert","poster_url":"http://169.254.169.254/latest/meta-data/evil.svg"}`)
+				fmt.Sprintf(`{"media_type":"book","ol_key":"OL%dW","title":"Dune","author":"Frank Herbert","poster_url":%q}`, i+1, tc.poster))
 			if rec.Code != http.StatusOK {
 				t.Fatalf("HTTP %d: %s", rec.Code, rec.Body)
 			}

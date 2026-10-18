@@ -35,6 +35,9 @@ type clientView struct {
 	// BuiltIn says it's the all-in-one image's qBittorrent, which runs inside Arrmada's
 	// own container (the Compose bundle's is a container of its own).
 	BuiltIn bool `json:"built_in,omitempty"`
+	// AuthSaved says a password (SABnzbd: its API key) is saved, never what it is: the
+	// edit form asks for it again when the address changes only if there is one.
+	AuthSaved bool `json:"auth_saved,omitempty"`
 }
 
 // clientStatus is what the card says about a client that isn't answering. state is ok,
@@ -48,7 +51,7 @@ type clientStatus struct {
 }
 
 func (a *api) clientView(c download.Client) clientView {
-	v := clientView{Client: c}
+	v := clientView{Client: c, AuthSaved: c.Password != ""}
 	if c.Bundled && c.Kind == download.KindSABnzbd {
 		v.UIPort = sabUIPort()
 	}

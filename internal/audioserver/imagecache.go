@@ -29,9 +29,9 @@ import (
 //   - only public addresses are dialled (netsafe.PublicTransport checks the address at
 //     connect time, redirects and DNS answers included), so a cover URL can't reach
 //     Arrmada's own network;
-//   - only JPEG, PNG, WebP, GIF and AVIF are kept, by the declared type and by what the
-//     bytes say. An SVG is a script-capable document on Arrmada's own origin, and is never
-//     stored or served;
+//   - only JPEG, PNG, WebP, GIF and AVIF are kept: declared as an image (never SVG), and
+//     those by what the bytes say. An SVG is a script-capable document on Arrmada's own
+//     origin, and is never stored or served;
 //   - served images carry nosniff and a sandboxing CSP, so even a bad file can't run.
 //
 // A URL that failed isn't tried again for a while (imageFailTTL), and only one fetch per
@@ -213,8 +213,10 @@ func (c *imageCache) fetch(ctx context.Context, url, path string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("image fetch: %s", resp.Status)
 	}
+	// Any image the server names (image/jpg and other loose spellings included) except an
+	// SVG; what the bytes are decides below.
 	declared, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if !imageTypes[declared] {
+	if !strings.HasPrefix(declared, "image/") || strings.Contains(declared, "svg") {
 		return errNotAnImage
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, imageMaxBytes+1))

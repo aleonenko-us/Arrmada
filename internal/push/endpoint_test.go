@@ -14,6 +14,10 @@ import (
 func TestValidEndpoint(t *testing.T) {
 	for ep, ok := range map[string]bool{
 		"https://fcm.googleapis.com/fcm/send/abc":                      true,
+		"https://jmt17.google.com/fcm/send/abc":                        true,
+		"https://jmt17.google.com/other/abc":                           false,
+		"https://google.com.evil.example/fcm/send/abc":                 false,
+		"https://jmt17.google.com/fcm/../redirect":                     false,
 		"https://updates.push.services.mozilla.com/wpush/v2/abc":       true,
 		"https://web.push.apple.com/QGx3":                              true,
 		"https://wns2-par02p.notify.windows.com/w/?token=abc":          true,

@@ -22,14 +22,17 @@ import (
 
 // blockedPrefixes are the ranges an outside-chosen address may never reach: loopback,
 // private and unique-local, link-local (the cloud metadata address 169.254.169.254 among
-// them), carrier-grade NAT, "this network", benchmarking, reserved, and the NAT64 prefix
-// (which can wrap any of the above).
+// them), carrier-grade NAT, "this network", benchmarking, reserved, the old 6to4 relay,
+// and every IPv6 form that carries an IPv4 address inside it: IPv4-compatible (::a.b.c.d),
+// SIIT (::ffff:0:a.b.c.d), NAT64 (well-known and local-use), 6to4 and Teredo. Those are
+// refused outright rather than unwrapped: a public server is never reached that way.
 var blockedPrefixes = func() []netip.Prefix {
 	var out []netip.Prefix
 	for _, s := range []string{
 		"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
-		"172.16.0.0/12", "192.0.0.0/24", "192.168.0.0/16", "198.18.0.0/15", "240.0.0.0/4",
-		"::/128", "::1/128", "64:ff9b::/96", "fc00::/7", "fe80::/10",
+		"172.16.0.0/12", "192.0.0.0/24", "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15", "240.0.0.0/4",
+		"::/96", "::ffff:0:0:0/96", "64:ff9b::/96", "64:ff9b:1::/48", "2001::/32", "2002::/16",
+		"fc00::/7", "fe80::/10", "fec0::/10",
 	} {
 		out = append(out, netip.MustParsePrefix(s))
 	}
@@ -38,7 +41,7 @@ var blockedPrefixes = func() []netip.Prefix {
 
 // PublicAddr reports whether ip is an ordinary public unicast address.
 func PublicAddr(ip netip.Addr) bool {
-	ip = ip.Unmap() // ::ffff:10.0.0.1 is 10.0.0.1
+	ip = ip.Unmap().WithZone("") // ::ffff:10.0.0.1 is 10.0.0.1; a zone would hide it from the prefixes
 	if !ip.IsValid() || ip.IsUnspecified() || ip.IsLoopback() || ip.IsPrivate() ||
 		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() ||
 		ip.IsMulticast() || ip == netip.AddrFrom4([4]byte{255, 255, 255, 255}) {
