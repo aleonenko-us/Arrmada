@@ -42,6 +42,30 @@ on one disk helps.
 > ⚠ Never point anything at `/data` inside the container except appdata. That's where
 > Arrmada keeps its database (and the built-in qBittorrent its settings).
 
+### The disk guard and your cache pool
+
+The download disk guard (Settings → Downloads) pauses downloads before their drive fills.
+It measures the downloads folder's drive, and on Unraid that's the user share: the whole
+array, not the cache pool where new torrents actually land before the mover runs. It would
+show the array's percentage and never step in while the cache fills.
+
+Give Arrmada a read-only view of the pool and measure that instead:
+
+1. Edit Arrmada in the Docker tab and choose **Add another Path, Port, Variable, Label or
+   Device**.
+2. Add a **Path**: Container Path `/cache`, Host Path `/mnt/cache` (or your pool's name,
+   such as `/mnt/fastpool`), Access Mode **Read Only**. Apply.
+3. In Arrmada, Settings → Downloads → Download disk guard → **Measure a different drive**:
+   pick `/cache` with **Browse**.
+
+The card then shows `/cache`, how full the pool is and its free space. Keep the downloads
+folder in the share (`/storage/downloads`) as above, so imports still hardlink; only the
+measurement moves. Arrmada's template doesn't add this path itself: pools have different
+names, and Docker would quietly create a missing host path in RAM.
+If the path later goes away, the guard warns (in the card and Settings → Status) and stops
+pausing or resuming rather than measuring the array again. More in
+[Configuration](configuration.md#download-disk-guard).
+
 ## Install from Community Apps
 
 1. Open the **Apps** tab, search for **Arrmada**, and click **Install**.

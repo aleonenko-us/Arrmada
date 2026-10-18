@@ -21,7 +21,7 @@ wired up.
 - **Indexers** — any Torznab indexer, one-click sync from Prowlarr, and built-in MyAnonaMouse, TorrentLeech and 1337x. FlareSolverr handles Cloudflare-protected trackers.
 - **Downloads** — the bundled qBittorrent sets itself up. Imports hardlink instead of copying, seeding rules clean up, stalled downloads fail over, and mismatched downloads wait in a review queue.
 - **Usenet** (optional) — SABnzbd beside qBittorrent: `install.sh --with-sabnzbd` runs one that Arrmada sets up and connects to by itself, or connect your own. Newznab indexers (added in Arrmada or synced from Prowlarr) are searched with the torrent ones; the better release wins wherever it is, or prefer one network. A release SABnzbd can't finish is blocklisted and replaced; a full disk or a provider problem is reported instead. You bring your own Usenet provider and indexers ([Usenet](configuration.md#usenet-sabnzbd)).
-- **Safety nets** — a blocklist, a recycle bin, nightly database backups and a full history for every item.
+- **Safety nets** — a blocklist, a recycle bin, nightly database backups, a full history for every item, and a disk guard that pauses downloads before their drive fills (on Unraid it can measure the cache pool rather than the array — [Configuration](configuration.md#download-disk-guard)).
 
 ## Requests and people
 

@@ -313,6 +313,49 @@ Convert encodes into a scratch folder before swapping the result in. The install
 (`--transcode /mnt/cache/transcode`, with the share set to the pool only so the mover skips
 it). Settings → Convert can also point it somewhere else and shows the free space.
 
+## Download disk guard
+
+Settings → Downloads → **Download disk guard** pauses downloads that are still pulling data
+once their drive is too full (85% by default) and resumes them when it drops back (80%). It
+only ever resumes what it paused itself, and never pauses seeding torrents. It's on by
+default.
+
+It measures the drive the **downloads folder** is on. That's only right if the downloads
+folder's drive is the one that fills up. When it isn't, set **Measure a different drive**:
+the guard then reads that path's drive instead, and downloads still go to the downloads
+folder as before.
+
+The usual case is Unraid. The downloads folder sits in a user share (`/mnt/user/...`), which
+reads as the whole array, but new torrents land on the cache pool and only reach the array
+when the mover runs. The guard sees the array's percentage, never triggers, and the cache
+fills. Pointing the downloads folder at `/mnt/cache/...` instead isn't the answer: downloads
+and media would be on different mounts, so imports would copy instead of hardlinking. Give
+Arrmada a read-only view of the pool and measure that:
+
+- **Unraid template:** edit Arrmada, choose **Add another Path, Port, Variable, Label or
+  Device**, and add a Path with Container Path `/cache`, Host Path `/mnt/cache` (or your
+  pool's name, such as `/mnt/fastpool`) and Access Mode **Read Only**. Apply, then pick
+  `/cache` under Measure a different drive.
+- **Docker Compose:** add `- /mnt/cache:/cache:ro` under Arrmada's `volumes` (in
+  `docker-compose.override.yml`), recreate the container, then pick `/cache`.
+
+The path must exist inside the container, be a folder whose disk usage can be read, and not
+be on the same filesystem as the downloads folder (that's already what the guard measures).
+The card then shows the path it reads, how full it is and its size and free space.
+
+**More than one downloads folder.** When library folders have downloads folders of their own
+([Libraries on separate disks](#libraries-on-separate-disks)), the drive you set stands in
+for the Downloads folder and for every other downloads folder on the **same filesystem** as
+it. On Unraid that's every downloads folder inside `/mnt/user`, since the user shares are
+all one filesystem there. A downloads folder on a disk mounted on its own keeps its own
+measurement.
+
+**If the drive goes away.** If the path can no longer be read (the mapping was removed, or
+the pool isn't mounted), the guard doesn't fall back to the downloads folder: that's exactly
+the reading the setting replaces. It pauses nothing new and resumes nothing for the folders
+it measures, keeps anything it already paused paused until the drive can be read again,
+and says so in the card and in Settings → Status. Map the path back, or clear the setting.
+
 ## Recycle bin
 
 Deleted and replaced files go to a hidden `.arrmada-recycle` folder at the top of the

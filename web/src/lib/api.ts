@@ -1067,16 +1067,39 @@ export interface NowListening {
   duration?: number;
 }
 
+export interface DiskGuardVolume {
+  path: string;
+  measurable: boolean;
+  used_pct: number;
+  measured_path: string;
+  override: boolean;
+  total_bytes: number;
+  free_bytes: number;
+}
+
 export interface DiskGuardStatus {
   enabled: boolean;
   measurable: boolean;
+  /** The downloads folder (the fullest one, with several). */
   path: string;
   used_pct: number;
   pause_pct: number;
   resume_pct: number;
   holding: number;
+  /** The saved "Measure a different drive" path; "" = none. */
+  measure_path: string;
+  /** The path whose drive used_pct, total_bytes and free_bytes are read from. */
+  measured_path: string;
+  /** measured_path is the "Measure a different drive" path, not the downloads folder. */
+  override: boolean;
+  /** The saved measure_path can't be read now: the guard pauses and resumes nothing for it. */
+  measure_unreadable: boolean;
+  total_bytes: number;
+  free_bytes: number;
+  /** Each downloads folder, when there's more than one. */
+  volumes?: DiskGuardVolume[];
   // The library folders (the ones picked in Settings → Library) on the same drive as
-  // the downloads folder. shared_with_library is just shared_with.length > 0.
+  // the one the guard reads. shared_with_library is just shared_with.length > 0.
   shared_with: { role: string; label: string; path: string }[];
   shared_with_library: boolean;
 }
@@ -1173,6 +1196,8 @@ export interface AppSettings {
   downloads_disk_guard: boolean;
   downloads_disk_guard_pause_pct: string;
   downloads_disk_guard_resume_pct: string;
+  /** "Measure a different drive": a path whose drive the guard reads instead of the downloads folder's; "" = the downloads folder. Admin only. */
+  downloads_disk_guard_measure_path: string;
   /** Minutes with no progress before another release is tried; 0 = never. Default 360. */
   downloads_stall_minutes: number;
   /** How many upgrades one upgrade sweep may grab; 0 = no limit. Default 10. */
