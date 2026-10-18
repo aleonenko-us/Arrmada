@@ -184,6 +184,8 @@ type BookFolder struct {
 	Title      string
 	Ebooks     []FoundFile
 	Audiobooks []FoundFile
+	// Dir is the folder itself, where a Calibre library keeps metadata.opf and cover.jpg.
+	Dir string
 }
 
 // FindBookFolders walks the book roots (ebook + audiobook, once when they're the same
@@ -239,7 +241,7 @@ func (im *Importer) FindBookFoldersIn(roots ...string) []BookFolder {
 					// the book rather than the book.
 					title, author = splitTitleBy(title)
 				}
-				bf = &BookFolder{Author: author, Title: title}
+				bf = &BookFolder{Author: author, Title: title, Dir: dir}
 				byDir[dir] = bf
 			}
 			fi, _ := d.Info()
@@ -257,9 +259,39 @@ func (im *Importer) FindBookFoldersIn(roots ...string) []BookFolder {
 	}
 	out := make([]BookFolder, 0, len(byDir))
 	for _, bf := range byDir {
+		bf.Title = stripCalibreID(bf)
 		out = append(out, *bf)
 	}
 	return out
+}
+
+// calibreIDRe is the " (123)" Calibre adds to every book folder: the book's id in its
+// library ("Golden Son (42)").
+var calibreIDRe = regexp.MustCompile(`^(.*\S)\s+\(\d+\)$`)
+
+// stripCalibreID takes Calibre's id off a book folder's title, so the title lookup gets
+// "Golden Son", not "Golden Son (42)". Only for a folder Calibre made — one holding its
+// metadata.opf or cover.jpg, or a book named "<title> - <author>" as Calibre names them —
+// so a folder of someone's own called "Saga (2)" keeps its number.
+func stripCalibreID(bf *BookFolder) string {
+	m := calibreIDRe.FindStringSubmatch(bf.Title)
+	if m == nil || bf.Dir == "" {
+		return bf.Title
+	}
+	title := m[1]
+	for _, marker := range []string{"metadata.opf", "cover.jpg"} {
+		if fi, err := os.Stat(filepath.Join(bf.Dir, marker)); err == nil && fi.Mode().IsRegular() {
+			return title
+		}
+	}
+	for _, files := range [][]FoundFile{bf.Ebooks, bf.Audiobooks} {
+		for _, f := range files {
+			if strings.HasPrefix(strings.ToLower(filepath.Base(f.Path)), strings.ToLower(title)+" - ") {
+				return title
+			}
+		}
+	}
+	return bf.Title
 }
 
 // titleByRe reads "<title> by <Author Name>" where the name is two to four capitalised

@@ -642,6 +642,7 @@ func main() {
 	coordinator.SetSeries(seriesSvc, bookImporter)
 	// Books share the importer set above; ebooks land in their own category.
 	coordinator.SetBooks(booksSvc)
+	coordinator.SetBookCoverDir(filepath.Join(cfg.DataDir, "covers"))
 	// A book rename a crash or power cut stopped part way is rolled back now, before any
 	// import, scan or rename touches book files again.
 	if n := coordinator.RecoverBookRenames(runCtx); n > 0 {
