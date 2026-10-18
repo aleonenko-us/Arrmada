@@ -47,6 +47,22 @@ func TestReadOptionsSwitches(t *testing.T) {
 	}
 }
 
+// A PUID/PGID past 32 bits would wrap to root as a uint32: it is refused like any other
+// bad number, and so is a negative one.
+func TestReadOptionsRefusesIDsThatWrap(t *testing.T) {
+	o, notes := ReadOptions(envOf(map[string]string{"PUID": "4294967296", "PGID": "-1"}), true)
+	if o.UID != 1000 || o.GID != 1000 {
+		t.Errorf("ids = %d:%d, want the 1000:1000 default", o.UID, o.GID)
+	}
+	joined := strings.Join(notes, "\n")
+	if !strings.Contains(joined, `PUID="4294967296" isn't a number`) || !strings.Contains(joined, `PGID="-1" isn't a number`) {
+		t.Errorf("notes = %q", notes)
+	}
+	if o, _ := ReadOptions(envOf(map[string]string{"PUID": "2147483647"}), true); o.UID != 2147483647 {
+		t.Errorf("the largest 32-bit id = %d", o.UID)
+	}
+}
+
 // The ARM build has no FlareSolverr: asking for it says so and leaves it off.
 func TestReadOptionsNoFlareSolverrInImage(t *testing.T) {
 	o, notes := ReadOptions(envOf(nil), false)

@@ -43,12 +43,14 @@ func ReadOptions(getenv func(string) string, flareInstalled bool) (o Options, no
 		if v == "" {
 			return def
 		}
-		n, err := strconv.Atoi(v)
+		// 32 bits: an id ends up as a uint32 for the child processes, and a bigger
+		// number would wrap ("4294967296" is uid 0, root).
+		n, err := strconv.ParseInt(v, 10, 32)
 		if err != nil || n < 0 {
 			notes = append(notes, fmt.Sprintf("%s=%q isn't a number; using %d", key, v, def))
 			return def
 		}
-		return n
+		return int(n)
 	}
 	on := func(key string) bool {
 		v, ok := parseSwitch(getenv(key))
