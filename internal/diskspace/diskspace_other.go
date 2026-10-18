@@ -8,3 +8,6 @@ func stat(string) (total, free uint64, ok bool) { return 0, 0, false }
 
 // device is unsupported off Linux too.
 func device(string) (uint64, bool) { return 0, false }
+
+// fsType is unsupported off Linux too.
+func fsType(string) (uint64, bool) { return 0, false }

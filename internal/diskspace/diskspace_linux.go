@@ -25,3 +25,13 @@ func device(path string) (uint64, bool) {
 	}
 	return uint64(st.Dev), true // Dev's width differs between architectures
 }
+
+// fsType returns the filesystem type (statfs f_type) of the filesystem holding path.
+func fsType(path string) (uint64, bool) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(path, &st); err != nil {
+		return 0, false
+	}
+	// Type's width and sign differ between architectures; the magic numbers are 32-bit.
+	return uint64(st.Type) & 0xffffffff, true
+}

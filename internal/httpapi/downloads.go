@@ -71,9 +71,11 @@ func (a *api) handleResumeDownload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if holding, st := a.guardHolding(ctx); holding[strings.ToLower(hash)] {
-		a.writeError(w, http.StatusConflict, guardHeldMessage(st))
-		return
+	if holding, st := a.guardHolding(ctx); holding != nil {
+		if v, held := holding[strings.ToLower(hash)]; held {
+			a.writeError(w, http.StatusConflict, guardHeldMessage(v, st))
+			return
+		}
 	}
 	if err := a.deps.Downloads.Resume(ctx, hash); err != nil {
 		a.writeError(w, http.StatusBadGateway, err.Error())
@@ -99,7 +101,7 @@ func (a *api) resumeAllDownloads(w http.ResponseWriter, r *http.Request) {
 		if it.State != "paused" {
 			continue
 		}
-		if holding[strings.ToLower(it.Hash)] {
+		if _, ok := holding[strings.ToLower(it.Hash)]; ok {
 			held++
 			continue
 		}
@@ -117,25 +119,43 @@ func (a *api) resumeAllDownloads(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// guardHolding returns the torrents the disk guard is holding right now (lowercased
-// hashes), with its status for messages. Empty when there's no guard or it isn't
-// engaged: a guard that has drained below its resume point, been turned off, or can't
-// measure the disk releases what it holds on its next pass, so nothing should be
-// refused in its name.
-func (a *api) guardHolding(ctx context.Context) (map[string]bool, download.GuardStatus) {
+// guardHolding returns the torrents the disk guard would pause again right now
+// (lowercased hashes, each with the volume it's held on), with its status for messages.
+// Each is judged by its own downloads folder's volume (download.HeldNow): one whose volume
+// has drained is released on the guard's next pass, and one whose volume can't be read —
+// the "measure a different drive" mount gone — stays paused until it can, so a hand
+// resume of either isn't refused. Empty when there's no guard or it's off.
+func (a *api) guardHolding(ctx context.Context) (map[string]download.GuardVolume, download.GuardStatus) {
 	g := a.deps.DiskGuard
-	if g == nil || !g.Engaged(ctx) {
+	if g == nil {
 		return nil, download.GuardStatus{}
 	}
-	return g.Held(ctx), g.Status(ctx)
+	now := g.HeldNow(ctx)
+	if len(now) == 0 {
+		return nil, download.GuardStatus{}
+	}
+	return now, g.Status(ctx)
 }
 
-// guardHeldMessage explains a refused resume, including how to override it.
-func guardHeldMessage(st download.GuardStatus) string {
-	return fmt.Sprintf("Held by the disk guard: %s is %.0f%% full (pauses at %d%%, resumes below %d%%). "+
+// guardHeldMessage explains a refused resume — on the volume the torrent is held on —
+// including how to override it.
+func guardHeldMessage(v download.GuardVolume, st download.GuardStatus) string {
+	measured := v.MeasuredPath
+	if measured == "" {
+		measured = v.Path
+	}
+	lines := fmt.Sprintf("pauses at %d%%, resumes below %d%%", st.PausePct, st.ResumePct)
+	if st.PauseFreeBytes > 0 {
+		lines = fmt.Sprintf("pauses at %d%% or under %.0f GB free, resumes below %d%% with %.0f GB free",
+			st.PausePct, gbOf(st.PauseFreeBytes), st.ResumePct, gbOf(st.ResumeFreeBytes))
+	}
+	return fmt.Sprintf("Held by the disk guard: %s is %.0f%% full with %.0f GB free (%s). "+
 		"It will resume on its own once space is freed, or turn the guard off in Settings → Downloads.",
-		st.Path, st.UsedPct, st.PausePct, st.ResumePct)
+		measured, v.UsedPct, gbOf(v.FreeBytes), lines)
 }
+
+// gbOf is bytes in GB (1024³), as the disk guard's settings count them.
+func gbOf(b uint64) float64 { return float64(b) / (1 << 30) }
 
 // handleDeleteDownload removes one torrent the way the user chose:
 // ?mode=keep_files (default) | delete_files | block, plus &unmonitor=true to stop wanting
@@ -303,9 +323,11 @@ func (a *api) blockJob(hash string, target automation.BlockTarget) jobs.Spec {
 type diskGuardStatus struct {
 	download.GuardStatus
 	// SharedWith lists the library folders that measure as the same filesystem as the
-	// downloads folder. The guard still functions, but it is then watching the whole
+	// drive the guard reads (the downloads folder, or the "measure a different drive" path
+	// when that's set). The guard still functions, but it is then watching the whole
 	// array rather than a torrent drive, so a threshold tuned for a cache pool is
-	// measuring the wrong thing entirely.
+	// measuring the wrong thing entirely. Against a mapped pool (/cache) on Unraid the
+	// libraries in /mnt/user are a different filesystem, so the warning goes, rightly.
 	SharedWith []health.Folder `json:"shared_with"`
 	// SharedWithLibrary is len(SharedWith) > 0, kept for one release for a cached UI.
 	SharedWithLibrary bool `json:"shared_with_library"`
@@ -323,13 +345,17 @@ func (a *api) handleDiskGuardStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	out := diskGuardStatus{GuardStatus: a.deps.DiskGuard.Status(ctx)}
-	out.SharedWith = a.sharedWithDownloads(ctx, out.Path)
+	measured := out.MeasuredPath
+	if measured == "" {
+		measured = out.Path
+	}
+	out.SharedWith = a.sharedWithDownloads(ctx, measured)
 	out.SharedWithLibrary = len(out.SharedWith) > 0
 	a.writeJSON(w, http.StatusOK, out)
 }
 
 // sharedWithDownloads lists the library folders the user picked that sit on the same
-// filesystem as the downloads folder the guard watches. It used to compare against
+// filesystem as the drive the guard watches. It used to compare against
 // ARRMADA_LIBRARY_DIR — the managed volume — and so reported the wrong disk on any
 // install whose libraries live on the array.
 func (a *api) sharedWithDownloads(ctx context.Context, downloads string) []health.Folder {

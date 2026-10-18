@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { AutoNumber, AutoSelect, AutoText, AutoToggle, SavedTick, wholeNumber } from "../../components/settings/auto";
 import { Note, Section, input, inputStyle } from "../../components/settings/ui";
 import { Field } from "../../ui/Field";
+import { Button } from "../../ui/Button";
+import { measurePathProblem, pauseFreeProblem, sizeAndFree } from "../../lib/diskGuard";
 import { api, type DiskGuardStatus, type NetworkPreference, type RecycleBinStats, type RecycleItem, type RecycleStats } from "../../lib/api";
 import { downloadClientApi } from "../../lib/downloadClientApi";
 import { hasUsenetClient, NETWORK_PREFERENCES } from "../../lib/network";
@@ -282,13 +284,19 @@ function DiskGuardSection() {
   const fieldStyle = pair.status === "error" ? { ...inputStyle, border: "1px solid var(--reject)" } : inputStyle;
 
   // The guard measures the downloads folder (lib_downloads_dir, picked in Settings → Library;
-  // ARRMADA_DOWNLOADS_DIR is only the fallback) and nothing else. Whether that path is
-  // the torrent drive is not knowable from in here, so show the resolved path and the
-  // reading taken from it and let the user confirm it against their own setup.
+  // ARRMADA_DOWNLOADS_DIR is only the fallback), or the drive set under "Measure a different
+  // drive". Whether that is the drive torrents fill is not knowable from in here, so show
+  // the path it reads and the reading taken from it, and let the user confirm it against
+  // their own setup.
   const [status, setStatus] = useState<DiskGuardStatus | null>(null);
-  useEffect(() => {
+  const loadStatus = useCallback(() => {
     api.diskGuard().then(setStatus).catch(() => setStatus(null));
   }, []);
+  useEffect(loadStatus, [loadStatus]);
+  const { s } = useLoadedSettings();
+  const overrideSaved = (s.downloads_disk_guard_measure_path ?? "").trim() !== "";
+  const size = status ? sizeAndFree(status.total_bytes, status.free_bytes) : null;
+  const floor = useSetting("downloads_disk_guard_pause_free_gb", { validate: pauseFreeProblem });
 
   return (
     <Section
@@ -296,43 +304,96 @@ function DiskGuardSection() {
       title="Download disk guard"
       subtitle="Pause downloads before the downloads volume fills up. A full disk errors every torrent at once, and on a shared cache pool it takes everything else on that pool with it. Seeding torrents are never paused — they aren't writing anything, and pausing them would put your seed goals at risk."
     >
-      <Note tone="warn">
-        <b>This only works if your torrents live on their own drive.</b> The guard measures
-        one folder: your Downloads folder, set in{" "}
-        <Link to={LINKS.libraryFolders} style={{ color: "var(--accent-text)" }}>Settings → Library</Link>
-        {status?.path ? <> (currently <code>{status.path}</code>)</> : null}. If that folder is on
-        your main array rather than the torrent or cache drive, the percentage measures the
-        array, and it will either never trigger or pause your queue for a reason that has
-        nothing to do with downloads — choose the right folder there. A changed folder is
-        watched from the next check, a minute at most.
-      </Note>
+      {!overrideSaved && (
+        <Note tone="warn">
+          <b>The guard has to measure the drive your torrents fill.</b> By default it measures
+          your Downloads folder, set in{" "}
+          <Link to={LINKS.libraryFolders} style={{ color: "var(--accent-text)" }}>Settings → Library</Link>
+          {status?.path ? <> (currently <code>{status.path}</code>)</> : null}. If that folder is on
+          your main array or in an Unraid user share rather than on the torrent or cache drive,
+          the percentage measures the array, and it will either never trigger or pause your queue
+          for a reason that has nothing to do with downloads. Point the guard at the right drive
+          under <b>Measure a different drive</b> below, or choose a downloads folder on that
+          drive. A change is watched from the next check, a minute at most.
+        </Note>
+      )}
 
       {status && (
         <div className="rounded-lg p-3" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-          <div className="text-xs uppercase tracking-[0.1em] text-ink-faint">Currently watching</div>
-          <div className="mt-0.5 break-all font-mono text-sm">
-            {status.path || "(not set)"}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs uppercase tracking-[0.1em] text-ink-faint">Currently watching</span>
+            <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel)", border: "1px solid var(--line-soft)", color: "var(--ink-dim)" }}>
+              {status.override ? "Different drive" : "Downloads folder"}
+            </span>
           </div>
-          {status.measurable ? (
+          <div className="mt-0.5 break-all font-mono text-sm">
+            {status.measured_path || status.path || "(not set)"}
+          </div>
+          {status.override && status.path && (
+            <div className="mt-0.5 break-all text-xs text-ink-faint">
+              Measured instead of the downloads folder, <span className="font-mono">{status.path}</span>. Downloads still go there.
+            </div>
+          )}
+          {status.measurable && (
             <div className="mt-1 text-sm text-ink-dim">
               {status.used_pct.toFixed(1)}% full
+              {size && <> · {size}</>}
               {status.holding > 0 && (
                 <span style={{ color: "var(--avoid-text)" }}>
                   {" "}· holding {status.holding} torrent{status.holding === 1 ? "" : "s"} paused
                 </span>
               )}
             </div>
-          ) : (
+          )}
+          {status.measurable && status.zfs && (
+            <div className="mt-1 text-sm" style={{ color: "var(--avoid-text)" }}>
+              This is a ZFS pool: the percentage only counts part of it — use the free-space limit below.
+            </div>
+          )}
+          {status.measure_unreadable ? (
+            <div role="alert" className="mt-1 text-sm" style={{ color: "var(--reject-text)" }}>
+              {status.measure_not_disk ? (
+                <>
+                  <span className="font-mono">{status.measure_path}</span> reads as a RAM or container
+                  filesystem ({status.measure_not_disk}), not a disk: the mapping is gone, or its Host Path
+                  doesn't match your pool's name.
+                </>
+              ) : (
+                <>Arrmada can't read the drive at <span className="font-mono">{status.measure_path}</span> any more.</>
+              )}{" "}
+              {status.measurable
+                ? "Downloads measured there aren't paused or resumed until it can be read; downloads folders on other drives are still guarded."
+                : "The guard isn't pausing or resuming downloads until it can be read."}{" "}
+              It doesn't fall back to the downloads folder, which would measure the wrong drive.
+              Anything it already paused stays paused for now: resume it by hand, or turn the guard
+              off to release it (clearing the setting releases it too, unless the downloads folder's
+              own drive is over the line). Check the path is still mapped into the container, or
+              clear it below.
+            </div>
+          ) : !status.measurable && (
             <div className="mt-1 text-sm" style={{ color: "var(--reject-text)" }}>
               Arrmada can't read this folder's disk usage, so the guard will do nothing. Check the
               path exists and is mounted into the container.
             </div>
+          )}
+          {(status.volumes?.length ?? 0) > 1 && (
+            <ul className="mb-0 mt-2 flex list-none flex-col gap-0.5 p-0 text-xs text-ink-dim">
+              {status.volumes!.map((v) => (
+                <li key={v.path} className="break-all">
+                  <span className="font-mono">{v.path}</span>
+                  {" — "}
+                  {v.measurable ? `${v.used_pct.toFixed(1)}% full` : "can't be read"}
+                  {v.override && <> (measured at <span className="font-mono">{v.measured_path}</span>)</>}
+                </li>
+              ))}
+            </ul>
           )}
           {(status.shared_with?.length ?? 0) > 0 && (
             <div className="mt-1.5 text-sm" style={{ color: "var(--reject-text)" }}>
               Shares a drive with: {status.shared_with.map((f) => f.label).join(", ")}.
               The guard will be measuring your whole array, not a torrent drive — a threshold like
               85% almost certainly isn't what you want here.
+              {!status.override && <> Set the drive torrents fill under Measure a different drive below.</>}
             </div>
           )}
         </div>
@@ -374,9 +435,104 @@ function DiskGuardSection() {
             </Field>
           </div>
           <SavedTick save={pair} />
+          <AutoText
+            label="Also pause when free space drops below (GB)"
+            save={floor}
+            mono={false}
+            inputMode="numeric"
+            placeholder="0"
+            filter={(v) => v.replace(/[^0-9]/g, "").slice(0, 7)}
+          >
+            <span className="text-xs text-ink-faint">
+              0 = off. Applies to whichever drive is measured, alongside the percentage. Held downloads
+              resume once free space is back above this plus 10% (at least 1 GB more) and the
+              percentage is under its resume point. Set this on a ZFS pool, where the percentage only
+              counts part of the pool.
+            </span>
+          </AutoText>
         </>
       )}
+      <MeasureDriveField onSaved={loadStatus} />
     </Section>
+  );
+}
+
+// FolderPicker is exported from the Library page's module, which this section otherwise
+// doesn't need: it's fetched when Browse is pressed rather than with the section.
+const FolderPicker = lazy(() => import("../Library").then((m) => ({ default: m.FolderPicker })));
+
+// MeasureDriveField is "Measure a different drive". On Unraid the downloads folder is in a
+// user share, which reads as the whole array, while torrents land on the cache pool first:
+// the pool mapped into the container read-only, and measured here, is what fills up. A
+// folder path, so it saves on an explicit action (Enter, Save, or picking a folder), never
+// on blur; the server checks it exists, can be measured and isn't the downloads folder's
+// own drive.
+function MeasureDriveField({ onSaved }: { onSaved: () => void }) {
+  const save = useSetting("downloads_disk_guard_measure_path", { validate: measurePathProblem });
+  const { s } = useLoadedSettings();
+  const saved = s.downloads_disk_guard_measure_path;
+  const [picking, setPicking] = useState(false);
+  const id = useId();
+  const commit = (v?: string) => {
+    void save.commit(v).then((ok) => { if (ok) onSaved(); });
+  };
+  return (
+    <Field label="Measure a different drive (optional)" controlId={id}>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          id={id}
+          aria-describedby={`${id}-help`}
+          value={save.value ?? ""}
+          onChange={(e) => save.set(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
+            if (e.key === "Escape" && save.dirty) { e.preventDefault(); save.revert(); }
+          }}
+          placeholder="Empty: measure the downloads folder"
+          aria-invalid={save.status === "error" || undefined}
+          className={`${input} min-w-[220px] flex-1`}
+          style={save.status === "error" ? { ...inputStyle, border: "1px solid var(--reject)" } : inputStyle}
+        />
+        <Button onClick={() => setPicking(true)}>Browse…</Button>
+        {save.dirty && <Button variant="primary" onClick={() => commit()}>Save</Button>}
+        {saved && !save.dirty && <Button variant="ghost" onClick={() => commit("")}>Clear</Button>}
+      </div>
+      <SavedTick save={save} />
+      <div id={`${id}-help`} className="flex flex-col gap-1.5 text-xs leading-relaxed text-ink-faint">
+        <span>
+          Leave this empty to measure the downloads folder. Set it when the downloads folder's drive
+          isn't the one that fills up — on Unraid, a downloads folder in a user share (/mnt/user)
+          measures the whole array, while new torrents land on the cache pool. Downloads still go to
+          the downloads folder; only the measurement moves. Library folders with their own downloads
+          folder on the same drive as the Downloads folder are measured here too; ones on another
+          drive keep their own measurement.
+        </span>
+        <span>
+          <b className="text-ink-dim">Unraid:</b> edit Arrmada in the Docker tab, choose <b>Add another
+          Path, Port, Variable, Label or Device</b>, and add a Path with Container Path{" "}
+          <code>/cache</code>, Host Path <code>/mnt/cache</code> (or your pool's name), Access
+          Mode <b>Read Only</b>. Apply, then pick <code>/cache</code> here.
+        </span>
+        <span>
+          <b className="text-ink-dim">Docker Compose:</b> add <code>- /mnt/cache:/cache:ro</code> to
+          the <code>arrmada-app</code> service's <code>volumes</code>, run <code>docker compose up -d</code>,
+          then pick <code>/cache</code> here.
+        </span>
+        <span>
+          <b className="text-ink-dim">ZFS pool:</b> the percentage only counts part of a ZFS pool, so
+          also set the free-space limit above.
+        </span>
+      </div>
+      {picking && (
+        <Suspense fallback={null}>
+          <FolderPicker
+            initial={(save.value ?? "").trim() || "/"}
+            onClose={() => setPicking(false)}
+            onSelect={(p) => { setPicking(false); commit(p); }}
+          />
+        </Suspense>
+      )}
+    </Field>
   );
 }
 

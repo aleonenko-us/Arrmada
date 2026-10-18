@@ -44,6 +44,48 @@ func Device(path string) (uint64, bool) {
 	return device(path)
 }
 
+// FSType returns the type of the filesystem holding path (statfs f_type, a magic
+// number), and whether it could be read (false off Linux, or for a path that doesn't
+// exist).
+func FSType(path string) (uint64, bool) {
+	return fsType(path)
+}
+
+// Filesystem types, as statfs reports them (linux/magic.h).
+const (
+	TypeOverlay = 0x794c7630
+	TypeTmpfs   = 0x01021994 // devtmpfs reports this too
+	TypeRamfs   = 0x858458f6
+	TypeProc    = 0x9fa0
+	TypeSysfs   = 0x62656572
+	TypeCgroup  = 0x0027e0eb
+	TypeCgroup2 = 0x63677270
+	TypeZFS     = 0x2fc12fc1
+)
+
+// NotADisk names a filesystem type that lives in memory or belongs to the container
+// rather than a disk ("tmpfs", "overlay"…), or returns "" for anything else. A folder on
+// one of these can't be the drive downloads fill: on Unraid, a bind mount whose host path
+// doesn't exist (a pool name typed wrong) is created by Docker in the RAM root, and reads
+// as one of these.
+func NotADisk(t uint64) string {
+	switch t {
+	case TypeOverlay:
+		return "overlay"
+	case TypeTmpfs:
+		return "tmpfs"
+	case TypeRamfs:
+		return "ramfs"
+	case TypeProc:
+		return "proc"
+	case TypeSysfs:
+		return "sysfs"
+	case TypeCgroup, TypeCgroup2:
+		return "cgroup"
+	}
+	return ""
+}
+
 // FreeGB returns the free space in GB on the filesystem containing path, and
 // whether it could be measured (false on platforms without support).
 func FreeGB(path string) (float64, bool) {

@@ -154,7 +154,8 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 		if st, ok := stallInfo[h]; ok && !it.Complete() {
 			entry["stall"] = st
 		}
-		if it.State == "paused" && guardHeld[h] {
+		_, isHeld := guardHeld[h]
+		if it.State == "paused" && isHeld {
 			entry["held_by_guard"] = true
 			heldCount++
 		}
@@ -162,7 +163,7 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 		// which part of the queue a torrent sits in, and why says what's holding it.
 		in := pipeline.Input{
 			Phase: phase, Complete: it.Complete(), Linked: managed, Imported: imported[it.Hash] || imported[h],
-			OwnCategory: fin.own[it.Category], HeldByGuard: guardHeld[h], Category: it.Category, Now: now,
+			OwnCategory: fin.own[it.Category], HeldByGuard: isHeld, Category: it.Category, Now: now,
 			Usenet: it.Transport == download.TransportUsenet,
 		}
 		// The network, so the page can mark a usenet job and leave out what only a torrent

@@ -21,7 +21,7 @@ func TestGuardHoldsUsenetJobsByKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	g.pauseActive(ctx, nil, 92, 85)
+	g.pauseActive(ctx, nil, 92, 85, "/dl")
 	if !sameSet(sab.paused, "sab-down", "sab-queued") {
 		t.Errorf("usenet client paused %v, want the two jobs still downloading", sab.paused)
 	}

@@ -199,11 +199,21 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 
 	// The downloads folders are read live: one picked since boot is the one filling up.
 	// A library folder's own downloads folder on another disk is watched too.
+	// With "measure a different drive" set, a folder it stands in for is checked on that
+	// drive: on Unraid the downloads folder's own reading is the whole array.
 	reg.Register(health.DownloadsFreeCheck(func() []health.Folder {
 		ctx := a.runCtx()
 		r := a.roots()
 		dl := r.Downloads(ctx)
-		return append([]health.Folder{{Role: "downloads", Label: "Downloads", Path: dl}}, health.DownloadFolders(dl, r.PerFolderDownloads(ctx))...)
+		folders := append([]health.Folder{{Role: "downloads", Label: "Downloads", Path: dl}}, health.DownloadFolders(dl, r.PerFolderDownloads(ctx))...)
+		if g := a.deps.DiskGuard; g != nil {
+			for i := range folders {
+				if strings.TrimSpace(folders[i].Path) != "" {
+					folders[i].Path = g.MeasuredPathFor(ctx, folders[i].Path)
+				}
+			}
+		}
+		return folders
 	}))
 	// A library folder's own downloads folder only helps on the library's filesystem.
 	reg.Register(health.FolderDownloadsCheck(func(ctx context.Context) []libroots.FolderDownloads {
@@ -328,7 +338,16 @@ func (a *api) libraryState(ctx context.Context) health.LibraryState {
 // torrents the queue is read once, to count only the held ones the client still has.
 func (a *api) diskGuardState(ctx context.Context) (health.DiskGuardState, bool) {
 	g := a.deps.DiskGuard.Status(ctx)
-	st := health.DiskGuardState{Enabled: g.Enabled, UsedPct: g.UsedPct, PausePct: g.PausePct, ResumePct: g.ResumePct, Holding: g.Holding}
+	st := health.DiskGuardState{Enabled: g.Enabled, UsedPct: g.UsedPct, PausePct: g.PausePct, ResumePct: g.ResumePct, Holding: g.Holding,
+		MeasureUnreadable: g.MeasureUnreadable, MeasureNotDisk: g.MeasureNotDisk,
+		// With the override unusable, anything still measurable is a downloads folder on a
+		// drive of its own.
+		OtherVolumes: g.MeasureUnreadable && g.Measurable,
+		MeasuredPath: g.MeasuredPath, ZFS: g.ZFS, FreeGB: gbOf(g.FreeBytes),
+		PauseFreeGB: gbOf(g.PauseFreeBytes), ResumeFreeGB: gbOf(g.ResumeFreeBytes)}
+	if g.Override || g.MeasureUnreadable {
+		st.MeasurePath = g.MeasurePath
+	}
 	if g.Enabled && g.Holding > 0 && a.deps.Downloads != nil {
 		if queue, err := a.deps.Downloads.Queue(ctx); err == nil {
 			st.Holding = heldInQueue(a.deps.DiskGuard.Held(ctx), queue)
