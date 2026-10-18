@@ -6,7 +6,7 @@
 # network. The rig is a pinned SABnzbd container, a downloads volume shared with the Go
 # tests (SABnzbd sees it at /downloads, the tests at /local, so path mappings are real), and
 # a fixtures volume of releases made with SABnzbd's own par2 and 7z: a 52 MB file with a
-# par2 set (repair/) and a password-protected 7z (pw/). The tests then run in golang:1.25 on
+# par2 set (repair/) and a password-protected 7z (pw/). The tests then run in golang:1.26 on
 # the same network:
 #
 #   TestSABnzbdLive            (download)   the client: test, categories, add, queue, history,
@@ -34,7 +34,7 @@
 set -eu
 
 SAB_IMAGE=${SAB_IMAGE:-lscr.io/linuxserver/sabnzbd:5.1.3}
-GO_IMAGE=${GO_IMAGE:-golang:1.25}
+GO_IMAGE=${GO_IMAGE:-golang:1.26}
 TESTS='^(TestSABnzbdLive|TestUsenetLifecycleLive|TestUsenetPar2RepairLive|TestUsenetPasswordedLive|TestUsenetSABRestartLive|TestUsenetBlockedIndexerHandoffLive)$'
 
 # Git Bash would rewrite /downloads and friends into Windows paths before docker sees them.
