@@ -52,6 +52,7 @@ func (a *api) handleEditBookDetails(w http.ResponseWriter, r *http.Request) {
 	a.enrichBookWants(r, &b)
 	a.setBookAliases(r.Context(), &b)
 	setEbookKindle(&b)
+	setEbookKepub(&b, a.kepubReady(r.Context()))
 	changed := res.Changed
 	if changed == nil {
 		changed = []string{}

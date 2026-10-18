@@ -30,6 +30,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/insights"
 	"github.com/tristenlammi/arrmada/internal/issues"
 	"github.com/tristenlammi/arrmada/internal/jellyfinsvc"
+	"github.com/tristenlammi/arrmada/internal/kepub"
 	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/mediaserver"
@@ -106,6 +107,9 @@ type Deps struct {
 	// alongside the key (first-run setup): each empty one means the saved value. nil = a
 	// typed login can't be tested.
 	SubtitleLoginVerifier func(ctx context.Context, key, username, password string) (string, error)
+	// Kepub converts EPUBs for Kobo's stock reader on demand (the shelf's Kobo download and
+	// the OPDS feeds). nil = no KEPUBs: everyone gets the EPUB.
+	Kepub *kepub.Service
 	// The audiobook server for listening apps, and its listener.
 	AudioServer  *audioserver.Server
 	AudioManager *audioserver.Manager

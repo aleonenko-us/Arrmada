@@ -90,6 +90,26 @@ RUN apk add --no-cache wget tar && set -eux; \
     chmod +x /usr/local/bin/dovi_tool /usr/local/bin/hdr10plus_tool && \
     /usr/local/bin/dovi_tool --version && /usr/local/bin/hdr10plus_tool --version
 
+# --- Stage 3a: kepubify (EPUB → KEPUB for Kobo's stock reader, made on download) ---
+# Pinned and checked like the HDR tools: the release publishes no checksums, so these are
+# the SHA-256 of the two static Go binaries (kepubify-linux-64bit, kepubify-linux-arm64)
+# as published for that tag; a version bump updates them too. MIT licensed.
+FROM alpine:3.20 AS kepubify
+ARG KEPUBIFY_VERSION=v4.0.4
+ARG KEPUBIFY_SHA256_AMD64=37d7628d26c5c906f607f24b36f781f306075e7073a6fe7820a751bb60431fc5
+ARG KEPUBIFY_SHA256_ARM64=5a15b8f6f6a96216c69330601bca29638cfee50f7bf48712795cff88ae2d03a3
+ARG TARGETARCH
+RUN apk add --no-cache wget && set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) ASSET=kepubify-linux-64bit; SHA=${KEPUBIFY_SHA256_AMD64} ;; \
+        arm64) ASSET=kepubify-linux-arm64; SHA=${KEPUBIFY_SHA256_ARM64} ;; \
+        *) echo "Arrmada builds for amd64 and arm64, not ${TARGETARCH}." >&2; exit 1 ;; \
+    esac; \
+    wget -qO /usr/local/bin/kepubify "https://github.com/pgaskin/kepubify/releases/download/${KEPUBIFY_VERSION}/${ASSET}" && \
+    echo "${SHA}  /usr/local/bin/kepubify" | sha256sum -c - && \
+    chmod +x /usr/local/bin/kepubify && \
+    /usr/local/bin/kepubify --version
+
 # --- Stage 3b: whisper.cpp CLI (local AI subtitle generation), amd64 ---
 # Built with the Vulkan backend so the GPU that already does hardware transcoding (Intel
 # Arc / any Mesa- or proprietary-Vulkan card behind /dev/dri) also runs the AI. Vulkan
@@ -352,8 +372,11 @@ FROM runtime-${TARGETARCH} AS arrmada
 COPY --from=build /out/arrmada /usr/local/bin/arrmada
 # Dolby Vision (dovi_tool) + HDR10+ (hdr10plus_tool) metadata extractors/injectors.
 COPY --from=hdrtools /usr/local/bin/dovi_tool /usr/local/bin/hdr10plus_tool /usr/local/bin/
+# kepubify: the KEPUB download for Kobo (internal/kepub). Every variant has it: aio builds
+# FROM this stage.
+COPY --from=kepubify /usr/local/bin/kepubify /usr/local/bin/kepubify
 COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh && whisper-cli --help >/dev/null 2>&1
+RUN chmod +x /entrypoint.sh && whisper-cli --help >/dev/null 2>&1 && kepubify --version
 
 # Runs as root only long enough to fix data-dir ownership, then drops to PUID:PGID.
 ENV ARRMADA_HOST=0.0.0.0 \

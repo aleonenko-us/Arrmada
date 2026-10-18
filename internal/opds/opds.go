@@ -17,6 +17,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -65,8 +66,18 @@ type Deps struct {
 	// BaseURL is the scheme and host the reader reached us on ("https://books.example"),
 	// for the one link that must be absolute (the OpenSearch template).
 	BaseURL func(r *http.Request) string
-	Log     *slog.Logger
-	Now     func() time.Time
+	// Kepub converts an EPUB for Kobo's stock reader (kepub.Service). nil = no KEPUBs:
+	// no extra links, and everyone gets the EPUB.
+	Kepub Kepuber
+	Log   *slog.Logger
+	Now   func() time.Time
+}
+
+// Kepuber is the KEPUB cache (kepub.Service): Ready says whether KEPUBs can be made right
+// now (the setting is on and kepubify is there), Open returns one for a book's EPUB.
+type Kepuber interface {
+	Ready(ctx context.Context) bool
+	Open(ctx context.Context, bookID int64, src string) (*os.File, error)
 }
 
 // Handler is the catalogue.
@@ -113,6 +124,7 @@ func (h *Handler) Routes() []Route {
 		{"GET /opds/series/{id}", h.signedIn(h.series)},
 		{"GET /opds/search", h.signedIn(h.search)},
 		{"GET /opds/books/{id}/file", h.signedIn(h.file)},
+		{"GET /opds/books/{id}/kepub", h.signedIn(h.kepubFile)},
 		{"GET /opds/books/{id}/cover", h.signedIn(h.cover)},
 		// "/opds/" is the root too; anything else under it is a plain 404, not the web
 		// app's page.

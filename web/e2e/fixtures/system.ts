@@ -229,6 +229,7 @@ export const settings: AppSettings = {
   plex_login_enabled: false,
   plex_signin_staff: false,
   two_factor_admins: false,
+  books_kepub: true,
   plex_login_auto_approve: false,
   plex_login_auto_approve_types: "movie",
   jellyfin_login_enabled: false,

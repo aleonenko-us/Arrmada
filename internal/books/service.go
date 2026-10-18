@@ -226,6 +226,24 @@ func (s *Service) SetCover(ctx context.Context, id int64, coverURL string) error
 	return s.repo.SetCoverURL(ctx, id, coverURL)
 }
 
+// FillCover sets a cover only if the book still has none (a library scan's fill-in from a
+// Calibre folder's cover.jpg); it reports whether the book took it.
+func (s *Service) FillCover(ctx context.Context, id int64, coverURL string) (bool, error) {
+	return s.repo.FillCoverURL(ctx, id, coverURL)
+}
+
+// FillSeries records a series only if the book still has none (a library scan's fill-in
+// from a Calibre metadata.opf); it reports whether the book took it.
+func (s *Service) FillSeries(ctx context.Context, id int64, name string, position float64) (bool, error) {
+	return s.repo.FillSeries(ctx, id, name, position)
+}
+
+// FillISBN records an ISBN only if the catalogue's value has none (a library scan's
+// fill-in from a Calibre metadata.opf); one that fails its check digit is ignored.
+func (s *Service) FillISBN(ctx context.Context, id int64, isbn string) (bool, error) {
+	return s.repo.FillISBN(ctx, id, metadata.NormalizeISBN(isbn))
+}
+
 // ErrNarratorInvalid is a narrator name that can't be stored.
 var ErrNarratorInvalid = errors.New("invalid narrator")
 

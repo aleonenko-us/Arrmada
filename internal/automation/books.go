@@ -1695,6 +1695,10 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 		match  metadata.BookResult
 		ebooks []library.FoundFile
 		audio  []library.FoundFile
+		// From a Calibre folder (books_calibre.go): its metadata.opf, and the folders
+		// holding a cover.jpg, to fill in what the catalogue left out.
+		opf    *books.OPF
+		covers []string
 	}
 	byKey := map[string]*pending{}
 	var order []string
@@ -1734,19 +1738,32 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 			}
 			continue
 		}
-		// An ISBN in the folder or file names is an exact answer; try it before
-		// guessing from the title.
+		// A Calibre folder's metadata.opf says which book it is (books_calibre.go). Its
+		// ISBN, or else one in the folder or file names, is an exact answer; try it
+		// before guessing from the title (the OPF's, else the folder's).
+		opf, hasOPF := c.folderOPF(bf)
+		isbn, title, author := scanIdentity(bf, opf, hasOPF)
 		var match metadata.BookResult
 		matched := false
-		if isbn := scanISBN(bf); isbn != "" {
+		if isbn != "" {
 			if r, err := c.books.LookupISBN(ctx, isbn); err == nil && r != nil {
-				match, matched = *r, true
-				c.log.Info("book scan: matched by ISBN", "folder_title", bf.Title, "isbn", isbn, "book", r.Title)
+				// An OPF's ISBN can be wrong (Calibre keeps whatever a source said), and
+				// the OPF's title and authors are there to check it against: take the
+				// answer only when it's recognisably that book, else match by title as if
+				// there were no ISBN. An ISBN in a file or folder name is taken as before.
+				fromOPF := hasOPF && opf.ISBN != "" && opf.ISBN == isbn
+				if !fromOPF || isbnAgrees(*r, title, author) {
+					match, matched = *r, true
+					c.log.Info("book scan: matched by ISBN", "folder_title", bf.Title, "isbn", isbn, "from_opf", fromOPF, "book", r.Title)
+				} else {
+					c.log.Info("book scan: the ISBN names another book — matching by title instead",
+						"folder_title", title, "author", author, "isbn", isbn, "isbn_book", r.Title)
+				}
 			}
 		}
-		query := bf.Title
-		if bf.Author != "" {
-			query = bf.Author + " " + bf.Title
+		query := title
+		if author != "" {
+			query = author + " " + title
 		}
 		var results []metadata.BookResult
 		if !matched {
@@ -1757,10 +1774,10 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 				return stopped(i, len(folders), "book folders")
 			}
 			if err != nil || len(results) == 0 {
-				res.Unmatched = append(res.Unmatched, bf.Title)
+				res.Unmatched = append(res.Unmatched, title)
 				continue
 			}
-			match, matched = pickScanMatch(bf.Title, bf.Author, results)
+			match, matched = pickScanMatch(title, author, results)
 		}
 		if !matched {
 			// Better to leave a folder uncatalogued and say so than to file it under the
@@ -1769,15 +1786,27 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 			// files into the WRONG book — and because that book was already in the
 			// library, the scan reported nothing amiss and Golden Son never appeared.
 			c.log.Info("book scan: no lookup result matched the folder's title — leaving it uncatalogued",
-				"folder_title", bf.Title, "author", bf.Author, "best_guess", results[0].Title)
-			res.Unmatched = append(res.Unmatched, bf.Title)
+				"folder_title", title, "author", author, "best_guess", results[0].Title)
+			res.Unmatched = append(res.Unmatched, title)
 			continue
+		}
+		if hasOPF {
+			match = withOPFDates(match, opf)
 		}
 		p := byKey[match.Key]
 		if p == nil {
 			p = &pending{match: match}
 			byKey[match.Key] = p
 			order = append(order, match.Key)
+		}
+		if hasOPF && p.opf == nil {
+			o := opf
+			p.opf = &o
+		}
+		if bf.Dir != "" {
+			if fi, err := os.Lstat(filepath.Join(bf.Dir, books.CalibreCover)); err == nil && fi.Mode().IsRegular() {
+				p.covers = append(p.covers, bf.Dir)
+			}
 		}
 		p.ebooks = append(p.ebooks, bf.Ebooks...)
 		p.audio = append(p.audio, bf.Audiobooks...)
@@ -1806,6 +1835,7 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 					c.recordEdition(wctx, b.ID, books.KindAudiobook, p.audio)
 					merged = true
 				}
+				c.applyFolderMeta(wctx, b.ID, p.opf, p.covers)
 			}) {
 				res.Skipped++ // being changed right now: the next scan records it
 				continue
@@ -1833,6 +1863,7 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 				if hasA && added.Audiobook == nil {
 					c.recordEdition(wctx, added.ID, books.KindAudiobook, p.audio)
 				}
+				c.applyFolderMeta(wctx, added.ID, p.opf, p.covers)
 			}) {
 				res.Skipped++
 				continue
@@ -1848,6 +1879,7 @@ func (c *Coordinator) ScanBookLibrary(ctx context.Context, ebookRoot, audiobookR
 		c.underBookLock(added.ID, func() { // a new book: nothing else knows it yet
 			c.recordEdition(wctx, added.ID, books.KindEbook, p.ebooks)
 			c.recordEdition(wctx, added.ID, books.KindAudiobook, p.audio)
+			c.applyFolderMeta(wctx, added.ID, p.opf, p.covers)
 		})
 		res.Imported++
 		c.log.Info("book scan: imported", "title", added.Title, "ebooks", len(p.ebooks), "audio", len(p.audio))

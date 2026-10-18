@@ -47,6 +47,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/insights"
 	"github.com/tristenlammi/arrmada/internal/issues"
 	"github.com/tristenlammi/arrmada/internal/jobs"
+	"github.com/tristenlammi/arrmada/internal/kepub"
 	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/libroots"
@@ -641,6 +642,7 @@ func main() {
 	coordinator.SetSeries(seriesSvc, bookImporter)
 	// Books share the importer set above; ebooks land in their own category.
 	coordinator.SetBooks(booksSvc)
+	coordinator.SetBookCoverDir(filepath.Join(cfg.DataDir, "covers"))
 	// A book rename a crash or power cut stopped part way is rolled back now, before any
 	// import, scan or rename touches book files again.
 	if n := coordinator.RecoverBookRenames(runCtx); n > 0 {
@@ -1432,6 +1434,12 @@ func main() {
 		KeyVerifiers: keyVerifiers,
 		AudioServer:  audioSrv,
 		AudioManager: audioMgr,
+		// KEPUBs for Kobo's stock reader, made on demand into a bounded cache under the data
+		// folder (never next to the library file). Settings → Book server switches it off.
+		Kepub: kepub.New(kepub.Options{
+			Dir:     filepath.Join(cfg.DataDir, "cache", "kepub"),
+			Enabled: func(ctx context.Context) bool { return settingsSvc.GetBool(ctx, kepub.KeyEnabled, true) },
+		}),
 		// Setup's OpenSubtitles check: the key, username and password typed together.
 		SubtitleLoginVerifier: subsProvider.VerifyLogin,
 		Restart: func() {

@@ -35,6 +35,9 @@ type BookFile struct {
 	// Kindle: Send to Kindle's email takes this ebook's format (KindleAccepts). Set only
 	// where a page offers the send (the staff book page); never stored.
 	Kindle bool `json:"kindle,omitempty"`
+	// Kepub: the page may offer "Download for Kobo (KEPUB)" — an EPUB, with the conversion
+	// on. Set only where a page offers it; never stored.
+	Kepub bool `json:"kepub,omitempty"`
 }
 
 // Book is one book in the library. It can carry an ebook edition, an audiobook
@@ -168,6 +171,52 @@ func (r *Repo) SetSeries(ctx context.Context, bookID int64, name string, positio
 	}
 	// A series edited by hand keeps the edit; what the release said goes underneath.
 	return r.SetMatched(ctx, bookID, map[string]any{FieldSeriesName: name, FieldSeriesPosition: position})
+}
+
+// FillSeries records a series only for a book that has none, read and written in one
+// transaction, so a series someone set while a scan was running is never replaced by what
+// the scan read. "Has none" is about the catalogue's value: a series edited by hand
+// (even one cleared on purpose) keeps its edit, and the fill goes underneath it only when
+// nothing is there yet (fillMatched). It reports whether the book took it.
+func (r *Repo) FillSeries(ctx context.Context, bookID int64, name string, position float64) (bool, error) {
+	if strings.TrimSpace(name) == "" {
+		return false, nil
+	}
+	return r.fillMatched(ctx, bookID, FieldSeriesName, map[string]any{FieldSeriesName: name, FieldSeriesPosition: position})
+}
+
+// FillISBN records an ISBN (already checked) only for a book whose catalogue value has
+// none, like FillSeries: an ISBN edited by hand stays, with the fill underneath.
+func (r *Repo) FillISBN(ctx context.Context, bookID int64, isbn string) (bool, error) {
+	if isbn == "" {
+		return false, nil
+	}
+	return r.fillMatched(ctx, bookID, FieldISBN, map[string]any{FieldISBN: isbn})
+}
+
+// fillMatched writes catalogue values through setMatched when the catalogue's value of
+// field — what's underneath an edit, else the column — is empty, in one transaction.
+func (r *Repo) fillMatched(ctx context.Context, bookID int64, field string, vals map[string]any) (bool, error) {
+	took := false
+	err := store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		b, err := getTx(ctx, tx, bookID)
+		if err != nil {
+			return err
+		}
+		f, _ := fieldByName(field)
+		var cur string
+		if raw, edited := b.Edits[field]; edited {
+			_ = json.Unmarshal(raw, &cur)
+		} else {
+			_ = json.Unmarshal(f.get(&b), &cur)
+		}
+		if strings.TrimSpace(cur) != "" {
+			return nil
+		}
+		took = true
+		return setMatched(ctx, tx, bookID, vals)
+	})
+	return took, err
 }
 
 // SeriesSiblings returns every book sharing this series name, in reading order, including
@@ -396,6 +445,19 @@ func (r *Repo) UpdateMeta(ctx context.Context, id int64, description, coverURL s
 func (r *Repo) SetCoverURL(ctx context.Context, id int64, coverURL string) error {
 	res, err := r.db.ExecContext(ctx, `UPDATE books SET cover_url = ? WHERE id = ?`, coverURL, id)
 	return affected(res, err)
+}
+
+// FillCoverURL sets a cover only for a book that has none, in one statement, so a cover
+// someone picked while a scan was running is never replaced. It reports whether the book
+// took it.
+func (r *Repo) FillCoverURL(ctx context.Context, id int64, coverURL string) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE books SET cover_url = ? WHERE id = ? AND (cover_url IS NULL OR cover_url = '')`, coverURL, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // TouchMeta marks a book's details as changed now, for a change no column records (an

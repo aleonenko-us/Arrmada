@@ -476,6 +476,50 @@ func TestMatcherCorrectedTitleDoesNotStealReleases(t *testing.T) {
 	}
 }
 
+// A scan's fill-ins (series, ISBN from a Calibre metadata.opf) respect edits: under an
+// edit they go underneath, and only where nothing is there yet.
+func TestFillInsRespectEdits(t *testing.T) {
+	s, ctx := refreshService(t, &refreshCatalogue{})
+	b := addEditable(t, s, ctx, "hc:1", "Elantris", "Brandon Sanderson")
+	// A series edited in with nothing underneath: the fill goes underneath, the edit stays.
+	if _, err := s.EditDetails(ctx, b.ID, set(map[string]any{FieldSeriesName: "Cosmere"})); err != nil {
+		t.Fatal(err)
+	}
+	if took, err := s.FillSeries(ctx, b.ID, "Elantris", 1); err != nil || !took {
+		t.Fatalf("fill under an edit with nothing underneath = %v, %v", took, err)
+	}
+	got, _ := s.Get(ctx, b.ID)
+	if got.SeriesName != "Cosmere" || got.Matched().SeriesName != "Elantris" {
+		t.Fatalf("series %q over %q", got.SeriesName, got.Matched().SeriesName)
+	}
+	if took, _ := s.FillSeries(ctx, b.ID, "Other", 2); took {
+		t.Fatal("a fill replaced the catalogue series underneath")
+	}
+	// A series cleared by hand over a catalogue one stays cleared.
+	if _, err := s.EditDetails(ctx, b.ID, set(map[string]any{FieldSeriesName: ""})); err != nil {
+		t.Fatal(err)
+	}
+	if took, _ := s.FillSeries(ctx, b.ID, "Other", 2); took {
+		t.Fatal("a fill went into a series cleared by hand")
+	}
+	if got, _ = s.Get(ctx, b.ID); got.SeriesName != "" || got.Matched().SeriesName != "Elantris" {
+		t.Fatalf("cleared series %q over %q", got.SeriesName, got.Matched().SeriesName)
+	}
+	// An ISBN: filled when there's none, refused over one, ignored when it fails its check.
+	if took, err := s.FillISBN(ctx, b.ID, "0-306-40615-3"); err != nil || took {
+		t.Fatalf("a bad ISBN took: %v %v", took, err)
+	}
+	if took, err := s.FillISBN(ctx, b.ID, "978-0-590-35340-3"); err != nil || !took {
+		t.Fatalf("ISBN fill = %v, %v", took, err)
+	}
+	if took, _ := s.FillISBN(ctx, b.ID, "0306406152"); took {
+		t.Fatal("an ISBN fill replaced one")
+	}
+	if got, _ = s.Get(ctx, b.ID); got.ISBN != "9780590353403" || got.Edited(FieldISBN) {
+		t.Fatalf("isbn = %q %v", got.ISBN, got.Edits)
+	}
+}
+
 // On an otherwise equal match, a book's shown title beats another book's catalogue title.
 func TestMatchScoreShownTitleWinsTie(t *testing.T) {
 	shown := matchScore{author: true, titleLen: 4, shown: true}

@@ -28,6 +28,15 @@ describe("EReaderPanel", () => {
     expect(screen.getByText(/Apple Books can't open OPDS/)).toBeTruthy();
   });
 
+  it("tells a stock Kobo owner the route that works: the KEPUB download, over USB", () => {
+    show({ has: true, allowed: true });
+    const kobo = READER_APPS.find((a) => a.name === "Kobo (stock reader)");
+    expect(kobo?.how).toMatch(/can't open this catalogue/);
+    expect(kobo?.how).toMatch(/Download for Kobo \(KEPUB\)/);
+    expect(kobo?.how).toMatch(/USB/);
+    expect(kobo?.how).toMatch(/\.kepub\.epub/);
+  });
+
   it("points to where the password is set when there isn't one", () => {
     show({ has: false, allowed: true });
     const link = screen.getByRole("link", { name: /set it in Audiobooks/ });
