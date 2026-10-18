@@ -37,8 +37,8 @@ RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=lock
 # --- Stage 2: build the static Go binary (UI embedded) ---
 # The Go version is pinned to the patch release. A floating tag (golang:1.26-alpine) is
 # only fetched when the build machine doesn't have it yet, so a machine with an older copy
-# keeps building with standard-library security holes a later patch fixed. Dependabot
-# proposes each new patch; keep the aio-supervisor stage below on the same version.
+# keeps building with standard-library security holes a later patch fixed. Move it to
+# each new patch (CI's govulncheck flags one); keep the aio-supervisor stage below on the same version.
 FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine AS build
 WORKDIR /src
 COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy

@@ -119,7 +119,7 @@ jobs:
         run: mkdir -p internal/webui/dist && echo '<!doctype html>' > internal/webui/dist/index.html
       # Fails only when our code can actually reach a vulnerable function, in the standard
       # library or a module. Ones in code we only import are listed but don't fail the
-      # run; Dependabot proposes those upgrades. It reads the live vulnerability database,
+      # run; upgrade those when convenient. It reads the live vulnerability database,
       # so a newly published Go advisory can turn this red with no change here: the fix is
       # the next Go patch (Dockerfile and setup-go) or a module upgrade.
       - name: govulncheck
@@ -130,7 +130,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       # Production dependencies only (what ships in the UI), high or critical. Dev-only
-      # findings (test runner, build tools) don't fail CI; Dependabot handles those.
+      # findings (test runner, build tools) don't fail CI; upgrade those deliberately.
       # npm audit reads the lockfile, so no install is needed.
       - name: npm audit (production dependencies)
         run: npm audit --omit=dev --audit-level=high
