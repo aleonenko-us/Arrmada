@@ -1,10 +1,10 @@
 # Developing Arrmada
 
-The backend is Go 1.25 with SQLite; the web UI is React, TypeScript and Tailwind (Vite),
+The backend is Go 1.26 with SQLite; the web UI is React, TypeScript and Tailwind (Vite),
 embedded into the Go binary.
 
 ```sh
-go run ./cmd/arrmada                  # backend (Go 1.25+) on :7878
+go run ./cmd/arrmada                  # backend (Go 1.26+) on :7878
 cd web && npm install && npm run dev  # UI (Node 24) on :5173, proxies /api
 ```
 
