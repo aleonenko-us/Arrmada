@@ -43,6 +43,10 @@ jobs:
           go-version: "1.26.x"
           check-latest: true
           cache: true
+      # Our own models (which functions guard a path or URL) live in
+      # .github/codeql/extensions; CodeQL loads every model pack there by itself. Don't
+      # name it under `packs:` — that makes CodeQL fetch it from the registry, where it
+      # isn't published, and the scan fails.
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}

@@ -14,8 +14,8 @@ import (
 )
 
 // The sync check finds the sidecar from the catalog: an unknown title or a missing
-// sidecar is a 404 straight away, a path in the body is refused, and requesters can't
-// call it at all.
+// sidecar is a 404 straight away, a path in the body (or a language that isn't one) is
+// refused, and requesters can't call it at all.
 func TestSyncCheckResolvesPathServerSide(t *testing.T) {
 	lib := t.TempDir()
 	video := filepath.Join(lib, "Movie (2020).mkv")
@@ -44,6 +44,8 @@ func TestSyncCheckResolvesPathServerSide(t *testing.T) {
 		{"no sidecar", `{"kind":"movie","movie_id":1,"lang":"en"}`, mgr, http.StatusNotFound},
 		{"bad kind", `{"kind":"file","movie_id":1,"lang":"en"}`, mgr, http.StatusNotFound},
 		{"a client path", `{"kind":"movie","movie_id":1,"lang":"en","path":"/etc/passwd"}`, mgr, http.StatusBadRequest},
+		{"a path as the language", `{"kind":"movie","movie_id":1,"lang":"x/../../../../tmp/a"}`, mgr, http.StatusBadRequest},
+		{"not a language", `{"kind":"movie","movie_id":1,"lang":"zz"}`, mgr, http.StatusBadRequest},
 	} {
 		if rec := s.doBody("POST", "/api/v1/subtitles/sync-check", tc.body, tc.who); rec.Code != tc.want {
 			t.Errorf("%s: HTTP %d %s, want %d", tc.name, rec.Code, rec.Body, tc.want)

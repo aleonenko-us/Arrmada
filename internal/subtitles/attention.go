@@ -242,15 +242,19 @@ func parseMediaKey(k string) (MediaRef, bool) {
 		n, err := strconv.ParseInt(s, 10, 64)
 		return n, err == nil && n >= 0
 	}
+	small := func(s string) (int, bool) { // a season or episode number, read as an int
+		n, err := strconv.Atoi(s)
+		return n, err == nil && n >= 0
+	}
 	switch {
 	case len(parts) == 2 && parts[0] == "m":
 		id, ok := num(parts[1])
 		return MediaRef{Kind: "movie", MovieID: id}, ok && id > 0
 	case len(parts) == 4 && parts[0] == "e":
 		id, ok1 := num(parts[1])
-		se, ok2 := num(parts[2])
-		ep, ok3 := num(parts[3])
-		return MediaRef{Kind: "episode", SeriesID: id, Season: int(se), Episode: int(ep)}, ok1 && ok2 && ok3 && id > 0
+		se, ok2 := small(parts[2])
+		ep, ok3 := small(parts[3])
+		return MediaRef{Kind: "episode", SeriesID: id, Season: se, Episode: ep}, ok1 && ok2 && ok3 && id > 0
 	}
 	return MediaRef{}, false
 }

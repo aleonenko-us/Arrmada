@@ -156,7 +156,7 @@ var builtinEvents = []EventDef{
 			}
 			body := "📥 " + title
 			if n := num(d, "count"); n > 0 {
-				body = fmt.Sprintf("📥 %s (%d episode%s)", title, n, plural(int(n)))
+				body = fmt.Sprintf("📥 %s (%d episode%s)", title, n, plural(n))
 			}
 			return Message{Title: "Imported", Body: body, Link: link("/series/", num(d, "id"))}, true
 		},
@@ -192,7 +192,7 @@ var builtinEvents = []EventDef{
 				body = "🎵 " + artist + " — " + album
 			}
 			if n := num(d, "placed"); n > 0 {
-				body += fmt.Sprintf(" (%d track%s)", n, plural(int(n)))
+				body += fmt.Sprintf(" (%d track%s)", n, plural(n))
 			}
 			return Message{Title: "Imported", Body: body, Link: link("/music/album/", num(d, "album_id"))}, true
 		},

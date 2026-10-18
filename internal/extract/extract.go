@@ -514,9 +514,13 @@ func (w *writer) write(in io.Reader, entryName string) error {
 // deterministically when two entries collide on basename ("a/movie.mkv" and
 // "b/movie.mkv" become "movie.mkv" and "movie.2.mkv") instead of silently dropping
 // the second. Entry order in an archive is stable, so re-extraction is idempotent.
-// filepath.Base keeps this zip-slip safe.
+// filepath.Base keeps this zip-slip safe; a base that still isn't a plain local name
+// (an entry called ".." or "/") is named "file" instead.
 func flatName(used map[string]int, entryName string) string {
 	base := filepath.Base(entryName)
+	if !filepath.IsLocal(base) {
+		return flatName(used, "file")
+	}
 	n := used[base]
 	used[base] = n + 1
 	if n == 0 {

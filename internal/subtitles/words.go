@@ -92,14 +92,14 @@ func rawJSONString(b []byte) (string, bool) {
 			if i+4 >= len(b) {
 				return "", false
 			}
-			n, err := strconv.ParseUint(string(b[i+1:i+5]), 16, 32)
+			n, err := strconv.ParseUint(string(b[i+1:i+5]), 16, 16)
 			if err != nil {
 				return "", false
 			}
 			r := rune(n)
 			i += 4
 			if utf16.IsSurrogate(r) && i+6 < len(b) && b[i+1] == '\\' && b[i+2] == 'u' {
-				if lo, err := strconv.ParseUint(string(b[i+3:i+7]), 16, 32); err == nil {
+				if lo, err := strconv.ParseUint(string(b[i+3:i+7]), 16, 16); err == nil {
 					if pair := utf16.DecodeRune(r, rune(lo)); pair != utf8.RuneError {
 						r = pair
 						i += 6

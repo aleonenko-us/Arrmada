@@ -265,25 +265,27 @@ func (a *api) handleInsightsPlexAuthStart(w http.ResponseWriter, r *http.Request
 // handleInsightsPlexAuthPoll checks whether the user has authorized the sign-in; on
 // success the token (and, if unset, the server URL) are stored.
 func (a *api) handleInsightsPlexAuthPoll(w http.ResponseWriter, r *http.Request) {
-	id, ok := a.pathID(w, r)
-	if !ok {
+	// Read as an int, the type every Plex PIN id is kept in, so nothing converts it.
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		a.writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
 	me, _ := userFrom(r)
-	if me == nil || !a.plexPinOwned(r, plexFlowConnect, me.ID, int(id)) {
+	if me == nil || !a.plexPinOwned(r, plexFlowConnect, me.ID, id) {
 		a.writeError(w, http.StatusForbidden, errPlexPinElsewhere)
 		return
 	}
 	// Long enough to try each of the owner's server addresses in turn (3 s each) once approved.
 	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 	defer cancel()
-	res, err := a.deps.Insights.PollPlexAuth(ctx, int(id))
+	res, err := a.deps.Insights.PollPlexAuth(ctx, id)
 	if err != nil {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	if res.Authorized {
-		a.plexPins.forget(int(id))
+		a.plexPins.forget(id)
 		a.recheckHealth(r, "plex.connection") // a fresh connection clears its warning now
 	}
 	a.writeJSON(w, http.StatusOK, res)

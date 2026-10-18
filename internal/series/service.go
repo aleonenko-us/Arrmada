@@ -151,12 +151,19 @@ func (s *Service) libRoots() []string {
 
 // isRoot reports whether dir is one of the TV folders.
 func (s *Service) isRoot(dir string) bool {
+	_, ok := s.configuredRoot(dir)
+	return ok
+}
+
+// configuredRoot is the TV folder dir names, as it is configured (not as dir spells
+// it), and whether dir names one at all.
+func (s *Service) configuredRoot(dir string) (string, bool) {
 	for _, r := range s.libRoots() {
 		if filepath.Clean(r) == filepath.Clean(dir) {
-			return true
+			return r, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // LibraryFolderOf is the TV folder holding path (its id; 0 is the default folder), and
@@ -1967,9 +1974,11 @@ func (s *Service) ImportFolderAs(ctx context.Context, rootOverride, folder strin
 	if root == "" {
 		root = s.libRoot()
 	}
-	if !s.isRoot(root) {
+	matched, ok := s.configuredRoot(root)
+	if !ok {
 		return fmt.Errorf("%s isn't one of the TV folders", root)
 	}
+	root = matched // the configured folder, not the request's spelling of it
 	videos, _ := library.FindVideos(filepath.Join(root, folder))
 	if len(videos) == 0 {
 		return fmt.Errorf("no episode files found in %q", folder)

@@ -882,14 +882,15 @@ func (c *Coordinator) DeleteSeriesDuplicate(ctx context.Context, seriesID int64,
 				continue
 			}
 			// Into the bin, or for good only when the bin is deliberately off. A bin that
-			// refuses the file leaves it in place and says why.
-			if _, err := library.RemoveToBin(c.bin(), path); err != nil {
+			// refuses the file leaves it in place and says why. The path is the scan's
+			// (equal to the request's), so what's removed is always a file the scan found.
+			if _, err := library.RemoveToBin(c.bin(), e.Path); err != nil {
 				return err
 			}
 			c.log.Info("series: deleted a duplicate episode file", "series", seriesID,
-				"episode", fmt.Sprintf("S%02dE%02d", d.Season, d.Episode), "path", path)
+				"episode", fmt.Sprintf("S%02dE%02d", d.Season, d.Episode), "path", e.Path)
 			c.series.AddEvent(ctx, seriesID, "file.deleted",
-				fmt.Sprintf("Deleted duplicate file for S%02dE%02d: %s", d.Season, d.Episode, filepath.Base(path)))
+				fmt.Sprintf("Deleted duplicate file for S%02dE%02d: %s", d.Season, d.Episode, filepath.Base(e.Path)))
 			return nil
 		}
 	}

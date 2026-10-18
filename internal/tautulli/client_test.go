@@ -83,3 +83,19 @@ func TestHistoryMapsGrandparentFields(t *testing.T) {
 		t.Fatalf("rows = %+v", got)
 	}
 }
+
+// A year or episode number comes through as written, number or string; one no such number
+// can have (outside 32 bits) reads as 0 rather than wrapping.
+func TestAsSmall(t *testing.T) {
+	for _, tc := range []struct {
+		in   any
+		want int
+	}{
+		{float64(1999), 1999}, {"12", 12}, {" 3 ", 3}, {"x", 0}, {nil, 0},
+		{float64(-4), -4}, {"2147483647", 2147483647}, {"2147483648", 0}, {"-2147483649", 0}, {"4294967297", 0},
+	} {
+		if got := asSmall(tc.in); got != tc.want {
+			t.Errorf("asSmall(%#v) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}

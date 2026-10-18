@@ -187,3 +187,14 @@ func stripVolatile(s string) string {
 	}
 	return s
 }
+
+// The largest owner and version ids survive the round trip (unpacking reads every part
+// as a signed number).
+func TestPackUUIDRoundTripsTheLargestIDs(t *testing.T) {
+	for _, tc := range [][2]int64{{maxOwnerID, maxVersionID}, {1, 0}, {maxOwnerID, 1}, {7, maxVersionID}} {
+		u := packUUID(markUser, tc[0], tc[1])
+		if o, v, ok := unpackUUID(markUser, u); !ok || o != tc[0] || v != tc[1] {
+			t.Errorf("%d/%d → %s → %d/%d %v", tc[0], tc[1], u, o, v, ok)
+		}
+	}
+}

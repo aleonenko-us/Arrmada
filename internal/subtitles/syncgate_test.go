@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/langs"
 )
 
 func TestJudgeSync(t *testing.T) {
@@ -308,6 +310,45 @@ func TestCheckSyncOnDemand(t *testing.T) {
 	_ = os.WriteFile(strings.TrimSuffix(video, filepath.Ext(video))+".es.ass", []byte("[Script Info]"), 0o644)
 	if _, err := s.CheckSync(ctx, MediaRef{Kind: "movie", MovieID: 1}, "es", ""); !errors.Is(err, ErrNotSRT) {
 		t.Errorf("ass: %v", err)
+	}
+}
+
+// The language names a sidecar file, so only a language from the table is accepted: a
+// tag with a path in it is refused before anything is read, even when a subtitle sits
+// where the path would lead.
+func TestSyncTargetRefusesPathInLanguage(t *testing.T) {
+	s, video, speech, calls, _ := syncFixture(t, &fakeProvider{}, &fakeAI{})
+	ctx := context.Background()
+	m := MediaRef{Kind: "movie", MovieID: 1}
+	// Where the old lookup (an unknown tag passed through as the language) would have
+	// looked for this one: outside the video's folder.
+	evil := "x/../../escaped"
+	planted := sidecarPathV(video, langs.Canonical(evil), VariantFull)
+	if rel, err := filepath.Rel(filepath.Dir(video), planted); err != nil || filepath.IsLocal(rel) {
+		t.Fatalf("fixture: %s should be outside %s", planted, filepath.Dir(video))
+	}
+	if err := os.WriteFile(planted, []byte(formatSRT(subtitleFor(speech, 5))), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, lang := range []string{evil, "x/../../../../tmp/a", "../en", "en/..", "zz", ""} {
+		if _, err := s.SyncTarget(ctx, m, lang, ""); !errors.Is(err, ErrBadLanguage) {
+			t.Errorf("SyncTarget(%q): %v, want ErrBadLanguage", lang, err)
+		}
+		if _, err := s.CheckSync(ctx, m, lang, ""); !errors.Is(err, ErrBadLanguage) {
+			t.Errorf("CheckSync(%q): %v, want ErrBadLanguage", lang, err)
+		}
+	}
+	if *calls != 0 {
+		t.Errorf("read the audio %d times for a refused language", *calls)
+	}
+	if _, ok, _ := s.ledger.LiveFile(ctx, planted); ok {
+		t.Error("recorded a row for the planted file")
+	}
+	// A variant is never taken from the request as written.
+	for in, want := range map[string]string{"SDH": VariantSDH, " forced ": VariantForced, "full": VariantFull, "": VariantFull, "../x": VariantFull} {
+		if got := normVariant(in); got != want {
+			t.Errorf("normVariant(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

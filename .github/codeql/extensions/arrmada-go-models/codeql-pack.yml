@@ -1,0 +1,11 @@
+# Arrmada's own CodeQL models: the path and URL guards the code uses, described so code
+# scanning knows a value that passed one is safe. CodeQL picks up every model pack under
+# .github/codeql/extensions by itself when it builds the database; nothing needs
+# publishing.
+name: tristenlammi/arrmada-go-models
+version: 0.0.1
+library: true
+extensionTargets:
+  codeql/go-all: "*"
+dataExtensions:
+  - models/**/*.yml

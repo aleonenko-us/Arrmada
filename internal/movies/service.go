@@ -245,12 +245,19 @@ func (s *Service) SuggestFolder(ctx context.Context, tmdbID int) (int64, error) 
 
 // isRoot reports whether dir is one of the Movies folders.
 func (s *Service) isRoot(dir string) bool {
+	_, ok := s.configuredRoot(dir)
+	return ok
+}
+
+// configuredRoot is the Movies folder dir names, as it is configured (not as dir spells
+// it), and whether dir names one at all.
+func (s *Service) configuredRoot(dir string) (string, bool) {
 	for _, r := range s.libRoots() {
 		if filepath.Clean(r) == filepath.Clean(dir) {
-			return true
+			return r, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // ownerID is the Movies folder holding path (the default when none of them does).
@@ -776,9 +783,11 @@ func (s *Service) ImportFolderAs(ctx context.Context, rootOverride, folder strin
 	if root == "" {
 		root = s.libRoot()
 	}
-	if !s.isRoot(root) {
+	matched, ok := s.configuredRoot(root)
+	if !ok {
 		return fmt.Errorf("%s isn't one of the Movies folders", root)
 	}
+	root = matched // the configured folder, not the request's spelling of it
 	video, _, err := library.FindVideo(filepath.Join(root, folder))
 	if err != nil || video == "" {
 		return fmt.Errorf("no video file found in %q", folder)

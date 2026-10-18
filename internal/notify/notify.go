@@ -449,7 +449,7 @@ func (s *Service) deliverPush(ctx context.Context, c Connection, m Message) erro
 	return err
 }
 
-func plural(n int) string {
+func plural(n int64) string {
 	if n == 1 {
 		return ""
 	}

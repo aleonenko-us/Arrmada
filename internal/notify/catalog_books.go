@@ -37,6 +37,6 @@ func formatAuthorRelease(d map[string]any) (Message, bool) {
 		return m, true
 	}
 	m.Title = "New books"
-	m.Body = fmt.Sprintf("📚 %d new books from %s: %s", n, author, listSome(titles, int(n), 3))
+	m.Body = fmt.Sprintf("📚 %d new books from %s: %s", n, author, listSome(titles, n, 3))
 	return m, true
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -147,10 +148,10 @@ func (c *Client) History(ctx context.Context, fn func(Page) error) error {
 				GrandparentTitle:     asStr(m["grandparent_title"]),
 				ParentTitle:          asStr(m["parent_title"]),
 				MediaType:            asStr(m["media_type"]),
-				Year:                 int(asInt(m["year"])),
+				Year:                 asSmall(m["year"]),
 				RatingKey:            asKey(m["rating_key"]),
-				MediaIndex:           int(asInt(m["media_index"])),
-				ParentIndex:          int(asInt(m["parent_media_index"])),
+				MediaIndex:           asSmall(m["media_index"]),
+				ParentIndex:          asSmall(m["parent_media_index"]),
 				Started:              asInt(m["started"]),
 				Stopped:              asInt(m["stopped"]),
 				DurationSec:          asInt(m["duration"]),
@@ -183,6 +184,16 @@ func (c *Client) History(ctx context.Context, fn func(Page) error) error {
 			return nil
 		}
 	}
+}
+
+// asSmall is asInt for a year or an episode/season number: a value no such number can
+// have (outside 32 bits) reads as 0, like one that isn't a number.
+func asSmall(v any) int {
+	n := asInt(v)
+	if n < math.MinInt32 || n > math.MaxInt32 {
+		return 0
+	}
+	return int(n)
 }
 
 // asInt coerces Tautulli's mixed number/string JSON to int64.
