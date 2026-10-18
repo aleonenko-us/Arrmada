@@ -2,7 +2,8 @@ package httpapi
 
 import (
 	"net/http"
-	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/push"
 )
 
 // Web Push subscription endpoints. All operate on the signed-in user's own
@@ -46,8 +47,9 @@ func (a *api) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 	if !a.decodeJSON(w, r, &req) {
 		return
 	}
-	// The endpoint must be an HTTPS push-service URL; the keys are opaque base64.
-	if !strings.HasPrefix(req.Endpoint, "https://") || req.Keys.P256dh == "" || req.Keys.Auth == "" {
+	// The endpoint must be a browser push service's (the server posts to it, so any other
+	// address would be a request into wherever it points); the keys are opaque base64.
+	if push.ValidEndpoint(req.Endpoint) != nil || req.Keys.P256dh == "" || req.Keys.Auth == "" {
 		a.writeError(w, http.StatusBadRequest, "invalid push subscription")
 		return
 	}
