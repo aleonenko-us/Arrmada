@@ -43,9 +43,12 @@ jobs:
       - name: Build the embedded web UI
         run: npm ci && npm run build
         working-directory: web
+      # The newest 1.26 patch: without check-latest, setup-go takes whatever 1.26.x the
+      # runner image has cached, which can be a patch behind on security fixes.
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25.x"
+          go-version: "1.26.x"
+          check-latest: true
           cache: true
       - name: Build
         run: go build ./...

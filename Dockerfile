@@ -35,7 +35,11 @@ RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=lock
     mkdir -p /src/internal/webui/dist && build-heavy 800 'npm run build'
 
 # --- Stage 2: build the static Go binary (UI embedded) ---
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+# The Go version is pinned to the patch release. A floating tag (golang:1.26-alpine) is
+# only fetched when the build machine doesn't have it yet, so a machine with an older copy
+# keeps building with standard-library security holes a later patch fixed. Dependabot
+# proposes each new patch; keep the aio-supervisor stage below on the same version.
+FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine AS build
 WORKDIR /src
 COPY --chmod=755 docker/build-heavy /usr/local/bin/build-heavy
 COPY go.mod go.sum ./
@@ -442,7 +446,7 @@ RUN set -eux; \
 
 # The supervisor: standard library only, so it builds from its own two folders, on the
 # build machine's platform (Go cross-compiles it, like arrmada), without the web UI.
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS aio-supervisor
+FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine AS aio-supervisor
 WORKDIR /src
 COPY go.mod go.sum ./
 COPY internal/aio ./internal/aio
