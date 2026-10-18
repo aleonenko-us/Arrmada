@@ -958,13 +958,21 @@ publisher — field by field, with the catalogue's value kept underneath.
   series learned from a release and merges go through `books.setMatched`, which writes an
   edited field's new catalogue value into `edits_json` instead of the column. Per-field
   triggers catch any other write to an edited column (one that doesn't move `edited_at`) and
-  do the same, so a future code path can't undo an edit either. `books_meta_updated` gains
-  the new columns, so listening apps refetch an edited book.
+  do the same, so a future code path can't undo an edit either (without moving
+  `meta_updated_at`, since nothing shown changed). `books_meta_updated` gains the new
+  columns, so listening apps refetch an edited book. The Calibre scan's fill-ins
+  (`FillSeries`, `FillISBN`) fill the catalogue value, underneath an edit when there is one.
 - **Re-match** asks whether to keep the edits (the default) or clear them. A merge keeps the
-  dropped book's edits for the fields the kept book hasn't edited.
+  dropped book's edits for the fields the kept book hasn't edited (not the narrator, which
+  stays with its audiobook file), fills the kept book's gaps from the dropped book's
+  catalogue values only, and never fills a detail the kept book edited.
 - **Searching for downloads** uses the edited title and author first (an edit is usually a
-  correction to what trackers call the book), then the catalogue's when that finds nothing;
-  the release matcher and the import gate accept a release named either way. Identity is
+  correction to what trackers call the book), then the catalogue's author, and the
+  catalogue's title only when the edited one is a variant of it (`books.TitleVariant`: the
+  same main title before any subtitle, folded). A title edited into another title ("Dune" →
+  "Dune Messiah") was a correction, so the old title is neither searched nor matched — it
+  would pull in the other book's releases. The release matcher uses the same names, and on
+  an equal match a book's shown title beats another book's catalogue title. Identity is
   unchanged: catalogue keys and ids stay.
 - **Files are never renamed by an edit.** `PUT /api/v1/books/{id}/details` answers
   `rename_available` when the edit changed where the naming puts an edition; the page offers
