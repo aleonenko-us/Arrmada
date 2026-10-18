@@ -39,11 +39,26 @@ func ReadSABAPIKey(file string) (string, error) {
 	return parseSABAPIKey(io.LimitReader(f, 4<<20))
 }
 
-// parseSABAPIKey is ReadSABAPIKey's reader: ConfigObj's layout, [section] then key = value.
+// parseSABAPIKey is ReadSABAPIKey's reader.
 func parseSABAPIKey(r io.Reader) (string, error) {
+	misc, err := parseSABMisc(r)
+	if err != nil {
+		return "", err
+	}
+	v, ok := misc["api_key"]
+	if !ok || !sabKeyRe.MatchString(v) {
+		return "", errNoSABKey
+	}
+	return v, nil
+}
+
+// parseSABMisc reads a sabnzbd.ini's [misc] keys: ConfigObj's layout, [section] then
+// key = value. The first of each key wins.
+func parseSABMisc(r io.Reader) (map[string]string, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	section := ""
+	out := map[string]string{}
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		switch {
@@ -60,19 +75,110 @@ func parseSABAPIKey(r io.Reader) (string, error) {
 			continue
 		}
 		k, v, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(k) != "api_key" {
+		if !ok {
 			continue
 		}
-		v = strings.Trim(strings.TrimSpace(v), `"'`)
-		if !sabKeyRe.MatchString(v) {
-			return "", errNoSABKey
+		if k = strings.TrimSpace(k); k != "" {
+			if _, seen := out[k]; !seen {
+				out[k] = strings.Trim(strings.TrimSpace(v), `"'`)
+			}
 		}
-		return v, nil
 	}
 	if err := sc.Err(); err != nil {
-		return "", fmt.Errorf("reading sabnzbd.ini: %w", err)
+		return nil, fmt.Errorf("reading sabnzbd.ini: %w", err)
 	}
-	return "", errNoSABKey
+	return out, nil
+}
+
+// ReadSABLogin reads the bundled SABnzbd's own web page login from its sabnzbd.ini ([misc]
+// username and password, which SABnzbd keeps there as written): the one its init container
+// made, or SecureBundledSAB gave it. ok is false when it has none.
+func ReadSABLogin(file string) (username, password string, ok bool, err error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return "", "", false, err
+	}
+	defer f.Close()
+	misc, err := parseSABMisc(io.LimitReader(f, 4<<20))
+	if err != nil {
+		return "", "", false, err
+	}
+	username, password = misc["username"], misc["password"]
+	return username, password, username != "" && password != "", nil
+}
+
+// sabWebUser is the username Arrmada gives the bundled SABnzbd's own web page.
+const sabWebUser = "arrmada"
+
+// bundledSABLoginGiver is the part of the SABnzbd downloader that gives its page a login.
+type bundledSABLoginGiver interface {
+	EnsureWebLogin(ctx context.Context, dc Client) (bool, error)
+}
+
+// SecureBundledSAB gives the bundled SABnzbd (the container at url) a login for its own
+// web page when it has none. Its first config had none, and its page is published on the
+// network, where anyone could change its settings, servers included. Arrmada itself uses
+// the API key, which works with or without a login. A login already there (one the owner
+// set, or the init container's) is never changed. It reports whether one was given;
+// ErrBundledInactive when there's no switched-on bundled SABnzbd at url.
+func (s *Service) SecureBundledSAB(ctx context.Context, url string) (bool, error) {
+	c, ok, err := s.repo.BundledOf(ctx, KindSABnzbd)
+	if err != nil {
+		return false, err
+	}
+	if !ok || !c.Enabled || c.URL != url {
+		return false, ErrBundledInactive
+	}
+	impl, found := s.registry.For(c.Kind)
+	if !found {
+		return false, fmt.Errorf("no downloader for kind %q", c.Kind)
+	}
+	g, ok := impl.(bundledSABLoginGiver)
+	if !ok {
+		return false, nil
+	}
+	return g.EnsureWebLogin(ctx, c)
+}
+
+// EnsureWebLogin gives SABnzbd's web page a login (sabWebUser and a long random password)
+// when it has neither a username nor a password, and finishes one it began (its username,
+// no password yet). SABnzbd asks for a login only when it has both, takes them at once,
+// and keeps them in its sabnzbd.ini, where ReadSABLogin finds them. Anything else is the
+// owner's and left as it is.
+func (s *SABnzbd) EnsureWebLogin(ctx context.Context, dc Client) (bool, error) {
+	body, err := s.call(ctx, dc, "get_config", url.Values{"section": {"misc"}})
+	if err != nil {
+		return false, err
+	}
+	v, err := decode[struct {
+		Config struct {
+			Misc map[string]any `json:"misc"`
+		} `json:"config"`
+	}](dc, body, "settings")
+	if err != nil {
+		return false, err
+	}
+	user, uok := v.Config.Misc["username"].(string)
+	pass, pok := v.Config.Misc["password"].(string)
+	if !uok || !pok {
+		// Never guess: a SABnzbd that answers differently might have a login after all.
+		return false, errors.New("SABnzbd's settings didn't say whether its page has a login")
+	}
+	if pass != "" || (user != "" && user != sabWebUser) {
+		return false, nil
+	}
+	var b [18]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return false, err
+	}
+	// The username first: cut short after it, the next start sees Arrmada's username with
+	// no password and finishes the job.
+	for _, kv := range [][2]string{{"username", sabWebUser}, {"password", hex.EncodeToString(b[:])}} {
+		if _, err := s.call(ctx, dc, "set_config", url.Values{"section": {"misc"}, "keyword": {kv[0]}, "value": {kv[1]}}); err != nil {
+			return false, fmt.Errorf("couldn't set SABnzbd's %s: %w", kv[0], err)
+		}
+	}
+	return true, nil
 }
 
 // SABTuned is what TuneBundledSAB changed in the bundled SABnzbd.

@@ -39,6 +39,30 @@ func (a *api) bundledSABKey() string {
 	return key
 }
 
+// bundledSABLogin is the bundled SABnzbd's own web page login, from its read-only config:
+// the one its init container made, or download.Service.SecureBundledSAB gave it. ok is
+// false when this install runs none or it has no login yet.
+func (a *api) bundledSABLogin() (username, password string, ok bool) {
+	if a.deps.Config.SABnzbdURL == "" || a.deps.Config.SABnzbdConfig == "" {
+		return "", "", false
+	}
+	u, p, ok, err := download.ReadSABLogin(a.deps.Config.SABnzbdConfig)
+	return u, p, err == nil && ok
+}
+
+// handleBundledSABLogin is GET /api/v1/downloadclients/bundled-login?kind=sabnzbd: the
+// bundled SABnzbd's page login, for an admin who opens it (that's where the Usenet provider
+// is added). Admin-only, never cached, never logged.
+func (a *api) handleBundledSABLogin(w http.ResponseWriter, r *http.Request) {
+	u, p, ok := a.bundledSABLogin()
+	if !ok {
+		a.writeError(w, http.StatusNotFound, "the bundled SABnzbd's page has no login yet; Arrmada gives it one when it next starts")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store, private")
+	a.writeJSON(w, http.StatusOK, map[string]string{"username": u, "password": p})
+}
+
 // restoreBundledSAB is handleRestoreBundledClient for the bundled SABnzbd: it clears the
 // removed flag and registers it again with the key from its config.
 func (a *api) restoreBundledSAB(w http.ResponseWriter, r *http.Request) {
