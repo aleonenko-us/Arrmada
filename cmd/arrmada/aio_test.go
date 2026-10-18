@@ -118,6 +118,29 @@ func TestLoginFile(t *testing.T) {
 	if _, _, _, err := f.Load(); err == nil {
 		t.Error("a broken login file read as no login")
 	}
+	// reopen's marker, beside the login: the same name update.sh writes.
+	if f.Reopened() != download.ReopenNone {
+		t.Error("reopened with no marker")
+	}
+	marker := filepath.Join(filepath.Dir(f.path), "qbittorrent-reopened")
+	if err := os.WriteFile(marker, nil, 0o644); err != nil { // update.sh's touch
+		t.Fatal(err)
+	}
+	if f.Reopened() != download.ReopenRollback {
+		t.Error("update.sh's marker wasn't seen")
+	}
+	if err := os.WriteFile(marker, []byte("reset\n"), 0o644); err != nil { // troubleshooting
+		t.Fatal(err)
+	}
+	if f.Reopened() != download.ReopenReset {
+		t.Error("the reset marker wasn't seen")
+	}
+	if err := f.ClearReopened(); err != nil || f.Reopened() != download.ReopenNone {
+		t.Errorf("clear: %v", err)
+	}
+	if err := f.ClearReopened(); err != nil {
+		t.Errorf("clearing twice: %v", err)
+	}
 }
 
 // At boot the Compose bundle is registered without a login until Arrmada has made one,

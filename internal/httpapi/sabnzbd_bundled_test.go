@@ -223,3 +223,52 @@ func TestSetupChecklistUsenetProvider(t *testing.T) {
 		t.Errorf("bundled SABnzbd with a server: shown=%v done=%v", shown, done)
 	}
 }
+
+// The bundled SABnzbd's page login, read from its config: on its card as has_login, and to
+// an admin (only) from bundled-login?kind=sabnzbd. Never in the client list.
+func TestBundledSABLogin(t *testing.T) {
+	var servers atomic.Int32
+	sab := fakeBundledSAB(t, &servers)
+	ini := writeSABIni(t, bundledSABKeyForTest)
+	var dl *download.Service
+	s := newRouteServer(t, func(d *Deps) {
+		d.Config.SABnzbdURL = sab.URL
+		d.Config.SABnzbdConfig = ini
+		dl = download.NewService(d.Store.DB(), d.Log)
+		d.Downloads = dl
+	})
+	dl.SetFlags(s.deps.Settings)
+	if _, err := dl.EnsureBundledSAB(context.Background(), sab.URL, bundledSABKeyForTest); err != nil {
+		t.Fatal(err)
+	}
+	_, admin := s.user(t, "admin@example.com", auth.RoleAdmin)
+	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
+
+	// No login in its config yet.
+	if rec := s.do("GET", "/api/v1/downloadclients/bundled-login?kind=sabnzbd", admin); rec.Code != http.StatusNotFound {
+		t.Errorf("before: HTTP %d", rec.Code)
+	}
+	if body := s.do("GET", "/api/v1/downloadclients", mgr).Body.String(); strings.Contains(body, "has_login") {
+		t.Errorf("before: the card offers a login: %s", body)
+	}
+
+	const pw = "SabPagePassword-0123456789abcdef"
+	if err := os.WriteFile(ini, []byte("__version__ = 19\n[misc]\napi_key = "+bundledSABKeyForTest+"\nusername = arrmada\npassword = "+pw+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body := s.do("GET", "/api/v1/downloadclients", mgr).Body.String()
+	if strings.Contains(body, pw) || !strings.Contains(body, `"has_login":true`) {
+		t.Errorf("after: %s", body)
+	}
+	if rec := s.do("GET", "/api/v1/downloadclients/bundled-login?kind=sabnzbd", mgr); rec.Code != http.StatusForbidden {
+		t.Errorf("a manager read the login: HTTP %d", rec.Code)
+	}
+	rec := s.do("GET", "/api/v1/downloadclients/bundled-login?kind=sabnzbd", admin)
+	var got struct{ Username, Password string }
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &got) != nil || got.Username != "arrmada" || got.Password != pw {
+		t.Fatalf("admin: HTTP %d %s", rec.Code, rec.Body)
+	}
+	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "no-store") {
+		t.Errorf("Cache-Control %q", cc)
+	}
+}

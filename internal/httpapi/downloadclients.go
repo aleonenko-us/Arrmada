@@ -30,7 +30,8 @@ type clientView struct {
 	UIPort string `json:"ui_port,omitempty"`
 	// HasLogin says Arrmada made this client's web UI login and an admin can look it up
 	// (GET /api/v1/downloadclients/bundled-login): the bundled qBittorrent's, the
-	// all-in-one image's or the Compose bundle's once Arrmada has given it a password.
+	// all-in-one image's or the Compose bundle's once Arrmada has given it a password, and
+	// the bundled SABnzbd's (?kind=sabnzbd), read from its config.
 	HasLogin bool `json:"has_login,omitempty"`
 	// BuiltIn says it's the all-in-one image's qBittorrent, which runs inside Arrmada's
 	// own container (the Compose bundle's is a container of its own).
@@ -38,6 +39,10 @@ type clientView struct {
 	// AuthSaved says a password (SABnzbd: its API key) is saved, never what it is: the
 	// edit form asks for it again when the address changes only if there is one.
 	AuthSaved bool `json:"auth_saved,omitempty"`
+	// UILocal says that page is published on the server's loopback only (the Compose
+	// bundle's qBittorrent: ARRMADA_QBIT_WEBUI_BIND, 127.0.0.1 unless .env says otherwise),
+	// so the card says how to reach it instead of linking a page another computer can't open.
+	UILocal bool `json:"ui_local,omitempty"`
 }
 
 // clientStatus is what the card says about a client that isn't answering. state is ok,
@@ -54,12 +59,17 @@ func (a *api) clientView(c download.Client) clientView {
 	v := clientView{Client: c, AuthSaved: c.Password != ""}
 	if c.Bundled && c.Kind == download.KindSABnzbd {
 		v.UIPort = sabUIPort()
+		// Its page's login, while the row is the bundled container's.
+		if c.URL == a.deps.Config.SABnzbdURL {
+			_, _, v.HasLogin = a.bundledSABLogin()
+		}
 	}
 	// Only while it's the built-in one: a bundled row the owner pointed at another
 	// qBittorrent isn't that page, and that login isn't its.
 	if cfg := &a.deps.Config; c.Bundled && c.Kind == download.KindQbittorrent && cfg.QbittorrentURL != "" && c.URL == cfg.QbittorrentURL {
 		if _, ok := a.bundledQbitLogin(); ok {
 			v.UIPort, v.HasLogin, v.BuiltIn = a.qbitUIPort(), true, cfg.AIOQbittorrentURL != ""
+			v.UILocal = v.UIPort != "" && a.qbitUILocal()
 		}
 	}
 	if st, ok := a.deps.Downloads.Status(c.ID); ok {

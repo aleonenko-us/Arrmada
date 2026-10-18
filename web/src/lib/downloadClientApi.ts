@@ -88,7 +88,9 @@ export const downloadClientApi = {
   restoreBundledClient: (kind?: "sabnzbd") =>
     req<{ restored: boolean }>(`/api/v1/downloadclients/restore-bundled${kind ? `?kind=${kind}` : ""}`, { method: "POST" }),
   /** The web UI login Arrmada made for the all-in-one image's qBittorrent (admins only). */
-  bundledLogin: () => req<{ username: string; password: string }>("/api/v1/downloadclients/bundled-login"),
+  /** The login Arrmada made for a bundled client's own page: qBittorrent's, or SABnzbd's with kind "sabnzbd". */
+  bundledLogin: (kind?: "sabnzbd") =>
+    req<{ username: string; password: string }>(`/api/v1/downloadclients/bundled-login${kind ? `?kind=${kind}` : ""}`),
   deleteDownloadClient: (id: number) =>
     req<void>(`/api/v1/downloadclients/${id}`, { method: "DELETE" }),
   /** For a usenet client this asks SABnzbd four or five things: read it once, never poll. */

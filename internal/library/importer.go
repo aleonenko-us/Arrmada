@@ -319,6 +319,9 @@ func (im *Importer) ImportBook(n BookName, files []FoundFile) (*BookImport, erro
 	}
 	nm := im.BookNamingFor(audio)
 	dir := BookFolderPath(root, nm, audio, n, BookFileFormat(files[0].Path))
+	if err := insideRoot(dir, root); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create book dir: %w", err)
 	}
@@ -349,7 +352,11 @@ func (im *Importer) ImportBook(n BookName, files []FoundFile) (*BookImport, erro
 		names = BookTrackNames(nm, n, rels)
 	} else {
 		for i, f := range files {
-			names[i] = clean(strings.TrimSuffix(filepath.Base(f.Path), filepath.Ext(f.Path))) + filepath.Ext(f.Path)
+			name := clean(strings.TrimSuffix(filepath.Base(f.Path), filepath.Ext(f.Path)))
+			if name == "" {
+				name = "Unknown" // a file called "...epub", say: never a hidden ".epub"
+			}
+			names[i] = name + filepath.Ext(f.Path)
 		}
 	}
 	var total int64
@@ -409,6 +416,22 @@ func pathWithin(p, dir string) bool {
 
 // PathWithin reports whether p is dir or inside it, on whole path segments.
 func PathWithin(p, dir string) bool { return pathWithin(p, dir) }
+
+// ErrOutsideRoot means a path built from metadata (a show, artist or album name) would
+// land outside its library folder. clean() already turns a ".." name into "Unknown…";
+// this is the last check before anything is created or placed, so no name that slips past
+// it can make a folder or a file outside the library.
+var ErrOutsideRoot = errors.New("the import target isn't inside its library folder")
+
+// insideRoot refuses a target that isn't strictly inside root. It compares cleaned paths
+// (so "a/../.." can't pass) without following symlinks: a library folder may well hold
+// symlinks of the owner's, and those are theirs to point where they like.
+func insideRoot(target, root string) error {
+	if strings.TrimSpace(root) == "" || filepath.Clean(target) == filepath.Clean(root) || !pathWithin(target, root) {
+		return fmt.Errorf("%w: %s", ErrOutsideRoot, target)
+	}
+	return nil
+}
 
 // relOrBase is p relative to base with "/" separators, or just its name when it isn't
 // under base.
@@ -1143,6 +1166,9 @@ func (im *Importer) ImportEpisodeIntoWith(seriesFolder, seriesTitle string, year
 		return nil, false, err
 	}
 	target := im.episodeTargetIn(seriesFolder, seriesTitle, year, rel.Season, ep, rel, ext, false)
+	if err := insideRoot(target, im.tvDir()); err != nil {
+		return nil, false, err
+	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return nil, false, fmt.Errorf("create season dir: %w", err)
 	}
@@ -1181,6 +1207,9 @@ func (im *Importer) ImportEpisodeAs(seriesFolder, seriesTitle string, year, seas
 		return nil, false, err
 	}
 	target := im.episodeTargetIn(seriesFolder, seriesTitle, year, season, episode, rel, ext, false)
+	if err := insideRoot(target, im.tvDir()); err != nil {
+		return nil, false, err
+	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return nil, false, fmt.Errorf("create season dir: %w", err)
 	}
@@ -1364,6 +1393,19 @@ func (im *Importer) SeriesLibraryFiles(title string, year int) []EpisodeImport {
 // through the anime-aware resolver (which handles absolute-numbered files that carry no
 // SxxExx). seriesFolder empty → derive "<Title> (<Year>)".
 func (im *Importer) SeriesLibraryVideos(seriesFolder, title string, year int) []FoundVideo {
+	dir, ok := im.seriesLibraryDir(seriesFolder, title, year)
+	if !ok {
+		return nil
+	}
+	vids, _ := FindVideos(dir)
+	return vids
+}
+
+// seriesLibraryDir is the show's folder under the TV root: seriesFolder, or
+// "<Title> (<Year>)" when that's empty. ok is false for anything that isn't strictly
+// inside the TV root, so a rescan never walks the root itself (and every other show in it)
+// or a folder above it.
+func (im *Importer) seriesLibraryDir(seriesFolder, title string, year int) (string, bool) {
 	folder := clean(seriesFolder)
 	if folder == "" {
 		folder = clean(title)
@@ -1374,8 +1416,11 @@ func (im *Importer) SeriesLibraryVideos(seriesFolder, title string, year int) []
 			folder = fmt.Sprintf("%s (%d)", folder, year)
 		}
 	}
-	vids, _ := FindVideos(filepath.Join(im.tvDir(), folder))
-	return vids
+	dir := filepath.Join(im.tvDir(), folder)
+	if insideRoot(dir, im.tvDir()) != nil {
+		return "", false
+	}
+	return dir, true
 }
 
 // SeriesLibraryFilesIn is SeriesLibraryFiles scoped to an explicit series folder
@@ -1383,17 +1428,11 @@ func (im *Importer) SeriesLibraryVideos(seriesFolder, title string, year int) []
 // Using the real folder lets rescan reconcile a show whose folder doesn't match
 // the derived name. FindVideos recurses, so any season-folder naming is found.
 func (im *Importer) SeriesLibraryFilesIn(seriesFolder, title string, year int) []EpisodeImport {
-	folder := clean(seriesFolder)
-	if folder == "" {
-		folder = clean(title)
-		if folder == "" {
-			folder = "Unknown"
-		}
-		if year > 0 {
-			folder = fmt.Sprintf("%s (%d)", folder, year)
-		}
+	dir, ok := im.seriesLibraryDir(seriesFolder, title, year)
+	if !ok {
+		return nil
 	}
-	vids, _ := FindVideos(filepath.Join(im.tvDir(), folder))
+	vids, _ := FindVideos(dir)
 	var out []EpisodeImport
 	for _, v := range vids {
 		p := parser.Parse(filepath.Base(v.Path))
@@ -1717,9 +1756,18 @@ func statedSource(r parser.Release) string {
 	return tokenOrEmpty(string(r.Source), string(parser.SourceUnknown))
 }
 
+// clean makes s safe as one folder or file name: illegal characters out, whitespace
+// collapsed. "." and ".." come back empty, so every caller falls back to its "Unknown…"
+// name: they name no folder of their own, and ".." — a show or an album TMDB or
+// MusicBrainz really calls that — would climb out of the library. "..." and longer are
+// ordinary names (insideRoot backs this up where files are placed).
 func clean(s string) string {
 	s = reIllegal.ReplaceAllString(s, "")
-	return strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	if s == "." || s == ".." {
+		return ""
+	}
+	return s
 }
 
 // reTitlePunct is the sentence punctuation dropped from a metadata title so it
@@ -2337,6 +2385,9 @@ func (im *Importer) AlbumTrackTarget(artist, album string, year, disc, track int
 // Used by the album importer, where each track is placed individually.
 func (im *Importer) PlaceFile(src, dst string) error {
 	if err := im.checkRoot(im.MusicDir()); err != nil {
+		return err
+	}
+	if err := insideRoot(dst, im.MusicDir()); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {

@@ -646,6 +646,8 @@ export interface DownloadClient {
   built_in?: boolean;
   /** A password (SABnzbd: API key) is saved; its value never reaches the browser. */
   auth_saved?: boolean;
+  /** Its own page is published on the server's loopback only (ARRMADA_QBIT_WEBUI_BIND), so another computer can't open ui_port. */
+  ui_local?: boolean;
   /** How it has been answering; absent when nothing is known yet. */
   status?: DownloadClientStatus;
   /** Remote → local folder mappings for a client that sees its downloads under another path. */

@@ -1520,6 +1520,10 @@ func main() {
 			}
 		},
 	})
+	// The Compose bundle's qBittorrent letting whole networks in without a password.
+	if isComposeBundleQbit(cfg) {
+		healthReg.Register(bundledQbitCheck(downloads, cfg))
+	}
 	// A task that keeps failing is a health problem too (it warns at three in a row).
 	healthReg.Register(health.TasksFailingCheck(func() []health.TaskState {
 		var out []health.TaskState

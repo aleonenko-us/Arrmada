@@ -423,29 +423,29 @@ manual_db_steps() {
   say "    3. ./update.sh --rollback" >&2
 }
 
-# Switches the bundled qBittorrent's subnet whitelist back on in its config: the same
-# command as docs/troubleshooting.md, keeping the file's owner (sed -i writes a new file).
-# shellcheck disable=SC2016 # expanded by the init container's shell, not this one
-QBIT_REOPEN='f=/config/qBittorrent/qBittorrent.conf; o=$(stat -c %u:%g "$f") && sed -i "s/^WebUI\\\\AuthSubnetWhitelistEnabled=false/WebUI\\\\AuthSubnetWhitelistEnabled=true/" "$f" && chown "$o" "$f" && grep -q "^WebUI\\\\AuthSubnetWhitelistEnabled=true" "$f"'
-
 # reopen_bundled_qbit: a database put back with --with-db can be from before Arrmada gave
 # the bundled qBittorrent its password (qbittorrent-login.json in the data folder), so the
 # client in the restored database signs in without one, and qBittorrent would turn it
-# away. Its login-free access from the Docker network goes back on for the build being
-# started; an Arrmada with the password switch gives it its password again when it starts.
-# Nothing happens without that file (no password was ever given) or without the bundle.
+# away. Its login-free access goes back on for the build being started, for the Docker
+# network Arrmada and qBittorrent share and nothing else (docker/qbittorrent/reopen.sh: never
+# the private ranges a first config from before had, which covered every home network); an
+# Arrmada with the password switch gives it its password again when it starts. Nothing
+# happens without that file (no password was ever given) or without the bundle.
 reopen_bundled_qbit() {
   docker compose config --services 2>/dev/null | grep -qx arrmada-qbittorrent-init || return 0
   _made=$(docker compose run --rm --no-deps -T --entrypoint sh arrmada-app \
     -c 'if [ -f /data/qbittorrent-login.json ]; then echo yes; else echo no; fi' 2>/dev/null </dev/null | tr -d '\r' | tail -n 1)
   [ "$_made" = no ] && return 0
-  if [ "$_made" = yes ] &&
+  # The marker first: it tells the next Arrmada with the switch that this access was put
+  # back on purpose (it's Arrmada's to take away again), not set up by you since.
+  if [ "$_made" = yes ] && [ -f docker/qbittorrent/reopen.sh ] &&
+    docker compose run --rm --no-deps -T --entrypoint sh arrmada-app -c 'touch /data/qbittorrent-reopened' >/dev/null 2>&1 </dev/null &&
     docker compose stop arrmada-qbittorrent >/dev/null 2>&1 &&
-    docker compose run --rm --no-deps -T arrmada-qbittorrent-init sh -c "$QBIT_REOPEN" >/dev/null 2>&1 </dev/null &&
+    docker compose run --rm --no-deps -T arrmada-qbittorrent-init sh /seed/reopen.sh >/dev/null 2>&1 </dev/null &&
     docker compose start arrmada-qbittorrent >/dev/null 2>&1; then
     say "  qBittorrent: the database put back doesn't have the password Arrmada gave it, so its"
-    say "  login-free access from the Docker network is back on for this version. Your next update"
-    say "  gives it its password again."
+    say "  login-free access from the Docker network (that network only) is back on for this"
+    say "  version. Your next update gives it its password again."
     return 0
   fi
   docker compose start arrmada-qbittorrent >/dev/null 2>&1 || true
@@ -453,11 +453,50 @@ reopen_bundled_qbit() {
   say "  have the password Arrmada gave it, and it couldn't be let in without one. Either enter" >&2
   say "  the login on qBittorrent's card in Settings → Connections (Edit); it's in the data folder:" >&2
   say "    docker exec Arrmada-app cat /data/qbittorrent-login.json" >&2
-  say "  or switch its login-free access back on:" >&2
+  say "  or switch its login-free access from the Docker network back on:" >&2
+  say "    docker compose run --rm --no-deps --entrypoint sh arrmada-app -c 'touch /data/qbittorrent-reopened'" >&2
   say "    docker compose stop arrmada-qbittorrent" >&2
-  say "    docker compose run --rm --no-deps arrmada-qbittorrent-init sh -c '$QBIT_REOPEN'" >&2
+  say "    docker compose run --rm --no-deps arrmada-qbittorrent-init sh /seed/reopen.sh" >&2
   say "    docker compose start arrmada-qbittorrent" >&2
   say "    docker compose restart arrmada-app" >&2
+}
+
+# tighten_env: .env can hold a key or token (ARRMADA_PLEX_TOKEN), and new installs make it
+# readable by its owner only. An older one is tightened the same way when it's yours and
+# you're not root: the owner keeps reading and writing it (so docker compose and this
+# script still can), and its owner never changes. A root-owned one is left as it is, since
+# other users on the server may be running docker compose with it.
+tighten_env() {
+  [ -f .env ] || return 0
+  _uid=$(id -u)
+  [ "$_uid" != 0 ] || return 0
+  _owner=$(stat -c %u .env 2>/dev/null) || return 0
+  _mode=$(stat -c %a .env 2>/dev/null) || return 0
+  [ "$_owner" = "$_uid" ] || return 0
+  case "$_mode" in *00) return 0 ;; esac
+  if chmod go-rwx .env 2>/dev/null; then
+    say "  .env is now readable by you only (it can hold a key or token)."
+  fi
+}
+
+# qbit_page_notice: installs from before 2026-10-18 publish qBittorrent's own page on every
+# interface; docker-compose.yml now publishes it on this server only unless .env says
+# otherwise (ARRMADA_QBIT_WEBUI_BIND). Updates only recreate the app, so a running
+# qBittorrent keeps what it had until its container is next recreated: say so, and how to
+# choose, until .env says which (or it has been recreated).
+qbit_page_notice() {
+  grep -q '^ARRMADA_QBIT_WEBUI_BIND=' .env 2>/dev/null && return 0
+  _pub=$(docker port Arrmada-qbittorrent 8080/tcp 2>/dev/null | head -n 1)
+  case "$_pub" in
+    0.0.0.0:* | "[::]:"* | :::*) ;;
+    *) return 0 ;;
+  esac
+  say ""
+  say "  ! qBittorrent's own page (port ${_pub##*:}) is open to your whole network. It asks for a"
+  say "    password, but nothing outside this server needs it, so new installs publish it on this"
+  say "    server only, as this one will once its container is recreated. To do that now:"
+  say "      docker compose up -d arrmada-qbittorrent   (restarts qBittorrent once)"
+  say "    To keep it open to your network instead, add ARRMADA_QBIT_WEBUI_BIND=0.0.0.0 to .env."
 }
 
 # Puts the build that ran before the last update back: arrmada:previous becomes
@@ -1043,6 +1082,8 @@ if [ -n "$RUNNING_IMAGE" ]; then
   docker image tag "$RUNNING_IMAGE" arrmada:previous
 fi
 
+tighten_env
+
 # Settings that were removed: the app never sees them now, so say so here.
 if grep -qE '^ARRMADA_BASE_URL=.*[^/[:space:]"'"'"']' .env; then
   say "  ! ARRMADA_BASE_URL in .env is no longer supported and is ignored — Arrmada is served"
@@ -1241,3 +1282,4 @@ say "  A database snapshot is taken automatically before any schema change (<dat
 if docker image inspect arrmada:previous >/dev/null 2>&1; then
   say "  The build that ran before is kept as arrmada:previous: ./update.sh --rollback goes back to it."
 fi
+qbit_page_notice

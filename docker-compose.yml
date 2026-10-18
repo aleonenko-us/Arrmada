@@ -1,8 +1,8 @@
 # Arrmada + bundled qBittorrent + FlareSolverr. Normally started by ./install.sh, which
 # writes .env and docker-compose.override.yml. A plain `docker compose up -d` also works:
 # it downloads the published image (64-bit Intel/AMD or 64-bit ARM).
-# Then open http://localhost:7878  (qBittorrent WebUI: http://localhost:8080, with the login
-# an admin sees on its card in Settings → Connections)
+# Then open http://localhost:7878  (qBittorrent WebUI: http://localhost:8080 on this server
+# only, with the login an admin sees on its card in Settings → Connections)
 services:
   arrmada-app:
     # The image the app runs. With nothing in .env it's the published release, downloaded
@@ -57,6 +57,10 @@ services:
       # A request carrying this header (a Cloudflare Tunnel / reverse proxy stamps
       # it) is treated as "outside the LAN" and limited to the Discover page.
       ARRMADA_EXTERNAL_HEADER: "${ARRMADA_EXTERNAL_HEADER:-Cf-Connecting-Ip}"
+      # First-run setup from outside the LAN, and trusting the Cloudflare client-IP header,
+      # are off unless .env sets these.
+      ARRMADA_ALLOW_REMOTE_SETUP: "${ARRMADA_ALLOW_REMOTE_SETUP:-}"
+      ARRMADA_TRUST_CF_HEADER: "${ARRMADA_TRUST_CF_HEADER:-}"
       ARRMADA_LOG_LEVEL: "info"
       # Before any schema change the database is copied to <data>/backups first, and the
       # app won't upgrade if that copy can't be made. Set this to 1 in .env only to get
@@ -81,8 +85,11 @@ services:
       # The bundled qBittorrent companion; auto-registered as a download client. On its
       # first start Arrmada gives it a password (kept in the data folder) and signs in with it.
       ARRMADA_QBITTORRENT_URL: "http://arrmada-qbittorrent:8080"
-      # The host port qBittorrent's own page is published on (below), for the link on its card.
+      # The host port qBittorrent's own page is published on (below), for the link on its card,
+      # and the address it's published on: this server only unless .env says otherwise, when
+      # the card says how to reach it instead of linking it.
       ARRMADA_QBIT_WEBUI_HOST_PORT: "${ARRMADA_QBIT_WEBUI_PORT:-8080}"
+      ARRMADA_QBIT_WEBUI_HOST_BIND: "${ARRMADA_QBIT_WEBUI_BIND:-127.0.0.1}"
       # Bundled FlareSolverr — used to get past Cloudflare on protected trackers.
       ARRMADA_FLARESOLVERR_URL: "http://arrmada-flaresolverr:8191"
       # Optional Prowlarr companion (started only with `--profile prowlarr`). This
@@ -201,16 +208,14 @@ services:
       - ${ARRMADA_DATA_HOST:-arrmada-data}:/data:ro
     restart: "no"
 
-  # One-shot: seed qBittorrent's config the first time (downloads path, and login-free
-  # access from the private Docker network just until Arrmada first starts and replaces it
-  # with a password of its own) so Arrmada connects with no setup.
+  # One-shot: seed qBittorrent's config the first time (downloads path, CSRF protection, and
+  # login-free access from this project's Docker network only, never your home network, just
+  # until Arrmada first starts and replaces it with a password of its own) so Arrmada connects
+  # with no setup. An existing config is left alone (docker/qbittorrent/init.sh).
   arrmada-qbittorrent-init:
     image: alpine:3.20
     container_name: Arrmada-qbittorrent-init
-    command: >
-      sh -c "mkdir -p /config/qBittorrent &&
-             [ -f /config/qBittorrent/qBittorrent.conf ] ||
-             cp /seed/qBittorrent.conf /config/qBittorrent/qBittorrent.conf"
+    command: ["sh", "/seed/init.sh"]
     volumes:
       - arrmada-qbt-config:/config
       - ./docker/qbittorrent:/seed:ro
@@ -236,7 +241,11 @@ services:
       # internal Docker network, so you rarely need this — it's just for a direct peek.
       # It asks for the login Arrmada made: an admin sees it on qBittorrent's card in
       # Settings → Connections ("Show its login").
-      - "${ARRMADA_QBIT_WEBUI_PORT:-8080}:8080"
+      # Published on this server only (127.0.0.1): open it there, or through an SSH tunnel
+      # (ssh -L 8080:127.0.0.1:8080 you@server). To open it from other computers on your
+      # network, set ARRMADA_QBIT_WEBUI_BIND=0.0.0.0 in .env, then run
+      # `docker compose up -d arrmada-qbittorrent`.
+      - "${ARRMADA_QBIT_WEBUI_BIND:-127.0.0.1}:${ARRMADA_QBIT_WEBUI_PORT:-8080}:8080"
       # BitTorrent incoming-connection port, TCP *and* UDP (peers + DHT/uTP). Set
       # once in .env (ARRMADA_QBIT_PORT — the install script picks a random one);
       # Arrmada auto-applies the same value inside qBittorrent, so the two always
@@ -289,6 +298,9 @@ services:
       # Same shared media volume, same path as Arrmada, like qBittorrent.
       - ${ARRMADA_MEDIA_HOST:-arrmada-media}:/media
     ports:
+      # Its own page is on your network, since that's where your Usenet provider is added
+      # (unlike qBittorrent's, which needs nothing from you). It asks for the login the
+      # init container below made (Arrmada gives one to a SABnzbd from before that).
       - "${ARRMADA_SABNZBD_PORT:-8085}:8080"
     depends_on:
       arrmada-sabnzbd-init:
@@ -301,8 +313,11 @@ services:
   # failure reasons are read by Arrmada), Arrmada's categories with folders of their own,
   # downloads on the shared volume (Arrmada moves them into its Downloads folder once it
   # sees SABnzbd can reach that), the name Arrmada uses for it allowed, every job repaired,
-  # unpacked and deleted after (pp=3), and a new random API key. Arrmada reads the key from
-  # the config volume; it isn't printed or written anywhere else.
+  # unpacked and deleted after (pp=3), a new random API key, and a login for its own web
+  # page (user arrmada, a random password: its page is on your network). Arrmada reads both
+  # from the config volume (an admin sees the login on SABnzbd's card in Settings →
+  # Connections); they aren't printed or written anywhere else. A SABnzbd from before this
+  # gets its page login from Arrmada at its next start; Arrmada itself uses the API key.
   arrmada-sabnzbd-init:
     image: alpine:3.20
     container_name: Arrmada-sabnzbd-init
@@ -318,7 +333,8 @@ services:
         [ -f "$$f" ] && exit 0
         key=$$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
         nzb=$$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
-        [ "$${#key}" = 32 ] && [ "$${#nzb}" = 32 ] || exit 1
+        pw=$$(od -An -N18 -tx1 /dev/urandom | tr -d ' \n')
+        [ "$${#key}" = 32 ] && [ "$${#nzb}" = 32 ] && [ "$${#pw}" = 36 ] || exit 1
         umask 077
         cat > "$$f.new" <<EOF
         __version__ = 19
@@ -327,6 +343,8 @@ services:
         language = en
         api_key = $$key
         nzb_key = $$nzb
+        username = arrmada
+        password = $$pw
         host_whitelist = arrmada-sabnzbd,
         download_dir = /media/downloads/usenet/incomplete
         complete_dir = /media/downloads/usenet/complete

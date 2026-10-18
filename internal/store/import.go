@@ -42,7 +42,7 @@ func importBackup(dataDir string, r io.Reader, maxBytes int64, embedded []string
 	}
 
 	dir := BackupsDir(dataDir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := mkPrivateDir(dir); err != nil {
 		return "", BackupInfo{}, err
 	}
 	final, part, f, err := claimImportName(dir)
@@ -115,7 +115,7 @@ func claimImportName(dir string) (name, part string, f *os.File, err error) {
 			continue
 		}
 		part = filepath.Join(dir, name+".part")
-		f, err = os.OpenFile(part, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		f, err = os.OpenFile(part, os.O_WRONLY|os.O_CREATE|os.O_EXCL, privateFile)
 		if errors.Is(err, os.ErrExist) {
 			continue
 		}

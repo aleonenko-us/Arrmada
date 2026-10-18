@@ -152,14 +152,23 @@ env_get() {
 # where it is; otherwise the comment and the line go at the end. Written over the same
 # file, so its owner and permissions stay as they are.
 env_set() {
+  new_env_tmp
   if grep -q "^$1=" .env 2>/dev/null; then
     awk -v k="$1" -v v="$2" 'index($0, k "=") == 1 { print k "=" v; next } { print }' .env > .env.tmp
   else
-    cp .env .env.tmp
+    cat .env > .env.tmp
     { say ""; say "$3"; say "$1=$2"; } >> .env.tmp
   fi
   cat .env.tmp > .env
   rm -f .env.tmp
+}
+
+# new_env_tmp: an empty .env.tmp only its owner can read, to build a changed .env in (.env
+# can hold a key or token, ARRMADA_PLEX_TOKEN say). What's built is then written over .env
+# itself rather than moved there, which would reset .env's owner and permissions.
+new_env_tmp() {
+  rm -f .env.tmp
+  (umask 077 && : > .env.tmp)
 }
 
 # profiles_with NAME... -> the compose profiles in .env (COMPOSE_PROFILES, a comma list)
@@ -179,7 +188,8 @@ profiles_with() {
 # itself; the provider's login goes into SABnzbd, never Arrmada.
 sabnzbd_note() {
   say "  SABnzbd (Usenet): Arrmada connects to it by itself. Add your Usenet provider there:"
-  say "    open http://$(host_ip):$1 → Config → Servers (its setup wizard opens on the first visit)"
+  say "    open http://$(host_ip):$1 → Config → Servers (its setup wizard opens on the first visit;"
+  say "    its login is on SABnzbd's card in Arrmada's Settings → Connections: Show its login)"
   say "  then add your Newznab indexers in Arrmada (Settings → Connections)."
   # The app looks for SABnzbd's settings every 30 seconds and logs when it has added it. An
   # Arrmada older than the bundled SABnzbd never does: say what to do then.
@@ -454,9 +464,11 @@ existing_install() {
     [ -f docker-compose.override.yml ] && cp docker-compose.override.yml docker-compose.override.yml.bak
     write_override "$_m" "$_t" "$_g"
     if [ -n "$MEDIA_SET" ]; then
+      new_env_tmp
       grep -v '^ARRMADA_STORAGE_HOST=' .env > .env.tmp || true
       [ -n "$_m" ] && say "ARRMADA_STORAGE_HOST=$_m" >> .env.tmp
-      mv .env.tmp .env
+      cat .env.tmp > .env
+      rm -f .env.tmp
     fi
     say "✓ Mounts updated${_m:+: media $_m → /storage}${_t:+, transcode $_t → /transcode}"
     _changed=1
@@ -468,10 +480,11 @@ existing_install() {
     _ch="${CHANNEL_ARG:-stable}"
     _bak=".env.bak-$(date +%Y%m%d-%H%M%S)"
     cp -p .env "$_bak"
-    grep -v '^ARRMADA_CHANNEL=' .env > .env.tmp || true
+    new_env_tmp
     if [ -n "$IMAGE_ARG" ]; then
-      grep -v '^ARRMADA_IMAGE=' .env.tmp > .env.tmp2 || true
-      mv .env.tmp2 .env.tmp
+      grep -v -e '^ARRMADA_CHANNEL=' -e '^ARRMADA_IMAGE=' .env > .env.tmp || true
+    else
+      grep -v '^ARRMADA_CHANNEL=' .env > .env.tmp || true
     fi
     {
       say ""
@@ -534,10 +547,23 @@ existing_install() {
       if [ -n "$_img" ]; then pull_image "$_img" || die "Couldn't download $_img."; else stamp_build; fi
     fi
     say "Starting Arrmada…"
+    _qbit_open=""
+    if [ -z "$(env_get ARRMADA_QBIT_WEBUI_BIND)" ]; then
+      case "$(docker port Arrmada-qbittorrent 8080/tcp 2>/dev/null | head -n 1)" in
+        0.0.0.0:* | "[::]:"* | :::*) _qbit_open=1 ;;
+      esac
+    fi
     docker compose up -d </dev/null || fail_start
     wait_healthy || fail_start
     say ""
     say "✓ Arrmada is running.  Open http://$(host_ip):$(env_get ARRMADA_PORT)"
+    if [ -n "$_qbit_open" ]; then
+      # Starting the stack recreated qBittorrent onto docker-compose.yml's default.
+      say ""
+      say "  qBittorrent's own page now answers on this server only (it was open to your whole"
+      say "  network). To open it to your network again, add ARRMADA_QBIT_WEBUI_BIND=0.0.0.0 to .env"
+      say "  and run: docker compose up -d arrmada-qbittorrent"
+    fi
     if [ -n "$SABNZBD" ]; then
       _sp=$(env_get ARRMADA_SABNZBD_PORT)
       say ""
@@ -746,6 +772,8 @@ new_install() {
     IMAGE_REF=""
   fi
 
+  # Readable by its owner only: a key or token can go in it later (ARRMADA_PLEX_TOKEN).
+  (umask 077 && : > .env) && chmod 600 .env
   {
     say "# ─── Arrmada settings ─── change a value, then run update.sh to apply ───"
     say "# API keys and passwords are entered in the app, never here."
@@ -767,6 +795,8 @@ new_install() {
     say "# Host ports (picked free at install so nothing clashes with your other apps)."
     say "ARRMADA_PORT=$WEBPORT"
     say "ARRMADA_QBIT_WEBUI_PORT=$QBWEB"
+    say "# qBittorrent's own page answers on this server only; to open it to your network, add"
+    say "# ARRMADA_QBIT_WEBUI_BIND=0.0.0.0 and run: docker compose up -d arrmada-qbittorrent"
     say "ARRMADA_PROWLARR_PORT=$PROWPORT"
     if [ -n "$SABPORT" ]; then
       say "# SABnzbd's web page (where your Usenet provider goes)."
@@ -807,7 +837,9 @@ new_install() {
     fi
   } > .env
   write_override "$MEDIA" "$TRANSCODE" "$GPU"
-  if [ -z "$DATA_VOLUME" ]; then mkdir -p "$DATA"; fi
+  # A new data folder is private: it holds the database and its backups (the container
+  # hands it to PUID:PGID). One that's already there keeps the mode it has.
+  if [ -z "$DATA_VOLUME" ] && [ ! -d "$DATA" ]; then mkdir -p "$DATA" && chmod 700 "$DATA"; fi
   if [ -n "$TRANSCODE" ]; then mkdir -p "$TRANSCODE" 2>/dev/null || true; fi
 
   # What .env now says, whatever this shell may have set.

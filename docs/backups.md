@@ -18,6 +18,12 @@ disk as the database, so they cover a bad update, corruption or a mistake, not a
 download one now and then to keep a copy somewhere else. Backups contain your API keys, the
 Plex token and password hashes, so keep downloaded copies somewhere private.
 
+For the same reason the database (`arrmada.db` and its `-wal`/`-shm`) and every backup are
+readable only by the user Arrmada runs as (`ARRMADA_PUID` in `.env`): files are `0600` and the
+`backups` folder `0700`, and an install from before this is tightened the next time Arrmada
+starts. `update.sh` isn't affected (its backups and restores run inside the container). To copy
+a backup off the server by hand, do it as that user or with `sudo`, or use **Download**.
+
 ## Restoring
 
 **Restore** on a row puts that backup back (type `RESTORE` to confirm). The backup is checked

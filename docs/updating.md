@@ -106,8 +106,9 @@ at its next start.
 the card. Going back *with the database* is different, because the older database doesn't
 have that login: `./update.sh --rollback --with-db`, or saying yes when an update that
 didn't start offers to put the database back. Then `update.sh` switches qBittorrent's
-login-free access from the Docker network back on, so the older version can reach it, and
-says so; your next update gives it its password again. If it can't, it prints what to do:
+login-free access back on for the Docker network it shares with Arrmada (that network only,
+never your home network), so the older version can reach it, and says so; your next update
+gives it its password again. If it can't, it prints what to do:
 enter the login on the card by hand, which you can read with
 
 ```sh

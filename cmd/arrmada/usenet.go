@@ -111,6 +111,13 @@ func (b *bundledSAB) tune(ctx context.Context, last bool) bool {
 		return false
 	}
 	b.logTuned(got, "Downloads folder")
+	// Its own page, published on the network, had no login in its first config. Best
+	// effort: the next start tries again, and Arrmada itself never needs one (the API key).
+	if given, err := b.downloads.SecureBundledSAB(ctx, b.url); err != nil && !errors.Is(err, download.ErrBundledInactive) {
+		b.log.Warn("bundled SABnzbd: couldn't give its own page a login; it's tried again at the next start", "err", err)
+	} else if given {
+		b.log.Info("bundled SABnzbd: its own page now asks for a login, which Arrmada made; an admin sees it on its card in Settings → Connections")
+	}
 	return true
 }
 

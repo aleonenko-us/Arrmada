@@ -292,6 +292,7 @@ RUN --mount=type=cache,id=arrmada-build-lock,target=/run/build-lock,sharing=lock
 FROM ubuntu:24.04 AS runtime-amd64
 # gosu is the su-exec equivalent: the entrypoint drops from root to a configurable PUID/PGID.
 # apprise (Python) is bundled for notifications — one image, 80+ services, no extra container.
+# It and its dependencies are pinned with hashes (docker/apprise-requirements.txt).
 # jellyfin-ffmpeg7 brings libva and the Intel media drivers it needs for /dev/dri passthrough.
 # libgomp1 is the Vulkan whisper-cli's OpenMP runtime; vainfo helps diagnose the GPU.
 # libvulkan1 + mesa-vulkan-drivers give whisper-cli's Vulkan backend an Intel/AMD device
@@ -300,6 +301,7 @@ FROM ubuntu:24.04 AS runtime-amd64
 # libze1 + libze-intel-gpu1 (Intel's Level Zero loader and GPU driver, from Intel's own
 # repository) are what the SYCL whisper build talks to; intel-opencl-icd rides along so
 # clinfo can show whether the compute side of the card is visible.
+COPY docker/apprise-requirements.txt /tmp/apprise-requirements.txt
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg gosu python3 python3-pip libgomp1 vainfo \
         libvulkan1 mesa-vulkan-drivers vulkan-tools ocl-icd-libopencl1 clinfo && \
@@ -317,7 +319,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/* && \
     ln -sf /usr/lib/jellyfin-ffmpeg/ffmpeg /usr/local/bin/ffmpeg && \
     ln -sf /usr/lib/jellyfin-ffmpeg/ffprobe /usr/local/bin/ffprobe && \
-    pip3 install --no-cache-dir --break-system-packages apprise && \
+    pip3 install --no-cache-dir --break-system-packages --require-hashes --only-binary :all: \
+        -r /tmp/apprise-requirements.txt && rm /tmp/apprise-requirements.txt && \
     apprise --version && ffmpeg -version | head -1 && \
     mkdir -p /data /media/downloads /media/library /transcode
 # whisper.cpp CLI for local AI subtitle generation (models downloaded on demand into
@@ -351,6 +354,7 @@ RUN ln -s /opt/whisper/whisper-cli /usr/local/bin/whisper-cli && \
 # no Intel/AMD/NVIDIA encoder here and never offers one. libgomp1 is whisper-cli's OpenMP
 # runtime. No Vulkan, VAAPI or Level Zero packages: nothing in this image would use them.
 FROM ubuntu:24.04 AS runtime-arm64
+COPY docker/apprise-requirements.txt /tmp/apprise-requirements.txt
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg gosu python3 python3-pip libgomp1 && \
     mkdir -p /etc/apt/keyrings && \
@@ -362,7 +366,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/* && \
     ln -sf /usr/lib/jellyfin-ffmpeg/ffmpeg /usr/local/bin/ffmpeg && \
     ln -sf /usr/lib/jellyfin-ffmpeg/ffprobe /usr/local/bin/ffprobe && \
-    pip3 install --no-cache-dir --break-system-packages apprise && \
+    pip3 install --no-cache-dir --break-system-packages --require-hashes --only-binary :all: \
+        -r /tmp/apprise-requirements.txt && rm /tmp/apprise-requirements.txt && \
     apprise --version && ffmpeg -version | head -1 && \
     mkdir -p /data /media/downloads /media/library /transcode
 COPY --from=whisper-cpu /usr/local/bin/whisper-cli /usr/local/bin/whisper-cli

@@ -74,16 +74,32 @@ The password was changed in qBittorrent, or Arrmada's data folder was replaced w
 let Arrmada set a new one: in Arrmada's folder run
 
 ```sh
+docker compose run --rm --no-deps --entrypoint sh arrmada-app -c 'echo reset > /data/qbittorrent-reopened'
 docker compose stop arrmada-qbittorrent
-docker compose run --rm --no-deps arrmada-qbittorrent-init sh -c \
-  'f=/config/qBittorrent/qBittorrent.conf; o=$(stat -c %u:%g "$f") && sed -i "s/^WebUI\\\\AuthSubnetWhitelistEnabled=false/WebUI\\\\AuthSubnetWhitelistEnabled=true/" "$f" && chown "$o" "$f"'
+docker compose run --rm --no-deps arrmada-qbittorrent-init sh /seed/reopen.sh
 docker compose start arrmada-qbittorrent
 docker compose restart arrmada-app
 ```
 
-That switches the old login-free access from the Docker network back on for a moment; at
-its start Arrmada gives qBittorrent a password again (the saved one, or a new one) and
-switches it off. Torrents and settings are kept.
+That switches login-free access back on for a moment, for the Docker network Arrmada and
+qBittorrent share and nothing else (never your home network), and leaves a note
+(`reset`) asking Arrmada to give qBittorrent its password again. At its start Arrmada does
+so (the saved one, or a new one), switches the access off and removes the note. Torrents
+and settings are kept.
+
+**Settings → Status warns "The bundled qBittorrent lets anything on … in without a password".**
+Its subnet whitelist covers whole networks. If it's the one it was first installed with
+(`10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16`), Arrmada replaces it with a password at its
+start, and the log says why it couldn't (often qBittorrent hadn't started yet: restart
+Arrmada). When the warning says Arrmada left it **on purpose** — a qBittorrent client of
+yours is switched on and might reach it under another address, or its password isn't the
+one Arrmada kept — it's yours to do: give qBittorrent a password (Tools → Options → WebUI),
+enter it on the card that uses it, and switch the whitelist off. If you set the whitelist
+yourself, narrow it in qBittorrent or switch it off.
+
+**qBittorrent's page doesn't open from another computer.**
+A new install publishes it on the server itself only
+([Configuration → qBittorrent's own page](configuration.md#qbittorrents-own-page)).
 
 **Downloads fill up `docker.img` on Unraid.**
 The install is using managed storage. Mount your share instead: run the install line again

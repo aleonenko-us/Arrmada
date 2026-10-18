@@ -111,6 +111,23 @@ describe("the SABnzbd card", () => {
     await screen.findByText(/Usenet servers:/);
     expect(screen.queryByRole("link", { name: /↗/ })).toBeNull();
   });
+
+  // Its page asks for the login Arrmada made: an admin (only) can show it, fetched on the click.
+  it("shows the bundled SABnzbd's page login to an admin on request", async () => {
+    vi.spyOn(downloadClientApi, "downloadClientStatus").mockResolvedValue({ listen_port: 0, usenet: facts() });
+    const login = vi.spyOn(downloadClientApi, "bundledLogin").mockResolvedValue({ username: "arrmada", password: "sab-Pass_123" });
+    render(<ClientEditor client={sab({ bundled: true, ui_port: "8085", has_login: true })} onSaved={() => {}} admin />);
+    await screen.findByRole("link", { name: /:8085/ });
+    expect(screen.queryByText(/Installed with Arrmada/)).toBeNull(); // not qBittorrent's
+    expect(login).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Show its login" })); });
+    expect(login).toHaveBeenCalledWith("sabnzbd");
+    expect(screen.getByText("sab-Pass_123")).toBeTruthy();
+    cleanup();
+    render(<ClientEditor client={sab({ bundled: true, ui_port: "8085", has_login: true })} onSaved={() => {}} />);
+    await screen.findByRole("link", { name: /:8085/ });
+    expect(screen.queryByRole("button", { name: "Show its login" })).toBeNull();
+  });
 });
 
 describe("serversLine", () => {
@@ -167,5 +184,17 @@ describe("built-in qBittorrent", () => {
     render(<ClientEditor client={qb({ url: "http://arrmada-qbittorrent:8080", ui_port: undefined, built_in: undefined })} onSaved={() => {}} admin />);
     expect(screen.queryByText(/qBittorrent’s own page/)).toBeNull();
     expect(screen.getByRole("button", { name: "Show its login" })).toBeTruthy();
+  });
+
+  // Published on the server's loopback only (docker-compose.yml's default): no link another
+  // computer can't open, but where it is and how to open it up.
+  it("says how to reach a page published on the server only", () => {
+    vi.spyOn(downloadClientApi, "downloadClientStatus").mockResolvedValue({ listen_port: 6881 });
+    render(<ClientEditor client={qb({ url: "http://arrmada-qbittorrent:8080", ui_port: "8081", built_in: undefined, ui_local: true })} onSaved={() => {}} admin />);
+    expect(screen.queryByRole("link", { name: /:8081/ })).toBeNull();
+    expect(screen.getByText(/published on this server only/)).toBeTruthy();
+    expect(screen.getByText(/until qBittorrent’s container is recreated/)).toBeTruthy();
+    expect(screen.getByText("http://127.0.0.1:8081")).toBeTruthy();
+    expect(screen.getByText("ARRMADA_QBIT_WEBUI_BIND=0.0.0.0")).toBeTruthy();
   });
 });
