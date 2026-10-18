@@ -12,8 +12,32 @@ package netutil
 import (
 	"net"
 	"net/http"
+	"os"
 	"strings"
 )
+
+// cfTrust is how far Cf-Connecting-Ip is believed (ARRMADA_TRUST_CF_HEADER, read once at
+// start): "1" from any local proxy (the old rule), "0" never, anything else the automatic
+// rule in ForwardedClientIP.
+var cfTrust = parseCFTrust(os.Getenv("ARRMADA_TRUST_CF_HEADER"))
+
+type cfMode int
+
+const (
+	cfAuto cfMode = iota
+	cfAlways
+	cfNever
+)
+
+func parseCFTrust(v string) cfMode {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return cfAlways
+	case "0", "false", "no", "off":
+		return cfNever
+	}
+	return cfAuto
+}
 
 // ClientIP is the address to hold a request to (rate limits): the forwarded visitor
 // when a local proxy vouches for an internet address, otherwise the TCP peer.
@@ -33,23 +57,42 @@ func ClientIP(r *http.Request) string {
 // ForwardedClientIP returns the original client a local proxy stamped on r, or nil
 // when the peer isn't a local proxy or it stamped nothing usable.
 //
-// Order: Cf-Connecting-Ip (Cloudflare sets it to the visitor and overwrites whatever
-// the visitor sent); then X-Forwarded-For read right to left, taking the first hop
-// that isn't a private address — each proxy appends the address it saw, so the
-// right-hand end is what our own proxies vouch for and anything further left may be
-// forged by the client (the leftmost entry is used only when every hop is private, a
-// LAN client behind a local proxy); then the Forwarded header's for= by the same rule.
+// X-Forwarded-For is read right to left, taking the first hop that isn't a private
+// address: each proxy appends the address it saw, so the right-hand end is what our own
+// proxies vouch for and anything further left may be forged by the client (the leftmost
+// entry is used only when every hop is private, a LAN client behind a local proxy). Then
+// the Forwarded header's for= by the same rule.
+//
+// Cf-Connecting-Ip is believed only where Cloudflare must have set it. It used to come
+// first from any local proxy, but nginx, Caddy and Traefik pass it through untouched, so a
+// visitor behind one of them could type in any address: a LAN one to look like they were
+// at home, or a new one on every try to slip the per-address limits. Now it counts when
+//   - the forwarding chain names no internet address at all: cloudflared talking to us
+//     directly, or a local proxy that records only cloudflared's own address. A proxy that
+//     records a visitor's real address puts it in the chain, and that wins;
+//   - or the nearest internet hop in the chain is Cloudflare's edge (an orange-cloud site
+//     in front of a local proxy), which overwrites the header.
+//
+// Cloudflare's edge also adds the visitor to X-Forwarded-For, so through a tunnel the two
+// agree. A Cf-Ray header proves nothing: it's as easy to type as Cf-Connecting-Ip.
+// ARRMADA_TRUST_CF_HEADER=1 brings back believing the header from any local proxy; =0
+// never believes it.
 func ForwardedClientIP(r *http.Request) net.IP {
-	if _, p := peer(r); p == nil || !(p.IsLoopback() || p.IsPrivate()) {
+	if !FromLocalProxy(r) {
 		return nil
 	}
-	if ip := parseHost(r.Header.Get("Cf-Connecting-Ip")); ip != nil {
-		return ip
+	cf := parseHost(r.Header.Get("Cf-Connecting-Ip"))
+	if cf != nil && cfTrust == cfAlways {
+		return cf
 	}
-	if ip := pickHop(splitList(r.Header.Values("X-Forwarded-For"))); ip != nil {
-		return ip
+	hop, public := pickHop(splitList(r.Header.Values("X-Forwarded-For")))
+	if hop == nil {
+		hop, public = pickHop(forwardedFor(r.Header.Values("Forwarded")))
 	}
-	return pickHop(forwardedFor(r.Header.Values("Forwarded")))
+	if cf != nil && cfTrust == cfAuto && (!public || isCloudflare(hop)) {
+		return cf
+	}
+	return hop
 }
 
 // FromLocalProxy reports whether r reached us from a loopback or private address — the
@@ -74,10 +117,10 @@ func peer(r *http.Request) (string, net.IP) {
 	return host, net.ParseIP(host)
 }
 
-// pickHop walks hops right to left and returns the first public address, or the
-// leftmost parseable one when none is public. Unparseable entries ("unknown",
+// pickHop walks hops right to left and returns the first public address (public true),
+// or the leftmost parseable one when none is public. Unparseable entries ("unknown",
 // obfuscated ids) are skipped.
-func pickHop(hops []string) net.IP {
+func pickHop(hops []string) (ip net.IP, public bool) {
 	var leftmost net.IP
 	for i := len(hops) - 1; i >= 0; i-- {
 		ip := parseHost(hops[i])
@@ -85,11 +128,47 @@ func pickHop(hops []string) net.IP {
 			continue
 		}
 		if IsPublic(ip) {
-			return ip
+			return ip, true
 		}
 		leftmost = ip
 	}
-	return leftmost
+	return leftmost, false
+}
+
+// cloudflareNets are Cloudflare's published edge ranges (cloudflare.com/ips). They change
+// rarely, and a range missing here only means an orange-cloud visitor behind a local proxy
+// is held to Cloudflare's address instead of their own, never that a typed header is
+// believed.
+var cloudflareNets = func() []*net.IPNet {
+	var out []*net.IPNet
+	for _, c := range []string{
+		"173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22",
+		"141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20",
+		"197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+		"104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
+		"2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32",
+		"2405:8100::/32", "2a06:98c0::/29", "2c0f:f248::/32",
+	} {
+		_, n, err := net.ParseCIDR(c)
+		if err != nil {
+			panic(err)
+		}
+		out = append(out, n)
+	}
+	return out
+}()
+
+// isCloudflare reports whether ip is one of Cloudflare's edge addresses.
+func isCloudflare(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	for _, n := range cloudflareNets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // splitList flattens comma-separated header values (a header may also repeat).

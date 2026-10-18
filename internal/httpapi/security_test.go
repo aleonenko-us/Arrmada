@@ -102,6 +102,11 @@ func TestClassifyExternalForwarded(t *testing.T) {
 	if !a.classifyExternal(mk("127.0.0.1:9999", map[string]string{"X-Forwarded-For": "192.168.1.20, 203.0.113.9"})) {
 		t.Error("a forged private hop in front of a public one must stay external")
 	}
+	// Behind nginx or Caddy a visitor's own Cf-Connecting-Ip passes straight through: a
+	// LAN address typed into it mustn't make an outside visitor look like they're at home.
+	if !a.classifyExternal(mk("172.18.0.9:5000", map[string]string{"Cf-Connecting-Ip": "192.168.1.5", "X-Forwarded-For": "203.0.113.9"})) {
+		t.Error("a typed LAN Cf-Connecting-Ip behind a proxy must stay external")
+	}
 	// A public peer's forwarded headers are ignored, whatever they claim.
 	if !a.classifyExternal(mk("203.0.113.50:5000", map[string]string{"X-Forwarded-For": "192.168.1.20"})) {
 		t.Error("a public peer claiming a LAN address must stay external")

@@ -61,6 +61,7 @@ left alone too.
 | `ARRMADA_SKIP_MIGRATION_SNAPSHOT` | `1` to upgrade the database without the safety copy (a full disk) |
 | `ARRMADA_ALLOW_NEWER_SCHEMA` | `1` to start an older version on a newer database — last resort |
 | `ARRMADA_EXTERNAL_HEADER` | The header a tunnel or proxy stamps on outside requests (default `Cf-Connecting-Ip`); such requests are limited to the requester pages |
+| `ARRMADA_TRUST_CF_HEADER` | Leave unset: Cloudflare's visitor header is used where only Cloudflare can have set it. `1` believes it from any local proxy, `0` never ([Who a visitor is](#who-a-visitor-is)) |
 | `ARRMADA_LIBRARY_DIR`, `ARRMADA_DOWNLOADS_DIR`, `ARRMADA_MOVIES_DIR`, `ARRMADA_TV_DIR`, `ARRMADA_EBOOKS_DIR`, `ARRMADA_AUDIOBOOKS_DIR`, `ARRMADA_MUSIC_DIR` | Starting values for the library folders. The folders picked in the app win; most people never set these |
 | `ARRMADA_PLEX_URL`, `ARRMADA_PLEX_TOKEN` | An older way to point Insights at Plex — connect Plex in Settings → Connections instead |
 
@@ -383,3 +384,29 @@ still sets it, it's ignored and the app runs at the root.
 
 Behind Cloudflare, uploads over 100 MB are refused, so restore big backups from your home
 network.
+
+### Who a visitor is
+
+Arrmada works out each visitor's address for two things: whether they're on your home network
+(people with requester accounts get only the requester pages from outside), and the sign-in
+limits, which count wrong passwords per address.
+
+- **Straight to the port** (on your LAN, or a port forward): the address the connection came
+  from.
+- **Through a proxy on your network** (nginx, Nginx Proxy Manager, Caddy, Traefik, cloudflared):
+  the visitor's address the proxy writes into `X-Forwarded-For` (or `Forwarded`), read from the
+  right so a visitor can't put a made-up address in front of it. Forwarding headers are only
+  believed from a private or loopback address.
+- **Cloudflare Tunnel**: works with no settings. `Cf-Connecting-Ip` is used when the forwarding
+  chain names no internet address (cloudflared talking to Arrmada, or through a proxy that only
+  records cloudflared's address), or when the nearest internet hop is Cloudflare's own edge (an
+  orange-cloud hostname in front of your proxy). Anywhere else the header is ignored, because
+  nginx, Caddy and Traefik pass it through as the visitor typed it.
+  `ARRMADA_TRUST_CF_HEADER=1` believes it from any local proxy (only if nothing but Cloudflare can
+  reach that proxy); `ARRMADA_TRUST_CF_HEADER=0` never believes it.
+
+> ⚠ A proxy must send `X-Forwarded-For` (or `Forwarded`). Without it every visitor arrives from
+> the proxy's private address, so **everyone looks like they're on your home network** and they
+> all share one sign-in limit. Caddy, Traefik and Nginx Proxy Manager send it by default; plain
+> nginx needs `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` (and keep
+> `proxy_set_header Host $host;`, so the browser's address matches the one Arrmada sees).
