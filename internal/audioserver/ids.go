@@ -109,13 +109,15 @@ func unpackUUID(mark, s string) (owner, version int64, ok bool) {
 	if len(s) != 36 || s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' || s[:8] != mark {
 		return 0, 0, false
 	}
-	hexPart := func(p string) (uint64, bool) {
+	// At most 12 hex digits (48 bits), so a signed parse holds every part; the check above
+	// it keeps out a sign.
+	hexPart := func(p string) (int64, bool) {
 		for _, c := range p {
 			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
 				return 0, false
 			}
 		}
-		n, err := strconv.ParseUint(p, 16, 64)
+		n, err := strconv.ParseInt(p, 16, 64)
 		return n, err == nil
 	}
 	g2, ok2 := hexPart(s[9:13])
@@ -126,7 +128,7 @@ func unpackUUID(mark, s string) (owner, version int64, ok bool) {
 		return 0, 0, false
 	}
 	v := g2<<24 | (g3&0x0fff)<<12 | g4&0x0fff
-	return int64(g5), int64(v), true
+	return g5, v, true
 }
 
 // nameUUID is a version-5-style UUID from a name, the way the classic author and series

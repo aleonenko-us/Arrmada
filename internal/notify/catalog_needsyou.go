@@ -98,16 +98,16 @@ func needsYouMessage(d map[string]any, title, icon, many string) (Message, bool)
 	if n < 2 || len(names) == 0 {
 		return Message{}, false
 	}
-	return Message{Title: title, Body: fmt.Sprintf("%s %d %s: %s", icon, n, many, listSome(names, int(n), 3)), Link: link}, true
+	return Message{Title: title, Body: fmt.Sprintf("%s %d %s: %s", icon, n, many, listSome(names, n, 3)), Link: link}, true
 }
 
 // listSome is "A, B, C and 3 more": the first few names of n.
-func listSome(names []string, n, show int) string {
+func listSome(names []string, n int64, show int) string {
 	if len(names) > show {
 		names = names[:show]
 	}
 	out := strings.Join(names, ", ")
-	if rest := n - len(names); rest > 0 {
+	if rest := n - int64(len(names)); rest > 0 {
 		out += fmt.Sprintf(" and %d more", rest)
 	}
 	return out

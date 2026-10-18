@@ -20,6 +20,10 @@ func mediaRefFromQuery(q url.Values) (subtitles.MediaRef, bool) {
 		n, err := strconv.ParseInt(q.Get(k), 10, 64)
 		return n, err == nil
 	}
+	small := func(k string) (int, bool) { // a season or episode number, read as an int
+		n, err := strconv.Atoi(q.Get(k))
+		return n, err == nil
+	}
 	ref := subtitles.MediaRef{Kind: q.Get("kind")}
 	switch ref.Kind {
 	case "movie":
@@ -28,9 +32,9 @@ func mediaRefFromQuery(q url.Values) (subtitles.MediaRef, bool) {
 		return ref, ok
 	case "episode":
 		sid, ok1 := num("series")
-		season, ok2 := num("season")
-		ep, ok3 := num("episode")
-		ref.SeriesID, ref.Season, ref.Episode = sid, int(season), int(ep)
+		season, ok2 := small("season")
+		ep, ok3 := small("episode")
+		ref.SeriesID, ref.Season, ref.Episode = sid, season, ep
 		return ref, ok1 && ok2 && ok3
 	}
 	return ref, false

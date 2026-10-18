@@ -301,3 +301,24 @@ func TestEmitAndDispatch(t *testing.T) {
 		t.Error("Emit of an unknown key should fail")
 	}
 }
+
+// Counts arrive as int64s and are worded without converting them.
+func TestPluralAndListSome(t *testing.T) {
+	if plural(1) != "" || plural(0) != "s" || plural(2) != "s" || plural(1<<40) != "s" {
+		t.Error("plural")
+	}
+	for _, tc := range []struct {
+		names []string
+		n     int64
+		want  string
+	}{
+		{[]string{"A", "B"}, 2, "A, B"},
+		{[]string{"A", "B", "C", "D"}, 4, "A, B, C and 1 more"},
+		{[]string{"A", "B", "C", "D"}, 10, "A, B, C and 7 more"},
+		{[]string{"A"}, 1 << 40, "A and 1099511627775 more"},
+	} {
+		if got := listSome(tc.names, tc.n, 3); got != tc.want {
+			t.Errorf("listSome(%v, %d) = %q, want %q", tc.names, tc.n, got, tc.want)
+		}
+	}
+}

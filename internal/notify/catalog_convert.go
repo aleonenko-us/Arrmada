@@ -73,12 +73,12 @@ func formatConvertSummary(d map[string]any) (Message, bool) {
 	if files <= 0 && problems <= 0 {
 		return Message{}, false
 	}
-	parts := []string{fmt.Sprintf("%d file%s", files, plural(int(files)))}
+	parts := []string{fmt.Sprintf("%d file%s", files, plural(files))}
 	if saved := num(d, "saved_bytes"); saved > 0 {
 		parts = append(parts, humanSize(saved)+" freed")
 	}
 	if problems > 0 {
-		parts = append(parts, fmt.Sprintf("%d problem%s", problems, plural(int(problems))))
+		parts = append(parts, fmt.Sprintf("%d problem%s", problems, plural(problems)))
 	}
 	link := "/convert"
 	if problems > 0 {

@@ -134,3 +134,24 @@ func TestSubtitleSearchRefusals(t *testing.T) {
 		t.Errorf("requester: HTTP %d, want 403", rec.Code)
 	}
 }
+
+// A file is named by catalog identity in the query: ids are int64s, season and episode
+// ints, and anything that isn't a number refuses the reference.
+func TestMediaRefFromQuery(t *testing.T) {
+	for q, want := range map[string]subtitles.MediaRef{
+		"kind=movie&id=12":                                         {Kind: "movie", MovieID: 12},
+		"kind=episode&series=3&season=0&episode=5":                 {Kind: "episode", SeriesID: 3, Season: 0, Episode: 5},
+		"kind=episode&series=9007199254740993&season=2&episode=10": {Kind: "episode", SeriesID: 9007199254740993, Season: 2, Episode: 10},
+	} {
+		v, _ := url.ParseQuery(q)
+		if got, ok := mediaRefFromQuery(v); !ok || got != want {
+			t.Errorf("%s -> %+v %v", q, got, ok)
+		}
+	}
+	for _, q := range []string{"", "kind=movie", "kind=movie&id=x", "kind=episode&series=3&season=a&episode=5", "kind=episode&series=3&season=1", "kind=file&id=1"} {
+		v, _ := url.ParseQuery(q)
+		if _, ok := mediaRefFromQuery(v); ok {
+			t.Errorf("%q parsed", q)
+		}
+	}
+}
