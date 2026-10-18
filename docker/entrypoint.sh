@@ -10,6 +10,12 @@ PGID="${PGID:-1000}"
 DATA="${ARRMADA_DATA_DIR:-/data}"
 
 mkdir -p "$DATA"
+# A new, empty data dir (a fresh install's) is private: it is about to hold the database and
+# its backups, which the app keeps 0600 in a 0700 backups folder. One that already has files
+# keeps the mode it has, since it may be shared on purpose.
+if [ -z "$(ls -A "$DATA" 2>/dev/null)" ]; then
+  chmod 700 "$DATA" 2>/dev/null || true
+fi
 # Make the app's own data dir (DB, config, scratch, recycle) writable by the runtime user.
 # Best-effort: never fail boot over a chown (e.g. a read-only or odd filesystem).
 chown -R "$PUID:$PGID" "$DATA" 2>/dev/null || true

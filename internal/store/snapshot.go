@@ -61,7 +61,7 @@ func freeBackupPath(dir string, kind BackupKind, at time.Time) string {
 // committed, even what is still only in the WAL.
 func snapshotTo(ctx context.Context, db *sql.DB, dbPath, dst string) (err error) {
 	dir := filepath.Dir(dst)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := mkPrivateDir(dir); err != nil {
 		return fmt.Errorf("create %s: %w", dir, err)
 	}
 	if err := checkSpace(dir, dbPath); err != nil {
@@ -86,6 +86,9 @@ func snapshotTo(ctx context.Context, db *sql.DB, dbPath, dst string) (err error)
 	if _, err := db.ExecContext(ctx, `VACUUM INTO ?`, tmp); err != nil {
 		return fmt.Errorf("copy database: %w", err)
 	}
+	// SQLite makes the copy 0644; it's the whole database, so only Arrmada's user may
+	// read it. Best effort, like restrictDataFiles: the backups folder is 0700 anyway.
+	_ = os.Chmod(tmp, privateFile)
 	if err := quickCheck(ctx, tmp); err != nil {
 		return err
 	}

@@ -367,7 +367,7 @@ func restoreNow(dataDir string, m *RestoreMarker, embedded []string, log *slog.L
 // that (often why it's being restored) is copied byte for byte instead, with its WAL.
 func preRestoreCopy(dataDir, dbPath string, log *slog.Logger) (string, error) {
 	dir := BackupsDir(dataDir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := mkPrivateDir(dir); err != nil {
 		return "", err
 	}
 	dst := freeBackupPath(dir, BackupPreRestore, time.Now())
@@ -446,7 +446,7 @@ func copyFileSync(src, dst string) error {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, privateFile)
 	if err != nil {
 		return err
 	}
@@ -469,7 +469,7 @@ func writeJSONFile(path string, v any) error {
 		return err
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	if err := os.WriteFile(tmp, b, privateFile); err != nil {
 		return err
 	}
 	if err := syncFile(tmp); err != nil {

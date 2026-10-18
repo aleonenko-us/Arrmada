@@ -42,7 +42,7 @@ func seedFromTestTemplate(dbPath string) error {
 	if testTemplate.err != nil {
 		return fmt.Errorf("test database template: %w", testTemplate.err)
 	}
-	return os.WriteFile(dbPath, testTemplate.db, 0o644)
+	return os.WriteFile(dbPath, testTemplate.db, privateFile)
 }
 
 // buildTestTemplate migrates a database from scratch the normal way, folds its WAL back

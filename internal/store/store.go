@@ -74,7 +74,7 @@ func OpenWith(dataDir string, opt Options) (*Store, error) {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+	if err := mkPrivateDir(dataDir); err != nil {
 		return nil, fmt.Errorf("create data dir %q: %w", dataDir, err)
 	}
 
@@ -105,6 +105,9 @@ func OpenWith(dataDir string, opt Options) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
+	// Before anything is written: SQLite gives a new -wal or -shm the database file's
+	// mode, so a private database keeps them private too.
+	restrictDataFiles(dataDir, st.dbPath, log)
 
 	// The snapshot and the migrations get no deadline: on a large database either
 	// can legitimately take longer than a ping should, and failing the boot halfway

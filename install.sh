@@ -821,7 +821,9 @@ new_install() {
     fi
   } > .env
   write_override "$MEDIA" "$TRANSCODE" "$GPU"
-  if [ -z "$DATA_VOLUME" ]; then mkdir -p "$DATA"; fi
+  # A new data folder is private: it holds the database and its backups (the container
+  # hands it to PUID:PGID). One that's already there keeps the mode it has.
+  if [ -z "$DATA_VOLUME" ] && [ ! -d "$DATA" ]; then mkdir -p "$DATA" && chmod 700 "$DATA"; fi
   if [ -n "$TRANSCODE" ]; then mkdir -p "$TRANSCODE" 2>/dev/null || true; fi
 
   # What .env now says, whatever this shell may have set.
