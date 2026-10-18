@@ -334,6 +334,17 @@ func (a *api) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// A book's cover comes from the catalogue, never the client: it's fetched and shown to
+	// staff and listening apps later, so a requester's own URL would be a way to make
+	// Arrmada fetch whatever they like. No catalogue answer, no cover.
+	if in.MediaType == "book" {
+		in.PosterURL = ""
+		if a.deps.Books != nil {
+			cctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+			in.PosterURL = fallbackCover(a.deps.Books.CatalogueCover(cctx, in.OLKey))
+			cancel()
+		}
+	}
 	// The same filter Discover applies, on whatever title the request ended up with (the
 	// client's own, if the lookup above failed).
 	if adultfilter.Matches(in.Title) {

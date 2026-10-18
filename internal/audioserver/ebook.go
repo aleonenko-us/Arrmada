@@ -114,14 +114,19 @@ func (s *Server) handleEbook(w http.ResponseWriter, r *http.Request) {
 	s.sendEbook(w, r, it, e, false)
 }
 
-func (s *Server) sendEbook(w http.ResponseWriter, r *http.Request, it Item, e ebook, attach bool) {
-	if ct := books.EbookContentType(e.Ext); ct != "" {
-		w.Header().Set("Content-Type", ct)
+// sendEbook sends the file as a download, whatever asked: an ebook a browser opened in
+// place (an FB2 is XML, which can carry script) would run on this server's origin. A kind
+// without a known type goes as plain bytes, never sniffed. Apps read the body either way.
+func (s *Server) sendEbook(w http.ResponseWriter, r *http.Request, it Item, e ebook, _ bool) {
+	ct := books.EbookContentType(e.Ext)
+	if ct == "" {
+		ct = "application/octet-stream"
 	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.Header().Set("Cache-Control", "private, max-age=86400")
-	if attach {
-		// Named as the shelf's download names it: "Title - Author.epub".
-		w.Header().Set("Content-Disposition", books.AttachmentHeader(books.EbookDownloadName(it.Book, e.Ext)))
-	}
+	// Named as the shelf's download names it: "Title - Author.epub".
+	w.Header().Set("Content-Disposition", books.AttachmentHeader(books.EbookDownloadName(it.Book, e.Ext)))
 	http.ServeFile(w, r, e.Path)
 }

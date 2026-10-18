@@ -3,8 +3,6 @@ package audioserver
 import (
 	"archive/zip"
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/books"
@@ -151,7 +148,7 @@ func (s *Server) WriteAudiobook(ctx context.Context, w http.ResponseWriter, r *h
 func (s *Server) handleCover(w http.ResponseWriter, r *http.Request) {
 	cache := ""
 	if versionedCover(r) {
-		cache = "public, " + immutableYear
+		cache = "private, " + immutableYear // it came through someone's sign-in
 	}
 	s.serveCover(w, r, r.PathValue("id"), cache)
 }
@@ -188,7 +185,8 @@ func (s *Server) ServeBookCover(w http.ResponseWriter, r *http.Request, b books.
 func (s *Server) serveBookCover(w http.ResponseWriter, r *http.Request, b books.Book, cache string) {
 	// A cover uploaded in Arrmada wins.
 	if m, _ := filepath.Glob(filepath.Join(s.coverDir, fmt.Sprintf("book-%d.*", b.ID))); len(m) > 0 {
-		w.Header().Set("Cache-Control", firstNonEmpty(cache, "public, max-age=86400"))
+		w.Header().Set("Cache-Control", firstNonEmpty(cache, "private, max-age=86400"))
+		setImageGuards(w)
 		http.ServeFile(w, r, m[0])
 		return
 	}
@@ -210,74 +208,6 @@ func (s *Server) handleAuthorImage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeError(w, http.StatusNotFound, "No image")
-}
-
-// imageCache fetches remote cover and author images once and serves them from disk, so
-// a phone scrolling the library doesn't hit the catalogue's image hosts every time.
-type imageCache struct {
-	dir    string
-	client *http.Client
-	mu     sync.Mutex
-}
-
-func newImageCache(dir string) *imageCache {
-	return &imageCache{dir: dir, client: &http.Client{Timeout: 20 * time.Second}}
-}
-
-func (c *imageCache) serve(w http.ResponseWriter, r *http.Request, url, cache string) {
-	h := sha1.Sum([]byte(url))
-	path := filepath.Join(c.dir, hex.EncodeToString(h[:]))
-	if _, err := os.Stat(path); err != nil {
-		if err := c.fetch(r.Context(), url, path); err != nil {
-			writeError(w, http.StatusNotFound, "Image unavailable")
-			return
-		}
-	}
-	w.Header().Set("Cache-Control", firstNonEmpty(cache, "public, max-age=604800"))
-	if ct, err := os.ReadFile(path + ".type"); err == nil {
-		w.Header().Set("Content-Type", string(ct))
-	}
-	http.ServeFile(w, r, path)
-}
-
-func (c *imageCache) fetch(ctx context.Context, url, path string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("image fetch: %s", resp.Status)
-	}
-	ct := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "image/") {
-		return errors.New("not an image")
-	}
-	if err := os.MkdirAll(c.dir, 0o755); err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(f, io.LimitReader(resp.Body, 10<<20))
-	f.Close()
-	if err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	_ = os.WriteFile(path+".type", []byte(ct), 0o644)
-	return os.Rename(tmp, path)
 }
 
 func attachment(name string) string {
