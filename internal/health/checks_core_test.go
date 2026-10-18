@@ -39,6 +39,30 @@ func TestDiskGuardCheck(t *testing.T) {
 	})); len(got) != 0 {
 		t.Errorf("not holding: %+v", got)
 	}
+	// Measuring a mapped pool: the message names it.
+	got = run(DiskGuardCheck(func(context.Context) (DiskGuardState, bool) {
+		return DiskGuardState{Enabled: true, UsedPct: 91, PausePct: 85, ResumePct: 80, Holding: 1, MeasurePath: "/cache"}, true
+	}))
+	if len(got) != 1 || !strings.Contains(got[0].Message, "(/cache) is 91.0% full") {
+		t.Errorf("override holding: %+v", got)
+	}
+	// The drive it measures is gone: a warning even with nothing held, never a percentage.
+	for _, holding := range []int{0, 2} {
+		got = run(DiskGuardCheck(func(context.Context) (DiskGuardState, bool) {
+			return DiskGuardState{Enabled: true, Holding: holding, MeasurePath: "/cache", MeasureUnreadable: true}, true
+		}))
+		if len(got) != 1 || got[0].Level != LevelWarning || got[0].Fix != FixDiskGuard ||
+			!strings.Contains(got[0].Message, "can't read the drive it's set to measure (/cache)") || strings.Contains(got[0].Message, "% full") ||
+			(holding == 2) != strings.Contains(got[0].Message, "2 torrents it paused stay paused") {
+			t.Errorf("unreadable, holding %d: %+v", holding, got)
+		}
+	}
+	// ...but not while the guard is off.
+	if got := run(DiskGuardCheck(func(context.Context) (DiskGuardState, bool) {
+		return DiskGuardState{Enabled: false, MeasurePath: "/cache", MeasureUnreadable: true}, true
+	})); len(got) != 0 {
+		t.Errorf("guard off: %+v", got)
+	}
 }
 
 func TestDiskFreeCheck(t *testing.T) {

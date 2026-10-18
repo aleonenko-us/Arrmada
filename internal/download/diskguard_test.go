@@ -76,7 +76,7 @@ func TestGuardResumesOnlyWhatItPaused(t *testing.T) {
 		{Hash: "ccc", Name: "Seeding", State: "seeding"},
 	})
 
-	g.pauseActive(ctx, nil, 91, 85)
+	g.pauseActive(ctx, nil, 91, 85, "/dl")
 	if len(fake.paused) != 1 || fake.paused[0] != "aaa" {
 		t.Fatalf("paused %v, want only the active download", fake.paused)
 	}
@@ -97,7 +97,7 @@ func TestGuardLeavesSeedingTorrentsAlone(t *testing.T) {
 		{Hash: "seed1", State: "seeding"},
 		{Hash: "seed2", State: "seeding"},
 	})
-	g.pauseActive(ctx, nil, 99, 85)
+	g.pauseActive(ctx, nil, 99, 85, "/dl")
 	if len(fake.paused) != 0 {
 		t.Errorf("paused %v, want nothing — seeding doesn't fill the disk", fake.paused)
 	}
@@ -108,8 +108,8 @@ func TestGuardLeavesSeedingTorrentsAlone(t *testing.T) {
 func TestGuardDoesNotRePauseWhatItHolds(t *testing.T) {
 	g, fake, _, ctx := guardFixture(t, []Item{{Hash: "aaa", State: "downloading"}})
 
-	g.pauseActive(ctx, nil, 91, 85)
-	g.pauseActive(ctx, g.held(ctx), 91, 85)
+	g.pauseActive(ctx, nil, 91, 85, "/dl")
+	g.pauseActive(ctx, g.held(ctx), 91, 85, "/dl")
 
 	if len(fake.paused) != 1 {
 		t.Errorf("paused %v, want one call — the second pass should be a no-op", fake.paused)
@@ -123,7 +123,7 @@ func TestGuardDoesNotRePauseWhatItHolds(t *testing.T) {
 // paused would look exactly like the guard still being on.
 func TestDisablingTheGuardReleasesItsHold(t *testing.T) {
 	g, fake, set, ctx := guardFixture(t, []Item{{Hash: "aaa", State: "downloading"}})
-	g.pauseActive(ctx, nil, 91, 85)
+	g.pauseActive(ctx, nil, 91, 85, "/dl")
 
 	if err := set.SetBool(ctx, KeyDiskGuard, false); err != nil {
 		t.Fatal(err)
@@ -174,7 +174,7 @@ func TestHeldSetSurvivesAReload(t *testing.T) {
 		{Hash: "bbb", State: "downloading"},
 		{Hash: "aaa", State: "downloading"},
 	})
-	g.pauseActive(ctx, nil, 91, 85)
+	g.pauseActive(ctx, nil, 91, 85, "/dl")
 
 	fresh := NewDiskGuard(g.svc, set, g.log, g.dir)
 	got := fresh.held(ctx)

@@ -328,7 +328,11 @@ func (a *api) libraryState(ctx context.Context) health.LibraryState {
 // torrents the queue is read once, to count only the held ones the client still has.
 func (a *api) diskGuardState(ctx context.Context) (health.DiskGuardState, bool) {
 	g := a.deps.DiskGuard.Status(ctx)
-	st := health.DiskGuardState{Enabled: g.Enabled, UsedPct: g.UsedPct, PausePct: g.PausePct, ResumePct: g.ResumePct, Holding: g.Holding}
+	st := health.DiskGuardState{Enabled: g.Enabled, UsedPct: g.UsedPct, PausePct: g.PausePct, ResumePct: g.ResumePct, Holding: g.Holding,
+		MeasureUnreadable: g.MeasureUnreadable}
+	if g.Override || g.MeasureUnreadable {
+		st.MeasurePath = g.MeasurePath
+	}
 	if g.Enabled && g.Holding > 0 && a.deps.Downloads != nil {
 		if queue, err := a.deps.Downloads.Queue(ctx); err == nil {
 			st.Holding = heldInQueue(a.deps.DiskGuard.Held(ctx), queue)

@@ -271,6 +271,10 @@ type DiskGuardState struct {
 	PausePct  int
 	ResumePct int
 	Holding   int
+	// MeasurePath is the "measure a different drive" path when the reading comes from it
+	// (or should), and MeasureUnreadable says it can't be read now (its mount is gone).
+	MeasurePath       string
+	MeasureUnreadable bool
 }
 
 // DiskGuardCheck says plainly when the disk guard is holding downloads: it's the single
@@ -280,15 +284,35 @@ func DiskGuardCheck(state func(ctx context.Context) (DiskGuardState, bool)) Chec
 		Key: "disk.guard", Name: "Disk guard", Category: CategoryDownloads, Timeout: 10 * time.Second,
 		Run: func(ctx context.Context) []Finding {
 			g, ok := state(ctx)
-			if !ok || !g.Enabled || g.Holding <= 0 {
+			if !ok || !g.Enabled {
 				return nil
+			}
+			// The drive it was told to measure is gone: it isn't guarding anything, and it
+			// deliberately doesn't fall back to the downloads folder (the reading that
+			// setting replaces), so say so rather than stay quiet.
+			if g.MeasureUnreadable {
+				msg := fmt.Sprintf("The disk guard can't read the drive it's set to measure (%s), so it isn't pausing or resuming downloads. "+
+					"Check that the path is still mapped into Arrmada's container, or clear it in the disk guard settings.", g.MeasurePath)
+				if g.Holding == 1 {
+					msg += " 1 torrent it paused stays paused until it can read the drive again."
+				} else if g.Holding > 1 {
+					msg += fmt.Sprintf(" %d torrents it paused stay paused until it can read the drive again.", g.Holding)
+				}
+				return []Finding{{Key: "disk.guard", Level: LevelWarning, Fix: FixDiskGuard, Message: msg}}
+			}
+			if g.Holding <= 0 {
+				return nil
+			}
+			volume := "the downloads volume"
+			if g.MeasurePath != "" {
+				volume = "the drive the disk guard measures (" + g.MeasurePath + ")"
 			}
 			return []Finding{{
 				Key: "disk.guard", Level: LevelWarning, Fix: FixDiskGuard,
 				Message: fmt.Sprintf(
-					"Downloads are paused: the downloads volume is %.1f%% full (pause at %d%%). "+
+					"Downloads are paused: %s is %.1f%% full (pause at %d%%). "+
 						"%d torrent%s will resume automatically once it drops below %d%%.",
-					g.UsedPct, g.PausePct, g.Holding, plural(g.Holding), g.ResumePct),
+					volume, g.UsedPct, g.PausePct, g.Holding, plural(g.Holding), g.ResumePct),
 			}}
 		},
 	}

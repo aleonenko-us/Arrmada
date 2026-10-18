@@ -341,6 +341,8 @@ func TestUpdateSettingsSingleKey(t *testing.T) {
 		"recycle_retention_days":            `"9"`,
 		"downloads_disk_guard_pause_pct":    `"90"`,
 		"downloads_disk_guard_resume_pct":   `"70"`,
+		// A real path needs a running guard and a second filesystem: diskguard_measure_test.go.
+		"downloads_disk_guard_measure_path": `""`,
 		"downloads_stall_minutes":           `30`,
 		"upgrade_max_grabs_per_sweep":       `25`,
 		"request_quota_days":                `14`,

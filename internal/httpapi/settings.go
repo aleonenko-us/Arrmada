@@ -99,6 +99,9 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"downloads_disk_guard":            a.deps.Settings.GetBool(ctx, keyDiskGuard, download.DefaultDiskGuard),
 		"downloads_disk_guard_pause_pct":  a.deps.Settings.Get(ctx, keyDiskGuardPause, strconv.Itoa(download.DefaultDiskGuardPause)),
 		"downloads_disk_guard_resume_pct": a.deps.Settings.Get(ctx, keyDiskGuardResume, strconv.Itoa(download.DefaultDiskGuardResum)),
+		// "Measure a different drive": a path whose drive the guard reads instead of the
+		// downloads folder's ("" = the downloads folder). For Unraid's cache pool.
+		"downloads_disk_guard_measure_path": a.deps.Settings.Get(ctx, download.KeyDiskGuardMeasure, ""),
 		// Stall fail-over, in minutes with no progress (0 = never). On by default: a
 		// stalled download is only removed once another release has been grabbed.
 		"downloads_stall_minutes": automation.ParseStallMinutes(a.deps.Settings.Get(ctx, automation.KeyStallMinutes, "")),
@@ -212,6 +215,7 @@ type settingsUpdate struct {
 	DiskGuard                 *bool     `json:"downloads_disk_guard"`
 	DiskGuardPausePct         *string   `json:"downloads_disk_guard_pause_pct"`
 	DiskGuardResumePct        *string   `json:"downloads_disk_guard_resume_pct"`
+	DiskGuardMeasurePath      *string   `json:"downloads_disk_guard_measure_path"`
 	StallMinutes              *int      `json:"downloads_stall_minutes"`
 	UpgradeBudget             *int      `json:"upgrade_max_grabs_per_sweep"`
 	QuotaDays                 *int      `json:"request_quota_days"`
@@ -276,6 +280,9 @@ func (a *api) adminSettingChange(ctx context.Context, req *settingsUpdate) strin
 	case strChanged(req.DiskGuardPausePct, st.Get(ctx, keyDiskGuardPause, strconv.Itoa(download.DefaultDiskGuardPause))),
 		strChanged(req.DiskGuardResumePct, st.Get(ctx, keyDiskGuardResume, strconv.Itoa(download.DefaultDiskGuardResum))):
 		return "the disk guard's thresholds"
+	case strChanged(req.DiskGuardMeasurePath, st.Get(ctx, download.KeyDiskGuardMeasure, "")):
+		// It names a server path, like the folders and the folder browser (admin-only).
+		return "the drive the disk guard measures"
 	case quotaChanged(req, requests.GlobalLimits(func(key string) string { return st.Get(ctx, key, "") })):
 		return "the request limits"
 	case req.QualityRanking != nil && strings.TrimSpace(*req.QualityRanking) != a.qualityRanking(ctx):
@@ -344,6 +351,12 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 			a.writeError(w, http.StatusBadRequest, "resume percentage must be below the pause percentage")
 			return
 		}
+	}
+
+	measurePath, measureChanged, msg := a.diskGuardMeasureUpdate(ctx, req.DiskGuardMeasurePath)
+	if msg != "" {
+		a.writeError(w, http.StatusBadRequest, msg)
+		return
 	}
 
 	if req.StallMinutes != nil && (*req.StallMinutes < 0 || *req.StallMinutes > quality.StallMaxMinutes) {
@@ -541,6 +554,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if req.DiskGuardResumePct != nil && !save(a.deps.Settings.Set(ctx, keyDiskGuardResume, strings.TrimSpace(*req.DiskGuardResumePct))) {
 		return
 	}
+	if measureChanged && !save(a.deps.Settings.Set(ctx, download.KeyDiskGuardMeasure, measurePath)) {
+		return
+	}
 	if req.StallMinutes != nil && !save(a.deps.Settings.Set(ctx, automation.KeyStallMinutes, strconv.Itoa(*req.StallMinutes))) {
 		return
 	}
@@ -571,6 +587,30 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.handleGetSettings(w, r)
+}
+
+// diskGuardMeasureUpdate checks a sent "measure a different drive" path: the path to store
+// and whether it changed, or why it's refused. Only a change is checked, so a saved path
+// whose mount has since gone doesn't refuse a save that sends it back unchanged.
+func (a *api) diskGuardMeasureUpdate(ctx context.Context, sent *string) (string, bool, string) {
+	if sent == nil {
+		return "", false, ""
+	}
+	p := strings.TrimSpace(*sent)
+	if p == strings.TrimSpace(a.deps.Settings.Get(ctx, download.KeyDiskGuardMeasure, "")) {
+		return "", false, ""
+	}
+	if p == "" {
+		return "", true, ""
+	}
+	if a.deps.DiskGuard == nil {
+		return "", false, "the disk guard isn't running"
+	}
+	clean, err := a.deps.DiskGuard.CheckMeasurePath(p)
+	if err != nil {
+		return "", false, err.Error()
+	}
+	return clean, true, ""
 }
 
 // wholeNumber reports whether v (spaces trimmed) is a non-negative whole number.

@@ -132,9 +132,13 @@ func (a *api) guardHolding(ctx context.Context) (map[string]bool, download.Guard
 
 // guardHeldMessage explains a refused resume, including how to override it.
 func guardHeldMessage(st download.GuardStatus) string {
+	measured := st.MeasuredPath
+	if measured == "" {
+		measured = st.Path
+	}
 	return fmt.Sprintf("Held by the disk guard: %s is %.0f%% full (pauses at %d%%, resumes below %d%%). "+
 		"It will resume on its own once space is freed, or turn the guard off in Settings → Downloads.",
-		st.Path, st.UsedPct, st.PausePct, st.ResumePct)
+		measured, st.UsedPct, st.PausePct, st.ResumePct)
 }
 
 // handleDeleteDownload removes one torrent the way the user chose:
@@ -303,9 +307,11 @@ func (a *api) blockJob(hash string, target automation.BlockTarget) jobs.Spec {
 type diskGuardStatus struct {
 	download.GuardStatus
 	// SharedWith lists the library folders that measure as the same filesystem as the
-	// downloads folder. The guard still functions, but it is then watching the whole
+	// drive the guard reads (the downloads folder, or the "measure a different drive" path
+	// when that's set). The guard still functions, but it is then watching the whole
 	// array rather than a torrent drive, so a threshold tuned for a cache pool is
-	// measuring the wrong thing entirely.
+	// measuring the wrong thing entirely. Against a mapped pool (/cache) on Unraid the
+	// libraries in /mnt/user are a different filesystem, so the warning goes, rightly.
 	SharedWith []health.Folder `json:"shared_with"`
 	// SharedWithLibrary is len(SharedWith) > 0, kept for one release for a cached UI.
 	SharedWithLibrary bool `json:"shared_with_library"`
@@ -323,13 +329,17 @@ func (a *api) handleDiskGuardStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	out := diskGuardStatus{GuardStatus: a.deps.DiskGuard.Status(ctx)}
-	out.SharedWith = a.sharedWithDownloads(ctx, out.Path)
+	measured := out.MeasuredPath
+	if measured == "" {
+		measured = out.Path
+	}
+	out.SharedWith = a.sharedWithDownloads(ctx, measured)
 	out.SharedWithLibrary = len(out.SharedWith) > 0
 	a.writeJSON(w, http.StatusOK, out)
 }
 
 // sharedWithDownloads lists the library folders the user picked that sit on the same
-// filesystem as the downloads folder the guard watches. It used to compare against
+// filesystem as the drive the guard watches. It used to compare against
 // ARRMADA_LIBRARY_DIR — the managed volume — and so reported the wrong disk on any
 // install whose libraries live on the array.
 func (a *api) sharedWithDownloads(ctx context.Context, downloads string) []health.Folder {
