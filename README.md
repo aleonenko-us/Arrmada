@@ -148,6 +148,30 @@ server ([Following main](docs/updating.md#following-main-developers)).
 | [Development](docs/development.md) | Building and testing it yourself |
 | [Releasing](docs/releasing.md) | For maintainers |
 
+## How it's built and tested
+
+Arrmada is written with heavy AI assistance (Claude): I decide what it does, review the
+results, and run it on my own server every day, but most of the code is AI-written, and
+commits say so. It is still pre-1.0. So you can judge it on what's checked rather than on
+trust, here is what runs before anything reaches `main`:
+
+- **On every push (GitHub Actions):** the Go suite under the race detector (around a thousand
+  test files, including the sign-in, sessions, two-factor and API-key code), `go vet` and
+  `gofmt`, shellcheck on the install and update scripts, and the web app's lint, type check,
+  unit tests (about 800) and browser tests (about 700, at desktop and phone sizes). Every image
+  is built for x86-64 and arm64.
+- **Guard rails as tests:** a fixed table of every API route and who may call it, so a route
+  can't quietly become public; architecture rules (`internal/archtest`) that fail the build
+  when code takes a shortcut they forbid; and a scan that keeps secrets out of logs and support
+  bundles.
+- **A separate review of each feature** before it merges, looking for data loss, security
+  holes and regressions for existing installs. These reviews are AI-run too: they catch a lot,
+  but they are not a human security audit.
+
+If you find a problem, especially in sign-in or anything that touches your files, please open
+an issue, or report security problems privately (see [Security](SECURITY.md)). A second pair
+of human eyes on the sign-in code is very welcome.
+
 ## Contributing
 
 Bug reports and ideas are welcome in [Issues](https://github.com/tristenlammi/Arrmada/issues).
