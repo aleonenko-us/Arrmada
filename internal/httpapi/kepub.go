@@ -21,15 +21,25 @@ func (a *api) kepubReady(ctx context.Context) bool {
 	return a.deps.Kepub != nil && a.deps.Kepub.Ready(ctx)
 }
 
-// kepubFormat reports whether an ebook's recorded format can be converted (EPUB only).
-func kepubFormat(format string) bool {
-	return strings.EqualFold(strings.TrimPrefix(strings.TrimSpace(format), "."), "epub")
+// kepubable reports whether an ebook edition is an EPUB the Kobo download can convert.
+// A single file goes by its recorded format. An edition of several files (a Calibre
+// folder holding the AZW3 and the EPUB) is recorded under its first file's format, so
+// for that rarer case the file a download would send is looked at.
+func kepubable(f *books.BookFile) bool {
+	if f == nil || f.Path == "" {
+		return false
+	}
+	if f.FileCount > 1 {
+		p, err := books.EbookFile(f.Path)
+		return err == nil && kepub.IsEPUB(p)
+	}
+	return strings.EqualFold(strings.TrimPrefix(strings.TrimSpace(f.Format), "."), "epub")
 }
 
 // setEbookKepub says whether the book page may offer the Kobo download.
 func setEbookKepub(b *books.Book, ready bool) {
 	if b.Ebook != nil {
-		b.Ebook.Kepub = ready && kepubFormat(b.Ebook.Format)
+		b.Ebook.Kepub = ready && kepubable(b.Ebook)
 	}
 }
 

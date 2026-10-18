@@ -232,11 +232,30 @@ func TestSetEbookKepub(t *testing.T) {
 		ready  bool
 		want   bool
 	}{{"EPUB", true, true}, {"epub", true, true}, {"EPUB", false, false}, {"AZW3", true, false}, {"PDF", true, false}} {
-		b := books.Book{Ebook: &books.BookFile{Format: c.format}}
+		b := books.Book{Ebook: &books.BookFile{Path: "/books/b." + strings.ToLower(c.format), Format: c.format, FileCount: 1}}
 		setEbookKepub(&b, c.ready)
 		if b.Ebook.Kepub != c.want {
 			t.Errorf("format %s ready %v: kepub = %v, want %v", c.format, c.ready, b.Ebook.Kepub, c.want)
 		}
 	}
 	setEbookKepub(&books.Book{}, true) // no ebook: no panic
+
+	// A Calibre folder with the AZW3 and the EPUB is recorded as AZW3 (its first file),
+	// but a download sends the EPUB, so the Kobo download is offered; a folder with no
+	// EPUB isn't.
+	both := t.TempDir()
+	for _, n := range []string{"Dune - Frank Herbert.azw3", "Dune - Frank Herbert.epub"} {
+		_ = os.WriteFile(filepath.Join(both, n), []byte("x"), 0o644)
+	}
+	noEPUB := t.TempDir()
+	for _, n := range []string{"Dune.azw3", "Dune.pdf"} {
+		_ = os.WriteFile(filepath.Join(noEPUB, n), []byte("x"), 0o644)
+	}
+	for dir, want := range map[string]bool{both: true, noEPUB: false} {
+		b := books.Book{Ebook: &books.BookFile{Path: dir, Format: "AZW3", FileCount: 2}}
+		setEbookKepub(&b, true)
+		if b.Ebook.Kepub != want {
+			t.Errorf("folder %s: kepub = %v, want %v", dir, b.Ebook.Kepub, want)
+		}
+	}
 }

@@ -184,7 +184,7 @@ func (a *api) handleMyBooks(w http.ResponseWriter, r *http.Request) {
 		}
 		if ebook {
 			mb.Ebook = &MyEbook{Format: b.Ebook.Format, SizeBytes: b.Ebook.SizeBytes, Kindle: books.KindleAccepts(b.Ebook.Format),
-				Kepub: kepubOn && kepubFormat(b.Ebook.Format)}
+				Kepub: kepubOn && kepubable(b.Ebook)}
 		}
 		if b.SeriesName != "" {
 			mb.Series = b.SeriesName
