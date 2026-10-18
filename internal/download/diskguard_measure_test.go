@@ -10,12 +10,17 @@ import (
 	"github.com/tristenlammi/arrmada/internal/diskspace"
 )
 
-// fakeDisks stands in for statfs and st_dev: usage by path (missing = can't be read) and
-// a filesystem id by path (missing = can't be read).
+// fakeDisks stands in for statfs and st_dev: usage by path (missing = can't be read), a
+// filesystem id by path (missing = can't be read), and a filesystem type by path (ext4
+// unless listed). free, when set for a path, overrides its free bytes (in GB).
 type fakeDisks struct {
 	used map[string]float64
 	dev  map[string]uint64
+	fs   map[string]uint64
+	free map[string]float64
 }
+
+const ext4 = 0xEF53
 
 func (f *fakeDisks) install(g *DiskGuard) {
 	g.usage = func(p string) (diskspace.Usage, bool) {
@@ -23,11 +28,21 @@ func (f *fakeDisks) install(g *DiskGuard) {
 		if !ok {
 			return diskspace.Usage{}, false
 		}
-		return diskspace.Usage{TotalBytes: 1000, FreeBytes: uint64(1000 - u*10), UsedBytes: uint64(u * 10), UsedPct: u}, true
+		out := diskspace.Usage{TotalBytes: 1000, FreeBytes: uint64(1000 - u*10), UsedBytes: uint64(u * 10), UsedPct: u}
+		if gb, ok := f.free[p]; ok {
+			out.TotalBytes, out.FreeBytes = 4000*gib, uint64(gb*gib)
+		}
+		return out, true
 	}
 	g.device = func(p string) (uint64, bool) {
 		d, ok := f.dev[p]
 		return d, ok
+	}
+	g.fstype = func(p string) (uint64, bool) {
+		if t, ok := f.fs[p]; ok {
+			return t, true
+		}
+		return ext4, true
 	}
 }
 
@@ -254,13 +269,23 @@ func TestCheckMeasurePath(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	unreadable := t.TempDir()
+	unreadable, ram, overlay := t.TempDir(), t.TempDir(), t.TempDir()
 	g.SetDirFunc(func() string { return dl })
 	disks := &fakeDisks{
-		used: map[string]float64{dl: 50, cache: 40, same: 50},
-		dev:  map[string]uint64{dl: 1, cache: 2, same: 1, unreadable: 3},
+		used: map[string]float64{dl: 50, cache: 40, same: 50, ram: 1, overlay: 30},
+		dev:  map[string]uint64{dl: 1, cache: 2, same: 1, unreadable: 3, ram: 4, overlay: 5},
+		fs:   map[string]uint64{ram: diskspace.TypeTmpfs, overlay: diskspace.TypeOverlay},
 	}
 	disks.install(g)
+	for _, c := range []struct{ in, want string }{
+		{"/", "/ is the container's own filesystem"},
+		{ram, "is a RAM or container filesystem (tmpfs), not a disk — check the Host Path matches your pool's name"},
+		{overlay, "(overlay), not a disk"},
+	} {
+		if _, err := g.CheckMeasurePath(c.in); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want %q", c.in, err, c.want)
+		}
+	}
 
 	if p, err := g.CheckMeasurePath("  "); err != nil || p != "" {
 		t.Errorf("empty = %q, %v; want cleared", p, err)

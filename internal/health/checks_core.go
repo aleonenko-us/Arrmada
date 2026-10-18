@@ -272,13 +272,29 @@ type DiskGuardState struct {
 	ResumePct int
 	Holding   int
 	// MeasurePath is the "measure a different drive" path when the reading comes from it
-	// (or should), and MeasureUnreadable says it can't be read now (its mount is gone).
+	// (or should), and MeasureUnreadable says it can't be used now: its mount is gone, or
+	// it reads as a RAM or container filesystem (MeasureNotDisk names which).
 	MeasurePath       string
 	MeasureUnreadable bool
+	MeasureNotDisk    string
+	// OtherVolumes is whether other downloads folders are still measured (on drives of
+	// their own) while MeasurePath can't be, so the guard is still working for them.
+	OtherVolumes bool
+	// MeasuredPath is the path the headline reading is from; ZFS says it's a ZFS pool,
+	// whose percentage counts only part of it.
+	MeasuredPath string
+	ZFS          bool
+	// FreeGB is the free space on the headline drive; PauseFreeGB and ResumeFreeGB the
+	// free-space limit and the free space needed to resume (0 = no limit).
+	FreeGB       float64
+	PauseFreeGB  float64
+	ResumeFreeGB float64
 }
 
 // DiskGuardCheck says plainly when the disk guard is holding downloads: it's the single
 // most confusing reason for "nothing is downloading", because everything else looks fine.
+// It also says when the drive it was set to measure can't be used, and when that drive is
+// a ZFS pool with no free-space limit set.
 func DiskGuardCheck(state func(ctx context.Context) (DiskGuardState, bool)) Check {
 	return Check{
 		Key: "disk.guard", Name: "Disk guard", Category: CategoryDownloads, Timeout: 10 * time.Second,
@@ -287,35 +303,61 @@ func DiskGuardCheck(state func(ctx context.Context) (DiskGuardState, bool)) Chec
 			if !ok || !g.Enabled {
 				return nil
 			}
-			// The drive it was told to measure is gone: it isn't guarding anything, and it
-			// deliberately doesn't fall back to the downloads folder (the reading that
-			// setting replaces), so say so rather than stay quiet.
+			// The drive it was told to measure is gone: it isn't guarding what it measured
+			// there, and it deliberately doesn't fall back to the downloads folder (the
+			// reading that setting replaces), so say so rather than stay quiet.
 			if g.MeasureUnreadable {
-				msg := fmt.Sprintf("The disk guard can't read the drive it's set to measure (%s), so it isn't pausing or resuming downloads. "+
-					"Check that the path is still mapped into Arrmada's container, or clear it in the disk guard settings.", g.MeasurePath)
-				if g.Holding == 1 {
-					msg += " 1 torrent it paused stays paused until it can read the drive again."
-				} else if g.Holding > 1 {
-					msg += fmt.Sprintf(" %d torrents it paused stay paused until it can read the drive again.", g.Holding)
-				}
-				return []Finding{{Key: "disk.guard", Level: LevelWarning, Fix: FixDiskGuard, Message: msg}}
+				return []Finding{{Key: "disk.guard", Level: LevelWarning, Fix: FixDiskGuard, Message: measureLostMessage(g)}}
+			}
+			var out []Finding
+			if g.ZFS && g.PauseFreeGB == 0 {
+				out = append(out, Finding{Key: "disk.guard.zfs", Level: LevelWarning, Fix: FixDiskGuard, Message: fmt.Sprintf(
+					"The disk guard measures a ZFS pool (%s): its percentage only counts part of the pool, so it may never pause. "+
+						"Set a free-space limit in the disk guard settings.", g.MeasuredPath)})
 			}
 			if g.Holding <= 0 {
-				return nil
+				return out
 			}
 			volume := "the downloads volume"
 			if g.MeasurePath != "" {
 				volume = "the drive the disk guard measures (" + g.MeasurePath + ")"
 			}
-			return []Finding{{
-				Key: "disk.guard", Level: LevelWarning, Fix: FixDiskGuard,
-				Message: fmt.Sprintf(
-					"Downloads are paused: %s is %.1f%% full (pause at %d%%). "+
-						"%d torrent%s will resume automatically once it drops below %d%%.",
-					volume, g.UsedPct, g.PausePct, g.Holding, plural(g.Holding), g.ResumePct),
-			}}
+			msg := fmt.Sprintf("Downloads are paused: %s is %.1f%% full (pause at %d%%). "+
+				"%d torrent%s will resume automatically once it drops below %d%%.",
+				volume, g.UsedPct, g.PausePct, g.Holding, plural(g.Holding), g.ResumePct)
+			if g.PauseFreeGB > 0 {
+				msg = fmt.Sprintf("Downloads are paused: %s is %.1f%% full with %.0f GB free (pause at %d%% or under %.0f GB free). "+
+					"%d torrent%s will resume automatically once it's below %d%% with %.0f GB free.",
+					volume, g.UsedPct, g.FreeGB, g.PausePct, g.PauseFreeGB, g.Holding, plural(g.Holding), g.ResumePct, g.ResumeFreeGB)
+			}
+			return append(out, Finding{Key: "disk.guard", Level: LevelWarning, Fix: FixDiskGuard, Message: msg})
 		},
 	}
+}
+
+// measureLostMessage explains a "measure a different drive" path that can't be used, what
+// that means for the guard, and the ways out.
+func measureLostMessage(g DiskGuardState) string {
+	msg := fmt.Sprintf("The disk guard can't read the drive it's set to measure (%s).", g.MeasurePath)
+	if g.MeasureNotDisk != "" {
+		msg = fmt.Sprintf("The drive the disk guard is set to measure (%s) reads as a RAM or container filesystem (%s), not a disk: "+
+			"the mapping is gone, or its Host Path doesn't match your pool's name.", g.MeasurePath, g.MeasureNotDisk)
+	}
+	if g.OtherVolumes {
+		msg += " Downloads measured there aren't paused or resumed until it can be read; downloads folders on other drives are still guarded."
+	} else {
+		msg += " Downloads aren't paused or resumed until it can be read."
+	}
+	msg += " Map the path back into Arrmada's container, or clear the setting in the disk guard settings."
+	switch {
+	case g.Holding == 1:
+		msg += " 1 torrent it paused stays paused for now: resume it by hand, or turn the guard off to release it" +
+			" (clearing the setting releases it too, unless the downloads folder's own drive is over the line)."
+	case g.Holding > 1:
+		msg += fmt.Sprintf(" %d torrents it paused stay paused for now: resume them by hand, or turn the guard off to release them"+
+			" (clearing the setting releases them too, unless the downloads folder's own drive is over the line).", g.Holding)
+	}
+	return msg
 }
 
 // diskFreeCheck is DownloadsFreeCheck over the Downloads folder alone.

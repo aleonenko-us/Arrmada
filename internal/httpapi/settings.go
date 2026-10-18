@@ -102,6 +102,9 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		// "Measure a different drive": a path whose drive the guard reads instead of the
 		// downloads folder's ("" = the downloads folder). For Unraid's cache pool.
 		"downloads_disk_guard_measure_path": a.deps.Settings.Get(ctx, download.KeyDiskGuardMeasure, ""),
+		// "Also pause when free space drops below N GB" ("0" = off): for a ZFS pool, whose
+		// percentage counts only part of it.
+		"downloads_disk_guard_pause_free_gb": a.deps.Settings.Get(ctx, download.KeyDiskGuardPauseFree, "0"),
 		// Stall fail-over, in minutes with no progress (0 = never). On by default: a
 		// stalled download is only removed once another release has been grabbed.
 		"downloads_stall_minutes": automation.ParseStallMinutes(a.deps.Settings.Get(ctx, automation.KeyStallMinutes, "")),
@@ -177,6 +180,10 @@ func parseBookLanguagesUpdate(in []string) (string, string) {
 	return strings.Join(codes, ","), ""
 }
 
+// maxPauseFreeGB bounds the disk guard's free-space limit (a petabyte, in GB): anything
+// past it is a typo.
+const maxPauseFreeGB = 1 << 20
+
 // maxUpgradeBudget bounds the per-sweep upgrade limit. Anything near it is effectively
 // "no limit", which 0 already says.
 const maxUpgradeBudget = 1000
@@ -216,6 +223,7 @@ type settingsUpdate struct {
 	DiskGuardPausePct         *string   `json:"downloads_disk_guard_pause_pct"`
 	DiskGuardResumePct        *string   `json:"downloads_disk_guard_resume_pct"`
 	DiskGuardMeasurePath      *string   `json:"downloads_disk_guard_measure_path"`
+	DiskGuardPauseFreeGB      *string   `json:"downloads_disk_guard_pause_free_gb"`
 	StallMinutes              *int      `json:"downloads_stall_minutes"`
 	UpgradeBudget             *int      `json:"upgrade_max_grabs_per_sweep"`
 	QuotaDays                 *int      `json:"request_quota_days"`
@@ -283,6 +291,8 @@ func (a *api) adminSettingChange(ctx context.Context, req *settingsUpdate) strin
 	case strChanged(req.DiskGuardMeasurePath, st.Get(ctx, download.KeyDiskGuardMeasure, "")):
 		// It names a server path, like the folders and the folder browser (admin-only).
 		return "the drive the disk guard measures"
+	case strChanged(req.DiskGuardPauseFreeGB, st.Get(ctx, download.KeyDiskGuardPauseFree, "0")):
+		return "the disk guard's free-space limit"
 	case quotaChanged(req, requests.GlobalLimits(func(key string) string { return st.Get(ctx, key, "") })):
 		return "the request limits"
 	case req.QualityRanking != nil && strings.TrimSpace(*req.QualityRanking) != a.qualityRanking(ctx):
@@ -357,6 +367,18 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if msg != "" {
 		a.writeError(w, http.StatusBadRequest, msg)
 		return
+	}
+	// Blank means off, stored as 0 so the field reads back the way it behaves.
+	if req.DiskGuardPauseFreeGB != nil {
+		v := strings.TrimSpace(*req.DiskGuardPauseFreeGB)
+		if v == "" {
+			v = "0"
+		}
+		if n, err := strconv.Atoi(v); err != nil || n < 0 || n > maxPauseFreeGB {
+			a.writeError(w, http.StatusBadRequest, "the free-space limit must be a whole number of GB, from 0 (off) to "+strconv.Itoa(maxPauseFreeGB))
+			return
+		}
+		req.DiskGuardPauseFreeGB = &v
 	}
 
 	if req.StallMinutes != nil && (*req.StallMinutes < 0 || *req.StallMinutes > quality.StallMaxMinutes) {
@@ -555,6 +577,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if measureChanged && !save(a.deps.Settings.Set(ctx, download.KeyDiskGuardMeasure, measurePath)) {
+		return
+	}
+	if req.DiskGuardPauseFreeGB != nil && !save(a.deps.Settings.Set(ctx, download.KeyDiskGuardPauseFree, *req.DiskGuardPauseFreeGB)) {
 		return
 	}
 	if req.StallMinutes != nil && !save(a.deps.Settings.Set(ctx, automation.KeyStallMinutes, strconv.Itoa(*req.StallMinutes))) {

@@ -43,6 +43,11 @@ const (
 	// measuring that is the only way to see the drive that actually fills up. Downloads
 	// still go to the downloads folder; only the measurement moves.
 	KeyDiskGuardMeasure = "downloads_disk_guard_measure_path"
+	// KeyDiskGuardPauseFree is "Also pause when free space drops below N GB" (whole GB,
+	// 1024³ bytes; empty or 0 = off). A percentage can mislead: on a ZFS pool every share is
+	// its own dataset, and statfs on the pool's root counts only that dataset, so the
+	// percentage reads near 0% however full the pool is, while its free space is right.
+	KeyDiskGuardPauseFree = "downloads_disk_guard_pause_free_gb"
 )
 
 // Defaults. On by default: an unguarded full disk is a failure nobody opts into
@@ -80,6 +85,10 @@ type DiskGuard struct {
 	// which downloads folders share the Downloads folder's filesystem and so take the
 	// "measure a different drive" reading. A test swaps it.
 	device func(path string) (uint64, bool)
+	// fstype is the filesystem type of a path (diskspace.FSType in production): a "measure
+	// a different drive" path on tmpfs or overlay is a folder Docker made, not the pool,
+	// and a ZFS pool's percentage needs the free-space limit. Swappable (SetFSTypeFunc).
+	fstype func(path string) (uint64, bool)
 	// measureLost is whether the last pass found the "measure a different drive" path
 	// unreadable, so the warning is logged once when it goes and once when it's back, not
 	// every minute. Under mu.
@@ -97,8 +106,12 @@ type DiskGuard struct {
 
 // NewDiskGuard wires a guard over the volume at dir.
 func NewDiskGuard(svc *Service, set *settings.Service, log *slog.Logger, dir string) *DiskGuard {
-	return &DiskGuard{svc: svc, settings: set, log: log, dir: dir, usage: diskspace.Of, device: diskspace.Device}
+	return &DiskGuard{svc: svc, settings: set, log: log, dir: dir, usage: diskspace.Of, device: diskspace.Device, fstype: diskspace.FSType}
 }
+
+// SetFSTypeFunc replaces how filesystem types are read. Tests use it to stand a folder in
+// for a disk (or for tmpfs) without mounting one.
+func (g *DiskGuard) SetFSTypeFunc(fn func(path string) (uint64, bool)) { g.fstype = fn }
 
 // SetDirFunc makes the watched folder live (see dirFn). Call it at startup, before the
 // first Check.
@@ -196,7 +209,7 @@ func (m measurer) of(d string) measurement {
 // noteMeasure logs, once per change, that the "measure a different drive" path has become
 // unreadable or readable again. measured is "" when no such path is set: nothing is logged
 // then, a cleared setting isn't news. Called under mu.
-func (g *DiskGuard) noteMeasure(measured string, lost bool) {
+func (g *DiskGuard) noteMeasure(measured string, lost bool, notDisk string) {
 	if measured == "" {
 		g.measureLost = false
 		return
@@ -205,8 +218,13 @@ func (g *DiskGuard) noteMeasure(measured string, lost bool) {
 		return
 	}
 	g.measureLost = lost
+	if lost && notDisk != "" {
+		g.log.Warn("disk guard: the drive it's set to measure reads as a RAM or container filesystem, not a disk — pausing and resuming nothing for it; check the path is still mapped into the container",
+			"path", measured, "filesystem", notDisk)
+		return
+	}
 	if lost {
-		g.log.Warn("disk guard: can't read the drive it's set to measure — pausing and resuming nothing until it can; check the path is still mapped into the container",
+		g.log.Warn("disk guard: can't read the drive it's set to measure — pausing and resuming nothing for it until it can; check the path is still mapped into the container",
 			"path", measured)
 		return
 	}
@@ -226,12 +244,21 @@ func (g *DiskGuard) CheckMeasurePath(p string) (string, error) {
 		return "", errors.New("enter a full path starting with /, like /cache")
 	}
 	p = path.Clean(p)
+	if p == "/" {
+		return "", errors.New("/ is the container's own filesystem, not a disk — map your pool to a folder such as /cache and pick that")
+	}
 	fi, err := os.Stat(p)
 	if err != nil {
 		return "", fmt.Errorf("%s doesn't exist inside Arrmada's container — add it as a path in the container's settings first", p)
 	}
 	if !fi.IsDir() {
 		return "", fmt.Errorf("%s isn't a folder", p)
+	}
+	// A folder that isn't a mount reads as the container's overlay, and a Host Path that
+	// doesn't exist on Unraid (a pool name typed wrong) is made by Docker in the RAM root:
+	// both pass every other check, and the guard would then never pause.
+	if kind := g.notADisk(p); kind != "" {
+		return "", fmt.Errorf("%s is a RAM or container filesystem (%s), not a disk — check the Host Path matches your pool's name", p, kind)
 	}
 	if u, ok := g.usage(p); !ok || u.TotalBytes == 0 {
 		return "", fmt.Errorf("can't read how full the drive at %s is", p)
@@ -265,11 +292,20 @@ type GuardStatus struct {
 	// else Path.
 	MeasuredPath string `json:"measured_path"`
 	Override     bool   `json:"override"`
-	// MeasureUnreadable is a saved MeasurePath that can't be read now (its mount is gone):
+	// MeasureUnreadable is a saved MeasurePath that can't be used now — its mount is gone,
+	// or it reads as RAM or the container's own filesystem (MeasureNotDisk names which):
 	// the guard then pauses and resumes nothing for the folders it stands in for.
 	MeasureUnreadable bool   `json:"measure_unreadable"`
+	MeasureNotDisk    string `json:"measure_not_disk,omitempty"`
 	TotalBytes        uint64 `json:"total_bytes"`
 	FreeBytes         uint64 `json:"free_bytes"`
+	// ZFS is whether MeasuredPath is on ZFS, whose percentage can't be trusted (see
+	// KeyDiskGuardPauseFree).
+	ZFS bool `json:"zfs"`
+	// PauseFreeBytes is the free-space limit (0 = off), and ResumeFreeBytes the free space
+	// a drive needs back before what it holds is released.
+	PauseFreeBytes  uint64 `json:"pause_free_bytes"`
+	ResumeFreeBytes uint64 `json:"resume_free_bytes"`
 	// Volumes is each downloads folder watched, when there's more than one.
 	Volumes []GuardVolume `json:"volumes,omitempty"`
 }
@@ -283,50 +319,148 @@ type GuardVolume struct {
 	Override     bool    `json:"override"`
 	TotalBytes   uint64  `json:"total_bytes"`
 	FreeBytes    uint64  `json:"free_bytes"`
+	ZFS          bool    `json:"zfs"`
 }
 
 // Status reports the guard's current view without changing anything.
 func (g *DiskGuard) Status(ctx context.Context) GuardStatus {
-	pause, resume := g.thresholds(ctx)
+	lim := g.limits(ctx)
 	dirs := g.paths()
 	mr := g.measurer(ctx, dirs[0])
 	first := mr.of(dirs[0])
 	st := GuardStatus{
-		Enabled:      g.settings.GetBool(ctx, KeyDiskGuard, DefaultDiskGuard),
-		Path:         dirs[0],
-		PausePct:     pause,
-		ResumePct:    resume,
-		Holding:      len(g.held(ctx)),
-		MeasurePath:  mr.over,
-		MeasuredPath: first.path,
-		Override:     first.override,
+		Enabled:         g.settings.GetBool(ctx, KeyDiskGuard, DefaultDiskGuard),
+		Path:            dirs[0],
+		PausePct:        lim.pause,
+		ResumePct:       lim.resume,
+		Holding:         len(g.held(ctx)),
+		MeasurePath:     mr.over,
+		MeasuredPath:    first.path,
+		Override:        first.override,
+		PauseFreeBytes:  lim.floor,
+		ResumeFreeBytes: lim.resumeFree(),
 	}
-	read := map[string]*diskspace.Usage{} // one statfs per measured path
+	type reading struct {
+		u       diskspace.Usage
+		ok      bool
+		notDisk string
+	}
+	read := map[string]reading{} // one statfs per measured path
+	full := false
 	for _, d := range dirs {
 		m := mr.of(d)
 		v := GuardVolume{Path: d, MeasuredPath: m.path, Override: m.override}
-		u, seen := read[m.path]
+		r, seen := read[m.path]
 		if !seen {
-			if got, ok := g.usage(m.path); ok {
-				u = &got
-			}
-			read[m.path] = u
+			r.u, r.ok, r.notDisk = g.measureUsage(m)
+			read[m.path] = r
 		}
-		if u != nil {
+		if r.ok {
+			u := r.u
 			v.Measurable, v.UsedPct, v.TotalBytes, v.FreeBytes = true, u.UsedPct, u.TotalBytes, u.FreeBytes
-			// The fullest volume is the one that decides whether anything is held.
-			if !st.Measurable || u.UsedPct > st.UsedPct {
-				st.Measurable, st.UsedPct, st.Path = true, u.UsedPct, d
-				st.MeasuredPath, st.Override, st.TotalBytes, st.FreeBytes = m.path, m.override, u.TotalBytes, u.FreeBytes
+			v.ZFS = g.isZFS(m.path)
+			// The volume that decides whether anything is held leads: one over a line
+			// first, then the fullest.
+			over := lim.full(u)
+			if !st.Measurable || (over && !full) || (over == full && u.UsedPct > st.UsedPct) {
+				st.Measurable, st.UsedPct, st.Path, full = true, u.UsedPct, d, over
+				st.MeasuredPath, st.Override, st.TotalBytes, st.FreeBytes, st.ZFS = m.path, m.override, u.TotalBytes, u.FreeBytes, v.ZFS
 			}
 		} else if m.override {
-			st.MeasureUnreadable = true
+			st.MeasureUnreadable, st.MeasureNotDisk = true, r.notDisk
 		}
 		if len(dirs) > 1 {
 			st.Volumes = append(st.Volumes, v)
 		}
 	}
 	return st
+}
+
+// measureUsage reads the drive a downloads folder is measured on. A "measure a different
+// drive" path that reads as RAM or the container's own filesystem counts as unreadable
+// (notDisk names it): Docker recreates a vanished Host Path as an empty folder in the RAM
+// root, and measuring that would never pause anything.
+func (g *DiskGuard) measureUsage(m measurement) (u diskspace.Usage, ok bool, notDisk string) {
+	if m.override {
+		if kind := g.notADisk(m.path); kind != "" {
+			return diskspace.Usage{}, false, kind
+		}
+	}
+	u, ok = g.usage(m.path)
+	return u, ok, ""
+}
+
+// notADisk names the RAM or container filesystem p is on ("tmpfs", "overlay"…), or "".
+func (g *DiskGuard) notADisk(p string) string {
+	if g.fstype == nil {
+		return ""
+	}
+	if t, ok := g.fstype(p); ok {
+		return diskspace.NotADisk(t)
+	}
+	return ""
+}
+
+func (g *DiskGuard) isZFS(p string) bool {
+	if g.fstype == nil {
+		return false
+	}
+	t, ok := g.fstype(p)
+	return ok && t == diskspace.TypeZFS
+}
+
+// HeldNow returns, per held download the guard would pause again right now, the volume
+// it's held on. Each is judged by the downloads folder it was held for (the Downloads
+// folder when none was recorded), measured as the guard measures it: one whose drive has
+// drained, or can't be read at all — the "measure a different drive" mount gone — isn't
+// listed, so resuming it by hand isn't refused in the name of a reading the guard can't
+// take. Empty while the guard is off.
+func (g *DiskGuard) HeldNow(ctx context.Context) map[string]GuardVolume {
+	if !g.settings.GetBool(ctx, KeyDiskGuard, DefaultDiskGuard) {
+		return nil
+	}
+	held := g.held(ctx)
+	if len(held) == 0 {
+		return nil
+	}
+	lim := g.limits(ctx)
+	dirs := g.paths()
+	mr := g.measurer(ctx, dirs[0])
+	recorded := g.heldDirs(ctx)
+	vols := map[string]*GuardVolume{} // by folder; nil = drained or unreadable
+	out := map[string]GuardVolume{}
+	for _, h := range held {
+		d := recorded[h]
+		if d == "" {
+			d = dirs[0]
+		}
+		v, seen := vols[d]
+		if !seen {
+			m := mr.of(d)
+			if u, ok, _ := g.measureUsage(m); ok && !lim.drained(u) {
+				v = &GuardVolume{Path: d, Measurable: true, UsedPct: u.UsedPct, MeasuredPath: m.path, Override: m.override,
+					TotalBytes: u.TotalBytes, FreeBytes: u.FreeBytes}
+			}
+			vols[d] = v
+		}
+		if v != nil {
+			out[h] = *v
+		}
+	}
+	return out
+}
+
+// MeasuredPathFor is the path whose drive the guard reads for the downloads folder dir:
+// the "measure a different drive" path when it stands in for dir and can be read, else
+// dir itself. The free-space health check uses it, so on Unraid it reports the pool.
+func (g *DiskGuard) MeasuredPathFor(ctx context.Context, dir string) string {
+	m := g.measurer(ctx, g.path()).of(dir)
+	if m.override {
+		if _, ok, _ := g.measureUsage(m); !ok {
+			return dir
+		}
+	}
+	return m.path
 }
 
 // Held returns the hashes the guard has paused and owns, lowercased for comparison
@@ -339,13 +473,12 @@ func (g *DiskGuard) Held(ctx context.Context) map[string]bool {
 	return out
 }
 
-// Engaged reports whether the guard is actively holding downloads right now: it's on,
-// the volume can be measured and is still above the resume point, and it owns
-// something. While engaged, resuming a held torrent by hand would only fill the disk the
-// guard is protecting — and the guard would pause it again on its next pass.
+// Engaged reports whether the guard is actively holding downloads right now: it's on and
+// owns something whose volume can be measured and hasn't drained (HeldNow). While
+// engaged, resuming such a torrent by hand would only fill the disk the guard is
+// protecting — and the guard would pause it again on its next pass.
 func (g *DiskGuard) Engaged(ctx context.Context) bool {
-	st := g.Status(ctx)
-	return st.Enabled && st.Measurable && st.UsedPct > float64(st.ResumePct) && st.Holding > 0
+	return len(g.HeldNow(ctx)) > 0
 }
 
 // thresholds reads the pause/resume points, repairing anything nonsensical.
@@ -397,21 +530,21 @@ func (g *DiskGuard) Check(ctx context.Context) error {
 	}
 
 	dirs := g.paths()
-	pause, resume := g.thresholds(ctx)
+	lim := g.limits(ctx)
 	// What each held download was held for, and the ones held for a downloads folder no
 	// longer watched (a library folder's own one, cleared or removed while it was full):
 	// those are judged by their own volume, never released with the rest.
 	g.carry, g.recorded = nil, g.heldDirs(ctx)
 	mr := g.measurer(ctx, dirs[0])
-	held = g.releaseStrays(ctx, held, dirs, resume, mr)
+	held = g.releaseStrays(ctx, held, dirs, lim, mr)
 	if len(dirs) > 1 {
 		g.checkVolumes(ctx, held, dirs, mr)
 		return nil
 	}
 	dir := dirs[0]
 	m := mr.of(dir)
-	u, ok := g.usage(m.path)
-	g.noteMeasure(mr.over, m.override && !ok)
+	u, ok, notDisk := g.measureUsage(m)
+	g.noteMeasure(mr.over, m.override && !ok, notDisk)
 	if !ok {
 		// Can't measure: do nothing at all. Guessing here would either pause a
 		// perfectly healthy queue or give false assurance. That goes for an unreadable
@@ -422,11 +555,12 @@ func (g *DiskGuard) Check(ctx context.Context) error {
 	}
 
 	switch {
-	case u.UsedPct >= float64(pause):
-		g.pauseActive(ctx, held, u.UsedPct, pause, m.path)
-	case u.UsedPct <= float64(resume) && len(held) > 0:
+	case lim.full(u):
+		g.pauseActive(ctx, held, u.UsedPct, lim.pause, m.path)
+	case lim.drained(u) && len(held) > 0:
 		g.log.Info("disk guard: space recovered, resuming downloads",
-			"used_pct", round1(u.UsedPct), "resume_at_pct", resume, "torrents", len(held), "path", m.path)
+			"used_pct", round1(u.UsedPct), "free_gb", round1(float64(u.FreeBytes)/gib), "resume_at_pct", lim.resume,
+			"torrents", len(held), "path", m.path)
 		g.resume(ctx, held)
 	case len(held) > 0:
 		// Between the two lines and still holding: nothing to pause or release, but drop
@@ -651,7 +785,7 @@ func (g *DiskGuard) saveDirs(ctx context.Context, hashes []string) {
 // A stray folder on the Downloads folder's filesystem is measured where that is (the
 // "measure a different drive" path, when set), and an unreadable one of those keeps its
 // downloads held: that path is expected to come back, unlike a folder that was removed.
-func (g *DiskGuard) releaseStrays(ctx context.Context, held, dirs []string, resume int, mr measurer) []string {
+func (g *DiskGuard) releaseStrays(ctx context.Context, held, dirs []string, lim limits, mr measurer) []string {
 	watched := map[string]bool{}
 	for _, d := range dirs {
 		watched[filepath.Clean(d)] = true
@@ -665,7 +799,7 @@ func (g *DiskGuard) releaseStrays(ctx context.Context, held, dirs []string, resu
 			continue
 		}
 		m := mr.of(d)
-		if u, ok := g.usage(m.path); (ok && u.UsedPct > float64(resume)) || (!ok && m.override) {
+		if u, ok, _ := g.measureUsage(m); (ok && !lim.drained(u)) || (!ok && m.override) {
 			g.carry = append(g.carry, h)
 			continue
 		}
@@ -700,20 +834,20 @@ func (g *DiskGuard) releaseStrays(ctx context.Context, held, dirs []string, resu
 // for the rest. An unreadable override is an unmeasurable volume like any other — its
 // folders hold nothing new and release nothing.
 func (g *DiskGuard) checkVolumes(ctx context.Context, held, dirs []string, mr measurer) {
-	pause, resume := g.thresholds(ctx)
+	lim := g.limits(ctx)
 	use := map[string]diskspace.Usage{}
 	full := false
-	lost := false
+	lost, why := false, ""
 	for _, d := range dirs {
 		m := mr.of(d)
-		if u, ok := g.usage(m.path); ok {
+		if u, ok, notDisk := g.measureUsage(m); ok {
 			use[d] = u
-			full = full || u.UsedPct >= float64(pause)
+			full = full || lim.full(u)
 		} else if m.override {
-			lost = true
+			lost, why = true, notDisk
 		}
 	}
-	g.noteMeasure(mr.over, lost)
+	g.noteMeasure(mr.over, lost, why)
 	if len(use) == 0 || (!full && len(held) == 0) {
 		return
 	}
@@ -754,7 +888,7 @@ func (g *DiskGuard) checkVolumes(ctx context.Context, held, dirs []string, mr me
 			continue
 		}
 		d, u, ok := volumeOf(it)
-		if !ok || u.UsedPct < float64(pause) {
+		if !ok || !lim.full(u) {
 			continue
 		}
 		h := strings.ToLower(it.Hash)
@@ -766,11 +900,11 @@ func (g *DiskGuard) checkVolumes(ctx context.Context, held, dirs []string, mr me
 		g.recorded[h] = d
 		if owned[h] {
 			g.log.Warn("disk guard: paused a download again that was resumed while its volume is still too full",
-				"name", it.Name, "used_pct", round1(u.UsedPct), "pause_at_pct", pause, "path", d)
+				"name", it.Name, "used_pct", round1(u.UsedPct), "free_gb", round1(float64(u.FreeBytes)/gib), "pause_at_pct", lim.pause, "path", d)
 			continue
 		}
 		g.log.Warn("disk guard: paused a download — its volume is too full",
-			"name", it.Name, "used_pct", round1(u.UsedPct), "pause_at_pct", pause, "path", d)
+			"name", it.Name, "used_pct", round1(u.UsedPct), "free_gb", round1(float64(u.FreeBytes)/gib), "pause_at_pct", lim.pause, "path", d)
 		newly = append(newly, h)
 		owned[h] = true
 	}
@@ -786,7 +920,7 @@ func (g *DiskGuard) checkVolumes(ctx context.Context, held, dirs []string, mr me
 			d = dirs[0]
 		}
 		u, ok := use[d]
-		return ok && u.UsedPct <= float64(resume)
+		return ok && lim.drained(u)
 	}
 	unlisted := map[string]int{}
 	var still []string
@@ -823,7 +957,7 @@ func (g *DiskGuard) checkVolumes(ctx context.Context, held, dirs []string, mr me
 	}
 	g.unlisted = unlisted
 	if released > 0 {
-		g.log.Info("disk guard: space recovered, resuming downloads", "resume_at_pct", resume, "torrents", released)
+		g.log.Info("disk guard: space recovered, resuming downloads", "resume_at_pct", lim.resume, "torrents", released)
 	}
 	if len(pausedNow) > 0 || released > 0 || len(still) != len(held) {
 		g.save(ctx, still)

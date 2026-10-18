@@ -71,9 +71,11 @@ func (a *api) handleResumeDownload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if holding, st := a.guardHolding(ctx); holding[strings.ToLower(hash)] {
-		a.writeError(w, http.StatusConflict, guardHeldMessage(st))
-		return
+	if holding, st := a.guardHolding(ctx); holding != nil {
+		if v, held := holding[strings.ToLower(hash)]; held {
+			a.writeError(w, http.StatusConflict, guardHeldMessage(v, st))
+			return
+		}
 	}
 	if err := a.deps.Downloads.Resume(ctx, hash); err != nil {
 		a.writeError(w, http.StatusBadGateway, err.Error())
@@ -99,7 +101,7 @@ func (a *api) resumeAllDownloads(w http.ResponseWriter, r *http.Request) {
 		if it.State != "paused" {
 			continue
 		}
-		if holding[strings.ToLower(it.Hash)] {
+		if _, ok := holding[strings.ToLower(it.Hash)]; ok {
 			held++
 			continue
 		}
@@ -117,29 +119,43 @@ func (a *api) resumeAllDownloads(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// guardHolding returns the torrents the disk guard is holding right now (lowercased
-// hashes), with its status for messages. Empty when there's no guard or it isn't
-// engaged: a guard that has drained below its resume point, been turned off, or can't
-// measure the disk releases what it holds on its next pass, so nothing should be
-// refused in its name.
-func (a *api) guardHolding(ctx context.Context) (map[string]bool, download.GuardStatus) {
+// guardHolding returns the torrents the disk guard would pause again right now
+// (lowercased hashes, each with the volume it's held on), with its status for messages.
+// Each is judged by its own downloads folder's volume (download.HeldNow): one whose volume
+// has drained is released on the guard's next pass, and one whose volume can't be read —
+// the "measure a different drive" mount gone — stays paused until it can, so a hand
+// resume of either isn't refused. Empty when there's no guard or it's off.
+func (a *api) guardHolding(ctx context.Context) (map[string]download.GuardVolume, download.GuardStatus) {
 	g := a.deps.DiskGuard
-	if g == nil || !g.Engaged(ctx) {
+	if g == nil {
 		return nil, download.GuardStatus{}
 	}
-	return g.Held(ctx), g.Status(ctx)
+	now := g.HeldNow(ctx)
+	if len(now) == 0 {
+		return nil, download.GuardStatus{}
+	}
+	return now, g.Status(ctx)
 }
 
-// guardHeldMessage explains a refused resume, including how to override it.
-func guardHeldMessage(st download.GuardStatus) string {
-	measured := st.MeasuredPath
+// guardHeldMessage explains a refused resume — on the volume the torrent is held on —
+// including how to override it.
+func guardHeldMessage(v download.GuardVolume, st download.GuardStatus) string {
+	measured := v.MeasuredPath
 	if measured == "" {
-		measured = st.Path
+		measured = v.Path
 	}
-	return fmt.Sprintf("Held by the disk guard: %s is %.0f%% full (pauses at %d%%, resumes below %d%%). "+
+	lines := fmt.Sprintf("pauses at %d%%, resumes below %d%%", st.PausePct, st.ResumePct)
+	if st.PauseFreeBytes > 0 {
+		lines = fmt.Sprintf("pauses at %d%% or under %.0f GB free, resumes below %d%% with %.0f GB free",
+			st.PausePct, gbOf(st.PauseFreeBytes), st.ResumePct, gbOf(st.ResumeFreeBytes))
+	}
+	return fmt.Sprintf("Held by the disk guard: %s is %.0f%% full with %.0f GB free (%s). "+
 		"It will resume on its own once space is freed, or turn the guard off in Settings → Downloads.",
-		measured, st.UsedPct, st.PausePct, st.ResumePct)
+		measured, v.UsedPct, gbOf(v.FreeBytes), lines)
 }
+
+// gbOf is bytes in GB (1024³), as the disk guard's settings count them.
+func gbOf(b uint64) float64 { return float64(b) / (1 << 30) }
 
 // handleDeleteDownload removes one torrent the way the user chose:
 // ?mode=keep_files (default) | delete_files | block, plus &unmonitor=true to stop wanting

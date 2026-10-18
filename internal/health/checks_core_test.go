@@ -57,6 +57,30 @@ func TestDiskGuardCheck(t *testing.T) {
 			t.Errorf("unreadable, holding %d: %+v", holding, got)
 		}
 	}
+	// Several downloads folders: the others are still guarded, and the way out is said.
+	got = run(DiskGuardCheck(func(context.Context) (DiskGuardState, bool) {
+		return DiskGuardState{Enabled: true, Holding: 1, MeasurePath: "/cache", MeasureUnreadable: true, MeasureNotDisk: "tmpfs", OtherVolumes: true}, true
+	}))
+	if len(got) != 1 || !strings.Contains(got[0].Message, "reads as a RAM or container filesystem (tmpfs)") ||
+		!strings.Contains(got[0].Message, "other drives are still guarded") || !strings.Contains(got[0].Message, "resume it by hand, or turn the guard off") {
+		t.Errorf("not a disk, other volumes: %+v", got)
+	}
+	// A ZFS pool with no free-space limit gets a hint; with one, it doesn't, and a hold
+	// names the free space.
+	got = run(DiskGuardCheck(func(context.Context) (DiskGuardState, bool) {
+		return DiskGuardState{Enabled: true, MeasuredPath: "/cache", ZFS: true}, true
+	}))
+	if len(got) != 1 || got[0].Key != "disk.guard.zfs" || !strings.Contains(got[0].Message, "ZFS pool (/cache)") {
+		t.Errorf("zfs hint: %+v", got)
+	}
+	got = run(DiskGuardCheck(func(context.Context) (DiskGuardState, bool) {
+		return DiskGuardState{Enabled: true, MeasuredPath: "/cache", ZFS: true, UsedPct: 2, FreeGB: 80, PausePct: 85, ResumePct: 80,
+			PauseFreeGB: 100, ResumeFreeGB: 110, Holding: 2, MeasurePath: "/cache"}, true
+	}))
+	if len(got) != 1 || got[0].Key != "disk.guard" || !strings.Contains(got[0].Message, "2.0% full with 80 GB free (pause at 85% or under 100 GB free)") ||
+		!strings.Contains(got[0].Message, "below 80% with 110 GB free") {
+		t.Errorf("floor hold: %+v", got)
+	}
 	// ...but not while the guard is off.
 	if got := run(DiskGuardCheck(func(context.Context) (DiskGuardState, bool) {
 		return DiskGuardState{Enabled: false, MeasurePath: "/cache", MeasureUnreadable: true}, true
