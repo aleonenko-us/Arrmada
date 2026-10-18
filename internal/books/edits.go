@@ -376,6 +376,61 @@ func (b Book) Matched() Book {
 	return m
 }
 
+// TitleVariant reports whether two titles are spellings of one title rather than two
+// titles: their main titles — before any subtitle (":", " - ", " — ", " – ") and without
+// a trailing "(…)"/"[…]" note or a leading "The"/"A"/"An" — fold to the same words
+// (accents, case, punctuation and apostrophes don't count).
+//
+//	"The Way of Kings" / "The Way of Kings: The Stormlight Archive, Book 1"  → variant
+//	"Enders Game" / "Ender's Game"                                            → variant
+//	"Dune" / "Dune Messiah"                                                   → not
+//	"…Philosopher's Stone" / "…Sorcerer's Stone"                              → not
+//
+// The last two are why it matters: an edit that changes the main title is a correction to
+// another title, and the old one names some other book.
+func TitleVariant(a, b string) bool {
+	ka, kb := mainTitleKey(a), mainTitleKey(b)
+	return ka != "" && ka == kb
+}
+
+func mainTitleKey(t string) string {
+	t = stripTrailingNote(strings.TrimSpace(t))
+	if i, _ := firstSep(t); i > 0 {
+		t = t[:i]
+	}
+	k := joinedKey(t)
+	for _, article := range []string{"the ", "a ", "an "} {
+		if rest := strings.TrimPrefix(k, article); rest != k && rest != "" {
+			return rest
+		}
+	}
+	return k
+}
+
+// CatalogueNames is the book under the names the catalogue gives it, for matching
+// releases and searching when the title or author was edited by hand — or ok=false when
+// that adds nothing. The catalogue's author is always usable (an author only ranks a
+// match, and a search under it is still checked against the title). The catalogue's
+// title is used only when it's a TitleVariant of the edited one (a subtitle added or
+// removed, a spelling or punctuation fix): a title edited into another title ("Dune" →
+// "Dune Messiah") was a correction, and the catalogue's would match the other book —
+// which may well be in the library too.
+func (b Book) CatalogueNames() (Book, bool) {
+	if !b.Edited(FieldTitle) && !b.Edited(FieldAuthor) {
+		return b, false
+	}
+	m := b.Matched()
+	out := b
+	out.Edits = nil
+	if m.Author != b.Author && strings.TrimSpace(m.Author) != "" {
+		out.Author = m.Author
+	}
+	if m.Title != b.Title && TitleVariant(b.Title, m.Title) {
+		out.Title = m.Title
+	}
+	return out, out.Title != b.Title || out.Author != b.Author
+}
+
 // EditRequest is one save of the edit dialog: fields to set to a value typed by hand,
 // fields to put back to the catalogue's value, or everything put back.
 type EditRequest struct {

@@ -235,11 +235,11 @@ func TestEditValidation(t *testing.T) {
 		{FieldTitle: ""},
 		{FieldTitle: "   "},
 		{FieldTitle: strings.Repeat("x", 301)},
-		{FieldTitle: "Bad‮right-to-left"},
+		{FieldTitle: "Bad\u202Eright-to-left"},
 		{FieldTitle: "C1\u009Bcontrol"},
-		{FieldPublisher: "Isolate⁦d"},
+		{FieldPublisher: "Isolate\u2066d"},
 		{FieldAuthor: "A\x00B"},
-		{FieldSubtitle: "​​"},
+		{FieldSubtitle: "\u200B\u200B"},
 		{FieldISBN: "978-0-590-35340-4"}, // wrong check digit
 		{FieldISBN: "0-306-40615-3"},     // wrong check digit (ISBN-10)
 		{FieldISBN: "ISBN 9780590353403"},
@@ -359,6 +359,14 @@ func TestTriggerKeepsEditsFromPlainWrites(t *testing.T) {
 	if m.Title != "Catalogue" || m.Year != 1999 || strings.Join(m.Subjects, "|") != "A|B" || m.SeriesPosition != 7 {
 		t.Fatalf("underneath = %+v", m)
 	}
+	// A plain write to edited fields alone ends up changing nothing shown, so apps aren't
+	// told the book changed.
+	if _, err := s.repo.db.ExecContext(ctx, `UPDATE books SET title = 'Catalogue 2', year = 1998 WHERE id = ?`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := s.Get(ctx, b.ID); again.MetaUpdatedAt != got.MetaUpdatedAt || again.Title != "Edited" || again.Matched().Title != "Catalogue 2" {
+		t.Fatalf("meta_updated_at %d → %d (title %q over %q)", got.MetaUpdatedAt, again.MetaUpdatedAt, again.Title, again.Matched().Title)
+	}
 	// Empty subjects go underneath as an empty list, not lost.
 	if _, err := s.repo.db.ExecContext(ctx, `UPDATE books SET subjects_json = '' WHERE id = ?`, b.ID); err != nil {
 		t.Fatal(err)
@@ -390,24 +398,93 @@ func TestEditMovesMetaUpdatedAt(t *testing.T) {
 	}
 }
 
-// Releases named after either the edited title or the catalogue's match the book, and the
-// longest title still wins between books.
-func TestMatcherKnowsBothTitles(t *testing.T) {
-	s, _, b, ctx := editFixture(t)
-	if _, err := s.EditDetails(ctx, b.ID, set(map[string]any{FieldTitle: "Harry Potter and the Sorcerer's Stone"})); err != nil {
+func TestTitleVariant(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want bool
+	}{
+		{"The Way of Kings", "The Way of Kings: The Stormlight Archive, Book 1", true},
+		{"Enders Game", "Ender's Game", true},
+		{"Dune (Deluxe Edition)", "dune", true},
+		{"The Hobbit", "Hobbit - or There and Back Again", true},
+		{"Dune", "Dune Messiah", false},
+		{"Harry Potter and the Philosopher's Stone", "Harry Potter and the Sorcerer's Stone", false},
+		{"", "", false},
+	} {
+		if got := TitleVariant(c.a, c.b); got != c.want {
+			t.Errorf("TitleVariant(%q, %q) = %v, want %v", c.a, c.b, got, c.want)
+		}
+	}
+}
+
+func addEditable(t *testing.T, s *Service, ctx context.Context, key, title, author string) Book {
+	t.Helper()
+	added, _ := s.AddWorks(ctx, []metadata.BookResult{{Key: key, Title: title, Author: author}}, "", true)
+	if len(added) != 1 {
+		t.Fatalf("%q not added", title)
+	}
+	return added[0]
+}
+
+// A release named the catalogue's way still matches a book whose title was edited into a
+// variant of it (a subtitle added), and either name works.
+func TestMatcherKnowsCatalogueVariant(t *testing.T) {
+	s, ctx := refreshService(t, &refreshCatalogue{})
+	b := addEditable(t, s, ctx, "hc:1", "The Way of Kings", "Brandon Sanderson")
+	if _, err := s.EditDetails(ctx, b.ID, set(map[string]any{FieldTitle: "The Way of Kings: The Stormlight Archive, Book 1"})); err != nil {
 		t.Fatal(err)
 	}
 	for _, rel := range []string{
-		"J.K.Rowling - Harry Potter and the Sorcerer's Stone [M4B]",
-		"Harry.Potter.and.the.Philosophers.Stone.EPUB",
+		"Brandon Sanderson - The Way of Kings [M4B]",
+		"Brandon.Sanderson.The.Way.of.Kings.The.Stormlight.Archive.Book.1.EPUB",
 	} {
-		got, ok := s.MatchByRelease(ctx, rel)
-		if !ok || got.ID != b.ID {
+		if got, ok := s.MatchByRelease(ctx, rel); !ok || got.ID != b.ID {
 			t.Errorf("%q matched %v %v", rel, got.ID, ok)
 		}
 	}
-	if _, ok := s.MatchByRelease(ctx, "Harry Potter and the Chamber of Secrets"); ok {
-		t.Error("another book's release matched")
+}
+
+// A title edited into another title is a correction: the catalogue's old title no longer
+// names the book, so the real book of that name keeps its releases, whichever order the
+// library lists them in.
+func TestMatcherCorrectedTitleDoesNotStealReleases(t *testing.T) {
+	for _, editedFirst := range []bool{true, false} {
+		s, ctx := refreshService(t, &refreshCatalogue{})
+		// Both rows catalogued as "Dune" (one was mismatched); the person corrects one.
+		create := func(key string) Book {
+			b, err := s.repo.Create(ctx, Book{OLKey: key, Title: "Dune", Author: "Frank Herbert"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return b
+		}
+		var dune, messiah Book
+		if editedFirst {
+			messiah, dune = create("hc:2"), create("hc:1")
+		} else {
+			dune, messiah = create("hc:1"), create("hc:2")
+		}
+		if _, err := s.EditDetails(ctx, messiah.ID, set(map[string]any{FieldTitle: "Dune Messiah"})); err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := s.MatchByRelease(ctx, "Frank Herbert - Dune EPUB"); !ok || got.ID != dune.ID {
+			t.Errorf("editedFirst=%v: a Dune release went to book %d, want Dune (%d)", editedFirst, got.ID, dune.ID)
+		}
+		if got, ok := s.MatchByRelease(ctx, "Frank Herbert - Dune Messiah EPUB"); !ok || got.ID != messiah.ID {
+			t.Errorf("editedFirst=%v: a Dune Messiah release went to book %d, want %d", editedFirst, got.ID, messiah.ID)
+		}
+	}
+}
+
+// On an otherwise equal match, a book's shown title beats another book's catalogue title.
+func TestMatchScoreShownTitleWinsTie(t *testing.T) {
+	shown := matchScore{author: true, titleLen: 4, shown: true}
+	catalogue := matchScore{author: true, titleLen: 4}
+	if !shown.beats(catalogue) || catalogue.beats(shown) {
+		t.Fatal("the shown title must win a tie")
+	}
+	if !(matchScore{author: true, titleLen: 9}).beats(shown) {
+		t.Fatal("a longer title still wins")
 	}
 }
 
@@ -433,6 +510,104 @@ func TestMergeCarriesEdits(t *testing.T) {
 	}
 	if m := got.Matched(); m.Title != "Harry Potter and the Philosopher's Stone" || m.ISBN != "" {
 		t.Fatalf("underneath after merge = %+v", m)
+	}
+}
+
+// mergeEditPair is two rows of one book ready to merge, the second to be dropped.
+func mergeEditPair(t *testing.T) (*Service, Book, Book, context.Context) {
+	t.Helper()
+	s, _, keep, ctx := editFixture(t)
+	added, _ := s.AddWorks(ctx, []metadata.BookResult{{Key: "OL5W", Title: "Philosopher's Stone (dupe)", Author: "Rowling"}}, "", true)
+	s.SetMergeHooks(listening.NewStore(s.repo.db), nil)
+	return s, keep, added[0], ctx
+}
+
+func merge(t *testing.T, s *Service, ctx context.Context, keepID, dropID int64) Book {
+	t.Helper()
+	if _, err := s.Merge(ctx, keepID, dropID, MergeOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(ctx, keepID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// A narrator typed for the dropped book's audiobook travels with that file: never onto
+// the kept book's own audiobook, where it would name the wrong reader.
+func TestMergeNarratorStaysWithItsFile(t *testing.T) {
+	s, keep, drop, ctx := mergeEditPair(t)
+	if err := s.repo.SetEdition(ctx, keep.ID, KindAudiobook, "/a/kept.m4b", "M4B", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.repo.SetEdition(ctx, drop.ID, KindAudiobook, "/a/dropped.m4b", "M4B", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetNarrator(ctx, drop.ID, "Drop Reader"); err != nil {
+		t.Fatal(err)
+	}
+	got := merge(t, s, ctx, keep.ID, drop.ID)
+	if got.AudiobookNarrator != "" || got.Edited(FieldNarrator) {
+		t.Fatalf("the kept audiobook took the dropped one's narrator: %q %v", got.AudiobookNarrator, got.Edits)
+	}
+	if len(got.AudioVersions) != 1 || got.AudioVersions[0].Narrator != "Drop Reader" {
+		t.Fatalf("the merged copy lost its narrator: %+v", got.AudioVersions)
+	}
+}
+
+// The dropped audiobook moved onto a kept book with none brings its narrator as an edit
+// with the files' tags underneath, so clearing it hands the file back to its tags.
+func TestMergeMovedAudiobookNarratorIsAnEdit(t *testing.T) {
+	s, keep, drop, ctx := mergeEditPair(t)
+	if err := s.repo.SetEdition(ctx, drop.ID, KindAudiobook, "/a/dropped.m4b", "M4B", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetNarrator(ctx, drop.ID, "Drop Reader"); err != nil {
+		t.Fatal(err)
+	}
+	got := merge(t, s, ctx, keep.ID, drop.ID)
+	if got.AudiobookNarrator != "Drop Reader" || string(got.Edits[FieldNarrator]) != `""` {
+		t.Fatalf("moved narrator = %q, underneath %s", got.AudiobookNarrator, got.Edits[FieldNarrator])
+	}
+	if err := s.SetNarrator(ctx, keep.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = s.Get(ctx, keep.ID); got.AudiobookNarrator != "" || got.Edited(FieldNarrator) {
+		t.Fatalf("cleared narrator = %q %v", got.AudiobookNarrator, got.Edits)
+	}
+}
+
+// Gaps in the kept book are filled with the dropped book's catalogue values, never its
+// edits (those come over as edits, with the catalogue's underneath), and a detail the
+// kept book cleared by hand stays cleared.
+func TestMergeFillsGapsFromTheCatalogueOnly(t *testing.T) {
+	s, keep, drop, ctx := mergeEditPair(t)
+	if err := s.repo.UpdateMeta(ctx, keep.ID, "", "", []string{"Fantasy"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.repo.UpdateMeta(ctx, drop.ID, "Catalogue blurb.", "", []string{"Magic"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.repo.SetSeriesRef(ctx, drop.ID, "Wizarding World", 7, "hc:s:9"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.EditDetails(ctx, drop.ID, set(map[string]any{FieldDescription: "My blurb."})); err != nil {
+		t.Fatal(err)
+	}
+	// The kept book's series was cleared by hand; its number wasn't edited.
+	if _, err := s.EditDetails(ctx, keep.ID, set(map[string]any{FieldSeriesName: ""})); err != nil {
+		t.Fatal(err)
+	}
+	got := merge(t, s, ctx, keep.ID, drop.ID)
+	if got.Description != "My blurb." || got.Matched().Description != "Catalogue blurb." {
+		t.Fatalf("description %q over %q, want the edit over the catalogue's", got.Description, got.Matched().Description)
+	}
+	if got.SeriesName != "" || got.SeriesPosition != 1 || got.Matched().SeriesName != "Harry Potter" {
+		t.Fatalf("a series cleared by hand became %q #%v (underneath %q)", got.SeriesName, got.SeriesPosition, got.Matched().SeriesName)
+	}
+	if strings.Join(got.Subjects, "|") != "Fantasy" {
+		t.Fatalf("subjects = %v", got.Subjects)
 	}
 }
 

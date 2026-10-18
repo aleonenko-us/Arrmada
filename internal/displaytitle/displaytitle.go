@@ -322,7 +322,7 @@ func CleanText(raw string, max int, multiline bool) (string, bool) {
 		if multiline && (r == '\n' || r == '\t') {
 			continue
 		}
-		if unicode.IsControl(r) || bidiControl(r) || r == ' ' || r == ' ' {
+		if unicode.IsControl(r) || bidiControl(r) || r == '\u2028' || r == '\u2029' {
 			return "", false
 		}
 		if unicode.IsGraphic(r) && !unicode.IsSpace(r) && !unicode.Is(unicode.Cf, r) {

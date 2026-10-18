@@ -139,13 +139,29 @@ DROP TRIGGER IF EXISTS books_meta_updated;
 CREATE TRIGGER books_meta_updated
 AFTER UPDATE OF title, author, year, cover_url, description, subjects_json, series_name, series_position,
                 audiobook_path, ebook_path, audiobook_narrator, subtitle, language, isbn, publisher ON books
-WHEN NEW.title IS NOT OLD.title OR NEW.author IS NOT OLD.author OR NEW.year IS NOT OLD.year
+WHEN (NEW.title IS NOT OLD.title OR NEW.author IS NOT OLD.author OR NEW.year IS NOT OLD.year
   OR NEW.cover_url IS NOT OLD.cover_url OR NEW.description IS NOT OLD.description
   OR NEW.subjects_json IS NOT OLD.subjects_json OR NEW.series_name IS NOT OLD.series_name
   OR NEW.series_position IS NOT OLD.series_position OR NEW.audiobook_path IS NOT OLD.audiobook_path
   OR NEW.ebook_path IS NOT OLD.ebook_path OR NEW.audiobook_narrator IS NOT OLD.audiobook_narrator
   OR NEW.subtitle IS NOT OLD.subtitle OR NEW.language IS NOT OLD.language
-  OR NEW.isbn IS NOT OLD.isbn OR NEW.publisher IS NOT OLD.publisher
+  OR NEW.isbn IS NOT OLD.isbn OR NEW.publisher IS NOT OLD.publisher)
+  -- Not a write the books_edit_keeps_* triggers are about to undo (or their put-back): not
+  -- an edit, nothing but edited fields changed, so what's shown ends up the same.
+  AND NOT (NEW.edited_at IS OLD.edited_at
+    AND NEW.cover_url IS OLD.cover_url AND NEW.audiobook_path IS OLD.audiobook_path AND NEW.ebook_path IS OLD.ebook_path
+    AND (NEW.title IS OLD.title OR json_type(OLD.edits_json, '$.title') IS NOT NULL)
+    AND (NEW.subtitle IS OLD.subtitle OR json_type(OLD.edits_json, '$.subtitle') IS NOT NULL)
+    AND (NEW.author IS OLD.author OR json_type(OLD.edits_json, '$.author') IS NOT NULL)
+    AND (NEW.series_name IS OLD.series_name OR json_type(OLD.edits_json, '$.series_name') IS NOT NULL)
+    AND (NEW.series_position IS OLD.series_position OR json_type(OLD.edits_json, '$.series_position') IS NOT NULL)
+    AND (NEW.description IS OLD.description OR json_type(OLD.edits_json, '$.description') IS NOT NULL)
+    AND (NEW.year IS OLD.year OR json_type(OLD.edits_json, '$.year') IS NOT NULL)
+    AND (NEW.language IS OLD.language OR json_type(OLD.edits_json, '$.language') IS NOT NULL)
+    AND (NEW.subjects_json IS OLD.subjects_json OR json_type(OLD.edits_json, '$.subjects') IS NOT NULL)
+    AND (NEW.isbn IS OLD.isbn OR json_type(OLD.edits_json, '$.isbn') IS NOT NULL)
+    AND (NEW.audiobook_narrator IS OLD.audiobook_narrator OR json_type(OLD.edits_json, '$.narrator') IS NOT NULL)
+    AND (NEW.publisher IS OLD.publisher OR json_type(OLD.edits_json, '$.publisher') IS NOT NULL))
 BEGIN
     UPDATE books SET meta_updated_at = MAX(CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER), meta_updated_at + 1)
      WHERE id = NEW.id;

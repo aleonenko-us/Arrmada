@@ -564,9 +564,9 @@ func MatcherOver(all []Book) func(releaseName string) (Book, bool) {
 type foldedBook struct {
 	book          Book
 	title, author titleForms
-	// The catalogue's title and author when they were edited by hand: releases are
-	// named either way (an edit usually corrects the catalogue to what trackers use, but
-	// not always), so either names the book.
+	// The catalogue's title and author when they were edited by hand (Book.CatalogueNames:
+	// the title only when it's a variant of the edited one), since releases may still be
+	// named the catalogue's way.
 	matchedTitle, matchedAuthor *titleForms
 }
 
@@ -576,12 +576,11 @@ func foldLibrary(all []Book) foldedLibrary {
 	out := make(foldedLibrary, 0, len(all))
 	for _, b := range all {
 		fb := foldedBook{book: b, title: titleFormsOf(b.Title), author: titleFormsOf(b.Author)}
-		if b.Edited(FieldTitle) || b.Edited(FieldAuthor) {
-			m := b.Matched()
-			if t := titleFormsOf(m.Title); m.Title != b.Title && t.key() != "" {
+		if c, ok := b.CatalogueNames(); ok {
+			if t := titleFormsOf(c.Title); c.Title != b.Title && t.key() != "" {
 				fb.matchedTitle = &t
 			}
-			if a := titleFormsOf(m.Author); m.Author != b.Author && a.key() != "" {
+			if a := titleFormsOf(c.Author); c.Author != b.Author && a.key() != "" {
 				fb.matchedAuthor = &a
 			}
 		}
@@ -590,17 +589,17 @@ func foldLibrary(all []Book) foldedLibrary {
 	return out
 }
 
-// titleIn reports whether the book's title — or the catalogue's, when edited — is in the
-// name, and how long the matched one is (the longest wins between books).
-func (fb foldedBook) titleIn(rel nameForms) (bool, int) {
-	ok, n := false, 0
+// titleIn reports whether the book's title — or the catalogue's, when usable — is in the
+// name, how long the matched one is (the longest wins between books), and whether it was
+// the shown title that matched (which wins a tie over a catalogue title).
+func (fb foldedBook) titleIn(rel nameForms) (ok bool, n int, shown bool) {
 	if fb.title.in(rel) {
-		ok, n = true, len(fb.title.key())
+		ok, n, shown = true, len(fb.title.key()), true
 	}
 	if fb.matchedTitle != nil && fb.matchedTitle.in(rel) && len(fb.matchedTitle.key()) > n {
-		ok, n = true, len(fb.matchedTitle.key())
+		ok, n, shown = true, len(fb.matchedTitle.key()), false
 	}
-	return ok, n
+	return ok, n, shown
 }
 
 func (fb foldedBook) authorIn(rel nameForms) bool {
@@ -618,27 +617,39 @@ func (lib foldedLibrary) match(releaseName string) (Book, bool) {
 		return Book{}, false
 	}
 	var best Book
-	found, bestAuthor, bestLen := false, false, 0
+	var bestScore matchScore
+	found := false
 	for _, fb := range lib {
-		in, n := fb.titleIn(rel)
+		in, n, shown := fb.titleIn(rel)
 		if !in {
 			continue
 		}
-		authorOK := fb.authorIn(rel)
-		if !found || betterMatch(authorOK, n, bestAuthor, bestLen) {
-			best, found, bestAuthor, bestLen = fb.book, true, authorOK, n
+		score := matchScore{author: fb.authorIn(rel), titleLen: n, shown: shown}
+		if !found || score.beats(bestScore) {
+			best, bestScore, found = fb.book, score, true
 		}
 	}
 	return best, found
 }
 
-// betterMatch ranks candidates: author-confirmed beats not, then the longer
-// (more specific) title wins.
-func betterMatch(authorOK bool, titleLen int, bestAuthor bool, bestLen int) bool {
-	if authorOK != bestAuthor {
-		return authorOK
+// matchScore is how strongly a release names one library book.
+type matchScore struct {
+	author   bool // the book's author is in the name too
+	titleLen int  // how much title matched
+	shown    bool // it was the title the book shows, not the catalogue's kept under an edit
+}
+
+// beats ranks candidates: author-confirmed beats not, then the longer (more specific)
+// title wins, then a book's shown title beats another book's catalogue title — a release
+// named "Dune" is the book called Dune, not one only catalogued as Dune underneath an edit.
+func (s matchScore) beats(o matchScore) bool {
+	if s.author != o.author {
+		return s.author
 	}
-	return titleLen > bestLen
+	if s.titleLen != o.titleLen {
+		return s.titleLen > o.titleLen
+	}
+	return s.shown && !o.shown
 }
 
 // containsWords reports whether needle's words appear, contiguously and on word
