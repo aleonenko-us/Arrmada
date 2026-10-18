@@ -21,8 +21,7 @@
   without that device, and the container would refuse to start. docs/unraid.md says how
   to add the GPU.
 
-  Support: replace the GitHub issues link with the forums.unraid.net support thread once
-  it is posted (docs/unraid-submission.md).
+  Support: the support thread on forums.unraid.net (docs/unraid-submission.md).
 -->
 <Container version="2">
   <Name>Arrmada</Name>
@@ -31,7 +30,7 @@
   <Network>bridge</Network>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/tristenlammi/Arrmada/issues</Support>
+  <Support>https://forums.unraid.net/topic/200920-support-regularbloke-arrmada/</Support>
   <Project>https://github.com/tristenlammi/Arrmada</Project>
   <ReadMe>https://github.com/tristenlammi/Arrmada/blob/main/docs/unraid.md</ReadMe>
   <License>MIT</License>
