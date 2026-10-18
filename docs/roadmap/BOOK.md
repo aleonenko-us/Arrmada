@@ -939,3 +939,45 @@ _The Books header and the detail toolbar fit a phone, card actions work on touch
 - The mobile hamburger sidebar and requester app shell (APP/FE epics)
 - Raising the Hardcover daily budget, or caching beyond the existing hccache
 
+## Hand-edited details (owner-approved, after v0.3.1)
+
+Staff can type over a book's details when the catalogue gets them wrong — title, subtitle,
+author(s), series and position, description, year, language, tags, ISBN, narrator(s) and
+publisher — field by field, with the catalogue's value kept underneath.
+
+- **Storage** (migration `0334_book_edits`): the book's own columns hold what is SHOWN (the
+  edit, else the catalogue's value); `books.edits_json` records which fields are edited and
+  the catalogue's value under each (`{"title": "…"}`), `edited_at` when the last edit was
+  saved. New columns `subtitle`, `language` (an internal/langs code), `isbn`, `publisher`.
+  A narrator typed before counts as an edit (with the files' tags underneath).
+  Chosen over "matched columns plus an override layer read everywhere": every reader of a
+  book — Go or SQL, the audiobook server, OPDS, naming, series grouping, search, requests —
+  gets the edit without knowing about edits, and only the catalogue writers in
+  internal/books had to change.
+- **Catalogue writes never touch an edit.** Refresh, re-match, the Hardcover upgrade, a
+  series learned from a release and merges go through `books.setMatched`, which writes an
+  edited field's new catalogue value into `edits_json` instead of the column. Per-field
+  triggers catch any other write to an edited column (one that doesn't move `edited_at`) and
+  do the same, so a future code path can't undo an edit either. `books_meta_updated` gains
+  the new columns, so listening apps refetch an edited book.
+- **Re-match** asks whether to keep the edits (the default) or clear them. A merge keeps the
+  dropped book's edits for the fields the kept book hasn't edited.
+- **Searching for downloads** uses the edited title and author first (an edit is usually a
+  correction to what trackers call the book), then the catalogue's when that finds nothing;
+  the release matcher and the import gate accept a release named either way. Identity is
+  unchanged: catalogue keys and ids stay.
+- **Files are never renamed by an edit.** `PUT /api/v1/books/{id}/details` answers
+  `rename_available` when the edit changed where the naming puts an edition; the page offers
+  the per-book rename preview (`/books/organize?book_id=`).
+- **UI:** Fix → Edit details… (a lazy dialog): an "edited" marker, the catalogue's value as
+  the hint, Reset to matched, Reset all; "Edited by hand" on the page; Change match's
+  keep/clear choice.
+
+Done in this change:
+
+- Migration, storage, `setMatched` routing and the safety-net triggers, with tests (edits win; refresh, re-match, upgrade, series and merge keep them; per-field reset; reset all; clear on re-match; triggers; meta_updated_at).
+- Validation: lengths, control and bidi characters (displaytitle's rules), numeric series position, year range, a known language, the ISBN check digit.
+- Shown values in the audiobook server (title, author, series, narrator, subtitle, publisher, ISBN, language), OPDS (plus dc:language, dc:publisher, dc:identifier and a newer `<updated>`), ⌘K (which finds the catalogue title too), series grouping, requests and naming.
+- Indexer search: edited names first, the catalogue's after; the matcher accepts both.
+- Edit details dialog, markers, resets, rename prompt and per-book preview; Change match choice; e2e.
+
