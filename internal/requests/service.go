@@ -588,12 +588,34 @@ func (s *Service) attachToExisting(ctx context.Context, existing, in Request) (R
 		}
 		s.log.Info("request subscribed", "media", existing.MediaType, "title", existing.Title, "by", in.RequestedByName)
 	}
+	existing = s.adoptProfile(ctx, existing, in)
 	if existing.MediaType == "book" && in.Formats != "" {
 		if req, ok := s.widenRequest(ctx, existing, in); ok {
 			existing = req
 		}
 	}
 	return existing, true, nil
+}
+
+// adoptProfile gives a request still waiting for approval the quality profile a later
+// ask for the same title named. Only staff can name one (the API drops a requester's), so
+// this is staff deciding how the title is to be added, and the approve sheet starts on
+// their pick instead of losing it. An approved request was added on its own profile and
+// keeps it; a book's profile follows its formats, never a pick.
+func (s *Service) adoptProfile(ctx context.Context, existing, in Request) Request {
+	if in.QualityProfile == "" || existing.MediaType == "book" || existing.Status != StatusPending || existing.QualityProfile == in.QualityProfile {
+		return existing
+	}
+	ok, err := s.repo.SetProfile(ctx, existing.ID, in.QualityProfile)
+	if err != nil {
+		s.log.Warn("request: could not set the quality profile", "id", existing.ID, "err", err)
+		return existing
+	}
+	if ok {
+		s.log.Info("request profile set", "media", existing.MediaType, "title", existing.Title, "profile", in.QualityProfile, "by", in.RequestedByName)
+		existing.QualityProfile = in.QualityProfile
+	}
+	return existing
 }
 
 // widenRequest folds a second book request's format choice into the existing one:

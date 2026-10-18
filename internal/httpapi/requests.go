@@ -291,6 +291,14 @@ func (a *api) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := userFrom(r)
+	staff := u.Role.AtLeast(auth.RoleManager)
+	// The quality profile is staff's choice (the Discover picker, or the approve sheet).
+	// A requester's is dropped rather than refused: staff pick one when they approve, and
+	// their auto-approve must not let them choose what Arrmada grabs. A book's Read/Listen
+	// choice is its formats, which set its profile on their own.
+	if !staff {
+		req.QualityProfile = ""
+	}
 	in := requests.Request{
 		MediaType: req.MediaType, TMDBID: req.TMDBID, OLKey: req.OLKey, Title: req.Title, Author: req.Author, Year: req.Year,
 		PosterURL: req.PosterURL, Overview: req.Overview, Note: req.Note, QualityProfile: req.QualityProfile, Formats: req.Formats,
@@ -350,7 +358,7 @@ func (a *api) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 	// only if their account is set to auto-approve.
 	// Staff are never held to request limits.
 	created, subscribed, err := a.deps.Requests.Create(r.Context(), in, requests.CreateOptions{
-		AutoApprove: u.AutoApproves(in.MediaType), QuotaExempt: u.Role.AtLeast(auth.RoleManager),
+		AutoApprove: u.AutoApproves(in.MediaType), QuotaExempt: staff,
 	})
 	var over *requests.ErrQuotaExceeded
 	if errors.As(err, &over) {
@@ -391,7 +399,7 @@ func (a *api) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 		created.Relation = requests.RelationSubscriber
 	}
 	list := []requests.Request{created}
-	shapeRequests(list, u.Role.AtLeast(auth.RoleManager))
+	shapeRequests(list, staff)
 	a.writeJSON(w, http.StatusOK, map[string]any{"request": list[0], "subscribed": subscribed})
 }
 

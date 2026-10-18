@@ -278,6 +278,19 @@ func (r *Repo) SetFormats(ctx context.Context, id int64, formats, profile string
 	return err
 }
 
+// SetProfile records the quality profile a pending request is to be added with. ok is
+// false when it was decided meanwhile: its title was added (or turned down) on what it had.
+func (r *Repo) SetProfile(ctx context.Context, id int64, profile string) (ok bool, err error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE requests SET quality_profile = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?`,
+		profile, id, StatusPending)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
 // ListForBook returns the book requests for one library row, oldest first: those linked
 // to it, and those not linked to any row yet that were made under one of its keys
 // (keys holds every catalogue key the book has had).
