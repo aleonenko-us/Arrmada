@@ -20,7 +20,10 @@ function what(it: BookRenameItem): string {
 // from a dry run that changes nothing. Apply asks once more, then runs in the background
 // with live progress. A multi-file audiobook moves file by file in its play order, so
 // listening places stay where they are; anything that would overwrite a file is skipped.
-export function BookOrganizeModal({ onClose }: { onClose: () => void }) {
+//
+// With bookId it covers just that book: the book page's "Preview rename" after an edit to
+// its details changed what its files would be called.
+export function BookOrganizeModal({ onClose, bookId, onRenamed }: { onClose: () => void; bookId?: number; onRenamed?: () => void }) {
   const confirm = useConfirm();
   const [preview, setPreview] = useState<BookOrganizePreview | null>(null);
   const [items, setItems] = useState<BookRenameItem[]>([]);
@@ -35,22 +38,23 @@ export function BookOrganizeModal({ onClose }: { onClose: () => void }) {
       const s = j.result as BookOrganizeSummary | undefined;
       const failed = jobFailed(j);
       setSummary({ text: failed ? j.error || "The rename stopped." : j.message || `Renamed ${s?.renamed ?? 0} books.`, failed });
+      if (!failed) onRenamed?.();
     },
   });
 
   useEffect(() => {
     let alive = true;
-    bookNamingApi.organizePreview(0, PAGE)
+    bookNamingApi.organizePreview(0, PAGE, bookId)
       .then((p) => { if (alive) { setPreview(p); setItems(p.items ?? []); } })
       .catch((e: Error) => { if (alive) setError(e.message); });
     return () => { alive = false; };
-  }, []);
+  }, [bookId]);
 
   const more = async () => {
     if (!preview) return;
     setLoadingMore(true);
     try {
-      const p = await bookNamingApi.organizePreview(items.length, PAGE);
+      const p = await bookNamingApi.organizePreview(items.length, PAGE, bookId);
       if (p.token !== preview.token) {
         setError("The library changed while you were looking — close and preview again.");
         return;
@@ -66,7 +70,7 @@ export function BookOrganizeModal({ onClose }: { onClose: () => void }) {
   const apply = async () => {
     if (!preview) return;
     const ok = await confirm({
-      title: `Rename ${plural(preview.counts.rename, "book edition")}?`,
+      title: bookId ? `Rename ${plural(preview.counts.rename, "edition")} of this book?` : `Rename ${plural(preview.counts.rename, "book edition")}?`,
       body: "Each book's files move to their new names, a multi-file audiobook file by file in its play order, so listening places stay put. Folders left empty are removed. Anything whose new name is taken is left alone, and nothing is ever overwritten.",
       confirmLabel: "Rename",
     });
@@ -74,7 +78,7 @@ export function BookOrganizeModal({ onClose }: { onClose: () => void }) {
     setStarting(true);
     setError(null);
     try {
-      const r = await bookNamingApi.organizeApply(preview.token);
+      const r = await bookNamingApi.organizeApply(preview.token, bookId);
       if (r.job_id) setJobId(r.job_id);
       else setSummary({ text: "Renaming in the background.", failed: false });
     } catch (e) {
@@ -104,9 +108,9 @@ export function BookOrganizeModal({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <Modal onClose={onClose} size="xl" title="Rename books" footer={footer} dismissible={!starting}>
+    <Modal onClose={onClose} size="xl" title={bookId ? "Rename this book's files" : "Rename books"} footer={footer} dismissible={!starting}>
       <p className="m-0 mb-3 text-sm text-ink-dim">
-        Every ebook and audiobook in your library, checked against your book naming. This preview changes nothing.
+        {bookId ? "This book's ebook and audiobooks" : "Every ebook and audiobook in your library"}, checked against your book naming. This preview changes nothing.
       </p>
       {error && <div className="mb-2 text-sm" role="alert" style={{ color: "var(--reject-text)" }}>{error}</div>}
 
@@ -133,7 +137,7 @@ export function BookOrganizeModal({ onClose }: { onClose: () => void }) {
             {preview.counts.missing > 0 && <span className="text-ink-faint"> · {preview.counts.missing.toLocaleString()} not on disk</span>}
           </div>
           {items.length === 0 ? (
-            <div className="p-6 text-center text-base text-ink-dim">Every book is already named to the scheme.</div>
+            <div className="p-6 text-center text-base text-ink-dim">{bookId ? "This book is already named to the scheme." : "Every book is already named to the scheme."}</div>
           ) : (
             <div className="thin-scroll max-h-[50vh] overflow-y-auto">
               {items.map((it) => (

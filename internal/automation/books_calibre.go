@@ -95,14 +95,24 @@ func withOPFDates(r metadata.BookResult, opf books.OPF) metadata.BookResult {
 // both writes are conditional in the database too, so a cover someone picks or a series
 // someone sets while the scan runs is never replaced.
 func (c *Coordinator) applyFolderMeta(ctx context.Context, bookID int64, opf *books.OPF, coverDirs []string) {
-	if (opf == nil || opf.Series == "") && len(coverDirs) == 0 {
+	if (opf == nil || (opf.Series == "" && opf.ISBN == "")) && len(coverDirs) == 0 {
 		return
 	}
 	b, err := c.books.Get(ctx, bookID)
 	if err != nil {
 		return
 	}
-	if opf != nil && b.SeriesName == "" && opf.Series != "" {
+	// The catalogue's value is what a fill-in fills: a series or ISBN edited by hand keeps
+	// its edit, with the OPF's underneath when nothing was there (books.Repo.FillSeries).
+	m := b.Matched()
+	if opf != nil && opf.ISBN != "" && m.ISBN == "" {
+		if took, err := c.books.FillISBN(ctx, b.ID, opf.ISBN); err != nil {
+			c.log.Warn("book scan: couldn't record the ISBN from metadata.opf", "title", b.Title, "err", err)
+		} else if took {
+			c.log.Info("book scan: ISBN from metadata.opf", "title", b.Title)
+		}
+	}
+	if opf != nil && m.SeriesName == "" && opf.Series != "" {
 		took, err := c.books.FillSeries(ctx, b.ID, opf.Series, opf.SeriesPosition)
 		switch {
 		case err != nil:

@@ -1321,6 +1321,11 @@ func (s *Service) enrichAvailability(ctx context.Context, reqs []Request) {
 				now := time.Now()
 				l = lib{id: b.ID, have: bookReady(reqs[i].Formats, b), released: books.Released(b.ReleaseDate, now),
 					misses: b.SearchMisses, lastSearch: b.LastSearchAt}
+				// A title edited by hand on the book page is what the library shows, so the
+				// request reads the same.
+				if b.Edited(books.FieldTitle) {
+					l.shown = b.Title
+				}
 				// Only a monitored book has a next check: the sweep never looks at the others.
 				// An upcoming book's next check is its release day.
 				if next := books.NextSearchAtFor(b.LastSearchAt, b.SearchMisses, b.ReleaseDate, now); b.Monitored && !next.IsZero() {

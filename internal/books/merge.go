@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/listening"
 	"github.com/tristenlammi/arrmada/internal/store"
@@ -170,9 +171,13 @@ func (s *Service) mergeTx(ctx context.Context, tx *sql.Tx, keepID, dropID int64,
 			if err := setEditionTx(ctx, tx, keepID, KindAudiobook, *drop.Audiobook); err != nil {
 				return err
 			}
+			// A typed narrator is a hand edit, with the files' tags ('') underneath, so
+			// Reset (or clearing it) hands the moved audiobook back to its own tags.
 			if drop.AudiobookNarrator != "" {
-				if _, err := tx.ExecContext(ctx, `UPDATE books SET audiobook_narrator = ? WHERE id = ?`,
-					drop.AudiobookNarrator, keepID); err != nil {
+				if _, err := tx.ExecContext(ctx,
+					`UPDATE books SET audiobook_narrator = ?, edits_json = json_set(edits_json, '$.narrator', ''),
+					        edited_at = MAX(?, edited_at + 1) WHERE id = ?`,
+					drop.AudiobookNarrator, time.Now().UnixMilli(), keepID); err != nil {
 					return err
 				}
 			}
@@ -261,18 +266,33 @@ func (s *Service) mergeTx(ctx context.Context, tx *sql.Tx, keepID, dropID int64,
 // carryOverTx gives the kept book what it lacks from the dropped one, as the old fold
 // did: monitored if either was, and the series, description, cover, subjects and
 // author row when the kept book has none. The kept book's quality profile stays.
+//
+// Gaps are filled with the dropped book's CATALOGUE values (drop.Matched()), never its hand
+// edits, which travel separately (carryEditsTx); and a detail the kept book edited by hand
+// is never filled, even when the edit is empty (a series deliberately cleared).
 func carryOverTx(ctx context.Context, tx *sql.Tx, keep, drop Book) error {
+	dm := drop.Matched()
 	monitored := keep.Monitored || drop.Monitored
+	filled := keep // the kept book after the gaps are filled, for carryEditsTx
 	seriesName, seriesPos, seriesKey := keep.SeriesName, keep.SeriesPosition, keep.SeriesKey
-	if strings.TrimSpace(seriesName) == "" && strings.TrimSpace(drop.SeriesName) != "" {
-		seriesName, seriesPos, seriesKey = drop.SeriesName, drop.SeriesPosition, drop.SeriesKey
+	if !keep.Edited(FieldSeriesName) && strings.TrimSpace(seriesName) == "" && strings.TrimSpace(dm.SeriesName) != "" {
+		seriesName, seriesKey = dm.SeriesName, dm.SeriesKey
+		if !keep.Edited(FieldSeriesPosition) {
+			seriesPos = dm.SeriesPosition
+		}
 	}
-	description := orStr(keep.Description, drop.Description)
+	filled.SeriesName, filled.SeriesPosition = seriesName, seriesPos
+	description := keep.Description
+	if !keep.Edited(FieldDescription) {
+		description = orStr(keep.Description, dm.Description)
+	}
+	filled.Description = description
 	cover := orStr(keep.CoverURL, drop.CoverURL)
 	subjects := keep.Subjects
-	if len(subjects) == 0 {
-		subjects = drop.Subjects
+	if len(subjects) == 0 && !keep.Edited(FieldSubjects) {
+		subjects = dm.Subjects
 	}
+	filled.Subjects = subjects
 	// The author row: the kept book's, else the dropped one's (NULL when neither has one).
 	var authorID any
 	if keep.AuthorID > 0 {
@@ -284,10 +304,58 @@ func carryOverTx(ctx context.Context, tx *sql.Tx, keep, drop Book) error {
 	// deliberately stays the kept book's own: the stamp says when the KEPT key was looked
 	// up, and an empty one only means the refresh job looks at it soon.
 	releaseDate := orStr(keep.ReleaseDate, drop.ReleaseDate)
-	_, err := tx.ExecContext(ctx,
+	if _, err := tx.ExecContext(ctx,
 		`UPDATE books SET monitored = ?, series_name = ?, series_position = ?, series_key = ?,
 		        description = ?, cover_url = ?, subjects_json = ?, release_date = ?, author_id = ? WHERE id = ?`,
-		b2i(monitored), seriesName, seriesPos, seriesKey, description, cover, subjectsJSON(subjects), cleanReleaseDate(releaseDate), authorID, keep.ID)
+		b2i(monitored), seriesName, seriesPos, seriesKey, description, cover, subjectsJSON(subjects), cleanReleaseDate(releaseDate), authorID, keep.ID); err != nil {
+		return err
+	}
+	return carryEditsTx(ctx, tx, filled, drop)
+}
+
+// carryEditsTx gives the kept book the dropped one's hand edits (0334_book_edits) for the
+// fields the kept book hasn't edited itself: an edit is something the person typed, and a
+// merge shouldn't lose it. What goes underneath is the kept book's catalogue value — its
+// snapshot from before the merge with carryOverTx's gaps filled from the dropped book's
+// catalogue values, never from an edit — so Reset brings the catalogue's back. The kept
+// book's own edits win, and the edits_json read here is the kept book's current one, so a
+// narrator edit step 2 just wrote stays.
+//
+// The narrator isn't carried: it belongs to the dropped book's audiobook and travels with
+// that file (step 2), as the moved standard audiobook's narrator or the merged copy's.
+// Put on the kept book, it would name the wrong reader for the kept book's own audiobook.
+func carryEditsTx(ctx context.Context, tx *sql.Tx, keep Book, drop Book) error {
+	if len(drop.Edits) == 0 {
+		return nil
+	}
+	cur, err := getTx(ctx, tx, keep.ID)
+	if err != nil {
+		return err
+	}
+	edits := Edits{}
+	for k, v := range cur.Edits {
+		edits[k] = v
+	}
+	var sets []string
+	var args []any
+	for _, f := range editFields {
+		if f.name == FieldNarrator || !drop.Edited(f.name) || keep.Edited(f.name) {
+			continue
+		}
+		edits[f.name] = f.get(&keep)
+		sets = append(sets, f.column+" = ?")
+		args = append(args, f.arg(f.get(&drop)))
+	}
+	if len(sets) == 0 {
+		return nil
+	}
+	raw, err := encodeEdits(edits)
+	if err != nil {
+		return err
+	}
+	sets = append(sets, "edits_json = ?", "edited_at = MAX(?, edited_at + 1)")
+	args = append(args, raw, time.Now().UnixMilli(), keep.ID)
+	_, err = tx.ExecContext(ctx, `UPDATE books SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...)
 	return err
 }
 
@@ -363,13 +431,7 @@ func uniqueLabel(label string, taken map[string]bool) string {
 }
 
 // bookTx loads one book row inside a transaction.
-func bookTx(ctx context.Context, tx *sql.Tx, id int64) (Book, error) {
-	b, err := scan(tx.QueryRowContext(ctx, `SELECT `+cols+` FROM books WHERE id = ?`, id))
-	if errors.Is(err, sql.ErrNoRows) {
-		return Book{}, ErrNotFound
-	}
-	return b, err
-}
+func bookTx(ctx context.Context, tx *sql.Tx, id int64) (Book, error) { return getTx(ctx, tx, id) }
 
 // versionsTx loads a book's audio versions inside a transaction.
 func versionsTx(ctx context.Context, tx *sql.Tx, bookID int64) ([]AudioVersion, error) {

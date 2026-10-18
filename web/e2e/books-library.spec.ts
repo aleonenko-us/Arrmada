@@ -74,12 +74,12 @@ test.describe("Books library (desktop)", () => {
     await expect(page.getByRole("switch", { name: "Monitored" })).toBeVisible();
     for (const name of ["Search", "Add files", "Fix"]) await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
-    for (const old of ["Search indexers", "Upload torrent", "Manual import", "Rename", "Edit metadata", "Change match", "Refresh & rescan"]) {
+    for (const old of ["Search indexers", "Upload torrent", "Manual import", "Rename", "Edit metadata", "Edit details", "Change match", "Refresh & rescan"]) {
       await expect(page.getByRole("button", { name: old, exact: true })).toHaveCount(0);
     }
 
     await page.getByRole("button", { name: "Fix", exact: true }).click();
-    await expect(page.getByRole("menu", { name: "Fix" }).getByRole("menuitem")).toHaveText(["Edit metadata…", "Change match…", "Rename files", "Refresh & rescan"]);
+    await expect(page.getByRole("menu", { name: "Fix" }).getByRole("menuitem")).toHaveText(["Edit details…", "Change match…", "Rename files", "Refresh & rescan"]);
     await page.keyboard.press("Escape");
 
     await page.getByRole("button", { name: "Search", exact: true }).click();
@@ -98,7 +98,7 @@ test.describe("Books library (desktop)", () => {
       await page.getByRole("menuitem", { name: item }).click();
     };
     for (const [menu, item, dialog] of [
-      ["Fix", "Edit metadata…", "Edit metadata"],
+      ["Fix", "Edit details…", "Edit details"],
       ["Fix", "Change match…", "Change match — Children of Dune"],
       ["Search", "Interactive search…", "Search indexers — Children of Dune"],
       ["Add files", "Manual import…", "Manual import"],

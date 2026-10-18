@@ -134,7 +134,7 @@ func TestRematchKeepsOldKeyAsAlias(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Rematch(ctx, b.ID, "hc:42", metadata.BookResult{}); err != nil {
+	if _, err := s.Rematch(ctx, b.ID, "hc:42", metadata.BookResult{}, false); err != nil {
 		t.Fatal(err)
 	}
 	if ks := keysOf(t, s.repo, ctx, b.ID); ks["OL1W"] == "" || ks["hc:42"] == "" {
@@ -144,11 +144,11 @@ func TestRematchKeepsOldKeyAsAlias(t *testing.T) {
 		t.Errorf("old key finds %+v %v, want book %d", found, ok, b.ID)
 	}
 	// OL1W is b's now: moving the other row onto it would make two rows of one book.
-	if _, err := s.Rematch(ctx, other.ID, "OL1W", metadata.BookResult{Title: "Dune", Author: "Frank Herbert"}); !errors.Is(err, ErrExists) {
+	if _, err := s.Rematch(ctx, other.ID, "OL1W", metadata.BookResult{Title: "Dune", Author: "Frank Herbert"}, false); !errors.Is(err, ErrExists) {
 		t.Errorf("re-match onto another book's alias: err = %v, want ErrExists", err)
 	}
 	// Moving b back onto its own former key is fine.
-	if _, err := s.Rematch(ctx, b.ID, "OL1W", metadata.BookResult{Title: "Dune", Author: "Frank Herbert"}); err != nil {
+	if _, err := s.Rematch(ctx, b.ID, "OL1W", metadata.BookResult{Title: "Dune", Author: "Frank Herbert"}, false); err != nil {
 		t.Errorf("re-match onto the book's own former key: %v", err)
 	}
 }
@@ -163,7 +163,7 @@ func TestRematchCorrectionDropsWrongKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Rematch(ctx, b.ID, "hc:2", metadata.BookResult{}); err != nil {
+	if _, err := s.Rematch(ctx, b.ID, "hc:2", metadata.BookResult{}, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := s.findByKey(ctx, "hc:1"); ok {

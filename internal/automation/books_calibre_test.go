@@ -212,7 +212,8 @@ func TestBookScanReadsCalibreLibrary(t *testing.T) {
 		t.Errorf("imported %d, want 3 (Good Omens, Golden Son, Ancillary Justice): %+v", res.Imported, res)
 	}
 	// ISBN first: the OPF's ISBN was asked, and Good Omens never needed a title search.
-	if len(cat.isbns) == 0 || cat.isbns[0] != "9780060853983" {
+	// Folders are scanned in no fixed order, so another folder's ISBN may be asked first.
+	if !slices.Contains(cat.isbns, "9780060853983") {
 		t.Errorf("ISBN lookups = %v, want the OPF's ISBN", cat.isbns)
 	}
 	for _, q := range cat.queries {

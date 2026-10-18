@@ -640,7 +640,37 @@ func bookQuery(b books.Book) string {
 // The title check downstream still keeps only this book's releases.
 //
 // Author and title also travel as parts, for an indexer whose caps take t=book.
+//
+// A title or author edited by hand is searched first: an edit is most often a correction
+// to what trackers call the book (a catalogue's illustrator credited as the author, a
+// subtitle the trackers leave off). When that finds nothing, the catalogue's names kept
+// underneath the edit are tried too (books.Book.CatalogueNames): its author always, its
+// title only when it's a variant of the edited one. A title edited into another title
+// ("Dune" → "Dune Messiah") was a correction, and searching the old one would only find
+// the other book. Either way the book is the same book: its catalogue keys never change,
+// and the title check downstream uses the same names.
 func (c *Coordinator) searchBook(ctx context.Context, b books.Book, edition string) (indexer.SearchResult, error) {
+	res, err := c.searchBookAs(ctx, b, edition)
+	if err != nil || len(res.Releases) > 0 {
+		return res, err
+	}
+	alt, ok := b.CatalogueNames()
+	if !ok {
+		return res, err
+	}
+	c.log.Info("book: nothing under the edited details — trying the catalogue's", "title", alt.Title, "author", alt.Author)
+	if alt.Title == b.Title {
+		// Only the author differs: the title alone was already searched above.
+		return c.search(ctx, indexer.SearchQuery{
+			Text: bookQuery(alt), Author: alt.Author, BookTitle: alt.Title,
+			MediaType: indexer.MediaBook, BookEdition: edition, Limit: 60})
+	}
+	return c.searchBookAs(ctx, alt, edition)
+}
+
+// searchBookAs is one round of searchBook for one set of names: author + title, then the
+// title alone.
+func (c *Coordinator) searchBookAs(ctx context.Context, b books.Book, edition string) (indexer.SearchResult, error) {
 	res, err := c.search(ctx, indexer.SearchQuery{
 		Text: bookQuery(b), Author: b.Author, BookTitle: b.Title,
 		MediaType: indexer.MediaBook, BookEdition: edition, Limit: 60})

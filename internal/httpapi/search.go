@@ -165,12 +165,20 @@ func (a *api) buildSearchEntries(ctx context.Context, booksOn, musicOn bool) ([]
 		return nil, err
 	}
 	if booksOn {
-		err := read(`SELECT id, title, year, author, cover_url FROM books`, func(rows searchRow) (searchEntry, error) {
+		// A book is listed by the title it shows (an edit by hand, when it has one) and
+		// found by that or the catalogue's title kept underneath the edit.
+		err := read(`SELECT id, title, year, author, cover_url,
+		                    CASE WHEN json_valid(edits_json) THEN COALESCE(json_extract(edits_json, '$.title'), '') ELSE '' END
+		               FROM books`, func(rows searchRow) (searchEntry, error) {
 			h := searchHit{Kind: "book"}
-			if err := rows.Scan(&h.ID, &h.Title, &h.Year, &h.Subtitle, &h.PosterURL); err != nil {
+			var matched string
+			if err := rows.Scan(&h.ID, &h.Title, &h.Year, &h.Subtitle, &h.PosterURL, &matched); err != nil {
 				return searchEntry{}, err
 			}
-			return newSearchEntry(h, 2, h.Title), nil
+			if matched == "" || matched == h.Title {
+				return newSearchEntry(h, 2, h.Title), nil
+			}
+			return newSearchEntry(h, 2, h.Title, matched), nil
 		})
 		if err != nil {
 			return nil, err

@@ -470,7 +470,11 @@ func authorsOverlap(a, b string) bool {
 
 // applyUpgrade rewrites a row to the Hardcover entry, keeping what the user set by
 // hand: a custom cover (served from the app), and the year when Hardcover lacks one.
-func (s *Service) applyUpgrade(ctx context.Context, b Book, d *metadata.BookDetails) error {
+//
+// Details edited by hand stay edited: the Hardcover values go underneath them, and where
+// Hardcover lacks one, the catalogue value already underneath stays (never the edit).
+func (s *Service) applyUpgrade(ctx context.Context, shown Book, d *metadata.BookDetails) error {
+	b := shown.Matched()
 	nb := Book{
 		OLKey: d.Key, Title: orStr(d.Title, b.Title), Author: orStr(d.Author, b.Author), Year: d.Year,
 		CoverURL: orStr(d.CoverURL, b.CoverURL), Description: orStr(d.Description, b.Description), Subjects: d.Subjects,
@@ -487,7 +491,7 @@ func (s *Service) applyUpgrade(ctx context.Context, b Book, d *metadata.BookDeta
 	}
 	// The upgrade only moves a book onto the same book in Hardcover, so its Open Library
 	// key stays one of its keys.
-	if err := s.repo.Rematch(ctx, b.ID, nb, true); err != nil {
+	if err := s.repo.Rematch(ctx, b.ID, nb, true, false); err != nil {
 		return err
 	}
 	if d.SeriesName != "" {
@@ -497,7 +501,9 @@ func (s *Service) applyUpgrade(ctx context.Context, b Book, d *metadata.BookDeta
 	if d.Author != "" {
 		authorKey = d.AuthorKey
 	}
-	s.linkAuthor(ctx, b.ID, nb.Author, authorKey, !strings.EqualFold(b.Author, nb.Author))
+	if !shown.Edited(FieldAuthor) { // an edited author decides the link itself
+		s.linkAuthor(ctx, b.ID, nb.Author, authorKey, !strings.EqualFold(b.Author, nb.Author))
+	}
 	s.repo.AddEvent(ctx, b.ID, "upgraded", "Re-matched to Hardcover ("+d.Key+")")
 	return nil
 }

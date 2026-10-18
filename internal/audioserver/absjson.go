@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/auth"
+	"github.com/tristenlammi/arrmada/internal/langs"
 	"github.com/tristenlammi/arrmada/internal/listening"
 )
 
@@ -30,12 +31,20 @@ func metadataMinified(it Item, narrator string) obj {
 			seriesName += " #" + seq
 		}
 	}
+	// Subtitle, publisher, ISBN and language come from the book's details edited by hand
+	// (null, as Audiobookshelf sends, when a book has none). The language goes out by
+	// name ("French"), the way Audiobookshelf's own scanner fills it.
+	var language any
+	if it.Book.Language != "" {
+		language = langs.Name(it.Book.Language)
+	}
 	return obj{
-		"title": it.Title, "titleIgnorePrefix": ignorePrefix(it.Title), "subtitle": nil,
+		"title": it.Title, "titleIgnorePrefix": ignorePrefix(it.Title), "subtitle": nilIfEmpty(it.Book.Subtitle),
 		"authorName": authorName, "authorNameLF": authorNameLF(authorName), "narratorName": strings.Join(splitNarrators(narrator), ", "),
 		"seriesName": seriesName, "genres": nonNilStrings(it.Book.Subjects), "publishedYear": yearString(it.Book.Year),
-		"publishedDate": nil, "publisher": nil, "description": it.Book.Description, "isbn": nil, "asin": nil,
-		"language": nil, "explicit": false, "abridged": false,
+		"publishedDate": nil, "publisher": nilIfEmpty(it.Book.Publisher), "description": it.Book.Description,
+		"isbn": nilIfEmpty(it.Book.ISBN), "asin": nil,
+		"language": language, "explicit": false, "abridged": false,
 	}
 }
 

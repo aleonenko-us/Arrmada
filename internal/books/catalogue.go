@@ -2,11 +2,13 @@ package books
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/metadata"
+	"github.com/tristenlammi/arrmada/internal/store"
 )
 
 // What the catalogue can add on top of the library's own records: a series with every
@@ -59,7 +61,9 @@ func (s *Service) CatalogueSeries(ctx context.Context, bookID int64) (*SeriesVie
 
 func (s *Service) catalogueSeries(ctx context.Context, bookID int64) (*SeriesView, []metadata.BookResult, bool) {
 	b, err := s.repo.Get(ctx, bookID)
-	if err != nil || b.SeriesKey == "" {
+	// A series edited by hand isn't the catalogue's series any more: its listing would
+	// be the wrong one, so the library's own grouping by the edited name stands.
+	if err != nil || b.SeriesKey == "" || b.Edited(FieldSeriesName) {
 		return nil, nil, false
 	}
 	ex, ok := s.extras()
@@ -279,7 +283,11 @@ func (r *Repo) SetSeriesRef(ctx context.Context, bookID int64, name string, posi
 	if strings.TrimSpace(name) == "" {
 		return nil
 	}
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE books SET series_name = ?, series_position = ?, series_key = ? WHERE id = ?`, name, position, key, bookID)
-	return err
+	// A series edited by hand keeps the edit; the catalogue's goes underneath.
+	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE books SET series_key = ? WHERE id = ?`, key, bookID); err != nil {
+			return err
+		}
+		return setMatched(ctx, tx, bookID, map[string]any{FieldSeriesName: name, FieldSeriesPosition: position})
+	})
 }

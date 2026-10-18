@@ -909,6 +909,8 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("PUT /api/v1/books/{id}/keep-catalogue", a.requireRole(auth.RoleManager, a.handleSetBookKeepCatalogue))
 	mux.HandleFunc("PUT /api/v1/books/{id}/profile", a.requireRole(auth.RoleManager, a.handleSetBookProfile))
 	mux.HandleFunc("PUT /api/v1/books/{id}/metadata", a.requireRole(auth.RoleManager, a.handleOverrideBookMetadata))
+	// Hand edits to a book's details over the catalogue's, field by field (book_edits.go).
+	mux.HandleFunc("PUT /api/v1/books/{id}/details", a.requireRole(auth.RoleManager, a.handleEditBookDetails))
 	mux.HandleFunc("DELETE /api/v1/books/{id}/file", a.requireRole(auth.RoleManager, a.handleDeleteBookFile))
 	mux.HandleFunc("DELETE /api/v1/books/{id}", a.requireRole(auth.RoleManager, a.handleDeleteBook))
 

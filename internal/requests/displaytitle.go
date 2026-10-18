@@ -1,6 +1,10 @@
 package requests
 
-import "context"
+import (
+	"context"
+
+	"github.com/tristenlammi/arrmada/internal/books"
+)
 
 // A request keeps the title it was made under (TMDB's English title): it names the request
 // in the API and in a staff search. What people READ — the request list, and the notices
@@ -17,8 +21,17 @@ func (s *Service) withShownTitle(ctx context.Context, req Request) Request {
 	return req
 }
 
-// shownTitle is the library's shown title for the movie or show req asked for, or "".
+// shownTitle is the library's shown title for the movie or show req asked for, or "". A
+// book's is its title edited by hand on the book page, when it has one.
 func (s *Service) shownTitle(ctx context.Context, req Request) string {
+	if req.MediaType == "book" {
+		if req.BookID > 0 && s.books != nil {
+			if b, err := s.books.Get(ctx, req.BookID); err == nil && b.Edited(books.FieldTitle) {
+				return b.Title
+			}
+		}
+		return ""
+	}
 	if req.TMDBID <= 0 {
 		return ""
 	}

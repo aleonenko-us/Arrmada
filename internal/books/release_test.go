@@ -38,7 +38,7 @@ func TestReleaseDateRoundTrip(t *testing.T) {
 	if got, _ := repo.Get(ctx, bad.ID); got.ReleaseDate != "" {
 		t.Errorf("garbage stored as %q", got.ReleaseDate)
 	}
-	if err := repo.Rematch(ctx, b.ID, Book{OLKey: "hc:3", Title: "Wind and Truth", Author: "B", ReleaseDate: "2027-05-05"}, true); err != nil {
+	if err := repo.Rematch(ctx, b.ID, Book{OLKey: "hc:3", Title: "Wind and Truth", Author: "B", ReleaseDate: "2027-05-05"}, true, false); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := repo.Get(ctx, b.ID); got.ReleaseDate != "2027-05-05" {

@@ -103,6 +103,15 @@ type Book struct {
 	// AudiobookNarrator is who reads the standard audiobook, typed by hand. Empty means
 	// the audio files' own tags say (the audiobook server reads them).
 	AudiobookNarrator string `json:"audiobook_narrator,omitempty"`
+	// Subtitle, Language (a canonical internal/langs code), ISBN (bare digits) and
+	// Publisher: details only a hand edit fills for now (migration 0334_book_edits).
+	Subtitle  string `json:"subtitle,omitempty"`
+	Language  string `json:"language,omitempty"`
+	ISBN      string `json:"isbn,omitempty"`
+	Publisher string `json:"publisher,omitempty"`
+	// Edits are the fields edited by hand, each with the catalogue's value underneath
+	// (edits.go). The fields above already hold the edits: they're what's shown.
+	Edits Edits `json:"edited,omitempty"`
 }
 
 // LacksWanted reports whether the book is missing an edition its profile wants (per
@@ -160,26 +169,54 @@ func (r *Repo) SetSeries(ctx context.Context, bookID int64, name string, positio
 	if strings.TrimSpace(name) == "" {
 		return nil
 	}
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE books SET series_name = ?, series_position = ? WHERE id = ?`, name, position, bookID)
-	return err
+	// A series edited by hand keeps the edit; what the release said goes underneath.
+	return r.SetMatched(ctx, bookID, map[string]any{FieldSeriesName: name, FieldSeriesPosition: position})
 }
 
-// FillSeries records a series only for a book that has none, in one statement, so a series
-// someone set while a scan was running is never replaced by what the scan read. It
-// reports whether the book took it.
+// FillSeries records a series only for a book that has none, read and written in one
+// transaction, so a series someone set while a scan was running is never replaced by what
+// the scan read. "Has none" is about the catalogue's value: a series edited by hand
+// (even one cleared on purpose) keeps its edit, and the fill goes underneath it only when
+// nothing is there yet (fillMatched). It reports whether the book took it.
 func (r *Repo) FillSeries(ctx context.Context, bookID int64, name string, position float64) (bool, error) {
 	if strings.TrimSpace(name) == "" {
 		return false, nil
 	}
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE books SET series_name = ?, series_position = ? WHERE id = ? AND (series_name IS NULL OR series_name = '')`,
-		name, position, bookID)
-	if err != nil {
-		return false, err
+	return r.fillMatched(ctx, bookID, FieldSeriesName, map[string]any{FieldSeriesName: name, FieldSeriesPosition: position})
+}
+
+// FillISBN records an ISBN (already checked) only for a book whose catalogue value has
+// none, like FillSeries: an ISBN edited by hand stays, with the fill underneath.
+func (r *Repo) FillISBN(ctx context.Context, bookID int64, isbn string) (bool, error) {
+	if isbn == "" {
+		return false, nil
 	}
-	n, err := res.RowsAffected()
-	return n > 0, err
+	return r.fillMatched(ctx, bookID, FieldISBN, map[string]any{FieldISBN: isbn})
+}
+
+// fillMatched writes catalogue values through setMatched when the catalogue's value of
+// field — what's underneath an edit, else the column — is empty, in one transaction.
+func (r *Repo) fillMatched(ctx context.Context, bookID int64, field string, vals map[string]any) (bool, error) {
+	took := false
+	err := store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		b, err := getTx(ctx, tx, bookID)
+		if err != nil {
+			return err
+		}
+		f, _ := fieldByName(field)
+		var cur string
+		if raw, edited := b.Edits[field]; edited {
+			_ = json.Unmarshal(raw, &cur)
+		} else {
+			_ = json.Unmarshal(f.get(&b), &cur)
+		}
+		if strings.TrimSpace(cur) != "" {
+			return nil
+		}
+		took = true
+		return setMatched(ctx, tx, bookID, vals)
+	})
+	return took, err
 }
 
 // SeriesSiblings returns every book sharing this series name, in reading order, including
@@ -218,7 +255,8 @@ const cols = `id, ol_key, title, author, year, cover_url, description, subjects_
 	ebook_path, ebook_format, ebook_size, ebook_files,
 	audiobook_path, audiobook_format, audiobook_size, audiobook_files,
 	last_search_at, search_misses, release_date, author_id,
-	meta_updated_at, audiobook_narrator`
+	meta_updated_at, audiobook_narrator,
+	subtitle, language, isbn, publisher, edits_json`
 
 func scan(row interface{ Scan(...any) error }) (Book, error) {
 	var (
@@ -233,15 +271,18 @@ func scan(row interface{ Scan(...any) error }) (Book, error) {
 		abFiles       int
 		lastSearch    sql.NullString
 		authorID      sql.NullInt64
+		editsJSON     string
 	)
 	err := row.Scan(&b.ID, &b.OLKey, &b.Title, &b.Author, &b.Year, &b.CoverURL, &b.Description,
 		&subjectsJSON, &mon, &b.QualityProfile, &b.AddedAt, &b.SeriesName, &b.SeriesPosition, &b.SeriesKey, &keep,
 		&ebPath, &ebFmt, &ebSize, &ebFiles, &abPath, &abFmt, &abSize, &abFiles,
 		&lastSearch, &b.SearchMisses, &b.ReleaseDate, &authorID,
-		&b.MetaUpdatedAt, &b.AudiobookNarrator)
+		&b.MetaUpdatedAt, &b.AudiobookNarrator,
+		&b.Subtitle, &b.Language, &b.ISBN, &b.Publisher, &editsJSON)
 	if err != nil {
 		return Book{}, err
 	}
+	b.Edits = decodeEdits(editsJSON)
 	b.AuthorID = authorID.Int64
 	if t := parseStamp(lastSearch.String); !t.IsZero() {
 		b.LastSearchAt = t.Format(time.RFC3339)
@@ -388,18 +429,15 @@ func (r *Repo) SetQualityProfile(ctx context.Context, id int64, profile string) 
 	return affected(res, err)
 }
 
-// UpdateMeta refreshes a book's description/cover/subjects (from a metadata re-pull).
+// UpdateMeta refreshes a book's description/cover/subjects (from a metadata re-pull). A
+// description or tags edited by hand keep the edit, with the catalogue's underneath.
 func (r *Repo) UpdateMeta(ctx context.Context, id int64, description, coverURL string, subjects []string) error {
-	subjectsJSON := ""
-	if len(subjects) > 0 {
-		if raw, err := json.Marshal(subjects); err == nil {
-			subjectsJSON = string(raw)
+	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE books SET cover_url = ? WHERE id = ?`, coverURL, id); err != nil {
+			return err
 		}
-	}
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE books SET description = ?, cover_url = ?, subjects_json = ? WHERE id = ?`,
-		description, coverURL, subjectsJSON, id)
-	return err
+		return setMatched(ctx, tx, id, map[string]any{FieldDescription: description, FieldSubjects: subjects})
+	})
 }
 
 // SetCoverURL changes a book's cover image (a cover picked from the picker, or the served
@@ -422,27 +460,12 @@ func (r *Repo) FillCoverURL(ctx context.Context, id int64, coverURL string) (boo
 	return n > 0, err
 }
 
-// SetAudiobookNarrator records who reads the standard audiobook ("" = the files say).
-func (r *Repo) SetAudiobookNarrator(ctx context.Context, id int64, narrator string) error {
-	res, err := r.db.ExecContext(ctx, `UPDATE books SET audiobook_narrator = ? WHERE id = ?`, narrator, id)
-	return affected(res, err)
-}
-
 // TouchMeta marks a book's details as changed now, for a change no column records (an
 // uploaded cover file replaced under the same URL). Column edits are caught by the
 // triggers of migration 0262_books_meta_updated; like them, it only ever moves forward.
 func (r *Repo) TouchMeta(ctx context.Context, id int64) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE books SET meta_updated_at = MAX(?, meta_updated_at + 1) WHERE id = ?`, time.Now().UnixMilli(), id)
-	return affected(res, err)
-}
-
-// UpdateDetails applies a manual metadata override (title / author / year / description / cover)
-// for when the providers get a book wrong.
-func (r *Repo) UpdateDetails(ctx context.Context, id int64, title, author string, year int, description, coverURL string) error {
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE books SET title = ?, author = ?, year = ?, description = ?, cover_url = ? WHERE id = ?`,
-		title, author, year, description, coverURL, id)
 	return affected(res, err)
 }
 
@@ -489,13 +512,10 @@ func (r *Repo) ClearEdition(ctx context.Context, id int64, kind string) error {
 // it finds the book — unless keepOld is false: a correction of a wrong identification,
 // where the old key named a different book. A key that is another book's, current or
 // former, is ErrExists.
-func (r *Repo) Rematch(ctx context.Context, id int64, b Book, keepOld bool) error {
-	subjectsJSON := ""
-	if len(b.Subjects) > 0 {
-		if raw, err := json.Marshal(b.Subjects); err == nil {
-			subjectsJSON = string(raw)
-		}
-	}
+//
+// Details edited by hand stay edited, with the new work's values underneath — unless
+// clearEdits: the person said the edits were for the book it was wrongly matched to.
+func (r *Repo) Rematch(ctx context.Context, id int64, b Book, keepOld, clearEdits bool) error {
 	err := store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
 		if owner, taken := keyOwner(ctx, tx, b.OLKey); taken && owner != id {
 			return ErrExists
@@ -507,10 +527,20 @@ func (r *Repo) Rematch(ctx context.Context, id int64, b Book, keepOld bool) erro
 			}
 			return err
 		}
+		if clearEdits {
+			if err := clearEditsTx(ctx, tx, id); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE books SET ol_key = ?, title = ?, author = ?, year = ?, cover_url = ?,
-			        description = ?, subjects_json = ?, release_date = ? WHERE id = ?`,
-			b.OLKey, b.Title, b.Author, b.Year, b.CoverURL, b.Description, subjectsJSON, cleanReleaseDate(b.ReleaseDate), id); err != nil {
+			`UPDATE books SET ol_key = ?, cover_url = ?, release_date = ? WHERE id = ?`,
+			b.OLKey, b.CoverURL, cleanReleaseDate(b.ReleaseDate), id); err != nil {
+			return err
+		}
+		if err := setMatched(ctx, tx, id, map[string]any{
+			FieldTitle: b.Title, FieldAuthor: b.Author, FieldYear: b.Year,
+			FieldDescription: b.Description, FieldSubjects: b.Subjects,
+		}); err != nil {
 			return err
 		}
 		if old != b.OLKey {

@@ -2294,7 +2294,18 @@ export interface Book {
   release_date?: string;
   /** Who reads the standard audiobook, typed by hand; absent = the audio files' tags say. */
   audiobook_narrator?: string;
+  /** Details only a hand edit fills (language is a canonical code, isbn bare digits). */
+  subtitle?: string;
+  language?: string;
+  isbn?: string;
+  publisher?: string;
+  /** The details edited by hand on the book page, each with the catalogue's value under
+   *  it (what Reset puts back). The fields above already show the edits. */
+  edited?: Partial<Record<BookEditField, string | number | string[]>>;
 }
+/** A book detail that can be edited by hand (books.EditableFields). */
+export type BookEditField = "title" | "subtitle" | "author" | "series_name" | "series_position" | "description"
+  | "year" | "language" | "subjects" | "isbn" | "narrator" | "publisher";
 export interface CatalogueRef {
   name: "Hardcover" | "Open Library" | "Google Books";
   url: string;
@@ -3407,15 +3418,10 @@ export const api = {
     req<{ monitored: boolean }>(`/api/v1/books/${id}/monitor`, { method: "PUT", body: JSON.stringify({ monitored }) }),
   setBookProfile: (id: number, quality_profile: string) =>
     req<{ quality_profile: string }>(`/api/v1/books/${id}/profile`, { method: "PUT", body: JSON.stringify({ quality_profile }) }),
-  overrideBookMetadata: (id: number, body: { title: string; author: string; year: number; overview: string; cover_url: string; narrator?: string }) =>
-    req<{ status: string }>(`/api/v1/books/${id}/metadata`, { method: "PUT", body: JSON.stringify(body) }),
   deleteBook: (id: number, deleteFiles?: boolean) =>
     req<void>(`/api/v1/books/${id}${deleteFiles ? "?delete_files=true" : ""}`, { method: "DELETE" }),
   bookHistory: (id: number) =>
     req<{ events: MovieEvent[] }>(`/api/v1/books/${id}/history`).then((r) => r.events),
-  // Re-point a book at a different Open Library work, keeping its files and settings.
-  rematchBook: (id: number, body: { ol_key: string; title: string; author: string; year: number; cover_url: string }) =>
-    req<Book>(`/api/v1/books/${id}/rematch`, { method: "POST", body: JSON.stringify(body) }),
 
   // ---- Music ----
   artists: () => req<{ artists: Artist[] }>("/api/v1/music/artists").then((r) => r.artists ?? []),

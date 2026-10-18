@@ -151,6 +151,32 @@ film, say. When nothing changes it, it is the same as `title`.
   `display_title_language` (a language code, for `language`) and `display_title_original_in`
   (language codes) in `GET`/`PUT /api/v1/settings`.
 
+### Books: details edited by hand
+
+A book's details can be edited by hand over what the catalogue (Hardcover or Open Library)
+matched. Unlike movies and shows, a book's `title`, `author`, `series_name`,
+`series_position`, `description`, `year`, `subjects` and `audiobook_narrator` are always the
+**shown** values — the edit when there is one — and so are `subtitle`, `language` (a
+language code), `isbn` (bare digits) and `publisher`, which only an edit fills. File naming,
+series grouping, OPDS and listening apps use them too. A book's identity is its Arrmada `id`
+and catalogue keys (`ol_key`), which an edit never changes.
+
+- `GET /api/v1/books/{id}` carries `edited`: each hand-edited field with the catalogue's
+  value under it, e.g. `{"title": "Harry Potter and the Philosopher's Stone"}`. A field not
+  in it isn't edited.
+- Staff: `PUT /api/v1/books/{id}/details` with `{"set": {"title": "…", "series_position": 1.5,
+  "subjects": ["Fantasy"], "isbn": "978-0-590-35340-3"}, "reset": ["author"]}` or
+  `{"reset_all": true}`. Fields: `title`, `subtitle`, `author`, `series_name`,
+  `series_position`, `description`, `year`, `language`, `subjects`, `isbn`, `narrator`,
+  `publisher`. Setting a field to the catalogue's value is a reset. A refused value (an ISBN
+  whose check digit doesn't match, a control character, too long) answers `400` with why. The
+  answer is `{book, changed, rename_available}`; `rename_available` says the edit changed
+  where the book naming would put its files — nothing is renamed until
+  `GET /api/v1/books/organize?book_id={id}` is previewed and `POST /api/v1/books/organize`
+  with `{"token": …, "book_id": {id}}` applies it.
+- Staff: `POST /api/v1/books/{id}/rematch` takes `"edits": "keep"` (the default) or `"clear"`.
+- These are staff routes, not open to personal API keys.
+
 ## Examples
 
 These use `curl` with Arrmada at `http://192.168.1.10:7878` and the key in `$ARRMADA_KEY`.
