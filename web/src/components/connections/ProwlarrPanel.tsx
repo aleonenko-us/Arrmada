@@ -34,10 +34,10 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
   // The bundled Prowlarr is Arrmada's own and always gets Arrmada's FlareSolverr; any other
   // Prowlarr is someone's own setup and is only changed when this box is ticked.
   const bundled = isBundledProwlarr(url);
-  // The saved key is only sent to the address it was saved for (the server refuses otherwise).
-  const keyMoved = secretMoved({ saved: hasKey, typed: apiKey, url, savedUrl: info.data?.url ?? url });
   // Re-read after a sync (clicked or the hourly one) so "Last synced" stays current.
   const info = useQuery("prowlarr-info", () => indexerApi.prowlarrInfo(), { staleMs: 60_000 });
+  // The saved key is only sent to the address it was saved for (the server refuses otherwise).
+  const keyMoved = secretMoved({ saved: hasKey, typed: apiKey, url, savedUrl: info.data?.url ?? url });
 
   useEffect(() => {
     const i = info.data;
