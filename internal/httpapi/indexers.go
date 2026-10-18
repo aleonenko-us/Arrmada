@@ -177,6 +177,9 @@ func (a *api) handleCreateIndexer(w http.ResponseWriter, r *http.Request) {
 		seedHours = indexer.DefaultSeedHours
 	}
 
+	if fixedSite(kind) {
+		req.URL = "" // never used, so never kept (see savedSecretMoves)
+	}
 	created, err := a.deps.Indexers.Create(r.Context(), indexer.Indexer{
 		Name:        req.Name,
 		Kind:        kind,
@@ -249,6 +252,9 @@ func (a *api) handleUpdateIndexer(w http.ResponseWriter, r *http.Request) {
 	if msg := savedSecretMoves(kind, req.URL, req.APIKey, req.Password, old); msg != "" {
 		a.writeError(w, http.StatusBadRequest, msg)
 		return
+	}
+	if fixedSite(kind) {
+		req.URL = ""
 	}
 	// Turning a row into a usenet indexer is adding one, and needs a usenet client the same.
 	if kind == indexer.KindNewznab && old.Kind != indexer.KindNewznab && !a.usenetClient(r.Context()) {
@@ -411,24 +417,45 @@ func (a *api) handleTestIndexerSettings(w http.ResponseWriter, r *http.Request) 
 }
 
 // savedSecretMoves is the refusal ("" = fine) for an edit or test that would send an
-// indexer's saved key or password to a different address: a new address with the secret
-// left blank. TorrentLeech and MyAnonaMouse always talk to their own site, so their
-// address field sends nothing anywhere; nor does an empty address.
+// indexer's saved key or password somewhere it wasn't saved for, with the secret left
+// blank:
+//   - another kind of indexer: a secret saved for one kind is never carried to another
+//     (hopping through a site-bound kind would otherwise let a key move address);
+//   - a new address. TorrentLeech and MyAnonaMouse always talk to their own site, so for
+//     a row that stays one of them the address sends nothing anywhere (and isn't kept);
+//     nor does an empty address.
 func savedSecretMoves(kind indexer.Kind, newURL, apiKey, password string, stored indexer.Indexer) string {
-	if kind == indexer.KindTorrentLeech || kind == indexer.KindMAM || strings.TrimSpace(newURL) == "" || netsafe.SameEndpoint(newURL, stored.URL) {
+	keyKept := apiKey == "" && stored.APIKey != ""
+	passwordKept := password == "" && stored.Password != ""
+	if !keyKept && !passwordKept {
 		return ""
 	}
-	switch {
-	case apiKey == "" && stored.APIKey != "":
-		return errKeyForNewAddress
-	case password == "" && stored.Password != "":
-		return errPasswordForNewAddress
+	if kind != stored.Kind {
+		if keyKept {
+			return errKeyForNewKind
+		}
+		return errPasswordForNewKind
 	}
-	return ""
+	if fixedSite(kind) || strings.TrimSpace(newURL) == "" || netsafe.SameEndpoint(newURL, stored.URL) {
+		return ""
+	}
+	if keyKept {
+		return errKeyForNewAddress
+	}
+	return errPasswordForNewAddress
 }
 
-// errPasswordForNewAddress is errKeyForNewAddress for a saved password.
-const errPasswordForNewAddress = "Enter the password again for the new address — the saved password is only sent to the address it was saved for."
+// fixedSite: the kinds that always talk to their own site, whatever the address says.
+func fixedSite(kind indexer.Kind) bool {
+	return kind == indexer.KindTorrentLeech || kind == indexer.KindMAM
+}
+
+const (
+	// errPasswordForNewAddress is errKeyForNewAddress for a saved password.
+	errPasswordForNewAddress = "Enter the password again for the new address — the saved password is only sent to the address it was saved for."
+	errKeyForNewKind         = "Enter the API key again — a saved key isn't carried over to another kind of indexer."
+	errPasswordForNewKind    = "Enter the password again — a saved password isn't carried over to another kind of indexer."
+)
 
 // pathID parses the {id} path segment, writing a 400 on failure.
 func (a *api) pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
