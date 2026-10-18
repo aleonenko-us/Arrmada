@@ -241,11 +241,15 @@ func (s *Service) CheckSync(ctx context.Context, m MediaRef, lang, variant strin
 	return rep, nil
 }
 
-// normVariant reads a variant from a request: "full" and "" are the full subtitle.
+// normVariant reads a variant from a request: "full" and "" are the full subtitle. It
+// returns one of the variant constants, never the request's own string, since the
+// variant ends up in a sidecar's file name.
 func normVariant(v string) string {
-	switch v = strings.ToLower(strings.TrimSpace(v)); v {
-	case VariantSDH, VariantForced:
-		return v
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case VariantSDH:
+		return VariantSDH
+	case VariantForced:
+		return VariantForced
 	}
 	return VariantFull
 }
@@ -276,10 +280,14 @@ func (s *Service) SyncTarget(ctx context.Context, m MediaRef, lang, variant stri
 	if ref.MediaKey == "" {
 		ref.MediaKey = job.key()
 	}
-	lang, variant = langs.Canonical(lang), normVariant(variant)
-	if lang == "" {
-		return SyncTargetInfo{}, ErrNoSidecar
+	// Only a language in the table names a sidecar: Canonical passes an unknown tag
+	// through, and the tag becomes part of a file name ("x/../../a" would leave the
+	// video's folder).
+	l, known := langs.Lookup(lang)
+	if !known {
+		return SyncTargetInfo{}, ErrBadLanguage
 	}
+	lang, variant = l.Code, normVariant(variant)
 	kept := s.titleLangs(ctx, job.Kind, job.MovieID, job.SeriesID) // the first claims an untagged sidecar
 	path, ok := findSidecar(ref.Path, lang, variant, len(kept) > 0 && kept[0] == lang)
 	if !ok && variant == VariantFull {

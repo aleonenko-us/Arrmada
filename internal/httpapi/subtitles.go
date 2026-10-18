@@ -383,7 +383,7 @@ func (a *api) handleSubtitleSyncCheck(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, subtitles.ErrNoVideo), errors.Is(err, subtitles.ErrNoSidecar):
 		a.writeError(w, http.StatusNotFound, err.Error())
 		return
-	case errors.Is(err, subtitles.ErrNotSRT):
+	case errors.Is(err, subtitles.ErrNotSRT), errors.Is(err, subtitles.ErrBadLanguage):
 		a.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	case err != nil:
