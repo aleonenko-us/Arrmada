@@ -205,8 +205,8 @@ export function ClientEditor({ client, onSaved, onChanged, admin }: { client: Do
           <span className="text-ink-faint">forward TCP + UDP on your router to seed properly</span>
         </div>
       )}
-      {usenet && <UsenetPanel client={client} onChanged={onChanged} />}
-      {client.has_login && <BuiltInQbit port={client.ui_port} builtIn={!!client.built_in} admin={!!admin} />}
+      {usenet && <UsenetPanel client={client} onChanged={onChanged} admin={!!admin} />}
+      {client.has_login && client.kind === "qbittorrent" && <BuiltInQbit port={client.ui_port} builtIn={!!client.built_in} local={!!client.ui_local} admin={!!admin} />}
       <ClientForm editing={client} onSaved={onSaved} />
       <PathMappings client={client} body={(maps) => clientBody(client, { path_maps: maps })} onChanged={onChanged} />
     </div>
@@ -228,7 +228,7 @@ export function serversLine(f: Pick<UsenetFacts, "servers_configured" | "servers
 // UsenetPanel is the SABnzbd card's body: Arrmada's categories and which it has (with Add
 // missing categories, which only ever acts on that click), the completed folder and where
 // Arrmada sees it, the news servers, and anything else SABnzbd's answers say needs a look.
-function UsenetPanel({ client, onChanged }: { client: DownloadClient; onChanged?: () => void }) {
+function UsenetPanel({ client, onChanged, admin }: { client: DownloadClient; onChanged?: () => void; admin: boolean }) {
   const [facts, setFacts] = useState<UsenetFacts | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -322,7 +322,7 @@ function UsenetPanel({ client, onChanged }: { client: DownloadClient; onChanged?
           <div key={s.name} className="break-words text-xs text-ink-dim">{s.name}: {s.error}</div>
         ))}
       </div>
-      {client.bundled && client.ui_port && <OpenBundledSAB port={client.ui_port} noServer={facts.servers_configured === 0} />}
+      {client.bundled && client.ui_port && <OpenBundledSAB port={client.ui_port} noServer={facts.servers_configured === 0} login={admin && !!client.has_login} />}
 
       {facts.warnings.length > 0 && (
         <ul aria-label="Needs a look" className="m-0 flex list-none flex-col gap-1 p-0">
@@ -344,15 +344,54 @@ export function bundledSABLink(port: string, loc: { protocol: string; hostname: 
   return `${loc.protocol}//${loc.hostname}:${port}`;
 }
 
-// OpenBundledSAB is where the bundled SABnzbd's news server is added: SABnzbd's own page.
-// Arrmada never asks for the provider's login.
-function OpenBundledSAB({ port, noServer }: { port: string; noServer: boolean }) {
+// OpenBundledSAB is where the bundled SABnzbd's news server is added: SABnzbd's own page,
+// behind the login Arrmada made for it (which an admin can show). Arrmada never asks for
+// the provider's login.
+function OpenBundledSAB({ port, noServer, login }: { port: string; noServer: boolean; login: boolean }) {
   const href = bundledSABLink(port, window.location);
   return (
-    <div className="break-words text-sm">
-      <span className="text-ink-dim">{noServer ? "Add your Usenet provider in SABnzbd (Config → Servers):" : "SABnzbd's own page:"}</span>{" "}
-      <a href={href} target="_blank" rel="noreferrer" className="break-all font-mono font-semibold" style={{ color: "var(--accent-text)" }}>{href} ↗</a>
+    <div className="flex flex-col gap-1 text-sm">
+      <div className="break-words">
+        <span className="text-ink-dim">{noServer ? "Add your Usenet provider in SABnzbd (Config → Servers):" : "SABnzbd's own page:"}</span>{" "}
+        <a href={href} target="_blank" rel="noreferrer" className="break-all font-mono font-semibold" style={{ color: "var(--accent-text)" }}>{href} ↗</a>
+      </div>
+      {login && <ShowLogin kind="sabnzbd" app="SABnzbd" />}
     </div>
+  );
+}
+
+// ShowLogin shows an admin, on request, the login Arrmada made for a bundled client's own
+// page (fetched only on the click, never kept).
+function ShowLogin({ kind, app }: { kind?: "sabnzbd"; app: string }) {
+  const [login, setLogin] = useState<{ username: string; password: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const show = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setLogin(await downloadClientApi.bundledLogin(kind));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      {!login && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={() => void show()} busy={busy} busyLabel="Loading…">Show its login</Button>
+          <span className="text-xs text-ink-faint">The one Arrmada made. If you changed it in {app}, use yours.</span>
+        </div>
+      )}
+      {login && (
+        <div className="font-mono text-sm">
+          <span className="text-ink-dim">user</span> {login.username} · <span className="text-ink-dim">password</span> <span className="select-all">{login.password}</span>
+        </div>
+      )}
+      {error && <p role="alert" className="m-0 break-words text-sm" style={{ color: "var(--reject-text)" }}>{error}</p>}
+    </>
   );
 }
 
@@ -361,22 +400,10 @@ function OpenBundledSAB({ port, noServer }: { port: string; noServer: boolean })
 // (its own container, given a password by Arrmada). Nothing here needs setting up. Its own
 // page is on the port the template or docker-compose.yml publishes (the copy-paste Compose
 // file publishes none, so then there's no link), behind that login, which an admin can show.
-function BuiltInQbit({ port, builtIn, admin }: { port?: string; builtIn: boolean; admin: boolean }) {
-  const href = port ? bundledSABLink(port, window.location) : "";
-  const [login, setLogin] = useState<{ username: string; password: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const show = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      setLogin(await downloadClientApi.bundledLogin());
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
+// docker-compose.yml publishes it on the server's loopback only unless .env says otherwise
+// (local): then the card says how to reach it instead of a link no other computer can open.
+function BuiltInQbit({ port, builtIn, local, admin }: { port?: string; builtIn: boolean; local: boolean; admin: boolean }) {
+  const href = port && !local ? bundledSABLink(port, window.location) : "";
   return (
     <div className="flex flex-col gap-1 text-sm">
       {builtIn ? (
@@ -390,18 +417,14 @@ function BuiltInQbit({ port, builtIn, admin }: { port?: string; builtIn: boolean
           <a href={href} target="_blank" rel="noreferrer" className="break-all font-mono font-semibold" style={{ color: "var(--accent-text)" }}>{href} ↗</a>
         </div>
       )}
-      {admin && !login && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={() => void show()} busy={busy} busyLabel="Loading…">Show its login</Button>
-          <span className="text-xs text-ink-faint">The one Arrmada made. If you changed it in qBittorrent, use yours.</span>
-        </div>
+      {port && local && (
+        <p className="m-0 break-words text-ink-dim">
+          qBittorrent’s own page answers on this server only, at <span className="font-mono">http://127.0.0.1:{port}</span>. To open it
+          from another computer, add <span className="font-mono">ARRMADA_QBIT_WEBUI_BIND=0.0.0.0</span> to .env and run{" "}
+          <span className="font-mono">docker compose up -d arrmada-qbittorrent</span>.
+        </p>
       )}
-      {login && (
-        <div className="font-mono text-sm">
-          <span className="text-ink-dim">user</span> {login.username} · <span className="text-ink-dim">password</span> <span className="select-all">{login.password}</span>
-        </div>
-      )}
-      {error && <p role="alert" className="m-0 break-words text-sm" style={{ color: "var(--reject-text)" }}>{error}</p>}
+      {admin && <ShowLogin app="qBittorrent" />}
     </div>
   );
 }

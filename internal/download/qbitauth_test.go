@@ -516,12 +516,16 @@ func TestSecureBundledQbitResumes(t *testing.T) {
 	})
 }
 
-// Not the bundled qBittorrent of this install: never touched.
-func TestSecureBundledQbitLeavesOthersAlone(t *testing.T) {
+// The bundled container is secured even when its card was switched off, removed or pointed
+// at another qBittorrent: the container still runs and still lets the network in. A card
+// that's switched off gets the login (ready for when it's back on); a removed or repointed
+// one is left as it is, the login staying in the keeper.
+func TestSecureBundledQbitWithoutItsCard(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range []struct {
-		name  string
-		setup func(t *testing.T, svc *Service, url string)
+		name     string
+		setup    func(t *testing.T, svc *Service, url string)
+		cardGets bool // the bundled card ends up with the login
 	}{
 		{"pointed at the owner's own", func(t *testing.T, svc *Service, url string) {
 			c := registerBundled(t, svc, url, "", "")
@@ -529,41 +533,213 @@ func TestSecureBundledQbitLeavesOthersAlone(t *testing.T) {
 			if _, err := svc.Update(ctx, c); err != nil {
 				t.Fatal(err)
 			}
-		}},
+		}, false},
 		{"switched off", func(t *testing.T, svc *Service, url string) {
 			c := registerBundled(t, svc, url, "", "")
 			c.Enabled = false
 			if _, err := svc.Update(ctx, c); err != nil {
 				t.Fatal(err)
 			}
-		}},
+		}, true},
 		{"removed", func(t *testing.T, svc *Service, url string) {
 			c := registerBundled(t, svc, url, "", "")
 			if err := svc.Delete(ctx, c.ID); err != nil {
 				t.Fatal(err)
 			}
-		}},
-		{"only an owner-added client", func(t *testing.T, svc *Service, url string) {
-			if _, err := svc.Create(ctx, Client{Name: "mine", Kind: KindQbittorrent, URL: url, Enabled: true}); err != nil {
-				t.Fatal(err)
-			}
-			if err := svc.flags.Set(ctx, KeyBundledRemoved, "1"); err != nil {
-				t.Fatal(err)
-			}
-		}},
+		}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, _ := newTestService(t)
 			f := newFakeQbit(t)
 			tc.setup(t, svc, f.srv.URL)
-			out, err := svc.SecureBundledQbit(ctx, f.srv.URL, &memKeeper{})
-			if err != nil || out != SecureSkipped {
+			k := &memKeeper{}
+			out, err := svc.SecureBundledQbit(ctx, f.srv.URL, k)
+			if err != nil || out != SecureNewPassword {
 				t.Fatalf("= %v, %v", out, err)
 			}
-			if s := f.snapshot(); !s.whitelistOn || s.pass != "" || s.csrf {
-				t.Errorf("touched: %+v", s)
+			s := f.snapshot()
+			if s.whitelistOn || s.localBypass || !s.csrf || s.pass == "" || s.pass != k.pass || s.proxyOn {
+				t.Errorf("not secured with the kept login: %+v (kept %q)", s, k.pass)
+			}
+			if code := f.anonymous(t); code != http.StatusForbidden {
+				t.Errorf("an anonymous request still got HTTP %d", code)
+			}
+			c, ok, _ := svc.BundledClient(ctx, KindQbittorrent)
+			switch {
+			case tc.cardGets && (!ok || c.Password != k.pass):
+				t.Errorf("the switched-off card didn't get the login: %+v", c)
+			case !tc.cardGets && ok && (c.Password != "" || c.URL == f.srv.URL):
+				t.Errorf("a repointed card was changed: %+v", c)
+			}
+			// Again: nothing to do.
+			if out, err := svc.SecureBundledQbit(ctx, f.srv.URL, k); err != nil || k.made != 1 {
+				t.Errorf("second run = %v, %v (made %d)", out, err, k.made)
 			}
 		})
+	}
+}
+
+// A client of the owner's at the bundled address relies on the access qBittorrent has
+// now, so it's left alone; so is a card-less qBittorrent that already asks for a password,
+// and that's found out without a single failed login.
+func TestSecureBundledQbitLeavesOthersAlone(t *testing.T) {
+	ctx := context.Background()
+	t.Run("only an owner-added client", func(t *testing.T) {
+		svc, _ := newTestService(t)
+		f := newFakeQbit(t)
+		if _, err := svc.Create(ctx, Client{Name: "mine", Kind: KindQbittorrent, URL: f.srv.URL, Enabled: true}); err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.flags.Set(ctx, KeyBundledRemoved, "1"); err != nil {
+			t.Fatal(err)
+		}
+		out, err := svc.SecureBundledQbit(ctx, f.srv.URL, &memKeeper{})
+		if err != nil || out != SecureSkipped {
+			t.Fatalf("= %v, %v", out, err)
+		}
+		if s := f.snapshot(); !s.whitelistOn || s.pass != "" || s.csrf {
+			t.Errorf("touched: %+v", s)
+		}
+	})
+	t.Run("no card, already asks for a password", func(t *testing.T) {
+		svc, _ := newTestService(t)
+		f := newFakeQbit(t)
+		f.set(func(f *fakeQbit) { f.whitelistOn, f.pass = false, "owners-own-password" })
+		out, err := svc.SecureBundledQbit(ctx, f.srv.URL, &memKeeper{})
+		if err != nil || out != SecureSkipped {
+			t.Fatalf("= %v, %v", out, err)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if len(f.loginsFrom) != 0 || len(f.failedLogins) != 0 {
+			t.Errorf("signed in to find out: logins %v, failures %v", f.loginsFrom, f.failedLogins)
+		}
+	})
+}
+
+// dockerNet is the network the tests say Arrmada's container is on (the fake's peer is in it).
+func dockerNet(cidr string) func() []*net.IPNet {
+	return func() []*net.IPNet {
+		_, n, _ := net.ParseCIDR(cidr)
+		return []*net.IPNet{n}
+	}
+}
+
+// A new install's whitelist is the Docker network's own subnet: Arrmada's to replace,
+// exactly like the old seed. The same subnet when Arrmada isn't on that network (an owner's
+// list) is theirs.
+func TestSecureBundledQbitDockerNetworkWhitelist(t *testing.T) {
+	ctx := context.Background()
+	t.Run("the network Arrmada is on", func(t *testing.T) {
+		svc, _ := newTestService(t)
+		svc.ownNets = dockerNet("172.18.0.0/16")
+		f := newFakeQbit(t)
+		f.set(func(f *fakeQbit) { f.whitelist = "172.18.0.0/16" })
+		registerBundled(t, svc, f.srv.URL, "", "")
+		k := &memKeeper{}
+		if out, err := svc.SecureBundledQbit(ctx, f.srv.URL, k); err != nil || out != SecureNewPassword {
+			t.Fatalf("= %v, %v", out, err)
+		}
+		assertSecured(t, svc, f, k.pass)
+	})
+	t.Run("another network", func(t *testing.T) {
+		svc, _ := newTestService(t)
+		svc.ownNets = dockerNet("172.19.0.0/16")
+		f := newFakeQbit(t)
+		f.set(func(f *fakeQbit) { f.whitelist = "172.18.0.0/16" })
+		registerBundled(t, svc, f.srv.URL, "", "")
+		if out, err := svc.SecureBundledQbit(ctx, f.srv.URL, &memKeeper{}); err != nil || out != SecureOwnWhitelist {
+			t.Fatalf("= %v, %v", out, err)
+		}
+		if !f.snapshot().whitelistOn {
+			t.Error("the owner's whitelist was switched off")
+		}
+	})
+	// update.sh --rollback --with-db: the database put back has neither the password nor
+	// the progress record, and reopen.sh switched the Docker-network whitelist back on.
+	// The next start gives qBittorrent the saved password again.
+	t.Run("after a rollback with the database", func(t *testing.T) {
+		svc, flags := newTestService(t)
+		svc.ownNets = dockerNet("172.18.0.0/16")
+		f := newFakeQbit(t)
+		k := &memKeeper{user: "admin", pass: "kept-login-yyyyyyyyyyyy"}
+		f.set(func(f *fakeQbit) { f.pass, f.whitelist, f.csrf, f.localBypass = k.pass, "172.18.0.0/16", true, false })
+		registerBundled(t, svc, f.srv.URL, "", "") // the old database's card: no login
+		_ = flags.Set(ctx, KeyBundledQbitAuth, `{"phase":"secured"}`)
+		if out, err := svc.SecureBundledQbit(ctx, f.srv.URL, k); err != nil || out != SecureNewPassword {
+			t.Fatalf("= %v, %v", out, err)
+		}
+		if k.made != 0 {
+			t.Error("a new password was made although one was kept")
+		}
+		assertSecured(t, svc, f, k.pass)
+	})
+}
+
+// Installs whose switch ran before it covered CSRF (or that keep a whitelist of their own)
+// get CSRF protection and the localhost login switched on once, and only once.
+func TestSecureBundledQbitCSRFOnce(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name  string
+		setup func(f *fakeQbit)
+		want  SecureOutcome
+	}{
+		{"secured before, old seed's CSRF off", func(f *fakeQbit) { f.whitelistOn, f.pass = false, "pw-from-before-xxxxxxx" }, SecureAlready},
+		{"the owner's whitelist", func(f *fakeQbit) { f.whitelist, f.pass = "192.168.1.0/24", "pw-from-before-xxxxxxx" }, SecureOwnWhitelist},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, flags := newTestService(t)
+			f := newFakeQbit(t)
+			f.set(tc.setup)
+			registerBundled(t, svc, f.srv.URL, "admin", "pw-from-before-xxxxxxx")
+			_ = flags.Set(ctx, KeyBundledQbitAuth, `{"phase":"secured"}`)
+			if out, err := svc.SecureBundledQbit(ctx, f.srv.URL, &memKeeper{}); err != nil || out != tc.want {
+				t.Fatalf("= %v, %v", out, err)
+			}
+			if s := f.snapshot(); !s.csrf || s.localBypass {
+				t.Errorf("CSRF %v, localhost bypass %v", s.csrf, s.localBypass)
+			}
+			f.set(func(f *fakeQbit) { f.csrf, f.localBypass = false, true })
+			if _, err := svc.SecureBundledQbit(ctx, f.srv.URL, &memKeeper{}); err != nil {
+				t.Fatal(err)
+			}
+			if s := f.snapshot(); s.csrf || !s.localBypass {
+				t.Error("the owner's later choice was overridden")
+			}
+		})
+	}
+}
+
+// What the health line and the start-up warning see, asked without a login.
+func TestBundledQbitExposure(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	svc.ownNets = dockerNet("172.18.0.0/16")
+	f := newFakeQbit(t)
+	e, err := svc.BundledQbitExposure(ctx, f.srv.URL)
+	if err != nil || !e.Open || !e.OldSeed || len(e.Broad) != 3 {
+		t.Errorf("old seed: %+v, %v", e, err)
+	}
+	for list, broad := range map[string]int{
+		"172.18.0.0/16":                 0, // the Docker network: fine
+		"172.18.0.0/16\n192.168.1.0/24": 0, // one LAN of the owner's: theirs, and narrow
+		"172.18.0.0/16\n10.0.0.0/8":     1,
+		"0.0.0.0/0":                     1,
+	} {
+		f.set(func(f *fakeQbit) { f.whitelist = list })
+		if e, err := svc.BundledQbitExposure(ctx, f.srv.URL); err != nil || len(e.Broad) != broad || e.OldSeed {
+			t.Errorf("%q: %+v, %v (want %d broad)", list, e, err, broad)
+		}
+	}
+	f.set(func(f *fakeQbit) { f.whitelistOn, f.pass = false, "pw" })
+	if e, err := svc.BundledQbitExposure(ctx, f.srv.URL); err != nil || e.Open || len(e.Broad) != 0 {
+		t.Errorf("asks for a password: %+v, %v", e, err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.loginsFrom) != 0 {
+		t.Errorf("signed in: %v", f.loginsFrom)
 	}
 }
 
@@ -643,7 +819,8 @@ func TestSecureBundledQbitLogsNoPassword(t *testing.T) {
 }
 
 // The first run finds a whitelist the owner set up (not the seed's): it's theirs, nothing
-// changes, and it's recorded as done so a later start leaves it alone too.
+// changes but CSRF protection and the localhost login coming on (once, TestSecureBundledQbitCSRFOnce),
+// and it's recorded as done so a later start leaves it alone too.
 func TestSecureBundledQbitOwnersWhitelistFirstRun(t *testing.T) {
 	ctx := context.Background()
 	svc, flags := newTestService(t)
@@ -655,7 +832,7 @@ func TestSecureBundledQbitOwnersWhitelistFirstRun(t *testing.T) {
 	if err != nil || out != SecureOwnWhitelist {
 		t.Fatalf("= %v, %v", out, err)
 	}
-	if s := f.snapshot(); !s.whitelistOn || s.pass != "" || s.csrf || k.made != 0 {
+	if s := f.snapshot(); !s.whitelistOn || s.whitelist != "172.16.0.0/12\n192.168.1.0/24" || s.pass != "" || !s.csrf || k.made != 0 {
 		t.Errorf("the owner's setup was changed: %+v (made %d)", s, k.made)
 	}
 	if !strings.Contains(flags.Get(ctx, KeyBundledQbitAuth, ""), qbitAuthSecured) {

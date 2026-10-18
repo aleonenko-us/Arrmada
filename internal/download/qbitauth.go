@@ -19,12 +19,16 @@ import (
 	"time"
 )
 
-// The Compose bundle's qBittorrent was seeded to let anything on the private Docker
-// networks in without a password (its subnet whitelist), with CSRF protection off. That
-// includes FlareSolverr's Chromium, which opens tracker pages: a hostile one could add
-// torrents or change settings. SecureBundledQbit moves it to a password Arrmada makes and
-// signs in with, like the all-in-one image's, without losing a torrent or a setting and
-// without ever leaving Arrmada shut out.
+// The Compose bundle's qBittorrent was seeded to let anything on the private networks in
+// without a password (its subnet whitelist: 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16,
+// so every device on a home network too), with CSRF protection off. That includes
+// FlareSolverr's Chromium, which opens tracker pages: a hostile one could add torrents or
+// change settings. A new install's whitelist is the Docker network's own subnet and nothing
+// else (docker/qbittorrent/init.sh), and it too only lasts until Arrmada first starts.
+// SecureBundledQbit moves it to a password Arrmada makes and signs in with, like the
+// all-in-one image's, without losing a torrent or a setting and without ever leaving
+// Arrmada shut out. It does so even when its card was removed or pointed elsewhere, as
+// long as the bundled container still answers and lets Arrmada in without a password.
 //
 // The order matters. While the whitelist is on, qBittorrent lets Arrmada in whatever login
 // it sends, so a login can't be checked from Arrmada's own address: a sign-in from a
@@ -41,6 +45,12 @@ import (
 // a restart part-way through carries on from there, and once it's done it isn't redone,
 // so a whitelist the owner sets up later is theirs.
 const KeyBundledQbitAuth = "download_bundled_qbit_auth"
+
+// KeyBundledQbitCSRF records that SecureBundledQbit has switched the bundled qBittorrent's
+// CSRF protection (and its localhost login) on once. Configs seeded before 2026-10-16 had
+// both off, and installs whose switch ran before it covered them (or that kept a whitelist
+// of their own) were left so. Once is enough: an owner who turns them off again keeps that.
+const KeyBundledQbitCSRF = "download_bundled_qbit_csrf"
 
 const (
 	qbitAuthVerifying = "verifying" // reverse-proxy settings borrowed for the check
@@ -59,8 +69,8 @@ type qbitAuthState struct {
 type SecureOutcome int
 
 const (
-	// SecureSkipped: no bundled qBittorrent of this install to secure (removed, switched
-	// off, or pointed at another qBittorrent).
+	// SecureSkipped: nothing to secure: no card for it and it already asks Arrmada's
+	// network for a password, or a client of the owner's signs in to it without one.
 	SecureSkipped SecureOutcome = iota
 	// SecureAlready: it already asks for a password, or nothing was left to do.
 	SecureAlready
@@ -94,14 +104,139 @@ type BundledLoginKeeper interface {
 // seedWhitelist is the subnet whitelist the Compose bundle's first qBittorrent config had.
 var seedWhitelist = []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
 
-// SecureBundledQbit gives the Compose bundle's qBittorrent (the bundled client, while it
-// still points at url) a password and switches off its subnet whitelist, then turns CSRF
-// protection on and the localhost bypass off. A login the owner gave the client is kept
-// when qBittorrent accepts it; otherwise Arrmada makes one (keeper) and the client signs in
-// with it. Every step can be repeated, and a failure leaves the whitelist on, so Arrmada
-// still gets in. It does nothing to a client that was removed, switched off or pointed at
-// another qBittorrent, or once it has been done (unless qBittorrent's config was started
-// over with the seeded whitelist).
+// isArrmadaWhitelist says list is a whitelist Arrmada seeded, so Arrmada's to replace with a
+// password: the old seed's private ranges, or the Docker network's own subnet that
+// docker/qbittorrent/init.sh (a new install) and reopen.sh (update.sh --rollback --with-db,
+// troubleshooting) write. Any other list is the owner's.
+func (s *Service) isArrmadaWhitelist(list string) bool {
+	return sameSubnets(list, seedWhitelist) || s.isDockerWhitelist(list)
+}
+
+// isDockerWhitelist says every subnet in list is exactly one of the networks Arrmada's own
+// container is on: the Docker network it shares with qBittorrent.
+func (s *Service) isDockerWhitelist(list string) bool {
+	subs := splitSubnets(list)
+	if len(subs) == 0 {
+		return false
+	}
+	own := s.localNets()
+	for _, sub := range subs {
+		_, n, err := net.ParseCIDR(sub)
+		if err != nil || !hasNet(own, n) {
+			return false
+		}
+	}
+	return true
+}
+
+// localNets is the networks Arrmada's container is on, from its interfaces' addresses.
+func (s *Service) localNets() []*net.IPNet {
+	if s.ownNets != nil {
+		return s.ownNets()
+	}
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var out []*net.IPNet
+	for _, a := range addrs {
+		ipn, ok := a.(*net.IPNet)
+		if !ok || ipn.IP.IsLoopback() {
+			continue
+		}
+		out = append(out, &net.IPNet{IP: ipn.IP.Mask(ipn.Mask), Mask: ipn.Mask})
+	}
+	return out
+}
+
+func hasNet(nets []*net.IPNet, n *net.IPNet) bool {
+	ones, bits := n.Mask.Size()
+	for _, o := range nets {
+		if oo, ob := o.Mask.Size(); oo == ones && ob == bits && o.IP.Equal(n.IP) {
+			return true
+		}
+	}
+	return false
+}
+
+// cardlessQbit is the client SecureBundledQbit works with when no card points at url: the
+// login Arrmada keeps, or none. Name is empty when there's nothing to do: a client of the
+// owner's signs in to url (their card relies on whatever access it has now), or qBittorrent
+// already asks Arrmada's network for a password. That is asked without signing in, so a
+// qBittorrent with a password of the owner's never counts a failed login against Arrmada.
+func (s *Service) cardlessQbit(ctx context.Context, api *qbitAuthAPI, url string, keeper BundledLoginKeeper) (Client, error) {
+	clients, err := s.repo.List(ctx)
+	if err != nil {
+		return Client{}, err
+	}
+	for _, c := range clients {
+		if c.Kind == KindQbittorrent && c.URL == url {
+			s.log.Info("bundled qBittorrent: a client of yours signs in to it, so Arrmada leaves its login settings alone", "name", c.Name)
+			return Client{}, nil
+		}
+	}
+	if _, open, err := api.anonymousPrefs(ctx); err != nil || !open {
+		return Client{}, err
+	}
+	user, pass, _, err := keeper.Load()
+	if err != nil {
+		return Client{}, fmt.Errorf("the saved qBittorrent login: %w", err)
+	}
+	s.log.Info("bundled qBittorrent: it has no card in Arrmada but still lets the Docker network in without a password; giving it one")
+	return Client{Name: bundledName(KindQbittorrent), Kind: KindQbittorrent, URL: url, Username: user, Password: pass}, nil
+}
+
+// QbitExposure is who gets into the bundled qBittorrent without a password, as far as
+// Arrmada can see from its own network.
+type QbitExposure struct {
+	// Open: its subnet whitelist lets Arrmada's own network in with no login at all.
+	Open bool
+	// Broad lists the whitelisted subnets that reach beyond that network, each covering a
+	// /16 or more (every home network in 192.168.0.0/16, say). Empty when there are none.
+	Broad []string
+	// OldSeed: the whitelist is exactly the one the first Compose config had.
+	OldSeed bool
+}
+
+// BundledQbitExposure asks the qBittorrent at url, without signing in, whether it lets
+// Arrmada in anyway (its subnet whitelist) and, when it does, which subnets that covers.
+// Nothing is changed and no login is tried, so it can run as often as a health check does.
+func (s *Service) BundledQbitExposure(ctx context.Context, url string) (QbitExposure, error) {
+	p, open, err := newQbitAuthAPI(url).anonymousPrefs(ctx)
+	if err != nil || !open {
+		return QbitExposure{}, err
+	}
+	e := QbitExposure{Open: true}
+	if !p.WhitelistEnabled {
+		return e, nil // in some other way (it only bypasses for localhost): nothing to name
+	}
+	e.OldSeed = sameSubnets(p.Whitelist, seedWhitelist)
+	own := s.localNets()
+	for _, sub := range splitSubnets(p.Whitelist) {
+		_, n, err := net.ParseCIDR(sub)
+		if err != nil || hasNet(own, n) {
+			continue
+		}
+		if ones, bits := n.Mask.Size(); (bits == 32 && ones <= 16) || (bits == 128 && ones <= 48) {
+			e.Broad = append(e.Broad, sub)
+		}
+	}
+	return e, nil
+}
+
+// SecureBundledQbit gives the Compose bundle's qBittorrent (the container at url) a
+// password and switches off its subnet whitelist, then turns CSRF protection on and the
+// localhost bypass off. A login the owner gave the bundled client is kept when qBittorrent
+// accepts it; otherwise Arrmada makes one (keeper) and the client signs in with it. Every
+// step can be repeated, and a failure leaves the whitelist on, so Arrmada still gets in.
+//
+// The bundled card switched off is secured all the same (and given the login, ready for
+// when it's back on). With no card at url (removed, or pointed at another qBittorrent) the
+// container is still there and still open, so it's secured with the login Arrmada keeps,
+// but only while it lets Arrmada in without a password: one that already asks for one is
+// left alone, and so is one a client of the owner's signs in to (it would be shut out).
+// Once done it isn't redone, unless qBittorrent's config was started over with a
+// whitelist Arrmada seeded (isArrmadaWhitelist).
 func (s *Service) SecureBundledQbit(ctx context.Context, url string, keeper BundledLoginKeeper) (SecureOutcome, error) {
 	if s.flags == nil {
 		return SecureSkipped, errors.New("no settings to keep the progress in")
@@ -110,11 +245,14 @@ func (s *Service) SecureBundledQbit(ctx context.Context, url string, keeper Bund
 	if err != nil {
 		return SecureSkipped, err
 	}
-	if !ok || !c.Enabled || c.URL != url {
-		return SecureSkipped, nil
+	api := newQbitAuthAPI(url)
+	card := ok && c.URL == url
+	if !card {
+		if c, err = s.cardlessQbit(ctx, api, url, keeper); err != nil || c.Name == "" {
+			return SecureSkipped, err
+		}
 	}
 	st := s.qbitAuthState(ctx)
-	api := newQbitAuthAPI(url)
 
 	// The client's own login: let in by the whitelist while it's on, judged when it's off.
 	sess, res, err := api.login(ctx, c.Username, c.Password, "")
@@ -127,6 +265,17 @@ func (s *Service) SecureBundledQbit(ctx context.Context, url string, keeper Bund
 	p, err := sess.prefs(ctx)
 	if err != nil {
 		return SecureSkipped, err
+	}
+
+	// Once, whatever else happens below: CSRF protection and the localhost login on, which
+	// configs seeded before 2026-10-16 had off (KeyBundledQbitCSRF).
+	if s.flags.Get(ctx, KeyBundledQbitCSRF, "") == "" {
+		if err := sess.setPrefs(ctx, map[string]any{"bypass_local_auth": false, "web_ui_csrf_protection_enabled": true}); err != nil {
+			return SecureSkipped, err
+		}
+		if err := s.flags.Set(ctx, KeyBundledQbitCSRF, "1"); err != nil {
+			return SecureSkipped, err
+		}
 	}
 
 	// A check cut short last time may have left the reverse-proxy settings borrowed. The
@@ -176,9 +325,9 @@ func (s *Service) SecureBundledQbit(ctx context.Context, url string, keeper Bund
 			return SecureAlready, s.saveQbitAuthState(ctx, qbitAuthState{Phase: qbitAuthSecured})
 		}
 		return SecureAlready, nil
-	case !sameSubnets(p.Whitelist, seedWhitelist):
+	case !s.isArrmadaWhitelist(p.Whitelist):
 		// A whitelist the owner set up (changed from the seed's, or turned on again with
-		// subnets of their own): theirs to keep. Only the seed's is Arrmada's to replace.
+		// subnets of their own): theirs to keep. Only one Arrmada seeded is its to replace.
 		if st.Phase != qbitAuthSecured {
 			s.log.Info("bundled qBittorrent: its subnet whitelist isn't the one it was installed with, so it's left as you set it", "name", c.Name)
 			return SecureOwnWhitelist, s.saveQbitAuthState(ctx, qbitAuthState{Phase: qbitAuthSecured})
@@ -232,9 +381,12 @@ func (s *Service) SecureBundledQbit(ctx context.Context, url string, keeper Bund
 		verified = vs
 		// The client signs in with it from now on. The whitelist still lets any login in,
 		// so this can come before the switch, and must: once the whitelist is off, the
-		// client needs this login.
-		if err := s.adoptBundledLogin(ctx, c, user, pass); err != nil {
-			return SecureSkipped, err
+		// client needs this login. With no card there's no client to give it to: the login
+		// stays in the keeper, for Show its login and for a card restored later.
+		if card {
+			if err := s.adoptBundledLogin(ctx, c, user, pass); err != nil {
+				return SecureSkipped, err
+			}
 		}
 	}
 
@@ -526,6 +678,33 @@ func (s *qbitAuthSession) do(ctx context.Context, method, path string, body io.R
 		return nil, fmt.Errorf("qbittorrent: %s HTTP %d", path, resp.StatusCode)
 	}
 	return resp, nil
+}
+
+// anonymousPrefs reads qBittorrent's preferences with no session at all. open is false
+// when it asks for a login (401/403): its whitelist doesn't cover Arrmada's address. An
+// unauthenticated API request isn't a failed login, so this never adds up to a ban.
+func (a *qbitAuthAPI) anonymousPrefs(ctx context.Context) (qbitAuthPrefs, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.base+"/api/v2/app/preferences", nil)
+	if err != nil {
+		return qbitAuthPrefs{}, false, err
+	}
+	req.Header.Set("Referer", a.base)
+	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	if err != nil {
+		return qbitAuthPrefs{}, false, fmt.Errorf("%w: %v", ErrQbitUnreachable, err)
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
+		return qbitAuthPrefs{}, false, nil
+	case resp.StatusCode/100 != 2:
+		return qbitAuthPrefs{}, false, fmt.Errorf("qbittorrent: preferences HTTP %d", resp.StatusCode)
+	}
+	var p qbitAuthPrefs
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&p); err != nil {
+		return qbitAuthPrefs{}, false, fmt.Errorf("qbittorrent: preferences: %w", err)
+	}
+	return p, true, nil
 }
 
 func (s *qbitAuthSession) prefs(ctx context.Context) (qbitAuthPrefs, error) {

@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"net"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/aio"
+	"github.com/tristenlammi/arrmada/internal/download"
 )
 
 // The bundled qBittorrent's login. Arrmada and people alike sign in with a login Arrmada
@@ -39,9 +41,29 @@ func (a *api) qbitUIPort() string {
 	return ""
 }
 
+// qbitUILocal says docker-compose.yml publishes the Compose bundle's qBittorrent page on
+// the server's loopback only: ARRMADA_QBIT_WEBUI_HOST_BIND is the address it binds
+// (ARRMADA_QBIT_WEBUI_BIND in .env, 127.0.0.1 by default). Nothing on another computer
+// reaches it there. The all-in-one image's page is published by its template, never this.
+func (a *api) qbitUILocal() bool {
+	if a.deps.Config.AIOQbittorrentURL != "" {
+		return false
+	}
+	b := strings.Trim(strings.TrimSpace(os.Getenv("ARRMADA_QBIT_WEBUI_HOST_BIND")), "[]")
+	if strings.EqualFold(b, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(b)
+	return ip != nil && ip.IsLoopback()
+}
+
 // handleBundledQbitLogin is the bundled qBittorrent's web UI login, for an admin who
 // wants qBittorrent's own page. Admin-only, never cached, never logged.
 func (a *api) handleBundledQbitLogin(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("kind") == string(download.KindSABnzbd) {
+		a.handleBundledSABLogin(w, r)
+		return
+	}
 	if a.deps.Config.QbittorrentLogin == "" {
 		a.writeError(w, http.StatusNotFound, "this install's qBittorrent has no login made by Arrmada")
 		return

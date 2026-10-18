@@ -188,7 +188,8 @@ profiles_with() {
 # itself; the provider's login goes into SABnzbd, never Arrmada.
 sabnzbd_note() {
   say "  SABnzbd (Usenet): Arrmada connects to it by itself. Add your Usenet provider there:"
-  say "    open http://$(host_ip):$1 → Config → Servers (its setup wizard opens on the first visit)"
+  say "    open http://$(host_ip):$1 → Config → Servers (its setup wizard opens on the first visit;"
+  say "    its login is on SABnzbd's card in Arrmada's Settings → Connections: Show its login)"
   say "  then add your Newznab indexers in Arrmada (Settings → Connections)."
   # The app looks for SABnzbd's settings every 30 seconds and logs when it has added it. An
   # Arrmada older than the bundled SABnzbd never does: say what to do then.
@@ -781,6 +782,8 @@ new_install() {
     say "# Host ports (picked free at install so nothing clashes with your other apps)."
     say "ARRMADA_PORT=$WEBPORT"
     say "ARRMADA_QBIT_WEBUI_PORT=$QBWEB"
+    say "# qBittorrent's own page answers on this server only; to open it to your network, add"
+    say "# ARRMADA_QBIT_WEBUI_BIND=0.0.0.0 and run: docker compose up -d arrmada-qbittorrent"
     say "ARRMADA_PROWLARR_PORT=$PROWPORT"
     if [ -n "$SABPORT" ]; then
       say "# SABnzbd's web page (where your Usenet provider goes)."

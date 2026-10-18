@@ -15,6 +15,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/aio"
 	"github.com/tristenlammi/arrmada/internal/config"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/health"
 )
 
 // ensureBundledQbit registers the bundled qBittorrent at boot, with the login Arrmada made
@@ -180,4 +181,19 @@ func secureBundledQbit(ctx context.Context, log *slog.Logger, downloads *downloa
 	case out == download.SecureKeptPassword:
 		log.Info("the bundled qBittorrent now asks for the password you set in it; Arrmada signs in with the one on its card")
 	}
+	// Whatever happened, say so loudly when it still lets whole networks in without a
+	// password (Settings → Status says it too, until it's fixed: bundledQbitCheck).
+	if exp, err := downloads.BundledQbitExposure(ctx, cfg.QbittorrentURL); err == nil && len(exp.Broad) > 0 {
+		log.Warn("the bundled qBittorrent still lets anything on these networks in without a password (its subnet whitelist)", "subnets", strings.Join(exp.Broad, ", "), "first_install_whitelist", exp.OldSeed)
+	}
+}
+
+// bundledQbitCheck is the health line for a Compose bundle qBittorrent whose subnet
+// whitelist still lets whole networks in without a password, asked without signing in
+// (download.Service.BundledQbitExposure), so it clears by itself once that's fixed.
+func bundledQbitCheck(downloads *download.Service, cfg config.Config) health.Check {
+	return health.BundledQbitCheck(func(ctx context.Context) ([]string, bool, error) {
+		exp, err := downloads.BundledQbitExposure(ctx, cfg.QbittorrentURL)
+		return exp.Broad, exp.OldSeed, err
+	})
 }

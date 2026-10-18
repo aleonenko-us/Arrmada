@@ -160,6 +160,19 @@ func TestBundledQbitLoginCompose(t *testing.T) {
 	if c := l.Clients[0]; c.UIPort != "8081" || !c.HasLogin || c.BuiltIn {
 		t.Errorf("card = %+v", c)
 	}
+	if strings.Contains(rec.Body.String(), "ui_local") {
+		t.Errorf("a page published on every interface reads as this server's only: %s", rec.Body)
+	}
+	// docker-compose.yml publishes it on 127.0.0.1 unless .env says otherwise: the card
+	// says so rather than linking a page another computer can't open.
+	for bind, local := range map[string]bool{"127.0.0.1": true, "localhost": true, "[::1]": true, "0.0.0.0": false, "192.168.1.10": false} {
+		t.Setenv("ARRMADA_QBIT_WEBUI_HOST_BIND", bind)
+		body := s.do("GET", "/api/v1/downloadclients", mgr).Body.String()
+		if got := strings.Contains(body, `"ui_local":true`); got != local {
+			t.Errorf("bound to %s: ui_local %v, want %v", bind, got, local)
+		}
+	}
+	t.Setenv("ARRMADA_QBIT_WEBUI_HOST_BIND", "")
 	if rec := s.do("GET", "/api/v1/downloadclients/bundled-login", mgr); rec.Code != http.StatusForbidden {
 		t.Errorf("a manager read the login: HTTP %d", rec.Code)
 	}

@@ -642,6 +642,8 @@ export interface DownloadClient {
   has_login?: boolean;
   /** The all-in-one image's qBittorrent, running inside Arrmada's own container. */
   built_in?: boolean;
+  /** Its own page is published on the server's loopback only (ARRMADA_QBIT_WEBUI_BIND), so another computer can't open ui_port. */
+  ui_local?: boolean;
   /** How it has been answering; absent when nothing is known yet. */
   status?: DownloadClientStatus;
   /** Remote → local folder mappings for a client that sees its downloads under another path. */

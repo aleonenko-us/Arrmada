@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,9 @@ type Service struct {
 	snap snapshotCache
 	// transports caches which transports have a client to send to (HasTransport).
 	transports transportCache
+	// ownNets is the networks Arrmada's container is on (qbitauth.go); nil reads its
+	// interfaces. Tests set it.
+	ownNets func() []*net.IPNet
 }
 
 // transportCache remembers HasTransport's answer until a client is created, edited or

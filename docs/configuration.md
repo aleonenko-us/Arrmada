@@ -12,7 +12,7 @@ at the end and saves them in `.env`.
 | Service           | Default | Setting                   |
 | ----------------- | ------- | ------------------------- |
 | Arrmada           | 7878    | `ARRMADA_PORT`            |
-| qBittorrent WebUI | 8080    | `ARRMADA_QBIT_WEBUI_PORT` |
+| qBittorrent WebUI | 8080    | `ARRMADA_QBIT_WEBUI_PORT` — on the server itself only, unless `ARRMADA_QBIT_WEBUI_BIND` says otherwise ([below](#qbittorrents-own-page)) |
 | BitTorrent        | random  | `ARRMADA_QBIT_PORT` — forward this on your router (TCP and UDP) |
 | Audiobook server  | 13379   | `ARRMADA_AUDIOBOOK_PORT` — for listening apps; off until switched on in Audiobooks |
 | Prowlarr          | 9696    | `ARRMADA_PROWLARR_PORT` (only with `--with-prowlarr`) |
@@ -20,29 +20,67 @@ at the end and saves them in `.env`.
 
 ## qBittorrent's login
 
-The bundled qBittorrent asks for a password, like any other web page on your network. Arrmada
-makes one when it first starts (a long random one), signs in with it, and keeps it in its data
-folder (`qbittorrent-login.json`, readable only by the user Arrmada runs as). To open
-qBittorrent's own page, an admin goes to **Settings → Connections**, opens the qBittorrent
-card and clicks **Show its login**; the card links the page too. The login is never in the
-client list, the logs or a support bundle.
+The bundled qBittorrent asks for a password, like any other web page. Arrmada makes one when
+it first starts (a long random one), signs in with it, and keeps it in its data folder
+(`qbittorrent-login.json`, readable only by the user Arrmada runs as). To open qBittorrent's
+own page, an admin goes to **Settings → Connections**, opens the qBittorrent card and clicks
+**Show its login**. The login is never in the client list, the logs or a support bundle.
 
-Nothing else on the Docker network gets in without it, including FlareSolverr's browser,
-which opens tracker pages. CSRF protection is on, so another site can't send your browser's
-qBittorrent session commands either. If you put qBittorrent's page behind a reverse proxy,
-it has to pass the original `Host` header through (most do; plain nginx needs
-`proxy_set_header Host $host;`).
+Until then, a new install's qBittorrent lets in, without a password, only the Docker network
+it shares with Arrmada (the installer writes that network's own subnet into its first
+config), so Arrmada can sign in to give it the password. Installs from before October 2026
+were set up with every private range instead (`10.0.0.0/8`, `172.16.0.0/12`,
+`192.168.0.0/16`), which covers your home network too; Arrmada replaces that with the
+password at its next start. It does so even if you removed qBittorrent's card or pointed it
+at another qBittorrent, as long as the bundled container still runs and lets Arrmada in.
+While a whitelist that broad is still on, the log says so at every start and **Settings →
+Status** shows a warning.
+
+Nothing else on the Docker network gets in without the password, including FlareSolverr's
+browser, which opens tracker pages. CSRF protection is on (Arrmada switches it on once for
+installs that had it off), so another site can't send your browser's qBittorrent session
+commands either. If you put qBittorrent's page behind a reverse proxy, it has to pass the
+original `Host` header through (most do; plain nginx needs `proxy_set_header Host $host;`).
+qBittorrent's host header validation stays off: with it on, qBittorrent refuses any page
+whose address names another port than its own 8080, and the installer publishes it on
+whichever port is free.
 
 You can change the password in qBittorrent (Tools → Options → WebUI). Then enter the new one
 on its card in Arrmada (**Edit**), or Arrmada can't get in; **Show its login** keeps showing
 the one Arrmada made.
 
 The "Bypass authentication for clients in whitelisted IP subnets" option is yours to use,
-with one exception: turned back on with the subnets it was installed with (`10.0.0.0/8`,
-`172.16.0.0/12`, `192.168.0.0/16`), Arrmada takes it for its old login-free access and
-switches it off again at its next start. Use your own subnets (just your LAN's, say) and
-it's left alone. An install that already had its own subnets there before this update is
-left alone too.
+with one exception: turned back on with a list Arrmada set up itself — the old private
+ranges above, or exactly the Docker network's own subnet — Arrmada takes it for its
+login-free access and switches it off again at its next start. Use your own subnets (just
+your LAN's, say) and it's left alone. An install that already had its own subnets there
+before this update is left alone too. **Settings → Status** warns about any whitelist that
+covers a `/16` or more beyond the Docker network.
+
+### qBittorrent's own page
+
+Arrmada drives qBittorrent over the Docker network, so its page isn't needed day to day. On a
+new install it's published on the server itself only (`127.0.0.1`, port
+`ARRMADA_QBIT_WEBUI_PORT`): open `http://127.0.0.1:<port>` there, or from another computer
+through an SSH tunnel (`ssh -L 8080:127.0.0.1:<port> you@server`, then
+`http://localhost:8080`). To open it from any computer on your network, add
+`ARRMADA_QBIT_WEBUI_BIND=0.0.0.0` to `.env` and run `docker compose up -d arrmada-qbittorrent`
+(it restarts qBittorrent once). Its card in Settings → Connections links the page when it's
+open to your network, and says where it is when it isn't.
+
+An install from before this keeps its page open to your network until qBittorrent's container
+is recreated: `update.sh` only restarts Arrmada, and says so at the end of each update until
+`.env` has `ARRMADA_QBIT_WEBUI_BIND` either way (or the container has been recreated).
+
+## SABnzbd's login
+
+The bundled SABnzbd's own page is on your network (that's where your Usenet provider is
+added), so it asks for a login: user `arrmada` and a long random password, made when it's
+first installed, or given by Arrmada at its next start to a SABnzbd from before that. An
+admin sees it on SABnzbd's card in **Settings → Connections** (**Show its login**); it's also
+in SABnzbd's own settings, `docker compose exec arrmada-sabnzbd grep -E '^(username|password) ='
+/config/sabnzbd.ini`. Arrmada itself talks to SABnzbd with its API key, which works with or
+without a login. A login you set in SABnzbd (Config → General) is yours and never changed.
 
 ## `.env` settings
 
@@ -55,6 +93,7 @@ left alone too.
 | `ARRMADA_STORAGE_HOST` | The media folder the installer mounted at `/storage` (for reference; the mount itself is in `docker-compose.override.yml`, so change it with `install.sh --media`) |
 | `ARRMADA_MEDIA_HOST` | A host folder for `/media`, Arrmada's own downloads and library, in place of the managed Docker volume; every service that shares media follows it ([below](#media-in-a-folder-of-your-own-env-only)) |
 | `ARRMADA_PUID`, `ARRMADA_PGID` | The user and group Arrmada and qBittorrent run as. On Unraid, 99 and 100 |
+| `ARRMADA_QBIT_WEBUI_BIND` | The address qBittorrent's own page is published on: `127.0.0.1` (the server itself, the default) or `0.0.0.0` (every computer on your network). Applied with `docker compose up -d arrmada-qbittorrent` ([above](#qbittorrents-own-page)) |
 | `TZ` | Timezone. Schedules — the Convert window especially — run on this clock ([list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)) |
 | `COMPOSE_PROFILES` | The optional companions to run, a comma list: `prowlarr` (Prowlarr), `sabnzbd` (SABnzbd, for Usenet), e.g. `prowlarr,sabnzbd`. `update.sh` never changes it |
 | `ARRMADA_RECYCLE_DIR` | Override for the recycle bin (see below) |
@@ -295,8 +334,9 @@ your Downloads folder when you change it in Settings → Library, once Arrmada h
 SABnzbd can see it (the installer mounts your media folder into SABnzbd for that).
 
 What's left is your provider: open `http://<server>:8085` (the port the installer printed;
-the SABnzbd card in Settings → Connections has the link) → **Config → Servers**, and add it
-there — the first visit opens SABnzbd's setup wizard, which does the same. Leave the
+the SABnzbd card in Settings → Connections has the link, and **Show its login** for signing
+in: [SABnzbd's login](#sabnzbds-login)) → **Config → Servers**, and add it there — the
+first visit opens SABnzbd's setup wizard, which does the same. Leave the
 folders it shows as they are. Getting started and the health list say "Add your Usenet
 provider in SABnzbd" until there's a news server. Open SABnzbd by the server's IP address:
 it only answers to the names in its `host_whitelist` (Config → Special), which starts with

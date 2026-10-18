@@ -44,6 +44,8 @@ services:
       <<: *you
       ARRMADA_AUDIOBOOK_HOST_PORT: "${ARRMADA_AUDIOBOOK_PORT:-13379}"
       ARRMADA_EXTERNAL_HEADER: "Cf-Connecting-Ip"
+      ARRMADA_ALLOW_REMOTE_SETUP: "${ARRMADA_ALLOW_REMOTE_SETUP:-}"
+      ARRMADA_TRUST_CF_HEADER: "${ARRMADA_TRUST_CF_HEADER:-}"
       ARRMADA_LOG_LEVEL: "info"
       ARRMADA_QBITTORRENT_URL: "http://arrmada-qbittorrent:8080"
       ARRMADA_FLARESOLVERR_URL: "http://arrmada-flaresolverr:8191"
@@ -153,8 +155,9 @@ services:
       - "${ARRMADA_DATA_HOST:-/path/to/arrmada/data}:/data:ro"
     restart: "no"
 
-  # One-shot: qBittorrent's first settings (only if it has none yet). The whitelist lets
-  # Arrmada in on its first start, when it gives qBittorrent a password and switches it off.
+  # One-shot: qBittorrent's first settings (only if it has none yet). The whitelist, this
+  # stack's own Docker network and nothing else (never your home network), lets Arrmada in
+  # on its first start, when it gives qBittorrent a password and switches it off.
   arrmada-qbittorrent-init:
     image: alpine:3.20
     container_name: Arrmada-qbittorrent-init
@@ -184,9 +187,11 @@ services:
         WebUI\LocalHostAuth=true
         WebUI\CSRFProtection=true
         WebUI\HostHeaderValidation=false
-        WebUI\AuthSubnetWhitelistEnabled=true
-        WebUI\AuthSubnetWhitelist=10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
         EOF
+        n=$$(ip -4 route show 2>/dev/null | awk '/ scope link / && $$1 ~ /\// { printf "%s%s", sep, $$1; sep = ", " }')
+        if [ -n "$$n" ]; then
+          printf 'WebUI\\AuthSubnetWhitelistEnabled=true\nWebUI\\AuthSubnetWhitelist=%s\n' "$$n" >> "$$f"
+        fi
     volumes:
       - arrmada-qbt-config:/config
     restart: "no"
@@ -204,8 +209,8 @@ services:
 
   # Optional: SABnzbd, for Usenet. You need your own Usenet provider and Newznab indexers.
   # Uncomment both services; Arrmada adds SABnzbd by itself. Then open
-  # http://<server>:8085 → Config → Servers to add your provider, and add your indexers
-  # in Arrmada (Settings → Connections).
+  # http://<server>:8085 → Config → Servers to add your provider (sign in with the login an
+  # admin sees on SABnzbd's card in Settings → Connections), and add your indexers in Arrmada.
   # arrmada-sabnzbd:
   #   image: lscr.io/linuxserver/sabnzbd:5.1.3
   #   container_name: Arrmada-sabnzbd
@@ -221,7 +226,8 @@ services:
   #     arrmada-media-init: { condition: service_completed_successfully }
   #   restart: unless-stopped
   #
-  # # One-shot: SABnzbd's first settings (only if it has none yet), with a new API key.
+  # # One-shot: SABnzbd's first settings (only if it has none yet), with a new API key and
+  # # a login for its own page.
   # arrmada-sabnzbd-init:
   #   image: alpine:3.20
   #   container_name: Arrmada-sabnzbd-init
@@ -234,7 +240,8 @@ services:
   #       [ -f "$$f" ] && exit 0
   #       key=$$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
   #       nzb=$$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
-  #       [ "$${#key}" = 32 ] && [ "$${#nzb}" = 32 ] || exit 1
+  #       pw=$$(od -An -N18 -tx1 /dev/urandom | tr -d ' \n')
+  #       [ "$${#key}" = 32 ] && [ "$${#nzb}" = 32 ] && [ "$${#pw}" = 36 ] || exit 1
   #       umask 077
   #       cat > "$$f.new" <<EOF
   #       __version__ = 19
@@ -243,6 +250,8 @@ services:
   #       language = en
   #       api_key = $$key
   #       nzb_key = $$nzb
+  #       username = arrmada
+  #       password = $$pw
   #       host_whitelist = arrmada-sabnzbd,
   #       download_dir = /media/downloads/usenet/incomplete
   #       complete_dir = /media/downloads/usenet/complete

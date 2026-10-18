@@ -211,8 +211,10 @@ func TestComposeExampleSABnzbdInit(t *testing.T) {
 
 // TestQbittorrentSeedsAgree: docker-compose.yml copies docker/qbittorrent/qBittorrent.conf,
 // the example writes it inline; both give the same web UI settings. CSRF protection and the
-// localhost login are on from the start; the subnet whitelist is the one Arrmada replaces
-// with a password on its first start (download.SecureBundledQbit recognises exactly it).
+// localhost login are on from the start. The subnet whitelist is the Docker network's own
+// subnet, worked out the same way in both (docker/qbittorrent/subnets.sh), never the private
+// ranges that covered every home network: download.SecureBundledQbit recognises that subnet
+// and replaces it with a password on Arrmada's first start.
 func TestQbittorrentSeedsAgree(t *testing.T) {
 	root := repoRoot(t)
 	webUI := func(lines []string) []string {
@@ -230,10 +232,31 @@ func TestQbittorrentSeedsAgree(t *testing.T) {
 		t.Errorf("the qBittorrent seeds differ:\n--- docker/qbittorrent/qBittorrent.conf\n%s\n--- docker-compose.example.yml\n%s",
 			strings.Join(file, "\n"), strings.Join(inline, "\n"))
 	}
-	for _, want := range []string{`WebUI\LocalHostAuth=true`, `WebUI\CSRFProtection=true`, `WebUI\AuthSubnetWhitelist=10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16`} {
+	for _, want := range []string{`WebUI\LocalHostAuth=true`, `WebUI\CSRFProtection=true`} {
 		if !slices.Contains(file, want) {
 			t.Errorf("the qBittorrent seed has no %s", want)
 		}
+	}
+	exScript := strings.ReplaceAll(strings.Join(serviceScript(readText(t, filepath.Join(root, "docker-compose.example.yml")), "arrmada-qbittorrent-init", false), "\n"), "$$", "$")
+	for name, text := range map[string]string{
+		"docker/qbittorrent/qBittorrent.conf": readText(t, filepath.Join(root, "docker", "qbittorrent", "qBittorrent.conf")),
+		"docker/qbittorrent/init.sh":          readText(t, filepath.Join(root, "docker", "qbittorrent", "init.sh")),
+		"the example's init":                  exScript,
+	} {
+		for _, l := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+			if strings.Contains(l, "192.168.0.0/16") && !strings.HasPrefix(strings.TrimSpace(l), "#") {
+				t.Errorf("%s still whitelists every home network: %s", name, l)
+			}
+		}
+	}
+	subnets := strings.TrimSpace(readText(t, filepath.Join(root, "docker", "qbittorrent", "subnets.sh")))
+	pipeline := subnets[strings.LastIndex(subnets, "\n")+1:]
+	if !strings.HasPrefix(pipeline, "ip -4 route") || !strings.Contains(exScript, pipeline) {
+		t.Errorf("the example works out the Docker network differently from subnets.sh:\n--- subnets.sh\n%s\n--- example\n%s", pipeline, exScript)
+	}
+	if !strings.Contains(readText(t, filepath.Join(root, "docker", "qbittorrent", "init.sh")), "sh /seed/subnets.sh") ||
+		!strings.Contains(readText(t, filepath.Join(root, "docker-compose.yml")), `command: ["sh", "/seed/init.sh"]`) {
+		t.Error("docker-compose.yml's qBittorrent init doesn't seed through init.sh and subnets.sh")
 	}
 }
 
@@ -294,7 +317,7 @@ func TestComposeExampleMatchesCompose(t *testing.T) {
 	// except the ones that are API keys (entered in the app), legacy fallbacks, starting
 	// library folders (picked in the setup), last-resort switches, the update channel
 	// (update.sh's; the example runs the stable release, which the app knows by itself), and
-	// the host port of qBittorrent's own page (the example publishes none, so its card shows
+	// the host port and address of qBittorrent's own page (the example publishes none, so its card shows
 	// the login without a link).
 	notInExample := map[string]bool{
 		"ARRMADA_TMDB_API_KEY": true, "ARRMADA_OMDB_API_KEY": true, "ARRMADA_HARDCOVER_API_KEY": true,
@@ -302,7 +325,7 @@ func TestComposeExampleMatchesCompose(t *testing.T) {
 		"ARRMADA_LIBRARY_DIR": true, "ARRMADA_DOWNLOADS_DIR": true, "ARRMADA_MOVIES_DIR": true,
 		"ARRMADA_TV_DIR": true, "ARRMADA_EBOOKS_DIR": true, "ARRMADA_AUDIOBOOKS_DIR": true, "ARRMADA_MUSIC_DIR": true,
 		"ARRMADA_SKIP_MIGRATION_SNAPSHOT": true, "ARRMADA_ALLOW_NEWER_SCHEMA": true,
-		"ARRMADA_CHANNEL": true, "ARRMADA_QBIT_WEBUI_HOST_PORT": true,
+		"ARRMADA_CHANNEL": true, "ARRMADA_QBIT_WEBUI_HOST_PORT": true, "ARRMADA_QBIT_WEBUI_HOST_BIND": true,
 	}
 	for _, svc := range []string{"arrmada-app", "arrmada-qbittorrent"} {
 		for k, mv := range main[svc].env {
