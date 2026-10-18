@@ -100,7 +100,10 @@ describe("Connections", () => {
     expect(within(plex).getByRole("list", { name: "What Arrmada uses Plex for" }).textContent).toBe("Watch linksLibrary updatesSign-inInsights");
     const jf = within(servers).getByText("Jellyfin").closest("#jellyfin") as HTMLElement;
     expect(within(jf).getByText("Not connected")).toBeTruthy();
-    expect(within(jf).getByRole("button", { name: "Connect Jellyfin" })).toBeTruthy();
+    // No signed-in admin here: connecting is an admin's, so the card only says so.
+    expect(within(jf).getByText("An admin connects Jellyfin.")).toBeTruthy();
+    expect(within(jf).queryByRole("button", { name: "Connect Jellyfin" })).toBeNull();
+    expect(within(plex).queryByRole("button", { name: "Edit" })).toBeNull();
     // Plex left the old section, which is now just alerts and apps.
     const other = document.getElementById("other-connections") as HTMLElement;
     expect(within(other).getByRole("heading", { name: "Alerts and apps" })).toBeTruthy();

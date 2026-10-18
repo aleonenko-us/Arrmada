@@ -254,12 +254,13 @@ export function ConnectionsSettings() {
         return admin ? <KeyEditor ids={keyRowsFor(it.ref)} ctl={keys} /> : undefined;
       case "flaresolverr":
         return admin ? <KeyEditor ids={["flaresolverr"]} ctl={keys} /> : undefined;
+      // A media server connection is the admin's (PUT /plex and /jellyfin are admin-only):
+      // its server decides who may sign in with it. A manager sees the card and can Test
+      // the saved connection (POST /connections/{kind}/{ref}/test is a manager's).
       case "plex":
-        // The connection is the admin's, like Jellyfin's: its server decides who may sign
-        // in with Plex. A manager sees the card and can Test it.
         return admin ? <PlexConnect onChanged={refresh} /> : undefined;
       case "jellyfin":
-        return <JellyfinConnect onChanged={refresh} />;
+        return admin ? <JellyfinConnect onChanged={refresh} /> : undefined;
     }
     return undefined;
   };

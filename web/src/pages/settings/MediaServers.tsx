@@ -242,7 +242,9 @@ function JellyfinServer({ cfg, err, status, admin, onDisconnected }: {
             lastPollAt={status?.last_poll_at}
           />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            {connected ? (
+            {!admin ? (
+              <span className="text-xs text-ink-faint">An admin {connected ? "changes" : "connects"} the Jellyfin server.</span>
+            ) : connected ? (
               <Link to={LINKS.jellyfinConnection} className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Change the connection →</Link>
             ) : (
               <Link to={LINKS.jellyfinConnection} className={connectButton} style={connectStyle}>Connect your Jellyfin server →</Link>

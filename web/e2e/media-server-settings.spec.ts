@@ -198,6 +198,9 @@ test.describe("manager", () => {
       await expect(page.getByRole("heading", { name })).toHaveCount(0);
     }
     await expect(page.getByRole("button", { name: "Disconnect Jellyfin" })).toHaveCount(0);
+    // The connection is the admin's: no way to it from here.
+    await expect(page.locator("#jellyfin-server").getByText("An admin changes the Jellyfin server.")).toBeVisible();
+    await expect(page.locator("#jellyfin-server").getByRole("link")).toHaveCount(0);
     await api.quiet();
     expect(api.callsTo("GET", "/api/v1/people")).toHaveLength(0);
   });

@@ -114,10 +114,13 @@ test.describe("manager", () => {
     await expect(page.locator("#indexer-1").getByRole("button", { name: "More for Fixture Indexer" })).toBeVisible();
     await expect(page.locator("#apikey-tmdb").getByRole("button", { name: "Edit" })).toHaveCount(0);
     await expect(page.locator("#discovery-region")).toHaveCount(0);
-    // The Plex connection is the admin's: the card is read-only (Test stays, if connected).
-    const plex = page.locator("#plex");
-    await expect(plex.getByText(/An admin (connects Plex|changes this connection)\./)).toBeVisible();
-    await expect(plex.getByRole("button", { name: /^(Edit|Fix|Connect Plex)$/ })).toHaveCount(0);
+    // The media server connections are the admin's: both cards are read-only (Test stays,
+    // if connected).
+    for (const [card, name] of [["#plex", "Plex"], ["#jellyfin", "Jellyfin"]]) {
+      const el = page.locator(card);
+      await expect(el.getByText(new RegExp(`An admin (connects ${name}|changes this connection)\\.`))).toBeVisible();
+      await expect(el.getByRole("button", { name: new RegExp(`^(Edit|Fix|Connect ${name})$`) })).toHaveCount(0);
+    }
     await api.quiet();
     expect(api.callsTo("GET", "/api/v1/apikeys")).toHaveLength(0);
   });
