@@ -300,7 +300,7 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
   const signOutEverywhere = async () => {
     const ok = await confirm({
       title: `Sign ${p.username} out everywhere?`,
-      body: "Every browser and phone signed in as them will have to sign in again, and their personal API keys stop working. Their password, requests and audiobook apps stay as they are.",
+      body: "Every browser, phone and listening app signed in as them will have to sign in again, and their personal API keys stop working. Their password, audiobook password and requests stay as they are.",
       confirmLabel: "Sign out everywhere",
       tone: "danger",
     });

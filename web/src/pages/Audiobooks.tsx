@@ -5,6 +5,7 @@ import { appsFor, devicePlatform, newDevice, type AudioApp, type DevicePlatform 
 import { usePoll } from "../lib/usePoll";
 import { ApiError, api, type AudioListening, type AudioPlace, type AudioRemoved, type AudioShelf, type MyAudio } from "../lib/api";
 import { useMe } from "../lib/me";
+import { signOut as signOutNow } from "../lib/session";
 import { posterThumb } from "../lib/img";
 import { lazyPage } from "../lib/lazyPage";
 import { useTabParam } from "../lib/useTabParam";
@@ -357,17 +358,29 @@ function PasswordCard({ data, onSaved }: { data: MyAudio; onSaved: (d: MyAudio) 
   const [pw, setPw] = useState("");
   const [again, setAgain] = useState("");
   const [signOut, setSignOut] = useState(true);
+  // Proof it's you, as making an API key asks: your Arrmada password, a two-factor code
+  // when that's on, or (no password to ask for) a recent sign-in.
+  const [current, setCurrent] = useState("");
+  const [code, setCode] = useState("");
+  const [reauth, setReauth] = useState(!!data.reauth_required);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const min = data.min_password_length || 8;
   const problem = pw.length > 0 && pw.length < min ? `At least ${min} characters.` : again.length > 0 && pw !== again ? "The passwords don't match." : null;
+  const proofMissing = (data.password_required && !current) || (data.code_required && !code.trim());
   const save = async () => {
     setBusy(true); setMsg(null);
     try {
-      const d = await api.setAudioPassword(pw, data.has_password && signOut);
-      onSaved(d); setPw(""); setAgain(""); setOpen(false);
+      const d = await api.setAudioPassword(pw, data.has_password && signOut, {
+        ...(data.password_required ? { current_password: current } : {}),
+        ...(data.code_required ? { code: code.trim() } : {}),
+      });
+      onSaved(d); setPw(""); setAgain(""); setCurrent(""); setCode(""); setOpen(false);
       setMsg({ ok: true, text: data.has_password ? "Password changed." : "Password set — you can sign in from an app now." });
-    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
+    } catch (e) {
+      if (e instanceof ApiError && e.body?.code === "reauth") setReauth(true);
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally { setBusy(false); }
   };
   const remove = async () => {
     const ok = await confirm({ title: "Remove your audiobook & e-reader password?", body: "Your listening apps will be signed out, and neither they nor your e-reader apps can connect until you set a new one.", confirmLabel: "Remove", tone: "danger" });
@@ -388,8 +401,14 @@ function PasswordCard({ data, onSaved }: { data: MyAudio; onSaved: (d: MyAudio) 
         </div>
       ) : undefined}
     >
-      {open && (
-        <form onSubmit={(e) => { e.preventDefault(); if (!problem && pw && pw === again) save(); }} className="flex max-w-[420px] flex-col gap-2">
+      {open && reauth && (
+        <div className="flex max-w-[420px] flex-col gap-2">
+          <p className="m-0 text-sm text-ink-dim">For your safety, this password can only be set within 15 minutes of signing in. Sign out and sign in again, then set it.</p>
+          <div><button type="button" onClick={() => { void signOutNow(); }} className="rounded-lg px-3 py-1.5 text-base font-semibold" style={ghost}>Sign out to sign in again</button></div>
+        </div>
+      )}
+      {open && !reauth && (
+        <form onSubmit={(e) => { e.preventDefault(); if (!problem && !proofMissing && pw && pw === again) save(); }} className="flex max-w-[420px] flex-col gap-2">
           <input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={data.has_password ? "New password" : "Password"} aria-label={data.has_password ? "New password" : "Password"} className="rounded-lg px-3 py-1.5 text-base" style={inputStyle} />
           <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} placeholder="Type it again" aria-label="Password again" className="rounded-lg px-3 py-1.5 text-base" style={inputStyle} />
           {data.has_password && (
@@ -398,9 +417,15 @@ function PasswordCard({ data, onSaved }: { data: MyAudio; onSaved: (d: MyAudio) 
               Sign out my apps (they'll need the new password)
             </label>
           )}
+          {data.password_required && (
+            <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} placeholder="Your Arrmada password" aria-label="Your Arrmada password, to make sure it's you" className="rounded-lg px-3 py-1.5 text-base" style={inputStyle} />
+          )}
+          {data.code_required && (
+            <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="Two-factor code" aria-label="Two-factor code, from your authenticator app or a recovery code" className="rounded-lg px-3 py-1.5 text-base" style={inputStyle} />
+          )}
           {problem && <div className="text-sm" style={{ color: "var(--avoid-text)" }}>{problem}</div>}
           <div className="flex gap-2">
-            <button type="submit" disabled={busy || !!problem || !pw || pw !== again} className="rounded-lg px-3.5 py-1.5 text-base font-semibold disabled:opacity-50" style={primary}>{data.has_password ? "Change password" : "Set password"}</button>
+            <button type="submit" disabled={busy || !!problem || !!proofMissing || !pw || pw !== again} className="rounded-lg px-3.5 py-1.5 text-base font-semibold disabled:opacity-50" style={primary}>{data.has_password ? "Change password" : "Set password"}</button>
             {data.has_password && <button type="button" onClick={() => { setOpen(false); setPw(""); setAgain(""); }} className="rounded-lg px-3 py-1.5 text-base font-semibold" style={ghost}>Cancel</button>}
           </div>
         </form>

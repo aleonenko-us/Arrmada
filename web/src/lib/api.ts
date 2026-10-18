@@ -809,7 +809,9 @@ export interface AudioPlace { item_key: string; book_id: number; title: string; 
 export interface AudioOffer { history_id: number; position: number; at: number; device?: string; reason: string }
 /** A place an app removed ("discard progress"), restorable for 90 days. device is who removed it. */
 export interface AudioRemoved { item_key: string; book_id: number; title: string; author?: string; cover_url?: string; position: number; duration: number; finished: boolean; discarded_at: number; device?: string }
-export interface MyAudio extends AudioConnection { username: string; allowed: boolean; has_password: boolean; min_password_length: number; devices: AudioDevice[]; places: AudioPlace[]; removed: AudioRemoved[] }
+export interface MyAudio extends AudioConnection { username: string; allowed: boolean; has_password: boolean; min_password_length: number; devices: AudioDevice[]; places: AudioPlace[]; removed: AudioRemoved[];
+  /** What setting the password asks for: the account password, a two-factor code, or (no password to ask for) a recent sign-in. */
+  password_required?: boolean; code_required?: boolean; reauth_required?: boolean }
 /** What a timeline row is: the place moved (applied), the place just before a change (before), a place an app sent that
  *  wasn't used (rejected), a jump waiting for proof (held), an app removing the place (discarded), or a place put back (restored). */
 export type AudioHistoryKind = "applied" | "before" | "rejected" | "held" | "discarded" | "restored";
@@ -3128,7 +3130,8 @@ export const api = {
   },
   audioImportApply: (userMap: Record<string, number>) => req<AudioImportResult>("/api/v1/audioserver/import/apply", { method: "POST", body: JSON.stringify({ user_map: userMap }) }),
   myAudio: () => req<MyAudio>("/api/v1/me/audio"),
-  setAudioPassword: (password: string, signOutDevices: boolean) => req<MyAudio>("/api/v1/me/audio/password", { method: "PUT", body: JSON.stringify({ password, sign_out_devices: signOutDevices }) }),
+  setAudioPassword: (password: string, signOutDevices: boolean, proof: { current_password?: string; code?: string } = {}) =>
+    req<MyAudio>("/api/v1/me/audio/password", { method: "PUT", body: JSON.stringify({ password, sign_out_devices: signOutDevices, ...proof }) }),
   removeAudioPassword: () => req<MyAudio>("/api/v1/me/audio/password", { method: "DELETE" }),
   myAudioListening: (days = 30) => req<AudioListening>(`/api/v1/me/audio/listening?days=${days}`),
   acceptAudioJump: (item: string) => req<{ position: number }>("/api/v1/me/audio/accept", { method: "POST", body: JSON.stringify({ item }) }),
