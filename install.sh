@@ -152,14 +152,23 @@ env_get() {
 # where it is; otherwise the comment and the line go at the end. Written over the same
 # file, so its owner and permissions stay as they are.
 env_set() {
+  new_env_tmp
   if grep -q "^$1=" .env 2>/dev/null; then
     awk -v k="$1" -v v="$2" 'index($0, k "=") == 1 { print k "=" v; next } { print }' .env > .env.tmp
   else
-    cp .env .env.tmp
+    cat .env > .env.tmp
     { say ""; say "$3"; say "$1=$2"; } >> .env.tmp
   fi
   cat .env.tmp > .env
   rm -f .env.tmp
+}
+
+# new_env_tmp: an empty .env.tmp only its owner can read, to build a changed .env in (.env
+# can hold a key or token, ARRMADA_PLEX_TOKEN say). What's built is then written over .env
+# itself rather than moved there, which would reset .env's owner and permissions.
+new_env_tmp() {
+  rm -f .env.tmp
+  (umask 077 && : > .env.tmp)
 }
 
 # profiles_with NAME... -> the compose profiles in .env (COMPOSE_PROFILES, a comma list)
@@ -454,9 +463,11 @@ existing_install() {
     [ -f docker-compose.override.yml ] && cp docker-compose.override.yml docker-compose.override.yml.bak
     write_override "$_m" "$_t" "$_g"
     if [ -n "$MEDIA_SET" ]; then
+      new_env_tmp
       grep -v '^ARRMADA_STORAGE_HOST=' .env > .env.tmp || true
       [ -n "$_m" ] && say "ARRMADA_STORAGE_HOST=$_m" >> .env.tmp
-      mv .env.tmp .env
+      cat .env.tmp > .env
+      rm -f .env.tmp
     fi
     say "✓ Mounts updated${_m:+: media $_m → /storage}${_t:+, transcode $_t → /transcode}"
     _changed=1
@@ -468,10 +479,11 @@ existing_install() {
     _ch="${CHANNEL_ARG:-stable}"
     _bak=".env.bak-$(date +%Y%m%d-%H%M%S)"
     cp -p .env "$_bak"
-    grep -v '^ARRMADA_CHANNEL=' .env > .env.tmp || true
+    new_env_tmp
     if [ -n "$IMAGE_ARG" ]; then
-      grep -v '^ARRMADA_IMAGE=' .env.tmp > .env.tmp2 || true
-      mv .env.tmp2 .env.tmp
+      grep -v -e '^ARRMADA_CHANNEL=' -e '^ARRMADA_IMAGE=' .env > .env.tmp || true
+    else
+      grep -v '^ARRMADA_CHANNEL=' .env > .env.tmp || true
     fi
     {
       say ""
@@ -746,6 +758,8 @@ new_install() {
     IMAGE_REF=""
   fi
 
+  # Readable by its owner only: a key or token can go in it later (ARRMADA_PLEX_TOKEN).
+  (umask 077 && : > .env) && chmod 600 .env
   {
     say "# ─── Arrmada settings ─── change a value, then run update.sh to apply ───"
     say "# API keys and passwords are entered in the app, never here."
