@@ -458,6 +458,27 @@ func TestForcedWantExtractsForced(t *testing.T) {
 	}
 }
 
+// setProvider swaps the fixture's subtitle provider once the background library pass that
+// profile changes start (Rescan) has finished: that pass reads the provider, and the app
+// itself only ever sets it once, at start.
+func (f *profileFixture) setProvider(t *testing.T, p Provider) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		f.s.snap.mu.Lock()
+		scanning := f.s.snap.scanning
+		f.s.snap.mu.Unlock()
+		if !scanning {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the library pass never finished")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	f.s.provider = p
+}
+
 // recordingProvider is a fake OpenSubtitles that records every search request.
 type recordingProvider struct {
 	fakeProvider
@@ -481,7 +502,7 @@ func TestForcedWantDownloadsForeignParts(t *testing.T) {
 	prov := &recordingProvider{fakeProvider: fakeProvider{canDownload: true, results: map[string][]SubtitleResult{
 		"en": {{FileID: "9", Language: "en", ForeignPartsOnly: true, HashMatch: true}},
 	}}}
-	f.s.provider = prov
+	f.setProvider(t, prov)
 	f.s.resolve = func(context.Context, *Job) (fileRef, bool) {
 		return fileRef{Path: p, Title: "Movie", MediaKey: "m:1"}, true
 	}
