@@ -18,6 +18,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The token only reads the code: no job pushes, comments or publishes. Caches and the
+# Playwright report upload use the Actions runtime, not this token. A job that ever
+# needs more gets it at job level.
+permissions:
+  contents: read
+
 # Runners are pinned to ubuntu-24.04 rather than ubuntu-latest, which moved to Ubuntu 26
 # on 2026-10-19: a new OS image should be a change made on purpose here, not a surprise
 # red build. Actions are on their Node 24 majors (Node 20 actions are deprecated).
