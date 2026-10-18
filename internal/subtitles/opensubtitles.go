@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/httpua"
 	"github.com/tristenlammi/arrmada/internal/langs"
 )
 
@@ -125,7 +126,8 @@ func NewOpenSubtitles(apiKey, username, password string) *OpenSubtitles {
 // in the settings menu take effect without a restart.
 func NewOpenSubtitlesFunc(apiKey, username, password func() string) *OpenSubtitles {
 	return &OpenSubtitles{
-		http:           &http.Client{Timeout: 25 * time.Second},
+		// The Api-Key header never follows a redirect elsewhere; the file links (no key) do.
+		http:           &http.Client{Timeout: 25 * time.Second, CheckRedirect: httpua.NoCredentialRedirects},
 		apiKeyFn:       apiKey,
 		usernameFn:     username,
 		passwordFn:     password,

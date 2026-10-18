@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/httpua"
 	"github.com/tristenlammi/arrmada/internal/mediaserver"
 )
 
@@ -40,7 +41,8 @@ func New(baseURL, token string) *Client {
 	return &Client{
 		base:  strings.TrimRight(baseURL, "/"),
 		token: token,
-		http:  &http.Client{Timeout: 15 * time.Second},
+		// The token header never follows a redirect to another server.
+		http: &http.Client{Timeout: 15 * time.Second, CheckRedirect: httpua.NoCredentialRedirects},
 	}
 }
 

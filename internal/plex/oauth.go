@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 // Plex sign-in uses a PIN-based OAuth: Arrmada asks plex.tv for a short-lived PIN,
@@ -38,7 +40,8 @@ func SetTVBaseForTest(base string) (restore func()) {
 	return func() { tvBase.Store(old) }
 }
 
-var plexHTTP = &http.Client{Timeout: 15 * time.Second}
+// plexHTTP talks to plex.tv; the account token it sends never follows a redirect elsewhere.
+var plexHTTP = &http.Client{Timeout: 15 * time.Second, CheckRedirect: httpua.NoCredentialRedirects}
 
 // PIN is a pending Plex sign-in.
 type PIN struct {

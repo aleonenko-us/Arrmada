@@ -11,6 +11,8 @@
 package httpua
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -57,6 +59,47 @@ func Transport(rt http.RoundTripper) http.RoundTripper {
 // Client is an http.Client with the given timeout (0: none) that sends the User-Agent.
 func Client(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout, Transport: Transport(nil)}
+}
+
+// KeyedClient is Client for a service called with a key or token in a header: it follows a
+// redirect only as far as NoCredentialRedirects allows.
+func KeyedClient(timeout time.Duration) *http.Client {
+	c := Client(timeout)
+	c.CheckRedirect = NoCredentialRedirects
+	return c
+}
+
+// credentialHeaders are the headers Arrmada's clients carry keys and tokens in.
+var credentialHeaders = []string{"X-Api-Key", "X-Plex-Token", "Api-Key", "Authorization", "Cookie"}
+
+// NoCredentialRedirects is an http.Client CheckRedirect for requests that carry a key or
+// token in a header. Go copies custom headers such as X-Api-Key and X-Plex-Token onto every
+// redirect, wherever it points (it drops only Authorization and Cookie itself), so a
+// service, or anything pretending to be it, could bounce the key to another server. While
+// the first request carries one, a redirect to another host, or from https down to http,
+// is refused. Requests without one (a file download from a CDN) follow redirects as usual.
+func NoCredentialRedirects(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	first := via[0]
+	keyed := false
+	for _, h := range credentialHeaders {
+		if first.Header.Get(h) != "" {
+			keyed = true
+			break
+		}
+	}
+	if !keyed {
+		return nil
+	}
+	if !strings.EqualFold(req.URL.Host, first.URL.Host) {
+		return fmt.Errorf("refused a redirect to another server (%s) that would have carried the key", req.URL.Hostname())
+	}
+	if first.URL.Scheme == "https" && req.URL.Scheme != "https" {
+		return errors.New("refused a redirect from https to http that would have carried the key")
+	}
+	return nil
 }
 
 type transport struct{ next http.RoundTripper }
