@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SeriesSeason } from "../lib/api";
 import { latestSeason, missingSeasons, pickLabel, sameSeasons, seasonChip, seasonMeta, seasonSelectable, seasonTitle } from "../lib/seasons";
 import { quotaLeft, quotaLine, useQuota } from "../lib/quota";
@@ -10,12 +10,14 @@ import { Button, StatusChip } from "../ui";
 // just those. A season already here, on the way, not out yet or already asked for by
 // this viewer can't be ticked, and its chip says why. Loaded with the sheet's first
 // series request, not with Discover.
-export function SeasonPicker({ seasons, busy, onSubmit, onCancel }: {
+export function SeasonPicker({ seasons, busy, onSubmit, onCancel, submit }: {
   seasons: SeriesSeason[];
   busy: boolean;
   /** null asks for the whole show; otherwise the season numbers ticked. */
   onSubmit: (pick: number[] | null) => void;
   onCancel: () => void;
+  /** Draws the request button instead of the plain one (staff: with a profile picker). */
+  submit?: (label: string, onClick: () => void, disabled: boolean) => ReactNode;
 }) {
   const [pick, setPick] = useState<number[] | null>(null);
   // On a phone the picker opens below the fold of the sheet: bring it, and its button,
@@ -103,9 +105,11 @@ export function SeasonPicker({ seasons, busy, onSubmit, onCancel }: {
         </p>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button variant="primary" className="min-h-[40px]" onClick={() => onSubmit(pick)} disabled={(pick !== null && pick.length === 0) || overQuota} busy={busy} busyLabel="Requesting…">
-          {pickLabel(pick)}
-        </Button>
+        {submit ? submit(pickLabel(pick), () => onSubmit(pick), (pick !== null && pick.length === 0) || overQuota) : (
+          <Button variant="primary" className="min-h-[40px]" onClick={() => onSubmit(pick)} disabled={(pick !== null && pick.length === 0) || overQuota} busy={busy} busyLabel="Requesting…">
+            {pickLabel(pick)}
+          </Button>
+        )}
         <Button variant="ghost" className="min-h-[40px]" onClick={onCancel} disabled={busy}>Cancel</Button>
       </div>
     </section>

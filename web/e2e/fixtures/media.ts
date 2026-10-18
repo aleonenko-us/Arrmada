@@ -217,10 +217,22 @@ export const myKindle = { kindle_email: "", from_address: "books@example.com", s
 
 export const qualityProfiles: { profiles: QualityProfileInfo[]; formats: FormatInfo[] } = {
   profiles: [
-    { key: "hd-1080p", name: "HD 1080p", media_type: "movies", built_in: true, is_default: true, summary: "1080p, prefers WEB-DL and Blu-ray" },
-    { key: "uhd-2160p", name: "Ultra HD", media_type: "movies", built_in: true, is_default: false, summary: "2160p with HDR" },
+    { key: "hd-1080p", name: "HD 1080p", media_type: "movie", built_in: true, is_default: true, summary: "1080p, prefers WEB-DL and Blu-ray" },
+    { key: "uhd-2160p", name: "Ultra HD", media_type: "movie", built_in: true, is_default: false, summary: "2160p with HDR" },
+    { key: "hd-720p", name: "HD-720p", media_type: "movie", built_in: false, is_default: false, summary: "720p, small files" },
   ],
   formats: [{ name: "HDR10", description: "High dynamic range", group: "HDR" }],
+};
+
+// The series profiles (GET /quality/profiles?media=series): the list is per media. The
+// keys the series pages pick (hd-1080p, uhd-2160p) are here too, with a 720p of its own.
+export const seriesQualityProfiles: { profiles: QualityProfileInfo[]; formats: FormatInfo[] } = {
+  profiles: [
+    { key: "hd-1080p", name: "HD 1080p", media_type: "series", built_in: true, is_default: true, summary: "1080p episodes" },
+    { key: "uhd-2160p", name: "Ultra HD", media_type: "series", built_in: true, is_default: false, summary: "2160p with HDR" },
+    { key: "tv-720p", name: "HD-720p", media_type: "series", built_in: false, is_default: false, summary: "720p, small episodes" },
+  ],
+  formats: qualityProfiles.formats,
 };
 
 export const fitProfiles: { profiles: Record<string, FitCounts> } = {

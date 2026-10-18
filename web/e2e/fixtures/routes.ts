@@ -207,7 +207,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/books/authors/images", { images: {}, pending: 0 }),
     get("/api/v1/books/duplicates", { groups: [], past_merges: [] }),
     get("/api/v1/music/artists", mod.artists),
-    get("/api/v1/quality/profiles", media.qualityProfiles),
+    // Per media, as the server answers: ?media=series lists the series profiles.
+    { method: "GET", path: "/api/v1/quality/profiles", respond: ({ url }) => (url.searchParams.get("media") === "series" ? media.seriesQualityProfiles : media.qualityProfiles) },
     // Settings → Downloads and → Book server (only the full Settings sweep visits them).
     get("/api/v1/downloads/disk-guard", { enabled: true, measurable: true, path: "/downloads", used_pct: 42, pause_pct: 95, resume_pct: 90, holding: 0, measure_path: "", measured_path: "/downloads", override: false, measure_unreadable: false, total_bytes: 4398046511104, free_bytes: 2551066976256, shared_with: [], shared_with_library: false }),
     get("/api/v1/audioserver", { enabled: false, running: false, host_port: "13378", public_url: "", users: [], devices: [], items: 0, items_ready: 0, trace_until: 0 }),
