@@ -147,6 +147,10 @@ func TestRefreshAndRematchKeepEdits(t *testing.T) {
 	if m := got.Matched(); m.Author != "J. K. Rowling" || m.Description != "A boy wizard goes to school." || m.SeriesName != "Harry Potter (Hardcover)" {
 		t.Fatalf("catalogue values underneath = %+v", m)
 	}
+	// The edited author decides the author link; the catalogue's new author doesn't move it.
+	if before.AuthorID == 0 || got.AuthorID != before.AuthorID {
+		t.Fatalf("author link %d → %d after a refresh under an edited author", before.AuthorID, got.AuthorID)
+	}
 
 	// A re-match to the same book on another catalogue keeps them too, by default.
 	cat.books["OL9W"] = &metadata.BookDetails{BookResult: metadata.BookResult{Key: "OL9W", Title: "Harry Potter and the Philosopher's Stone", Author: "J.K. Rowling", Year: 1997}, Description: "OL description"}
@@ -203,6 +207,21 @@ func TestEditResetPerFieldAndAll(t *testing.T) {
 	}
 	if len(res.Book.Edits) != 0 || res.Book.Publisher != "" {
 		t.Fatalf("reset all left %+v", res.Book)
+	}
+	// Reset all with a new value in the same save: the new value goes over the catalogue's,
+	// not over the edit that was just reset.
+	if _, err := s.EditDetails(ctx, b.ID, set(map[string]any{FieldTitle: "First", FieldYear: 2002})); err != nil {
+		t.Fatal(err)
+	}
+	both := set(map[string]any{FieldTitle: "Second"})
+	both.ResetAll = true
+	res, err = s.EditDetails(ctx, b.ID, both)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Book.Title != "Second" || res.Book.Year != 1997 || res.Book.Edited(FieldYear) ||
+		matchedOf(t, res.Book, FieldTitle) != `"Harry Potter and the Philosopher's Stone"` {
+		t.Fatalf("reset all + set: %+v %v", res.Book, res.Book.Edits)
 	}
 	if _, err := s.EditDetails(ctx, 9999, EditRequest{ResetAll: true}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing book: %v", err)

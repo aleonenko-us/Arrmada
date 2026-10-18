@@ -485,15 +485,17 @@ func (r *Repo) applyEdits(ctx context.Context, id int64, set map[string]json.Raw
 		}
 		for name, v := range set {
 			f, _ := fieldByName(name)
-			under, edited := edits[name]
-			if !edited {
+			// What's underneath is the catalogue's value from before this save, even when
+			// Reset all in the same save already put it back.
+			under, wasEdited := b.Edits[name]
+			if !wasEdited {
 				under = f.get(&b)
 			}
 			if sameJSON(v, under) {
-				restore(name) // typed the catalogue's value back: no edit left
-				if !edited {
-					delete(next, name)
-				}
+				// Typed the catalogue's value back: no edit left, and the column holds
+				// the catalogue's value.
+				delete(edits, name)
+				next[name] = under
 				continue
 			}
 			edits[name] = under

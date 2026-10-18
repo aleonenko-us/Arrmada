@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/books"
@@ -60,10 +62,11 @@ func (a *api) handleEditBookDetails(w http.ResponseWriter, r *http.Request) {
 // editMessage is an edit refusal in the page's words, without the sentinel's prefix.
 func editMessage(err error) string {
 	msg := strings.TrimPrefix(err.Error(), books.ErrEditInvalid.Error()+": ")
-	if msg == "" {
-		return "that edit can't be saved"
+	r, size := utf8.DecodeRuneInString(msg)
+	if size == 0 {
+		return "That edit can't be saved."
 	}
-	return strings.ToUpper(msg[:1]) + msg[1:]
+	return string(unicode.ToUpper(r)) + msg[size:]
 }
 
 // bookDetailsChanged makes a change to a book's shown details visible at once where

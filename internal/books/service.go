@@ -442,7 +442,7 @@ func (s *Service) refresh(ctx context.Context, id int64) (_ Book, fetchErr, err 
 	if derr == nil {
 		// Compared and written as the catalogue has the book: a detail edited by hand
 		// keeps its edit, and the catalogue's new value only goes underneath it.
-		shownAuthor := b.Author
+		shown := b
 		b = b.Matched()
 		if d.Description != "" {
 			b.Description = d.Description
@@ -466,8 +466,8 @@ func (s *Service) refresh(ctx context.Context, id int64) (_ Book, fetchErr, err 
 			if err := s.repo.SetMatched(ctx, b.ID, map[string]any{FieldAuthor: d.Author}); err == nil {
 				b.Author = d.Author
 				authorChanged = true
-				if b.Edited(FieldAuthor) {
-					s.repo.AddEvent(ctx, b.ID, "refreshed", "The catalogue's author is now "+d.Author+" (your edit, "+shownAuthor+", is kept)")
+				if shown.Edited(FieldAuthor) {
+					s.repo.AddEvent(ctx, b.ID, "refreshed", "The catalogue's author is now "+d.Author+" (your edit, "+shown.Author+", is kept)")
 				} else {
 					s.repo.AddEvent(ctx, b.ID, "refreshed", "Author corrected: "+old+" → "+d.Author)
 				}
@@ -476,7 +476,7 @@ func (s *Service) refresh(ctx context.Context, id int64) (_ Book, fetchErr, err 
 		// The catalogue's key for the author on file links the book to its author by
 		// identity; a corrected author is relinked. An author edited by hand decides the
 		// link itself (EditDetails), so the catalogue's doesn't move it.
-		if !b.Edited(FieldAuthor) {
+		if !shown.Edited(FieldAuthor) {
 			key := ""
 			if d.Author != "" && strings.EqualFold(d.Author, b.Author) {
 				key = d.AuthorKey

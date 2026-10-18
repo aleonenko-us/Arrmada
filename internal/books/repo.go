@@ -398,12 +398,6 @@ func (r *Repo) SetCoverURL(ctx context.Context, id int64, coverURL string) error
 	return affected(res, err)
 }
 
-// SetAudiobookNarrator records who reads the standard audiobook ("" = the files say).
-func (r *Repo) SetAudiobookNarrator(ctx context.Context, id int64, narrator string) error {
-	res, err := r.db.ExecContext(ctx, `UPDATE books SET audiobook_narrator = ? WHERE id = ?`, narrator, id)
-	return affected(res, err)
-}
-
 // TouchMeta marks a book's details as changed now, for a change no column records (an
 // uploaded cover file replaced under the same URL). Column edits are caught by the
 // triggers of migration 0262_books_meta_updated; like them, it only ever moves forward.
