@@ -192,6 +192,11 @@ type api struct {
 	keySprayLimiter *loginLimiter
 	plexPins        *plexPinGuard // which browser (and account) started each Plex PIN
 	jfQC            *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
+	// turns lets one password check at a time through per address and username; appKnown and
+	// appWrong are the app sign-ins' known addresses and counted wrong passwords (signinguard.go).
+	turns    *turnGate
+	appKnown *knownAddrs
+	appWrong *wrongSeen
 	// transfers caches the downloads feed's title cards and requester names (transfers.go).
 	transfers transferCache
 	// wanted caches Activity → Wanted's answer (wantedcache.go).
@@ -209,7 +214,13 @@ type api struct {
 // New builds the HTTP server: JSON API routes, the embedded UI (with SPA
 // fallback), and the middleware chain (recover → log → mux).
 func New(d Deps) *http.Server {
-	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), codeLimit: newCodeLimiter(), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetFailMax, time.Minute), keySprayLimiter: newLoginLimiter(keySprayMax, 15*time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard()}
+	a := &api{deps: d, start: time.Now(), loginLimiter: newLoginLimiter(10, 15*time.Minute), codeLimit: newCodeLimiter(), icsLimiter: newLoginLimiter(icsPerMinute, time.Minute), widgetLimiter: newLoginLimiter(widgetFailMax, time.Minute), keySprayLimiter: newLoginLimiter(keySprayMax, 15*time.Minute), plexPins: newPlexPinGuard(), jfQC: newJFQCGuard(),
+		turns: newTurnGate(), appKnown: newKnownAddrs(), appWrong: newWrongSeen()}
+
+	// The listening apps' sign-in shares the e-readers' limits and keys (appsignin.go).
+	if d.AudioServer != nil {
+		d.AudioServer.SetThrottle(appSignIn{a})
+	}
 
 	rt := newRouter(a)
 	a.registerRoutes(rt)
@@ -323,7 +334,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("PUT /api/v1/audioserver/users/{id}", a.requireRole(auth.RoleAdmin, a.handleSetAudioUser))
 	mux.HandleFunc("DELETE /api/v1/audioserver/devices/{family}", a.requireRole(auth.RoleAdmin, a.handleRevokeAudioDevice))
 	mux.HandleFunc("GET /api/v1/audioserver/listening", a.requireRole(auth.RoleAdmin, a.handleAudioListening))
-	mux.HandleFunc("POST /api/v1/audioserver/import", a.requireRole(auth.RoleAdmin, a.handleAudioImportUpload))
+	mux.HandleFunc("POST /api/v1/audioserver/import", a.requireRole(auth.RoleAdmin, a.handleAudioImportUpload).uploads())
 	mux.HandleFunc("POST /api/v1/audioserver/import/apply", a.requireRole(auth.RoleAdmin, a.handleAudioImportApply))
 	mux.HandleFunc("GET /api/v1/me/audio", a.signedIn(a.handleMyAudio).ext())
 	mux.HandleFunc("PUT /api/v1/me/audio/password", a.signedIn(a.handleSetMyAudioPassword).ext())
@@ -350,7 +361,13 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/books/{id}/audiobook", a.signedIn(a.handleBookAudiobook).ext())
 
 	// Auth
-	mux.HandleFunc("POST /api/v1/auth/setup", a.public(a.handleSetup).ext())
+	// Making the first admin is LAN-only unless ARRMADA_ALLOW_REMOTE_SETUP says otherwise:
+	// on a fresh install reachable from the internet, whoever got there first would own it.
+	setup := a.public(a.handleSetup)
+	if a.deps.Config.AllowRemoteSetup {
+		setup = setup.ext()
+	}
+	mux.HandleFunc("POST /api/v1/auth/setup", setup)
 	mux.HandleFunc("POST /api/v1/auth/login", a.public(a.handleLogin).ext())
 	// Two-factor sign-in's second step, with the ticket a right password answered (never a
 	// session): the code, or (an admin the policy requires it of) setting it up first.
@@ -717,7 +734,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("DELETE /api/v1/system/backups/{name}", a.requireRole(auth.RoleAdmin, a.handleBackupDelete))
 	mux.HandleFunc("POST /api/v1/system/backups/{name}/restore", a.requireRole(auth.RoleAdmin, a.handleBackupRestore))
 	mux.HandleFunc("DELETE /api/v1/system/backups/restore-pending", a.requireRole(auth.RoleAdmin, a.handleBackupRestoreCancel))
-	mux.HandleFunc("POST /api/v1/system/backups/upload", a.requireRole(auth.RoleAdmin, a.handleBackupUpload))
+	mux.HandleFunc("POST /api/v1/system/backups/upload", a.requireRole(auth.RoleAdmin, a.handleBackupUpload).uploads())
 	mux.HandleFunc("GET /api/v1/convert/hardware", a.requireRole(auth.RoleManager, a.handleConvertHardware))
 	mux.HandleFunc("GET /api/v1/convert/status", a.requireRole(auth.RoleManager, a.handleConvertStatus))
 	mux.HandleFunc("GET /api/v1/convert/settings", a.requireRole(auth.RoleManager, a.handleConvertSettings))
@@ -903,7 +920,7 @@ func (a *api) registerRoutes(mux *router) {
 	// nothing but the cover file.
 	mux.HandleFunc("GET /api/v1/books/{id}/cover-image", a.signedIn(a.handleBookCoverImage).ext())
 	mux.HandleFunc("PUT /api/v1/books/{id}/cover", a.requireRole(auth.RoleManager, a.handleSetBookCover))
-	mux.HandleFunc("POST /api/v1/books/{id}/cover", a.requireRole(auth.RoleManager, a.handleUploadBookCover))
+	mux.HandleFunc("POST /api/v1/books/{id}/cover", a.requireRole(auth.RoleManager, a.handleUploadBookCover).uploads())
 	mux.HandleFunc("GET /api/v1/books/{id}", a.requireRole(auth.RoleManager, a.handleGetBook))
 	mux.HandleFunc("PUT /api/v1/books/{id}/monitor", a.requireRole(auth.RoleManager, a.handleSetBookMonitored))
 	mux.HandleFunc("PUT /api/v1/books/{id}/keep-catalogue", a.requireRole(auth.RoleManager, a.handleSetBookKeepCatalogue))
@@ -1066,6 +1083,9 @@ func (a *api) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"authenticated":  authed,
 		"plex_login":     a.deps.Settings.GetBool(r.Context(), "plex_login_enabled", false),
 		"external":       isExternalRequest(r), // request came from outside the LAN → Discover-only
+		// First-run setup refused from here (outside the LAN, ARRMADA_ALLOW_REMOTE_SETUP
+		// unset): the page explains instead of offering a form that can't work.
+		"setup_blocked": needsSetup && isExternalRequest(r) && !a.deps.Config.AllowRemoteSetup,
 
 		// Sign in with Jellyfin, and whether its sheet offers Quick Connect.
 		"jellyfin_login":        a.jellyfinLoginEnabled(r.Context()),

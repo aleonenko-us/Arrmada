@@ -1,4 +1,5 @@
-import { ApiError, req, type AuthUser } from "./api";
+import { ApiError, req, type LoginAnswer } from "./api";
+import { answered, type PolledAnswer } from "./signInAnswer";
 
 // Sign in with Jellyfin and your own Jellyfin link. These calls live here, not in api.ts,
 // so they only download with the Jellyfin sign-in sheet and the account pages.
@@ -50,10 +51,12 @@ async function linkCall(p: Promise<{ linked?: boolean; jellyfin_username?: strin
 
 export const jellyfinSignIn = {
   // The login page.
-  login: (username: string, password: string) => req<{ user: AuthUser }>("/api/v1/auth/jellyfin", json({ username, password })),
+  // A staff account with two-factor sign-in on answers a ticket for the code step instead
+  // of a session, as a password sign-in does.
+  login: (username: string, password: string) => req<LoginAnswer>("/api/v1/auth/jellyfin", json({ username, password })),
   loginQCStart: () => req<QuickConnectStart>("/api/v1/auth/jellyfin/quickconnect", { method: "POST" }),
-  /** null until the code is approved, then who signed in. */
-  loginQCPoll: async (id: string) => (await req<{ pending?: boolean; user?: AuthUser }>(`/api/v1/auth/jellyfin/quickconnect/${encodeURIComponent(id)}`)).user ?? null,
+  /** null until the code is approved, then who signed in (or the two-factor step). */
+  loginQCPoll: async (id: string) => answered(await req<PolledAnswer>(`/api/v1/auth/jellyfin/quickconnect/${encodeURIComponent(id)}`)),
 
   // Your own account.
   mine: () => req<JellyfinLink>("/api/v1/me/jellyfin"),

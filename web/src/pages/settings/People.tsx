@@ -30,7 +30,7 @@ export function PeopleSettings() {
       <p className="m-0 text-sm text-ink-faint">
         Who may sign in with Plex or Jellyfin, and what their new sign-ins auto-approve, is in Settings → Media servers: <Link to={LINKS.plexSignIn} style={{ color: "var(--accent-text)" }}>Plex sign-in</Link> and <Link to={LINKS.jellyfinSignIn} style={{ color: "var(--accent-text)" }}>Jellyfin sign-in</Link>.
       </p>
-      <Section id="two-factor" title="Two-factor sign-in" subtitle="Anyone who signs in with a password can add a code from an authenticator app on their Me page. It covers Arrmada's own password only: Sign in with Plex or Jellyfin is checked by those servers, API keys are separate, and audiobook apps keep their own audiobook password (they can't ask for a code).">
+      <Section id="two-factor" title="Two-factor sign-in" subtitle="Anyone who signs in with a password can add a code from an authenticator app on their Me page. It covers Arrmada's own password, and staff signing in with Plex or Jellyfin (requesters' Plex and Jellyfin sign-in is checked by those servers). API keys are separate, and audiobook apps keep their own audiobook password (they can't ask for a code).">
         <TwoFactorPolicy />
       </Section>
       <Section id="request-limits" title="Request limits" subtitle="Optional: how much one person can ask for in a stretch of days. Following someone else's request is free, a withdrawn or declined request gives its share back, and admins and managers are never limited. 0 means no limit.">
@@ -300,7 +300,7 @@ function PersonRow({ p, isMe, ctx }: { p: Person; isMe: boolean; ctx: RowContext
   const signOutEverywhere = async () => {
     const ok = await confirm({
       title: `Sign ${p.username} out everywhere?`,
-      body: "Every browser and phone signed in as them will have to sign in again, and their personal API keys stop working. Their password, requests and audiobook apps stay as they are.",
+      body: "Every browser, phone and listening app signed in as them will have to sign in again, and their personal API keys stop working. Their password, audiobook password and requests stay as they are.",
       confirmLabel: "Sign out everywhere",
       tone: "danger",
     });

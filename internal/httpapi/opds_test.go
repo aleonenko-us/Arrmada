@@ -156,7 +156,7 @@ func TestOPDSFailuresAreThrottled(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 10; i++ {
-		if rec := h.get("/opds", "kid", "guess-guess", lanAddr, nil); rec.Code != http.StatusUnauthorized {
+		if rec := h.get("/opds", "kid", fmt.Sprintf("guess-%d", i), lanAddr, nil); rec.Code != http.StatusUnauthorized {
 			t.Fatalf("guess %d: HTTP %d", i, rec.Code)
 		}
 	}
@@ -185,6 +185,90 @@ func TestOPDSFailuresAreThrottled(t *testing.T) {
 	// At home she isn't held up by strangers guessing her name.
 	if rec := h.get("/opds", "mom", "mom-reads-1", "192.168.1.30:5000", nil); rec.Code != http.StatusOK {
 		t.Errorf("mom at home: HTTP %d", rec.Code)
+	}
+}
+
+// Someone who knows a username can't lock that person's e-reader out from outside: an
+// address the person signed in from before carries on through the username's pause, a
+// right password elsewhere doesn't wipe out the guesses, and the guesser still waits.
+func TestOPDSGuesserCantLockOutTheReader(t *testing.T) {
+	h := newOPDSHarness(t)
+	u, _ := h.rs.user(t, "dad", auth.RoleRequester)
+	if err := h.rs.deps.AudioServer.Accounts.SetPassword(context.Background(), u.ID, "dad-reads-1", false); err != nil {
+		t.Fatal(err)
+	}
+	const reader = "8.8.7.7:5000" // dad's e-reader on his phone's network
+	if rec := h.get("/opds", "dad", "dad-reads-1", reader, nil); rec.Code != http.StatusOK {
+		t.Fatalf("first sign-in: HTTP %d", rec.Code)
+	}
+	for i := 0; i < 8; i++ {
+		_ = h.get("/opds", "dad", "guess-guess", fmt.Sprintf("8.8.5.%d:5000", i+1), nil)
+		// His reader keeps polling the catalogue throughout.
+		if rec := h.get("/opds", "dad", "dad-reads-1", reader, nil); rec.Code != http.StatusOK {
+			t.Fatalf("reader during guess %d: HTTP %d, want 200", i, rec.Code)
+		}
+	}
+	// The guesser, at a new address, is still held by the username's pause.
+	if rec := h.get("/opds", "dad", "guess-guess", "8.8.5.99:5000", nil); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("guesser after eight failures: HTTP %d, want 429", rec.Code)
+	}
+}
+
+// The audiobook server's /login shares the e-readers' limits: wrong passwords there count
+// for the catalogue too, and a listening app's sign-in from a known address goes through.
+func TestAudioServerLoginSharesTheOPDSLimits(t *testing.T) {
+	h := newOPDSHarness(t)
+	u, _ := h.rs.user(t, "gran", auth.RoleRequester)
+	if err := h.rs.deps.AudioServer.Accounts.SetPassword(context.Background(), u.ID, "gran-listens", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.rs.deps.AudioServer.SetAllowed(context.Background(), u.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	abs := h.rs.deps.AudioServer.Handler()
+	login := func(pass, remote string) int {
+		r := httptest.NewRequest("POST", "/login", strings.NewReader(`{"username":"gran","password":"`+pass+`"}`))
+		r.Header.Set("Content-Type", "application/json")
+		r.RemoteAddr = remote
+		rec := httptest.NewRecorder()
+		abs.ServeHTTP(rec, r)
+		return rec.Code
+	}
+	// Her phone has signed in from outside before.
+	if code := login("gran-listens", "8.8.6.6:5000"); code != http.StatusOK {
+		t.Fatalf("outside sign-in: HTTP %d", code)
+	}
+	// Lissen at home signs in again and again: successes never use anything up.
+	for i := 0; i < 15; i++ {
+		if code := login("gran-listens", lanAddr); code != http.StatusOK {
+			t.Fatalf("sign-in %d at home: HTTP %d", i, code)
+		}
+	}
+	// Ten wrong ones from one address, half through each door: the address is blocked
+	// on both, even with the right password.
+	for i := 0; i < 5; i++ {
+		if code := login(fmt.Sprintf("wrong-a%d", i), "192.168.1.40:5000"); code != http.StatusUnauthorized {
+			t.Fatalf("wrong %d: HTTP %d", i, code)
+		}
+		if rec := h.get("/opds", "gran", fmt.Sprintf("wrong-b%d", i), "192.168.1.40:5000", nil); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("wrong reader %d: HTTP %d", i, rec.Code)
+		}
+	}
+	if code := login("gran-listens", "192.168.1.40:5000"); code != http.StatusTooManyRequests {
+		t.Errorf("listening app after ten shared failures: HTTP %d, want 429", code)
+	}
+	if rec := h.get("/opds", "gran", "gran-listens", "192.168.1.40:5000", nil); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("reader after ten shared failures: HTTP %d, want 429", rec.Code)
+	}
+	// Strangers outside guess her name too; her phone's known address carries on.
+	for i := 0; i < 6; i++ {
+		_ = login("wrong-wrong", fmt.Sprintf("8.8.3.%d:5000", i+1))
+	}
+	if code := login("gran-listens", "8.8.6.6:5000"); code != http.StatusOK {
+		t.Errorf("known address during guessing: HTTP %d, want 200", code)
+	}
+	if code := login("gran-listens", "8.8.9.9:5000"); code != http.StatusTooManyRequests {
+		t.Errorf("new outside address during the pause: HTTP %d, want 429", code)
 	}
 }
 

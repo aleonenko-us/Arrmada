@@ -25,8 +25,8 @@ import (
 // {two_factor: "setup", ticket} and sets it up before any session exists.
 //
 // The ticket is never a cookie and nothing that checks sessions reads it (auth/ticket.go).
-// Plex and Jellyfin sign-in, API keys and the audiobook apps never reach any of this: they
-// don't use the Arrmada password.
+// API keys and the audiobook apps never reach any of this: they don't use the Arrmada
+// password. Plex and Jellyfin sign-in into a staff account does (finishExternalSignIn).
 
 // keyTwoFactorAdmins is the "Require two-factor for admins" setting.
 const keyTwoFactorAdmins = settings.KeyTwoFactorAdmins
@@ -79,6 +79,20 @@ func (a *api) finishPasswordSignIn(w http.ResponseWriter, r *http.Request, u *au
 	}
 	// Deliberately no user: nothing about the account is handed out before the code.
 	a.writeJSON(w, http.StatusOK, map[string]any{"two_factor": step, "ticket": ticket, "expires_in": int(auth.TicketTTL.Seconds())})
+}
+
+// finishExternalSignIn is the last step of a Plex or Jellyfin sign-in. A requester gets the
+// session straight away: the media server has said who they are. A staff account (only
+// reachable when the owner allowed staff sign-in that way) goes through the same step as a
+// right password — the code when two-factor is on, setting it up first when "Require
+// two-factor for admins" applies — or taking over someone's Plex or Jellyfin account would
+// skip the code that guards the staff console.
+func (a *api) finishExternalSignIn(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	if u.Role.AtLeast(auth.RoleManager) {
+		a.finishPasswordSignIn(w, r, u)
+		return
+	}
+	a.startSession(w, r, u, http.StatusOK)
 }
 
 // checkCode runs check (a code verification for u) under the code limits: the address's

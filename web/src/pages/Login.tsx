@@ -28,7 +28,8 @@ function continueAfterSignIn(user?: AuthUser | null) {
 // first-run setup screen (create the first admin) when the instance has no users yet.
 // signedOut: the session ended while the app was open (expired, revoked, password changed).
 export function Login({ signedOut = false }: { signedOut?: boolean }) {
-  const [mode, setMode] = useState<"loading" | "login" | "setup">("loading");
+  // remote: setup is needed but refused from here (outside the home network).
+  const [mode, setMode] = useState<"loading" | "login" | "setup" | "remote">("loading");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -41,7 +42,7 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
 
   useEffect(() => {
     api.status().then((s) => {
-      setMode(s.needs_setup ? "setup" : "login");
+      setMode(!s.needs_setup ? "login" : s.setup_blocked ? "remote" : "setup");
       setPlexEnabled(s.plex_login);
       setJellyfin((j) => ({ ...j, enabled: !!s.jellyfin_login, quickConnect: !!s.jellyfin_quickconnect }));
     }).catch(() => setMode("login"));
@@ -66,6 +67,13 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
     }
   };
 
+  // Plex and Jellyfin sign-in into a staff account with two-factor on ask for the code too.
+  const afterServerSignIn = (r: LoginAnswer) => {
+    if (!r.two_factor) { continueAfterSignIn(r.user); return; }
+    setJellyfin((j) => ({ ...j, open: false }));
+    setSecond({ step: r.two_factor, ticket: r.ticket });
+  };
+
   const setup = mode === "setup";
 
   return (
@@ -76,7 +84,7 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
             <FleetMark className="h-6 w-6" />
           </span>
           <h1 className="m-0 text-2xl font-extrabold tracking-[0.14em]">ARRMADA</h1>
-          <p className="m-0 text-base text-ink-dim">{mode === "loading" ? "…" : setup ? "Create your admin account to get started." : "Sign in to discover and request."}</p>
+          <p className="m-0 text-base text-ink-dim">{mode === "loading" ? "…" : mode !== "login" ? "Create your admin account to get started." : "Sign in to discover and request."}</p>
         </div>
 
         {second && (
@@ -87,7 +95,14 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
             </Suspense>
           </div>
         )}
-        {mode !== "loading" && !second && (
+        {mode === "remote" && (
+          <div role="status" className="rounded-2xl p-5 text-md leading-snug" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
+            For safety, the first admin account can only be made from your home network. Open Arrmada at its address there
+            (like <b>http://192.168.1.10:7878</b>), or add <code>ARRMADA_ALLOW_REMOTE_SETUP=1</code> to <code>.env</code> and
+            run <code>docker compose up -d</code>.
+          </div>
+        )}
+        {(mode === "login" || mode === "setup") && !second && (
           <form onSubmit={submit} className="flex flex-col gap-3 rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}>
             {signedOut && !setup && !error && (
               <div role="status" className="rounded-lg px-3 py-2.5 text-sm text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
@@ -121,7 +136,7 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
                 and signs it into its requester account. */}
             {!setup && plexEnabled && (
               <Suspense fallback={<button type="button" disabled className={SERVER_BUTTON} style={{ background: "var(--plex)", color: "var(--plex-ink)" }}><PlexMark />Sign in with Plex</button>}>
-                <PlexLoginButton disabled={busy} onBusy={setPlexBusy} onError={setError} onSignedIn={continueAfterSignIn} />
+                <PlexLoginButton disabled={busy} onBusy={setPlexBusy} onError={setError} onSignedIn={afterServerSignIn} />
               </Suspense>
             )}
             {/* Sign in with Jellyfin: Jellyfin checks the username and password (or the
@@ -135,7 +150,7 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
         )}
         {jellyfin.open && (
           <Suspense fallback={null}>
-            <JellyfinLoginSheet quickConnect={jellyfin.quickConnect} onClose={() => setJellyfin((j) => ({ ...j, open: false }))} onSignedIn={continueAfterSignIn} />
+            <JellyfinLoginSheet quickConnect={jellyfin.quickConnect} onClose={() => setJellyfin((j) => ({ ...j, open: false }))} onSignedIn={afterServerSignIn} />
           </Suspense>
         )}
       </div>

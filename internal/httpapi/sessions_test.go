@@ -47,6 +47,7 @@ func TestMySessionsListAndRevoke(t *testing.T) {
 	// A real sign-in, from a phone outside the house behind the local proxy.
 	r := httptest.NewRequest("POST", "http://arrmada.local/api/v1/auth/login", strings.NewReader(`{"username":"kid@example.com","password":"password123"}`))
 	r.RemoteAddr = "127.0.0.1:5000"
+	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-Forwarded-For", "203.0.113.77")
 	r.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1")
 	rec := httptest.NewRecorder()

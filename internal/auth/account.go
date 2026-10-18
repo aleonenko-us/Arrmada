@@ -70,7 +70,11 @@ func (s *Service) ChangePassword(ctx context.Context, id int64, newPw, keepRaw s
 		}
 		// Personal API keys go too, for the same reason: one made with the old password
 		// (or a hijacked session) mustn't outlive the change.
-		_, err = tx.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ?`, id)
+		if _, err = tx.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ?`, id); err != nil {
+			return err
+		}
+		// And the listening apps' sign-ins: they sign in again with the audiobook password.
+		_, err = tx.ExecContext(ctx, `UPDATE audio_tokens SET revoked = 1 WHERE user_id = ?`, id)
 		return err
 	})
 	return ended, err

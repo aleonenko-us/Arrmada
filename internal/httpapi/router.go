@@ -75,12 +75,21 @@ type guard struct {
 	// apiKey marks a route a personal API key may call (apikey_routes.go decides; only
 	// HandleFunc sets it). A request made with a key gets 403 from every other route.
 	apiKey bool
+	// upload marks a route that takes a file as multipart/form-data (csrf.go); every other
+	// state-changing route takes JSON or nothing.
+	upload bool
 	h      http.HandlerFunc
 }
 
 // ext marks the route as reachable from outside the LAN.
 func (g guard) ext() guard {
 	g.external = true
+	return g
+}
+
+// uploads marks the route as taking a multipart file upload.
+func (g guard) uploads() guard {
+	g.upload = true
 	return g
 }
 
@@ -141,7 +150,7 @@ func (rt *router) HandleFunc(pattern string, g guard) {
 	g.apiKey = apiKeyRoutes[pattern]
 	spec := routeSpec{Method: method, Pattern: path, Scope: g.scope, External: g.external, APIKey: g.apiKey}
 	rt.specs = append(rt.specs, spec)
-	rt.mux.HandleFunc(pattern, rt.keyed(g, rt.wrap(g)))
+	rt.mux.HandleFunc(pattern, rt.sameOrigin(g, rt.keyed(g, rt.wrap(g))))
 }
 
 // keyed puts the personal-API-key rules in front of h: a request made with a key reaches

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -94,5 +95,44 @@ func TestRevokeOtherSessions(t *testing.T) {
 	}
 	if n, _ := s.RevokeOtherSessions(ctx, u.ID, ""); n != 1 {
 		t.Errorf("with nothing to keep: ended %d, want 1", n)
+	}
+}
+
+// A password change and an admin's "Sign out everywhere" sign the listening apps out too:
+// their tokens are revoked, someone else's aren't.
+func TestPasswordChangeAndRevokeEndListeningApps(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+	u, _ := s.CreateUser(ctx, "kid@example.com", "oldpassword", RoleRequester, false)
+	other, _ := s.CreateUser(ctx, "aunt@example.com", "auntpassword", RoleRequester, false)
+	n := 0
+	token := func(userID int64) {
+		n++
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO audio_tokens (user_id, hash, kind, family, created_at) VALUES (?, ?, 'refresh', ?, 1)`,
+			userID, fmt.Sprintf("h%d", n), fmt.Sprintf("f%d", n)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	live := func(userID int64) int {
+		var c int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audio_tokens WHERE user_id = ? AND revoked = 0`, userID).Scan(&c); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	token(u.ID)
+	token(other.ID)
+	if _, err := s.ChangePassword(ctx, u.ID, "newpassword", ""); err != nil {
+		t.Fatal(err)
+	}
+	if live(u.ID) != 0 || live(other.ID) != 1 {
+		t.Errorf("after a password change: %d of theirs, %d of someone else's still live; want 0 and 1", live(u.ID), live(other.ID))
+	}
+	token(u.ID)
+	if _, err := s.RevokeUserSessions(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if live(u.ID) != 0 || live(other.ID) != 1 {
+		t.Errorf("after sign out everywhere: %d of theirs, %d of someone else's still live; want 0 and 1", live(u.ID), live(other.ID))
 	}
 }

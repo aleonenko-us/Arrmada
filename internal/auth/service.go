@@ -530,8 +530,12 @@ func (s *Service) RevokeUserSessions(ctx context.Context, id int64) (int64, erro
 		if _, err = tx.ExecContext(ctx, `DELETE FROM user_trusted_devices WHERE user_id = ?`, id); err != nil {
 			return err
 		}
-		// "Everywhere" includes the scripts holding their personal API keys.
-		_, err = tx.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ?`, id)
+		// "Everywhere" includes the scripts holding their personal API keys, and the
+		// listening apps signed in with the audiobook password.
+		if _, err = tx.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ?`, id); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE audio_tokens SET revoked = 1 WHERE user_id = ?`, id)
 		return err
 	})
 	return n, err

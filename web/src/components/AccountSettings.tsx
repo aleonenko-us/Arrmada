@@ -84,7 +84,7 @@ function PasswordSetting({ onChanged }: { onChanged: () => void }) {
         <div className="min-w-0">
           <div className="text-md font-semibold">Password</div>
           <div className="text-sm text-ink-dim">
-            {hasPassword ? "Changing it signs out your other devices and revokes your personal API keys." : "You sign in with Plex. Set a password to sign in with your name too — then you can unlink Plex if you like."}
+            {hasPassword ? "Changing it signs out your other devices and listening apps, and revokes your personal API keys." : "You sign in with Plex. Set a password to sign in with your name too — then you can unlink Plex if you like."}
           </div>
         </div>
         {!open && <Button size="sm" onClick={() => setOpen(true)}>{hasPassword ? "Change" : "Set a password"}</Button>}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import type { AuthUser } from "../lib/api";
+import type { LoginAnswer } from "../lib/api";
 import { plexApi } from "../lib/plexApi";
 import { usePlexPinSignIn, type PlexFlow } from "../lib/plexSignIn";
 import { keepNextAcrossRedirect } from "../lib/session";
@@ -15,13 +15,13 @@ export default function PlexLoginButton({ disabled, onBusy, onError, onSignedIn 
   disabled: boolean;
   onBusy: (busy: boolean) => void;
   onError: (msg: string | null) => void;
-  /** Who signed in: staff and requesters land on different pages. */
-  onSignedIn: (user: AuthUser) => void;
+  /** Who signed in (staff and requesters land on different pages), or the two-factor step. */
+  onSignedIn: (answer: LoginAnswer) => void;
 }) {
-  const flow = useMemo<PlexFlow<AuthUser>>(() => ({
+  const flow = useMemo<PlexFlow<LoginAnswer>>(() => ({
     kind: "login",
     start: plexApi.loginStart,
-    poll: async (id) => (await plexApi.loginPoll(id)).user ?? null,
+    poll: plexApi.loginPoll,
     beforeRedirect: keepNextAcrossRedirect,
   }), []);
   const { phase, begin, cancel, continueHere } = usePlexPinSignIn({ flow, onDone: onSignedIn, onError, resumeParam: "plexpin" });

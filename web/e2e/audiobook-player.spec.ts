@@ -224,6 +224,31 @@ test.describe("audiobook player at 375px", () => {
     expect(w.doc).toBeLessThanOrEqual(w.vp);
   });
 
+  // SEC-A6: setting the password asks for your Arrmada password (and a code with
+  // two-factor on), like making an API key.
+  test("Apps & devices: setting the password asks for your Arrmada password and code", async ({ page, api }) => {
+    const mine = { ...myAudio(personas.requester), password_required: true, code_required: true };
+    await page.route((u) => u.pathname === "/api/v1/me/audio" || u.pathname === "/api/v1/me/audio/password", async (route) => {
+      const req = route.request();
+      const path = new URL(req.url()).pathname;
+      let body: unknown;
+      try { body = req.postDataJSON(); } catch { body = req.postData(); }
+      api.calls.push({ method: req.method(), path, body });
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(path.endsWith("/password") ? { ...mine, has_password: true } : mine) });
+    });
+    await page.goto("/audiobooks?tab=apps");
+    await page.getByRole("radiogroup", { name: "How you'll listen" }).getByRole("radio", { name: /Lissen/ }).tap();
+    await page.getByPlaceholder("Password", { exact: true }).fill("listening-time");
+    await page.getByPlaceholder("Type it again").fill("listening-time");
+    const set = page.getByRole("button", { name: "Set password" });
+    await expect(set).toBeDisabled();
+    await page.getByPlaceholder("Your Arrmada password").fill("correct horse");
+    await page.getByPlaceholder("Two-factor code").fill("123456");
+    await page.getByPlaceholder("Two-factor code").press("Enter");
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/me/audio/password").length).toBe(1);
+    expect(api.callsTo("PUT", "/api/v1/me/audio/password")[0].body).toEqual({ password: "listening-time", sign_out_devices: false, current_password: "correct horse", code: "123456" });
+  });
+
   test("a held jump back says so", async ({ page, api }) => {
     const m = await mockAudio(page, api, { startAt: 400 });
     const mini = await startFromShelf(page, api);

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/auth"
 )
@@ -37,6 +38,30 @@ func TestPlexLoginOwnerMapsToAdminWhenAllowed(t *testing.T) {
 	// And again, now through the link.
 	if code, body := ownerSignIn(t, s, tv); code != http.StatusOK || !strings.Contains(body, `"role":"admin"`) {
 		t.Errorf("second sign-in: HTTP %d %s", code, body)
+	}
+}
+
+// An admin with two-factor on who signs in with Plex gets the code step, not a session.
+func TestPlexStaffSignInAsksForTheCode(t *testing.T) {
+	s, tv := plexLoginServer(t)
+	ctx := context.Background()
+	admin, _ := s.user(t, "owner@example.com", auth.RoleAdmin)
+	_ = s.deps.Settings.SetBool(ctx, keyPlexSignInStaff, true)
+	setup, err := s.auth.BeginTOTP(ctx, admin.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.auth.ConfirmTOTP(ctx, admin.ID, totpAt(t, setup.Secret, time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	id, _, pc := startPin(t, s, "/api/v1/auth/plex/pin", nil, nil)
+	tv.approve(id, "owner-token")
+	rec := s.doCookies("GET", fmt.Sprintf("/api/v1/auth/plex/pin/%d", id), "", pc)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"two_factor":"code"`) || strings.Contains(rec.Body.String(), `"user"`) {
+		t.Fatalf("HTTP %d %s, want a code ticket", rec.Code, rec.Body)
+	}
+	if cookieNamed(rec, sessionCookieName) != nil {
+		t.Error("a session cookie was set before the code")
 	}
 }
 

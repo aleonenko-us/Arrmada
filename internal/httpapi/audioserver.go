@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -295,6 +296,10 @@ func (a *api) handleMyAudio(w http.ResponseWriter, r *http.Request) {
 	out["allowed"] = a.deps.AudioServer.Allowed(ctx, u)
 	out["has_password"] = a.deps.AudioServer.Accounts.HasPassword(ctx, u.ID)
 	out["min_password_length"] = audioserver.MinPasswordLength
+	// What setting the password will ask for (handleSetMyAudioPassword).
+	if need, err := a.keyStepUp(r, u); err == nil {
+		out["password_required"], out["code_required"], out["reauth_required"] = need.password, need.code, need.reauth
+	}
 	devs, _ := a.deps.AudioServer.Accounts.Devices(ctx, u.ID)
 	out["devices"] = devs
 	store := a.deps.AudioServer.Listen()
@@ -333,18 +338,49 @@ func (a *api) handleMyAudio(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, out)
 }
 
-// handleSetMyAudioPassword — PUT /api/v1/me/audio/password {password, sign_out_devices}.
-// Setting one is what lets someone connect a listening app at all.
+// handleSetMyAudioPassword — PUT /api/v1/me/audio/password {password, sign_out_devices,
+// current_password, code}. Setting one is what lets someone connect a listening app at all.
+//
+// The audiobook password is a lasting way in that outlives the session (listening apps
+// stay signed in for months, e-readers send it on every request), so it asks for the same
+// proof as making a personal API key (keyStepUp): the account's current password, a
+// two-factor code when that's on, and for an account with no password (Plex or Jellyfin
+// sign-in only) a session signed in within the last 15 minutes.
 func (a *api) handleSetMyAudioPassword(w http.ResponseWriter, r *http.Request) {
 	u, ok := a.audioUser(w, r)
 	if !ok {
 		return
 	}
 	var req struct {
-		Password       string `json:"password"`
-		SignOutDevices bool   `json:"sign_out_devices"`
+		Password        string `json:"password"`
+		SignOutDevices  bool   `json:"sign_out_devices"`
+		CurrentPassword string `json:"current_password"`
+		Code            string `json:"code"`
 	}
 	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	// A too-short password is refused before the account password or a code is spent on it.
+	if n := len([]rune(req.Password)); n < audioserver.MinPasswordLength {
+		a.writeError(w, http.StatusBadRequest, fmt.Sprintf("use at least %d characters", audioserver.MinPasswordLength))
+		return
+	}
+	need, err := a.keyStepUp(r, u)
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not set the password")
+		return
+	}
+	if need.reauth {
+		a.writeJSON(w, http.StatusForbidden, map[string]any{
+			"status": "error", "code": "reauth",
+			"message": "For your safety, this password can only be set within 15 minutes of signing in. Sign out and sign in again, then set it.",
+		})
+		return
+	}
+	if need.password && !a.checkMyPassword(w, r, u, req.CurrentPassword) {
+		return
+	}
+	if need.code && !a.checkMyCode(w, r, u, req.Code) {
 		return
 	}
 	if err := a.deps.AudioServer.Accounts.SetPassword(r.Context(), u.ID, req.Password, req.SignOutDevices); err != nil {

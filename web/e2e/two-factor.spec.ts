@@ -254,6 +254,28 @@ test.describe("sign-in page", () => {
     await expect(page.getByLabel("Password")).toBeVisible();
     await expect(step).toHaveCount(0);
   });
+
+  // A staff account signing in with Jellyfin (or Plex) gets the same code step.
+  test("a staff Jellyfin sign-in with two-factor on asks for the code", async ({ page, api }) => {
+    const fake = new FakeTwoFactor();
+    await signedOut(page, api, fake);
+    await override(page, api, [
+      { method: "GET", path: "/api/v1/status", body: { ...status(personas.requester), authenticated: false, plex_login: false, jellyfin_login: true, jellyfin_quickconnect: false } },
+      { method: "POST", path: "/api/v1/auth/jellyfin", body: { two_factor: "code", ticket: "jf-ticket" } },
+    ]);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Sign in with Jellyfin" }).click();
+    const sheet = page.getByRole("dialog", { name: "Sign in with Jellyfin" });
+    await sheet.getByLabel("Jellyfin username").fill("boss");
+    await sheet.getByLabel("Password").fill("boss-password");
+    await sheet.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(sheet).toHaveCount(0);
+    const step = page.getByRole("form", { name: "Two-factor sign-in" });
+    await step.getByLabel("Code", { exact: true }).fill(fake.appCode());
+    await step.getByRole("button", { name: "Verify" }).click();
+    await expect(page).toHaveURL(/\/requests$/, { timeout: 10_000 });
+    expect(api.callsTo("POST", "/api/v1/auth/login/code").map((c) => (c.body as { ticket: string }).ticket)).toEqual(["jf-ticket"]);
+  });
 });
 
 test.describe("People & access", () => {

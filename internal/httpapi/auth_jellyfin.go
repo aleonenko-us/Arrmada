@@ -324,7 +324,7 @@ func (a *api) finishJellyfinSignIn(w http.ResponseWriter, r *http.Request, ju je
 		}
 		a.deps.Log.Info("users: staff signed in with Jellyfin", "user_id", u.ID)
 	}
-	a.startSession(w, r, u, http.StatusOK)
+	a.finishExternalSignIn(w, r, u)
 }
 
 // --- your own Jellyfin link ---

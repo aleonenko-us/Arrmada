@@ -215,8 +215,8 @@ func (a *api) handleSetup(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusConflict, "setup already complete")
 		return
 	}
-	// Throttle the unauthenticated setup endpoint too — it's externally reachable
-	// on a fresh instance until the first admin exists.
+	// Throttle the unauthenticated setup endpoint too: it's open to the whole LAN (and,
+	// with ARRMADA_ALLOW_REMOTE_SETUP, the internet) until the first admin exists.
 	if !a.loginAllowed(w, r, "setup:"+netutil.ClientIP(r)) {
 		return
 	}
@@ -244,6 +244,14 @@ func (a *api) handleLogin(w http.ResponseWriter, r *http.Request) {
 	name := strings.ToLower(strings.TrimSpace(body.Username))
 	ipKey, userKey := "login:"+ip, "login-user:"+name
 	l := a.loginLimiter
+	// One check at a time per address and username: the limits below only hear of a wrong
+	// password after bcrypt, so guesses sent all at once would otherwise all get past them.
+	release, ok := a.turns.acquire(r.Context(), ipKey, userKey)
+	if !ok {
+		a.tooManyAttempts(w, time.Second)
+		return
+	}
+	defer release()
 	// Two limits, both counting wrong passwords only. Per address: 10 failures in 15
 	// minutes. Per username: a back-off that grows after 5 failures in an hour, applied
 	// only to sign-ins from outside the LAN, so a stranger guessing the owner's name on

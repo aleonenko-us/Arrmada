@@ -50,7 +50,16 @@ When it's done it prints the address, e.g. `http://192.168.1.10:7878`.
 
 ## Finish in the browser
 
-Open that address and create your admin account. A short setup then walks you through:
+Open that address and create your admin account.
+
+> The admin account can only be created from your home network (or the server itself), so a
+> fresh install that's already reachable from the internet can't be claimed by a stranger.
+> Installing on a remote server? Open the page through an SSH tunnel
+> (`ssh -L 7878:localhost:7878 you@server`, then `http://localhost:7878`), or add
+> `ARRMADA_ALLOW_REMOTE_SETUP=1` to `.env`, run `docker compose up -d`, and take it out again
+> once you're in ([Configuration](configuration.md#env-settings)).
+
+A short setup then walks you through:
 
 1. **Metadata** — paste your TMDB key (checked before it's saved). Other keys are optional.
 2. **Folders** — pick each library (Movies, TV, Downloads, and optionally Books and Music)
