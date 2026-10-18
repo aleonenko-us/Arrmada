@@ -1757,13 +1757,14 @@ func statedSource(r parser.Release) string {
 }
 
 // clean makes s safe as one folder or file name: illegal characters out, whitespace
-// collapsed. A name of only dots (and spaces) comes back empty, so every caller falls back
-// to its "Unknown…" name: "." and ".." name no folder, and ".." — a show or an album TMDB or
-// MusicBrainz really calls that — would climb out of the library.
+// collapsed. "." and ".." come back empty, so every caller falls back to its "Unknown…"
+// name: they name no folder of their own, and ".." — a show or an album TMDB or
+// MusicBrainz really calls that — would climb out of the library. "..." and longer are
+// ordinary names (insideRoot backs this up where files are placed).
 func clean(s string) string {
 	s = reIllegal.ReplaceAllString(s, "")
 	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
-	if strings.Trim(s, ". ") == "" {
+	if s == "." || s == ".." {
 		return ""
 	}
 	return s

@@ -8,14 +8,15 @@ import (
 	"testing"
 )
 
-// A name of only dots names no folder: clean gives nothing, so callers fall back.
+// "." and ".." name no folder of their own: clean gives nothing, so callers fall back.
+// Longer runs of dots are ordinary names.
 func TestCleanDotOnlyNames(t *testing.T) {
-	for _, in := range []string{".", "..", "...", " .. ", ". .", "..\x00", "/../"} {
+	for _, in := range []string{".", "..", " .. ", "..\x00", "/../", "./"} {
 		if got := clean(in); got != "" {
 			t.Errorf("clean(%q) = %q, want empty", in, got)
 		}
 	}
-	for in, want := range map[string]string{"...And Justice for All": "...And Justice for All", "M.A.S.H.": "M.A.S.H.", "Se7en": "Se7en"} {
+	for in, want := range map[string]string{"...And Justice for All": "...And Justice for All", "M.A.S.H.": "M.A.S.H.", "Se7en": "Se7en", "...": "...", "....": "....", ". .": ". ."} {
 		if got := clean(in); got != want {
 			t.Errorf("clean(%q) = %q, want %q", in, got, want)
 		}
