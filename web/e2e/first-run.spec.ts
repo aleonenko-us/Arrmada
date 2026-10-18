@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 import { test, expect, type MockedApi } from "./mockApi";
 import type { MockRoute } from "./fixtures/routes";
-import { freshKeys, setup as configuredSetup, setupChecklist as allDone } from "./fixtures/system";
+import { freshKeys, setup as configuredSetup, setupChecklist as allDone, status } from "./fixtures/system";
+import { personas } from "./fixtures/users";
 
 // CFG-21/22/23/24: a fresh install walks Keys → Folders → Media server → Indexers → Finish,
 // ending on the Getting started checklist as links; Skip is on the first step only; Run
@@ -250,5 +251,23 @@ test.describe("manager", () => {
     await expect.poll(() => api.callsTo("POST", "/api/v1/jobs/88/cancel").length).toBe(1);
     await expect(page.getByText("Scan stopped.")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
+  });
+});
+
+// A fresh install reached from outside the home network (SEC-A8): the first admin can't be
+// made from there, and the page says why and what to do instead of offering the form.
+test.describe("first admin from outside", () => {
+  test.use({ persona: "requester" });
+
+  test("setup from outside the home network explains instead of offering the form", async ({ page, api }) => {
+    await override(page, api, [
+      { method: "GET", path: "/api/v1/auth/me", status: 401, body: { status: "error", message: "authentication required" } },
+      { method: "GET", path: "/api/v1/status", body: { ...status(personas.requester), authenticated: false, external: true, needs_setup: true, setup_blocked: true, plex_login: false } },
+    ]);
+    await page.goto("/");
+    await expect(page.getByRole("status")).toContainText("can only be made from your home network");
+    await expect(page.getByRole("status")).toContainText("ARRMADA_ALLOW_REMOTE_SETUP=1");
+    await expect(page.getByRole("button", { name: "Create admin & continue" })).toHaveCount(0);
+    expect(api.callsTo("POST", "/api/v1/auth/setup")).toHaveLength(0);
   });
 });

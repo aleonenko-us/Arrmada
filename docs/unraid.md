@@ -91,7 +91,8 @@ from step 2 above.
 
 ## First start
 
-Open the web UI and create your admin account. Setup then walks you through:
+Open the web UI from your home network and create your admin account (it can't be created
+from outside, so nobody else can claim a new install). Setup then walks you through:
 
 1. **Your TMDB key** (free, [themoviedb.org](https://www.themoviedb.org/settings/api)).
 2. **Your folders.** Arrmada looks inside `/storage` and fills in folders named like your

@@ -355,7 +355,13 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/books/{id}/audiobook", a.signedIn(a.handleBookAudiobook).ext())
 
 	// Auth
-	mux.HandleFunc("POST /api/v1/auth/setup", a.public(a.handleSetup).ext())
+	// Making the first admin is LAN-only unless ARRMADA_ALLOW_REMOTE_SETUP says otherwise:
+	// on a fresh install reachable from the internet, whoever got there first would own it.
+	setup := a.public(a.handleSetup)
+	if a.deps.Config.AllowRemoteSetup {
+		setup = setup.ext()
+	}
+	mux.HandleFunc("POST /api/v1/auth/setup", setup)
 	mux.HandleFunc("POST /api/v1/auth/login", a.public(a.handleLogin).ext())
 	// Two-factor sign-in's second step, with the ticket a right password answered (never a
 	// session): the code, or (an admin the policy requires it of) setting it up first.
@@ -1071,6 +1077,9 @@ func (a *api) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"authenticated":  authed,
 		"plex_login":     a.deps.Settings.GetBool(r.Context(), "plex_login_enabled", false),
 		"external":       isExternalRequest(r), // request came from outside the LAN → Discover-only
+		// First-run setup refused from here (outside the LAN, ARRMADA_ALLOW_REMOTE_SETUP
+		// unset): the page explains instead of offering a form that can't work.
+		"setup_blocked": needsSetup && isExternalRequest(r) && !a.deps.Config.AllowRemoteSetup,
 
 		// Sign in with Jellyfin, and whether its sheet offers Quick Connect.
 		"jellyfin_login":        a.jellyfinLoginEnabled(r.Context()),

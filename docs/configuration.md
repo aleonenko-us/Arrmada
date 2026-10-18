@@ -61,9 +61,17 @@ left alone too.
 | `ARRMADA_SKIP_MIGRATION_SNAPSHOT` | `1` to upgrade the database without the safety copy (a full disk) |
 | `ARRMADA_ALLOW_NEWER_SCHEMA` | `1` to start an older version on a newer database — last resort |
 | `ARRMADA_EXTERNAL_HEADER` | The header a tunnel or proxy stamps on outside requests (default `Cf-Connecting-Ip`); such requests are limited to the requester pages |
-| `ARRMADA_TRUST_CF_HEADER` | Leave unset: Cloudflare's visitor header is used where only Cloudflare can have set it. `1` believes it from any local proxy, `0` never ([Who a visitor is](#who-a-visitor-is)) |
 | `ARRMADA_LIBRARY_DIR`, `ARRMADA_DOWNLOADS_DIR`, `ARRMADA_MOVIES_DIR`, `ARRMADA_TV_DIR`, `ARRMADA_EBOOKS_DIR`, `ARRMADA_AUDIOBOOKS_DIR`, `ARRMADA_MUSIC_DIR` | Starting values for the library folders. The folders picked in the app win; most people never set these |
 | `ARRMADA_PLEX_URL`, `ARRMADA_PLEX_TOKEN` | An older way to point Insights at Plex — connect Plex in Settings → Connections instead |
+
+Two rarely needed settings are read from the container's environment. Put them under
+`services:` → `arrmada-app:` → `environment:` in `docker-compose.override.yml` and run
+`docker compose up -d` (on Unraid, add each as a Variable on the container):
+
+| Setting | What it's for |
+|---|---|
+| `ARRMADA_ALLOW_REMOTE_SETUP` | `"1"` lets the first admin account be created from outside your home network. Off by default, so a fresh install reachable from the internet can't be claimed by whoever finds it first; take it out once you're in. Installs that already have an admin aren't affected |
+| `ARRMADA_TRUST_CF_HEADER` | Leave unset: Cloudflare's visitor header is used where only Cloudflare can have set it. `"1"` believes it from any local proxy, `"0"` never ([Who a visitor is](#who-a-visitor-is)) |
 
 API keys (TMDB, Hardcover, OMDb, OpenSubtitles…) and passwords are entered in the app, in
 Settings → Connections — never in `.env`. Older installs may still have
@@ -388,8 +396,8 @@ network.
 ### Who a visitor is
 
 Arrmada works out each visitor's address for two things: whether they're on your home network
-(people with requester accounts get only the requester pages from outside), and the sign-in
-limits, which count wrong passwords per address.
+(people with requester accounts get only the requester pages from outside, and first-run setup
+only works from home), and the sign-in limits, which count wrong passwords per address.
 
 - **Straight to the port** (on your LAN, or a port forward): the address the connection came
   from.

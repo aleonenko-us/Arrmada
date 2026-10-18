@@ -215,8 +215,8 @@ func (a *api) handleSetup(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusConflict, "setup already complete")
 		return
 	}
-	// Throttle the unauthenticated setup endpoint too — it's externally reachable
-	// on a fresh instance until the first admin exists.
+	// Throttle the unauthenticated setup endpoint too: it's open to the whole LAN (and,
+	// with ARRMADA_ALLOW_REMOTE_SETUP, the internet) until the first admin exists.
 	if !a.loginAllowed(w, r, "setup:"+netutil.ClientIP(r)) {
 		return
 	}

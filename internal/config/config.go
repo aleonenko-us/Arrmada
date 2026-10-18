@@ -31,6 +31,10 @@ type Config struct {
 	// while direct LAN hits don't. External requests are limited to Discover.
 	// Empty disables header-based detection (falls back to a public source IP).
 	ExternalHeader string
+	// AllowRemoteSetup (ARRMADA_ALLOW_REMOTE_SETUP=1) lets first-run setup — making the
+	// first admin — be done from outside the LAN. Off, only a visitor on the LAN can make
+	// it, so a fresh install reachable from the internet can't be claimed by a stranger.
+	AllowRemoteSetup bool
 	// PlexURL / PlexToken, when set, seed the Insights module's Plex connection on
 	// startup (the UI can also set them). Token is a secret — keep it in .env.
 	PlexURL   string
@@ -191,6 +195,7 @@ func Load() (Config, error) {
 	// choice, so a typo shouldn't make it.
 	c.SkipMigrationSnapshot, _ = strconv.ParseBool(env("ARRMADA_SKIP_MIGRATION_SNAPSHOT", "false"))
 	c.AllowNewerSchema, _ = strconv.ParseBool(env("ARRMADA_ALLOW_NEWER_SCHEMA", "false"))
+	c.AllowRemoteSetup, _ = strconv.ParseBool(env("ARRMADA_ALLOW_REMOTE_SETUP", "false"))
 	// Anything else (a typo) is treated as unset: it only steers what the update check
 	// compares with, never what runs.
 	switch ch := strings.ToLower(strings.TrimSpace(env("ARRMADA_CHANNEL", ""))); ch {

@@ -17,6 +17,8 @@ export interface Status {
   started_at: string;
   uptime_seconds: number;
   needs_setup: boolean;
+  /** First-run setup is refused from where this visitor is (outside the LAN). */
+  setup_blocked?: boolean;
   authenticated: boolean;
   external: boolean;
   modules: Module[];
