@@ -95,6 +95,9 @@ func lanRequest(method, target, body string, role auth.Role) *http.Request {
 	}
 	r := httptest.NewRequest(method, target, rd)
 	r.RemoteAddr = "192.168.1.20:5000"
+	if body != "" {
+		r.Header.Set("Content-Type", "application/json")
+	}
 	if role != "" {
 		r = withUser(r, &auth.User{ID: 7, Username: "someone", Role: role})
 	}
