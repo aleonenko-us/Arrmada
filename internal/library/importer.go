@@ -270,26 +270,17 @@ func (im *Importer) FindBookFoldersIn(roots ...string) []BookFolder {
 var calibreIDRe = regexp.MustCompile(`^(.*\S)\s+\(\d+\)$`)
 
 // stripCalibreID takes Calibre's id off a book folder's title, so the title lookup gets
-// "Golden Son", not "Golden Son (42)". Only for a folder Calibre made — one holding its
-// metadata.opf or cover.jpg, or a book named "<title> - <author>" as Calibre names them —
-// so a folder of someone's own called "Saga (2)" keeps its number.
+// "Golden Son", not "Golden Son (42)". Only for a folder holding Calibre's metadata.opf:
+// a cover.jpg or a "Title - Author" file name is common outside Calibre too, and stripping
+// "Saga (2)" or "Mistborn (3)" to the bare series name would match volume 1 and merge
+// the volumes into one wrong book.
 func stripCalibreID(bf *BookFolder) string {
 	m := calibreIDRe.FindStringSubmatch(bf.Title)
 	if m == nil || bf.Dir == "" {
 		return bf.Title
 	}
-	title := m[1]
-	for _, marker := range []string{"metadata.opf", "cover.jpg"} {
-		if fi, err := os.Stat(filepath.Join(bf.Dir, marker)); err == nil && fi.Mode().IsRegular() {
-			return title
-		}
-	}
-	for _, files := range [][]FoundFile{bf.Ebooks, bf.Audiobooks} {
-		for _, f := range files {
-			if strings.HasPrefix(strings.ToLower(filepath.Base(f.Path)), strings.ToLower(title)+" - ") {
-				return title
-			}
-		}
+	if fi, err := os.Lstat(filepath.Join(bf.Dir, "metadata.opf")); err == nil && fi.Mode().IsRegular() {
+		return m[1]
 	}
 	return bf.Title
 }

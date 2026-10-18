@@ -1,10 +1,13 @@
 package httpapi
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -39,6 +42,23 @@ func (c *prefixConv) Convert(_ context.Context, src, dst string) error {
 		return err
 	}
 	return os.WriteFile(dst, append([]byte("PK\x03\x04kepub:"), b...), 0o600)
+}
+
+// zipOf is a small, always identical zip holding text: the KEPUB cache opens an EPUB as a
+// zip before converting it.
+func zipOf(t *testing.T, text string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.CreateHeader(&zip.FileHeader{Name: "text.xhtml", Method: zip.Store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.WriteString(w, text)
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 type kepubFixture struct {
@@ -80,7 +100,7 @@ func newKepubFixture(t *testing.T) *kepubFixture {
 			t.Fatal(err)
 		}
 		p := filepath.Join(root, file)
-		if err := os.WriteFile(p, []byte("PK fake ebook bytes of "+title), 0o644); err != nil {
+		if err := os.WriteFile(p, zipOf(t, "PK fake ebook bytes of "+title), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if err := repo.SetEdition(ctx, b.ID, books.KindEbook, p, strings.TrimPrefix(filepath.Ext(file), "."), 1, 1); err != nil {
@@ -118,11 +138,11 @@ func TestKepubDownload(t *testing.T) {
 		t.Errorf("converted %d times, want once (then the cache)", f.conv.runs.Load())
 	}
 	code, body, h = f.download(t, f.epub.ID, "")
-	if code != 200 || body != "PK fake ebook bytes of Dune" || h.Get("Content-Type") != "application/epub+zip" {
+	if code != 200 || body != string(zipOf(t, "PK fake ebook bytes of Dune")) || h.Get("Content-Type") != "application/epub+zip" {
 		t.Errorf("plain download: HTTP %d %q %q", code, body, h.Get("Content-Type"))
 	}
 	// The library file is as it was, and nothing was written beside it.
-	if b, _ := os.ReadFile(filepath.Join(f.libDir, "dune.epub")); string(b) != "PK fake ebook bytes of Dune" {
+	if b, _ := os.ReadFile(filepath.Join(f.libDir, "dune.epub")); string(b) != string(zipOf(t, "PK fake ebook bytes of Dune")) {
 		t.Errorf("the library EPUB changed: %q", b)
 	}
 	if entries, _ := os.ReadDir(f.libDir); len(entries) != 2 {
@@ -130,7 +150,7 @@ func TestKepubDownload(t *testing.T) {
 	}
 	// Not an EPUB: the file as it is.
 	code, body, h = f.download(t, f.azw3.ID, "?format=kepub")
-	if code != 200 || body != "PK fake ebook bytes of Dune Messiah" || !strings.HasSuffix(h.Get("Content-Disposition"), `.azw3"`) {
+	if code != 200 || body != string(zipOf(t, "PK fake ebook bytes of Dune Messiah")) || !strings.HasSuffix(h.Get("Content-Disposition"), `.azw3"`) {
 		t.Errorf("azw3 with format=kepub: HTTP %d %q %q", code, body, h.Get("Content-Disposition"))
 	}
 	// Read-only accounts can't download either way.
@@ -146,7 +166,7 @@ func TestKepubDownloadFallsBack(t *testing.T) {
 	f := newKepubFixture(t)
 	f.conv.fail.Store(true)
 	code, body, h := f.download(t, f.epub.ID, "?format=kepub")
-	if code != 200 || body != "PK fake ebook bytes of Dune" || h.Get("Content-Type") != "application/epub+zip" {
+	if code != 200 || body != string(zipOf(t, "PK fake ebook bytes of Dune")) || h.Get("Content-Type") != "application/epub+zip" {
 		t.Fatalf("HTTP %d %q %q, want the EPUB", code, body, h.Get("Content-Type"))
 	}
 	logs := f.logs.String()
@@ -218,11 +238,47 @@ func TestKepubSetting(t *testing.T) {
 		t.Errorf("shelf still offers the Kobo download with it off: %v", m)
 	}
 	code, body, h := f.download(t, f.epub.ID, "?format=kepub")
-	if code != 200 || body != "PK fake ebook bytes of Dune" || h.Get("Content-Type") != "application/epub+zip" {
+	if code != 200 || body != string(zipOf(t, "PK fake ebook bytes of Dune")) || h.Get("Content-Type") != "application/epub+zip" {
 		t.Errorf("off: HTTP %d %q, want the EPUB", code, body)
 	}
 	if f.conv.runs.Load() != 0 {
 		t.Error("converted with the setting off")
+	}
+}
+
+// Picking a cover from the picker removes a stored cover file (an upload, or the cover.jpg
+// a Calibre scan copied): that file would otherwise keep winning in listening apps and
+// OPDS readers, which serve a stored file before the URL.
+func TestPickedCoverReplacesStoredCoverFile(t *testing.T) {
+	f := newKepubFixture(t)
+	s := f.s
+	dir := filepath.Join(s.deps.Config.DataDir, "covers")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stored := filepath.Join(dir, fmt.Sprintf("book-%d.jpg", f.epub.ID))
+	other := filepath.Join(dir, fmt.Sprintf("book-%d.jpg", f.azw3.ID))
+	for _, p := range []string{stored, other} {
+		if err := os.WriteFile(p, []byte{0xFF, 0xD8, 0xFF}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec := s.doJSON("PUT", fmt.Sprintf("/api/v1/books/%d/cover", f.epub.ID), f.manager, `{"url":"https://covers.example/picked.jpg"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HTTP %d %s", rec.Code, rec.Body)
+	}
+	if _, err := os.Stat(stored); !os.IsNotExist(err) {
+		t.Errorf("the stored cover file is still there (err %v); it would keep winning over the picked cover", err)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Errorf("another book's cover file went too: %v", err)
+	}
+	b, _ := s.deps.Books.Get(context.Background(), f.epub.ID)
+	if b.CoverURL != "https://covers.example/picked.jpg" {
+		t.Errorf("cover_url = %q", b.CoverURL)
+	}
+	if rec := s.do("GET", fmt.Sprintf("/api/v1/books/%d/cover-image", f.epub.ID), f.cookie); rec.Code != http.StatusNotFound {
+		t.Errorf("cover-image: HTTP %d, want 404 now the file is gone", rec.Code)
 	}
 }
 

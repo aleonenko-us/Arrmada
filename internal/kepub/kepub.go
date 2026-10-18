@@ -22,6 +22,7 @@
 package kepub
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
@@ -59,6 +60,16 @@ const (
 	DefaultMaxSource int64 = 100 << 20
 	// DefaultTimeout bounds one conversion; a typical novel takes well under a second.
 	DefaultTimeout = 2 * time.Minute
+	// DefaultMaxUncompressed bounds what an EPUB may unpack to. kepubify reads every
+	// entry, so a small zip that inflates to gigabytes (a zip bomb) is refused unopened.
+	DefaultMaxUncompressed int64 = 1 << 30
+	// maxRatio is the most an entry of any size above ratioFloor may inflate by. Book text
+	// and images compress a few times over; a hundredfold is a bomb, not a book.
+	maxRatio   = 100
+	ratioFloor = 1 << 20
+	// DefaultFailTTL is how long a failed conversion is remembered: the same broken EPUB
+	// isn't converted again on every download, holding the one conversion slot.
+	DefaultFailTTL = time.Hour
 )
 
 var (
@@ -66,14 +77,19 @@ var (
 	ErrOff = errors.New("kepub conversion is off")
 	// ErrNotEPUB: only an EPUB can become a KEPUB.
 	ErrNotEPUB = errors.New("not an EPUB")
-	// ErrTooLarge: the EPUB is over MaxSource.
+	// ErrTooLarge: the EPUB is over MaxSource, unpacks to too much, or converts to a
+	// KEPUB bigger than the whole cache.
 	ErrTooLarge = errors.New("the EPUB is too large to convert")
+	// ErrRecentlyFailed: this version of the EPUB failed to convert within FailTTL.
+	ErrRecentlyFailed = errors.New("this EPUB failed to convert a short while ago")
 )
 
 // Failed reports whether an Open error is a real failure worth a log line, rather than
-// one of the expected reasons to send the EPUB (off, not an EPUB, too large).
+// one of the expected reasons to send the EPUB (off, not an EPUB, too large, or a failure
+// already logged a short while ago).
 func Failed(err error) bool {
-	return err != nil && !errors.Is(err, ErrOff) && !errors.Is(err, ErrNotEPUB) && !errors.Is(err, ErrTooLarge)
+	return err != nil && !errors.Is(err, ErrOff) && !errors.Is(err, ErrNotEPUB) &&
+		!errors.Is(err, ErrTooLarge) && !errors.Is(err, ErrRecentlyFailed)
 }
 
 // Converter turns the EPUB at src into a KEPUB at dst (a path that doesn't exist yet).
@@ -136,10 +152,16 @@ type Options struct {
 	MaxSource int64
 	// Timeout bounds one conversion (0 = DefaultTimeout).
 	Timeout time.Duration
+	// MaxUncompressed bounds what an EPUB may unpack to (0 = DefaultMaxUncompressed).
+	MaxUncompressed int64
+	// FailTTL is how long a failed conversion is remembered (0 = DefaultFailTTL).
+	FailTTL time.Duration
 	// Converter does the work (nil = kepubify on PATH).
 	Converter Converter
 	// Enabled reads the setting on every use (nil = always on).
 	Enabled func(ctx context.Context) bool
+	// Now is the clock (nil = time.Now); tests move it.
+	Now func() time.Time
 }
 
 // Service is the KEPUB cache. Safe for concurrent use; nil-safe (a nil Service is off).
@@ -150,6 +172,10 @@ type Service struct {
 	// while the app runs.
 	availOnce sync.Once
 	avail     bool
+	// failed is when each cache name last failed to convert, in memory (a restart tries
+	// again).
+	failMu sync.Mutex
+	failed map[string]time.Time
 }
 
 // New builds the cache.
@@ -163,10 +189,41 @@ func New(o Options) *Service {
 	if o.Timeout <= 0 {
 		o.Timeout = DefaultTimeout
 	}
+	if o.MaxUncompressed <= 0 {
+		o.MaxUncompressed = DefaultMaxUncompressed
+	}
+	if o.FailTTL <= 0 {
+		o.FailTTL = DefaultFailTTL
+	}
 	if o.Converter == nil {
 		o.Converter = Kepubify{}
 	}
-	return &Service{o: o, sem: make(chan struct{}, 1)}
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	return &Service{o: o, sem: make(chan struct{}, 1), failed: map[string]time.Time{}}
+}
+
+// failedRecently reports whether name failed to convert within FailTTL.
+func (s *Service) failedRecently(name string) bool {
+	s.failMu.Lock()
+	defer s.failMu.Unlock()
+	at, ok := s.failed[name]
+	return ok && s.o.Now().Sub(at) < s.o.FailTTL
+}
+
+// noteFailure remembers that name failed, dropping entries that have run out so the map
+// stays as small as the number of broken EPUBs asked for within the hour.
+func (s *Service) noteFailure(name string) {
+	s.failMu.Lock()
+	defer s.failMu.Unlock()
+	now := s.o.Now()
+	for k, at := range s.failed {
+		if now.Sub(at) >= s.o.FailTTL {
+			delete(s.failed, k)
+		}
+	}
+	s.failed[name] = now
 }
 
 // Ready reports whether a KEPUB can be made: the setting is on and the converter exists.
@@ -219,9 +276,13 @@ func (s *Service) Open(ctx context.Context, bookID int64, src string) (*os.File,
 	if fi.Size() > s.o.MaxSource {
 		return nil, ErrTooLarge
 	}
-	dst := filepath.Join(s.o.Dir, cacheName(bookID, fi))
+	name := cacheName(bookID, fi)
+	dst := filepath.Join(s.o.Dir, name)
 	if f, ok := s.hit(dst); ok {
 		return f, nil
+	}
+	if s.failedRecently(name) {
+		return nil, ErrRecentlyFailed
 	}
 	select {
 	case s.sem <- struct{}{}:
@@ -229,11 +290,18 @@ func (s *Service) Open(ctx context.Context, bookID int64, src string) (*os.File,
 		return nil, ctx.Err()
 	}
 	defer func() { <-s.sem }()
-	// Someone else may have made it while this waited.
+	// Someone else may have made it, or failed to, while this waited.
 	if f, ok := s.hit(dst); ok {
 		return f, nil
 	}
+	if s.failedRecently(name) {
+		return nil, ErrRecentlyFailed
+	}
 	if err := s.convert(ctx, bookID, src, dst); err != nil {
+		// A request that went away isn't the EPUB's fault; anything else is remembered.
+		if ctx.Err() == nil {
+			s.noteFailure(name)
+		}
 		return nil, err
 	}
 	s.prune(dst)
@@ -272,6 +340,10 @@ func (s *Service) convert(ctx context.Context, bookID int64, src, dst string) er
 	if err := copyLimited(src, in, s.o.MaxSource); err != nil {
 		return err
 	}
+	// The copy is what kepubify reads, so the copy is what's checked.
+	if err := checkInflate(in, s.o.MaxUncompressed); err != nil {
+		return err
+	}
 	out := filepath.Join(work, "out"+Ext)
 	cctx, cancel := context.WithTimeout(ctx, s.o.Timeout)
 	defer cancel()
@@ -284,8 +356,39 @@ func (s *Service) convert(ctx context.Context, bookID int64, src, dst string) er
 	if err := checkZip(out); err != nil {
 		return err
 	}
+	// A KEPUB bigger than the whole cache would only evict everything else.
+	if st, err := os.Stat(out); err != nil {
+		return err
+	} else if st.Size() > s.o.MaxBytes {
+		return fmt.Errorf("the KEPUB is %d MB, more than the cache holds: %w", st.Size()>>20, ErrTooLarge)
+	}
 	s.dropBook(bookID)
 	return os.Rename(out, dst)
+}
+
+// checkInflate opens an EPUB as a zip and refuses it, as ErrTooLarge, when its entries
+// unpack to more than limit in all or one of them inflates by more than maxRatio (a zip
+// bomb). Sizes come from the zip's own directory; an entry that lies about its size is
+// caught by kepubify's own reads failing, within the timeout.
+func checkInflate(path string, limit int64) error {
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		return fmt.Errorf("the EPUB isn't a readable zip: %w", err)
+	}
+	defer zr.Close()
+	var total uint64
+	for _, f := range zr.File {
+		total += f.UncompressedSize64
+		if total > uint64(limit) {
+			return fmt.Errorf("the EPUB unpacks to more than %d MB: %w", limit>>20, ErrTooLarge)
+		}
+		if f.UncompressedSize64 > ratioFloor {
+			if f.CompressedSize64 == 0 || f.UncompressedSize64/f.CompressedSize64 > maxRatio {
+				return fmt.Errorf("an entry of the EPUB inflates more than %d-fold: %w", maxRatio, ErrTooLarge)
+			}
+		}
+	}
+	return nil
 }
 
 // copyLimited copies src to dst, refusing a file that grew past limit since it was checked.

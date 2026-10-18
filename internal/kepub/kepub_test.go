@@ -290,6 +290,142 @@ func TestOpenFailures(t *testing.T) {
 	})
 }
 
+// writeZip writes a zip with one entry of n repeated bytes, deflated (so it is tiny on
+// disk and huge unpacked).
+func writeZip(t *testing.T, path string, n int) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	w, err := zw.CreateHeader(&zip.FileHeader{Name: "OEBPS/c.xhtml", Method: zip.Deflate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := make([]byte, 1<<20)
+	for n > 0 {
+		k := min(n, len(chunk))
+		_, _ = w.Write(chunk[:k])
+		n -= k
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+}
+
+// An EPUB that unpacks to more than the limit, or with an entry inflating a
+// hundredfold, is refused before kepubify ever reads it; so is a KEPUB bigger than the
+// whole cache.
+func TestZipBombsAndHugeOutputAreRefused(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	bomb := filepath.Join(dir, "bomb.epub")
+	writeZip(t, bomb, 64<<20) // 64 MB of zeros: a few tens of KB on disk
+	if fi, _ := os.Stat(bomb); fi.Size() > 1<<20 {
+		t.Fatalf("test zip is %d bytes, want it small", fi.Size())
+	}
+	conv := &fakeConv{}
+	s := New(Options{Dir: t.TempDir(), Converter: conv})
+	if _, err := s.Open(ctx, 1, bomb); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("ratio bomb: err = %v, want ErrTooLarge", err)
+	}
+	s = New(Options{Dir: t.TempDir(), Converter: conv, MaxUncompressed: 1 << 20})
+	small := filepath.Join(dir, "big-unpacked.epub")
+	writeEPUB(t, small, strings.Repeat("All work and no play. ", 100_000)) // ~2 MB of text, deflated
+	if _, err := s.Open(ctx, 2, small); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("over MaxUncompressed: err = %v, want ErrTooLarge", err)
+	}
+	if conv.runs.Load() != 0 {
+		t.Errorf("kepubify ran %d times on refused EPUBs", conv.runs.Load())
+	}
+	if Failed(ErrTooLarge) {
+		t.Error("a refusal is logged as a failure")
+	}
+
+	ok := filepath.Join(dir, "ok.epub")
+	writeEPUB(t, ok, "Hello")
+	s = New(Options{Dir: t.TempDir(), Converter: &bigOutput{}, MaxBytes: 1 << 10})
+	if _, err := s.Open(ctx, 3, ok); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("huge KEPUB: err = %v, want ErrTooLarge", err)
+	}
+}
+
+// bigOutput writes a valid-looking KEPUB of 64 KB.
+type bigOutput struct{}
+
+func (bigOutput) Available() bool { return true }
+func (bigOutput) Convert(_ context.Context, _, dst string) error {
+	return os.WriteFile(dst, append([]byte("PK\x03\x04"), make([]byte, 64<<10)...), 0o600)
+}
+
+// A failed conversion is remembered for FailTTL: the same version of the EPUB isn't run
+// through kepubify again on every download (each would hold the one conversion slot),
+// and isn't logged again. Afterwards, or once the EPUB changes, it's tried again.
+func TestFailuresAreRememberedForAWhile(t *testing.T) {
+	ctx := context.Background()
+	src := filepath.Join(t.TempDir(), "b.epub")
+	writeEPUB(t, src, "x")
+	now := time.Now()
+	conv := &fakeConv{fail: errors.New("zip: not a valid zip file")}
+	s := New(Options{Dir: t.TempDir(), Converter: conv, FailTTL: time.Hour, Now: func() time.Time { return now }})
+	if _, err := s.Open(ctx, 1, src); err == nil || !Failed(err) {
+		t.Fatalf("first: err = %v, want a failure worth logging", err)
+	}
+	for range 3 {
+		if _, err := s.Open(ctx, 1, src); !errors.Is(err, ErrRecentlyFailed) {
+			t.Errorf("again: err = %v, want ErrRecentlyFailed", err)
+		}
+	}
+	if Failed(ErrRecentlyFailed) {
+		t.Error("a remembered failure is logged again")
+	}
+	if n := conv.runs.Load(); n != 1 {
+		t.Errorf("kepubify ran %d times, want once", n)
+	}
+	// Another book isn't affected.
+	other := filepath.Join(t.TempDir(), "c.epub")
+	writeEPUB(t, other, "y")
+	if _, err := s.Open(ctx, 2, other); errors.Is(err, ErrRecentlyFailed) {
+		t.Error("one book's failure blocked another")
+	}
+	// An hour on, it's tried again.
+	now = now.Add(time.Hour + time.Minute)
+	conv.fail = nil
+	f, err := s.Open(ctx, 1, src)
+	if err != nil {
+		t.Fatalf("after the TTL: %v", err)
+	}
+	f.Close()
+	// A request that gave up isn't the EPUB's fault and isn't remembered.
+	blocked := &fakeConv{block: make(chan struct{})}
+	s2 := New(Options{Dir: t.TempDir(), Converter: blocked})
+	cctx, cancel := context.WithCancel(ctx)
+	go func() {
+		for blocked.runs.Load() == 0 {
+			time.Sleep(time.Millisecond)
+		}
+		cancel()
+	}()
+	if _, err := s2.Open(cctx, 1, src); err == nil {
+		t.Fatal("a cancelled conversion succeeded")
+	}
+	close(blocked.block)
+	if s2.failedRecently(cacheNameOf(t, 1, src)) {
+		t.Error("a cancelled request was remembered as a failure")
+	}
+}
+
+func cacheNameOf(t *testing.T, id int64, path string) string {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cacheName(id, fi)
+}
+
 type badOutput struct{}
 
 func (badOutput) Available() bool { return true }

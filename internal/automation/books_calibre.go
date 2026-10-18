@@ -63,6 +63,19 @@ func scanIdentity(bf library.BookFolder, opf books.OPF, hasOPF bool) (isbn, titl
 	return isbn, title, author
 }
 
+// isbnAgrees reports whether an ISBN lookup's answer is the book the folder says it
+// holds: its title matches the way a title search's would (pickScanMatch), or its authors
+// overlap the folder's. A folder with neither title nor author takes the ISBN on trust.
+func isbnAgrees(r metadata.BookResult, title, author string) bool {
+	if title == "" && author == "" {
+		return true
+	}
+	if _, ok := pickScanMatch(title, author, []metadata.BookResult{r}); ok {
+		return true
+	}
+	return author != "" && r.Author != "" && books.AuthorsOverlap(author, r.Author)
+}
+
 // withOPFDates fills a lookup result's publication date and year from the OPF where the
 // catalogue gave none: books.Add keeps a result's own values first.
 func withOPFDates(r metadata.BookResult, opf books.OPF) metadata.BookResult {
@@ -75,14 +88,26 @@ func withOPFDates(r metadata.BookResult, opf books.OPF) metadata.BookResult {
 	return r
 }
 
-// applyFolderMeta fills in, after a scan has filed a folder under book b, what only the
-// Calibre folder knew: the OPF's series when the book has none, and cover.jpg when the
-// book has no cover at all. Only ever fills in.
-func (c *Coordinator) applyFolderMeta(ctx context.Context, b books.Book, opf *books.OPF, coverDirs []string) {
+// applyFolderMeta fills in, after a scan has filed a folder under the book with id,
+// what only the Calibre folder knew: the OPF's series when the book has none, and
+// cover.jpg when the book has no cover at all. Only ever fills in. Called holding the
+// book's lock; the book is read again here (a long scan's snapshot may be stale), and
+// both writes are conditional in the database too, so a cover someone picks or a series
+// someone sets while the scan runs is never replaced.
+func (c *Coordinator) applyFolderMeta(ctx context.Context, bookID int64, opf *books.OPF, coverDirs []string) {
+	if (opf == nil || opf.Series == "") && len(coverDirs) == 0 {
+		return
+	}
+	b, err := c.books.Get(ctx, bookID)
+	if err != nil {
+		return
+	}
 	if opf != nil && b.SeriesName == "" && opf.Series != "" {
-		if err := c.books.SetSeries(ctx, b.ID, opf.Series, opf.SeriesPosition); err != nil {
+		took, err := c.books.FillSeries(ctx, b.ID, opf.Series, opf.SeriesPosition)
+		switch {
+		case err != nil:
 			c.log.Warn("book scan: couldn't record the series from metadata.opf", "title", b.Title, "err", err)
-		} else {
+		case took:
 			c.log.Info("book scan: series from metadata.opf", "title", b.Title, "series", opf.Series, "position", opf.SeriesPosition)
 		}
 	}
@@ -93,67 +118,86 @@ func (c *Coordinator) applyFolderMeta(ctx context.Context, b books.Book, opf *bo
 		return // a cover someone uploaded
 	}
 	for _, dir := range coverDirs {
-		ok, err := copyFolderCover(filepath.Join(dir, books.CalibreCover), filepath.Join(c.bookCovers, fmt.Sprintf("book-%d.jpg", b.ID)))
+		tmp, err := stageFolderCover(filepath.Join(dir, books.CalibreCover), c.bookCovers)
 		if err != nil {
 			c.log.Warn("book scan: couldn't copy the folder's cover.jpg", "title", b.Title, "err", err)
 			continue
 		}
-		if !ok {
+		if tmp == "" {
 			continue
 		}
-		url := fmt.Sprintf("/api/v1/books/%d/cover-image?v=%d", b.ID, time.Now().Unix())
-		if err := c.books.SetCover(ctx, b.ID, url); err != nil {
-			c.log.Warn("book scan: couldn't use the folder's cover.jpg", "title", b.Title, "err", err)
-			return
-		}
-		_ = c.books.TouchMeta(ctx, b.ID)
-		c.log.Info("book scan: cover from the folder's cover.jpg (the catalogue had none)", "title", b.Title)
+		c.useStagedCover(ctx, b, tmp)
 		return
 	}
 }
 
-// copyFolderCover copies src (a cover.jpg) to dst, refusing anything that isn't a
-// regular file, is empty, too large, or isn't a JPEG. ok is false when there's no cover.
-func copyFolderCover(src, dst string) (bool, error) {
-	in, err := os.Open(src)
+// useStagedCover points a cover-less book at a staged copy of its folder's cover.jpg:
+// the database first (only if the book still has no cover), then the file put in place
+// without replacing one that appeared meanwhile. Nothing already in the covers folder is
+// ever removed; the staged copy always is.
+func (c *Coordinator) useStagedCover(ctx context.Context, b books.Book, tmp string) {
+	defer os.Remove(tmp)
+	url := fmt.Sprintf("/api/v1/books/%d/cover-image?v=%d", b.ID, time.Now().Unix())
+	took, err := c.books.FillCover(ctx, b.ID, url)
+	if err != nil {
+		c.log.Warn("book scan: couldn't use the folder's cover.jpg", "title", b.Title, "err", err)
+		return
+	}
+	if !took {
+		return // someone chose a cover while the scan ran
+	}
+	// A hard link fails when the name exists: an upload that landed in between wins.
+	if err := os.Link(tmp, filepath.Join(c.bookCovers, fmt.Sprintf("book-%d.jpg", b.ID))); err != nil && !errors.Is(err, fs.ErrExist) {
+		c.log.Warn("book scan: couldn't store the folder's cover.jpg", "title", b.Title, "err", err)
+		return
+	}
+	_ = c.books.TouchMeta(ctx, b.ID)
+	c.log.Info("book scan: cover from the folder's cover.jpg (the catalogue had none)", "title", b.Title)
+}
+
+// stageFolderCover copies src (a cover.jpg) to a hidden temporary file in dir and returns
+// its path, refusing anything that isn't a regular file (a symlink included), is empty,
+// too large, or isn't a JPEG. "" with no error means there's no cover to use.
+func stageFolderCover(src, dir string) (string, error) {
+	st, err := os.Lstat(src)
 	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
+		return "", nil
 	}
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	defer in.Close()
-	st, err := in.Stat()
-	if err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
-		return false, nil
+	if !st.Mode().IsRegular() || st.Size() == 0 {
+		return "", nil // a symlink, a folder, a FIFO, an empty file: not a cover
 	}
 	if st.Size() > maxFolderCover {
-		return false, fmt.Errorf("cover.jpg is %d MB, more than covers may be", st.Size()>>20)
+		return "", fmt.Errorf("cover.jpg is %d MB, more than covers may be", st.Size()>>20)
 	}
+	in, err := os.Open(src)
+	if err != nil {
+		return "", err
+	}
+	defer in.Close()
 	head := make([]byte, 3)
 	if _, err := io.ReadFull(in, head); err != nil || head[0] != 0xFF || head[1] != 0xD8 || head[2] != 0xFF {
-		return false, errors.New("cover.jpg isn't a JPEG")
+		return "", errors.New("cover.jpg isn't a JPEG")
 	}
 	if _, err := in.Seek(0, io.SeekStart); err != nil {
-		return false, err
+		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return false, err
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(dst), ".cover-*")
+	tmp, err := os.CreateTemp(dir, ".cover-*")
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	_, err = io.Copy(tmp, io.LimitReader(in, maxFolderCover))
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}
-	if err == nil {
-		err = os.Rename(tmp.Name(), dst)
-	}
 	if err != nil {
 		_ = os.Remove(tmp.Name())
-		return false, err
+		return "", err
 	}
-	return true, nil
+	return tmp.Name(), nil
 }

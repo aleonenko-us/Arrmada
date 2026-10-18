@@ -100,6 +100,18 @@ const goldenSonOPF = `<?xml version='1.0' encoding='utf-8'?>
 </package>
 `
 
+// wrongISBNOPF names Ancillary Justice but carries Twilight's ISBN.
+const wrongISBNOPF = `<?xml version='1.0' encoding='utf-8'?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+        <dc:identifier opf:scheme="calibre">5</dc:identifier>
+        <dc:title>Ancillary Justice</dc:title>
+        <dc:creator opf:file-as="Leckie, Ann" opf:role="aut">Ann Leckie</dc:creator>
+        <dc:identifier opf:scheme="ISBN">9780316015844</dc:identifier>
+    </metadata>
+</package>
+`
+
 // calibreJPEG is the start of a JPEG; enough for the cover check.
 var calibreJPEG = []byte{0xFF, 0xD8, 0xFF, 0xE0, 'J', 'F', 'I', 'F', 0}
 
@@ -153,28 +165,38 @@ func TestBookScanReadsCalibreLibrary(t *testing.T) {
 	writeCalibreFile(t, filepath.Join(golden, "Golden Son - Pierce Brown.epub"), []byte("PK epub"))
 	writeCalibreFile(t, filepath.Join(golden, "metadata.opf"), []byte(goldenSonOPF))
 	writeCalibreFile(t, filepath.Join(golden, "cover.jpg"), calibreJPEG)
-	// Morning Star: a Calibre folder whose OPF was deleted — the " (7)" is still stripped
-	// (the file is named the Calibre way).
+	// Ancillary Justice: the OPF's ISBN is another author's book (a source's mistake
+	// Calibre kept). The ISBN's answer is refused and the OPF's title and author used.
+	ancillary := filepath.Join(root, "Ann Leckie", "Ancillary Justice (5)")
+	writeCalibreFile(t, filepath.Join(ancillary, "Ancillary Justice - Ann Leckie.epub"), []byte("PK epub"))
+	writeCalibreFile(t, filepath.Join(ancillary, "metadata.opf"), []byte(wrongISBNOPF))
+	// Morning Star: a Calibre-looking folder with no OPF — a "Title - Author" file name
+	// proves nothing, so its " (7)" stays.
 	morning := filepath.Join(root, "Pierce Brown", "Morning Star (7)")
 	writeCalibreFile(t, filepath.Join(morning, "Morning Star - Pierce Brown.epub"), []byte("PK epub"))
-	// Saga (2): someone's own folder, not Calibre's — its number stays.
+	// Saga (2): someone's own folder with a cover.jpg but no OPF — its number stays, so it
+	// can never be matched to (and merged into) volume 1.
 	saga := filepath.Join(root, "Brian K Vaughan", "Saga (2)")
 	writeCalibreFile(t, filepath.Join(saga, "saga-volume-two.epub"), []byte("PK epub"))
+	writeCalibreFile(t, filepath.Join(saga, "cover.jpg"), calibreJPEG)
 	before := calibreSnapshot(t, root)
 
 	cat := &calibreCatalogue{
 		byISBN: map[string]metadata.BookResult{
 			"9780060853983": {Key: "hc:good-omens", Title: "Good Omens", Author: "Terry Pratchett", CoverURL: "https://covers.example/go.jpg"},
+			"9780316015844": {Key: "hc:twilight", Title: "Twilight", Author: "Stephenie Meyer"},
 		},
 		search: map[string][]metadata.BookResult{
-			"Pierce Brown Golden Son":   {{Key: "hc:golden-son", Title: "Golden Son", Author: "Pierce Brown"}},
-			"Pierce Brown Morning Star": {{Key: "hc:morning-star", Title: "Morning Star", Author: "Pierce Brown", CoverURL: "https://covers.example/ms.jpg"}},
+			"Pierce Brown Golden Son":      {{Key: "hc:golden-son", Title: "Golden Son", Author: "Pierce Brown"}},
+			"Pierce Brown Morning Star":    {{Key: "hc:morning-star", Title: "Morning Star", Author: "Pierce Brown", CoverURL: "https://covers.example/ms.jpg"}},
+			"Brian K Vaughan Saga":         {{Key: "hc:saga-1", Title: "Saga", Author: "Brian K Vaughan"}},
+			"Ann Leckie Ancillary Justice": {{Key: "hc:ancillary", Title: "Ancillary Justice", Author: "Ann Leckie", CoverURL: "https://covers.example/aj.jpg"}},
 		},
 		details: map[string]metadata.BookDetails{
 			"hc:good-omens": {BookResult: metadata.BookResult{Key: "hc:good-omens", Title: "Good Omens", Author: "Terry Pratchett",
 				CoverURL: "https://covers.example/go.jpg"}},
-			"hc:golden-son":   {BookResult: metadata.BookResult{Key: "hc:golden-son", Title: "Golden Son", Author: "Pierce Brown"}},
-			"hc:morning-star": {BookResult: metadata.BookResult{Key: "hc:morning-star", Title: "Morning Star", Author: "Pierce Brown", CoverURL: "https://covers.example/ms.jpg"}},
+			"hc:golden-son": {BookResult: metadata.BookResult{Key: "hc:golden-son", Title: "Golden Son", Author: "Pierce Brown"}},
+			"hc:ancillary":  {BookResult: metadata.BookResult{Key: "hc:ancillary", Title: "Ancillary Justice", Author: "Ann Leckie", CoverURL: "https://covers.example/aj.jpg"}},
 		},
 	}
 	svc := books.NewService(st.DB(), cat, slog.Default())
@@ -187,7 +209,7 @@ func TestBookScanReadsCalibreLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	if res.Imported != 3 {
-		t.Errorf("imported %d, want 3 (Good Omens, Golden Son, Morning Star): %+v", res.Imported, res)
+		t.Errorf("imported %d, want 3 (Good Omens, Golden Son, Ancillary Justice): %+v", res.Imported, res)
 	}
 	// ISBN first: the OPF's ISBN was asked, and Good Omens never needed a title search.
 	if len(cat.isbns) == 0 || cat.isbns[0] != "9780060853983" {
@@ -197,12 +219,17 @@ func TestBookScanReadsCalibreLibrary(t *testing.T) {
 		if strings.Contains(q, "Misfiled") || strings.Contains(q, "Good Omens") {
 			t.Errorf("searched %q for a book its OPF's ISBN found", q)
 		}
-		if strings.Contains(q, "(42)") || strings.Contains(q, "(7)") || strings.Contains(q, "(12)") {
-			t.Errorf("searched %q with Calibre's id still on", q)
+		if strings.Contains(q, "(42)") || strings.Contains(q, "(5)") || strings.Contains(q, "(12)") {
+			t.Errorf("searched %q with the id of a folder that has an OPF still on", q)
 		}
 	}
-	if !slices.Contains(cat.queries, "Brian K Vaughan Saga (2)") {
-		t.Errorf("queries = %v, want someone's own \"Saga (2)\" kept as it is", cat.queries)
+	for _, q := range []string{"Brian K Vaughan Saga (2)", "Pierce Brown Morning Star (7)", "Ann Leckie Ancillary Justice"} {
+		if !slices.Contains(cat.queries, q) {
+			t.Errorf("queries = %v, want %q", cat.queries, q)
+		}
+	}
+	if !slices.Contains(cat.isbns, "9780316015844") {
+		t.Errorf("ISBN lookups = %v, want the wrong ISBN asked (and refused)", cat.isbns)
 	}
 
 	list, _ := svc.List(context.Background())
@@ -236,8 +263,13 @@ func TestBookScanReadsCalibreLibrary(t *testing.T) {
 	if gs.SeriesName != "Red Rising Saga" || gs.SeriesPosition != 2 {
 		t.Errorf("Golden Son series = %q #%v", gs.SeriesName, gs.SeriesPosition)
 	}
-	if ms := by["Morning Star"]; ms.Ebook == nil {
-		t.Errorf("Morning Star (no OPF) not matched: %+v", ms)
+	if aj := by["Ancillary Justice"]; aj.Ebook == nil || aj.CoverURL != "https://covers.example/aj.jpg" {
+		t.Errorf("Ancillary Justice = %+v, want it matched by title despite its wrong ISBN", aj)
+	}
+	for _, wrong := range []string{"Twilight", "Saga", "Morning Star"} {
+		if _, ok := by[wrong]; ok {
+			t.Errorf("%q was added: a wrong ISBN or a stripped number filed a folder under it", wrong)
+		}
 	}
 	if entries, _ := os.ReadDir(covers); len(entries) != 1 {
 		t.Errorf("covers folder holds %d files, want only Golden Son's", len(entries))
@@ -278,5 +310,75 @@ func TestBookScanIgnoresBrokenOPF(t *testing.T) {
 	}
 	if strings.Join(cat.queries, "|") != "Pierce Brown Golden Son" {
 		t.Errorf("queries = %v", cat.queries)
+	}
+}
+
+// A cover someone picks, or a series someone sets, while a long scan runs is never
+// replaced by what the scan read from the Calibre folder: the fill-ins read the book again
+// and are conditional in the database. A symlinked cover.jpg is never followed.
+func TestFolderMetaNeverReplacesChoices(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	ctx := context.Background()
+	svc := books.NewService(st.DB(), nil, slog.Default())
+	repo := books.NewRepo(st.DB())
+	covers := filepath.Join(t.TempDir(), "covers")
+	c := &Coordinator{books: svc, db: st.DB(), log: slog.Default(), bookCovers: covers}
+	dir := t.TempDir()
+	writeCalibreFile(t, filepath.Join(dir, "cover.jpg"), calibreJPEG)
+	opf := &books.OPF{Series: "Red Rising Saga", SeriesPosition: 2}
+
+	b, err := repo.Create(ctx, books.Book{OLKey: "hc:golden-son", Title: "Golden Son", Author: "Pierce Brown"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The scan's snapshot had no cover and no series; then someone chose both.
+	if err := svc.SetCover(ctx, b.ID, "https://covers.example/picked.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetSeries(ctx, b.ID, "Picked Series", 7); err != nil {
+		t.Fatal(err)
+	}
+	c.applyFolderMeta(ctx, b.ID, opf, []string{dir})
+	got, _ := svc.Get(ctx, b.ID)
+	if got.CoverURL != "https://covers.example/picked.jpg" || got.SeriesName != "Picked Series" || got.SeriesPosition != 7 {
+		t.Errorf("book = cover %q, series %q #%v; the scan replaced someone's choice", got.CoverURL, got.SeriesName, got.SeriesPosition)
+	}
+	if entries, _ := os.ReadDir(covers); len(entries) != 0 {
+		t.Errorf("covers folder holds %d files, want none (nothing staged left behind either)", len(entries))
+	}
+
+	// The database refuses a fill-in over a value that's there, whatever the caller read.
+	if took, err := svc.FillCover(ctx, b.ID, "/api/v1/books/1/cover-image"); err != nil || took {
+		t.Errorf("FillCover over a cover = %v, %v; want refused", took, err)
+	}
+	if took, err := svc.FillSeries(ctx, b.ID, "Other", 1); err != nil || took {
+		t.Errorf("FillSeries over a series = %v, %v; want refused", took, err)
+	}
+
+	// A book with neither takes both; a symlinked cover.jpg is ignored.
+	b2, err := repo.Create(ctx, books.Book{OLKey: "hc:morning-star", Title: "Morning Star", Author: "Pierce Brown"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkDir := t.TempDir()
+	if err := os.Symlink(filepath.Join(dir, "cover.jpg"), filepath.Join(linkDir, "cover.jpg")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	c.applyFolderMeta(ctx, b2.ID, opf, []string{linkDir})
+	got, _ = svc.Get(ctx, b2.ID)
+	if got.CoverURL != "" || got.SeriesName != "Red Rising Saga" {
+		t.Errorf("symlinked cover: cover %q series %q; want no cover, the OPF's series", got.CoverURL, got.SeriesName)
+	}
+	c.applyFolderMeta(ctx, b2.ID, nil, []string{dir})
+	got, _ = svc.Get(ctx, b2.ID)
+	if !strings.Contains(got.CoverURL, "/cover-image") {
+		t.Errorf("cover = %q, want the folder's cover.jpg", got.CoverURL)
+	}
+	if entries, _ := os.ReadDir(covers); len(entries) != 1 || entries[0].Name() != "book-"+strconv.FormatInt(b2.ID, 10)+".jpg" {
+		t.Errorf("covers folder = %v, want only book-%d.jpg", entries, b2.ID)
 	}
 }

@@ -9,8 +9,9 @@ import (
 )
 
 // Calibre names book folders "Title (123)", the number being the book's id in its
-// library. The scan's title guess drops it for a folder Calibre made, and keeps a number
-// in someone's own folder name.
+// library. The scan's title guess drops it only for a folder holding Calibre's
+// metadata.opf. A cover.jpg or a "Title - Author" file name proves nothing: "Saga (2)" and
+// "Mistborn (3)" stripped to the series name would match volume 1 and merge the volumes.
 func TestFindBookFoldersStripsCalibreID(t *testing.T) {
 	root := t.TempDir()
 	write := func(rel string) {
@@ -22,12 +23,13 @@ func TestFindBookFoldersStripsCalibreID(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("Pierce Brown/Golden Son (42)/Golden Son - Pierce Brown.epub") // Calibre's file name
-	write("Pierce Brown/Morning Star (7)/whatever.epub")
-	write("Pierce Brown/Morning Star (7)/metadata.opf") // Calibre's OPF
-	write("Frank Herbert/Dune (1)/book.epub")
-	write("Frank Herbert/Dune (1)/cover.jpg")       // Calibre's cover
-	write("Brian K Vaughan/Saga (2)/saga-two.epub") // someone's own
+	write("Pierce Brown/Golden Son (42)/Golden Son - Pierce Brown.epub")
+	write("Pierce Brown/Golden Son (42)/metadata.opf")                      // Calibre's OPF: stripped
+	write("Pierce Brown/Morning Star (7)/Morning Star - Pierce Brown.epub") // the name alone: kept
+	write("Brian K Vaughan/Saga (2)/saga-two.epub")
+	write("Brian K Vaughan/Saga (2)/cover.jpg") // a cover alone: kept
+	write("Brandon Sanderson/Mistborn (3)/Mistborn 3.m4b")
+	write("Brandon Sanderson/Mistborn (3)/cover.jpg")
 	write("Ann Leckie/Ancillary Justice/Ancillary Justice.epub")
 
 	im := NewImporter(t.TempDir(), slog.Default())
@@ -38,7 +40,7 @@ func TestFindBookFoldersStripsCalibreID(t *testing.T) {
 		dirs[bf.Title] = bf.Dir
 	}
 	sort.Strings(got)
-	want := []string{"Ann Leckie/Ancillary Justice", "Brian K Vaughan/Saga (2)", "Frank Herbert/Dune", "Pierce Brown/Golden Son", "Pierce Brown/Morning Star"}
+	want := []string{"Ann Leckie/Ancillary Justice", "Brandon Sanderson/Mistborn (3)", "Brian K Vaughan/Saga (2)", "Pierce Brown/Golden Son", "Pierce Brown/Morning Star (7)"}
 	if len(got) != len(want) {
 		t.Fatalf("folders = %v, want %v", got, want)
 	}

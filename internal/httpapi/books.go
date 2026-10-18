@@ -558,6 +558,15 @@ func (a *api) handleSetBookCover(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "url must be an http(s) image URL")
 		return
 	}
+	// A stored cover file (an upload, or a Calibre folder's cover.jpg a scan copied) wins
+	// over the URL for listening apps and OPDS readers, so it goes: the picked cover is
+	// the cover everywhere.
+	for _, old := range coverFiles(filepath.Join(a.deps.Config.DataDir, "covers"), id) {
+		if err := os.Remove(old); err != nil && !errors.Is(err, os.ErrNotExist) {
+			a.writeError(w, http.StatusInternalServerError, "could not replace the old cover")
+			return
+		}
+	}
 	if err := a.deps.Books.SetCover(r.Context(), id, req.URL); err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not set cover")
 		return

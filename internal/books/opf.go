@@ -51,15 +51,22 @@ type OPF struct {
 func (o OPF) Author() string { return strings.Join(o.Authors, " & ") }
 
 // ReadOPF reads dir's metadata.opf. A folder without one answers os.ErrNotExist.
+// Anything but a regular file (a folder, a symlink, a FIFO that would hang the open)
+// counts as no OPF; it's checked before the file is opened.
 func ReadOPF(dir string) (OPF, error) {
-	f, err := os.Open(filepath.Join(dir, OPFName))
+	p := filepath.Join(dir, OPFName)
+	st, err := os.Lstat(p)
+	if err != nil {
+		return OPF{}, err
+	}
+	if !st.Mode().IsRegular() {
+		return OPF{}, os.ErrNotExist
+	}
+	f, err := os.Open(p)
 	if err != nil {
 		return OPF{}, err
 	}
 	defer f.Close()
-	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
-		return OPF{}, os.ErrNotExist
-	}
 	return ParseOPF(f)
 }
 
