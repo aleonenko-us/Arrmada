@@ -6,13 +6,15 @@ import { insightsApi } from "../../lib/insightsApi";
 import { LINKS } from "../../lib/links";
 import { plexApi, type PlexConnectResult } from "../../lib/plexApi";
 import { usePlexPinSignIn, type PlexFlow } from "../../lib/plexSignIn";
+import { secretMoved } from "../../lib/sameEndpoint";
 import { useToast } from "../../ui";
 
 // PlexConnect points Arrmada at the Plex Media Server: Sign in with Plex (finds the
 // server itself), or a URL and token typed in. It opens inside the Plex card on Settings →
 // Connections; the first-run wizard can reuse it as is. It reads and writes the connection
 // through the API on its own, so nothing else holds its state. The token never comes back
-// to the browser: a blank token field keeps the saved one.
+// to the browser: a blank token field keeps the saved one, at the saved address only — a
+// new address needs the token again (or a fresh Sign in with Plex).
 //
 // plex.tv sends a redirect-mode sign-in back to /settings/connections?plexpin=<id>, and
 // the Connections page opens this editor so the PIN is picked up again here.
@@ -59,6 +61,8 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
     strip: () => setParams((p) => { p.delete("plexpin"); return p; }, { replace: true }),
   });
   const signingIn = plex.phase !== "idle";
+  // The server refuses a blank token for a new address; say so before Save is clicked.
+  const tokenMoved = secretMoved({ saved: !!cfg?.token_set, typed: token, url, savedUrl: cfg?.url ?? url });
 
   // Only the connection: monitoring and its interval are Settings → Media servers' and save on
   // their own. A first connection switches monitoring on by itself (the server does it).
@@ -108,7 +112,8 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
       </label>
       <label className="block">
         <span className="mb-1 block text-sm font-semibold">X-Plex-Token</span>
-        <input value={token} onChange={(e) => setToken(e.target.value)} type="password" autoComplete="off" placeholder={cfg?.token_set ? "•••••••••• (saved — leave blank to keep)" : "paste your token"} className="w-full rounded-lg px-3 py-2 text-md" style={inputStyle} />
+        <input value={token} onChange={(e) => setToken(e.target.value)} type="password" autoComplete="off" placeholder={tokenMoved ? "enter the token for the new address" : cfg?.token_set ? "•••••••••• (saved — leave blank to keep)" : "paste your token"} className="w-full rounded-lg px-3 py-2 text-md" style={inputStyle} />
+        {tokenMoved && <span className="mt-1 block text-xs" style={{ color: "var(--accent-text)" }}>New address: paste the token again, or sign in with Plex. The saved token is only sent to the address it was saved for.</span>}
         <span className="mt-1 block text-xs text-ink-faint">In Plex web: play an item → ⋯ → Get Info → View XML — the URL ends with <code>X-Plex-Token=…</code></span>
       </label>
 

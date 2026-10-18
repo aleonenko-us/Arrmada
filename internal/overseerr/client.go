@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 // Item is one migrated request, mapped to Arrmada's model.
@@ -40,7 +42,7 @@ func New(baseURL, key string) *Client {
 	return &Client{
 		base: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		key:  strings.TrimSpace(key),
-		http: &http.Client{Timeout: 30 * time.Second},
+		http: &http.Client{Timeout: 30 * time.Second, CheckRedirect: httpua.NoCredentialRedirects}, // the key stays with Overseerr
 	}
 }
 

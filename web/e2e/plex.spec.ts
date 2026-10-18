@@ -31,7 +31,7 @@ test.describe("admin", () => {
     let cfg = { ...plexConfig, url: "http://plex.lan:32400", token_set: true, enabled: true, enabled_set: true, status: "recording" as const, server_name: "Basement" };
     await installExtra(page, api, [
       { method: "GET", path: "/api/v1/insights/plex", respond: () => cfg },
-      { method: "PUT", path: "/api/v1/insights/plex", respond: ({ body }) => {
+      { method: "PUT", path: "/api/v1/insights/plex/monitoring", respond: ({ body }) => {
         const b = body as { enabled?: boolean; poll_seconds?: number };
         cfg = { ...cfg, ...b, status: b.enabled === false ? "off" as const : cfg.status } as typeof cfg;
         return cfg;
@@ -53,9 +53,10 @@ test.describe("admin", () => {
     await expect(monitoring.getByText("The interval must be between 2 and 60.")).toBeVisible();
     await every.fill("12");
     await every.press("Enter");
-    await expect.poll(() => api.callsTo("PUT", "/api/v1/insights/plex").length).toBe(2);
-    // Never the address or the token: those belong to the connection card.
-    expect(api.callsTo("PUT", "/api/v1/insights/plex").map((c) => c.body)).toEqual([{ enabled: false }, { poll_seconds: 12 }]);
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/insights/plex/monitoring").length).toBe(2);
+    // Never the address or the token: those belong to the connection card (the admin's).
+    expect(api.callsTo("PUT", "/api/v1/insights/plex/monitoring").map((c) => c.body)).toEqual([{ enabled: false }, { poll_seconds: 12 }]);
+    expect(api.callsTo("PUT", "/api/v1/insights/plex").filter((c) => c.path === "/api/v1/insights/plex")).toHaveLength(0);
   });
 
   test("linked Plex accounts are listed and can be unlinked after a confirm", async ({ page, api }) => {
@@ -148,6 +149,10 @@ test.describe("manager", () => {
     await expect(page.getByRole("heading", { name: "Plex sign-in" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Linked Plex accounts" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Import from Tautulli" })).toHaveCount(0);
+    // The connection is the admin's: no way to it from here.
+    const server = page.locator("#plex-server");
+    await expect(server.getByText(/An admin (connects|changes) the Plex server\./)).toBeVisible();
+    await expect(server.getByRole("link")).toHaveCount(0);
     await api.quiet();
     expect(api.callsTo("GET", "/api/v1/people")).toHaveLength(0);
   });

@@ -255,8 +255,9 @@ export function ConnectionsSettings() {
       case "flaresolverr":
         return admin ? <KeyEditor ids={["flaresolverr"]} ctl={keys} /> : undefined;
       case "plex":
-        // The connection is a manager setting, like the Plex endpoints it calls.
-        return <PlexConnect onChanged={refresh} />;
+        // The connection is the admin's, like Jellyfin's: its server decides who may sign
+        // in with Plex. A manager sees the card and can Test it.
+        return admin ? <PlexConnect onChanged={refresh} /> : undefined;
       case "jellyfin":
         return <JellyfinConnect onChanged={refresh} />;
     }
@@ -350,7 +351,8 @@ export function ConnectionsSettings() {
   };
 
   const serverCard = (server: "plex" | "jellyfin", it: ConnectionItem) => {
-    const open = editing === it.card;
+    const editor = editorFor(it);
+    const open = editing === it.card && !!editor;
     const identity = server === "jellyfin" && jf.data?.server_name
       ? `${jf.data.server_name}${jf.data.version ? ` · Jellyfin ${jf.data.version}` : ""}`
       : undefined;
@@ -362,11 +364,11 @@ export function ConnectionsSettings() {
         identity={identity}
         test={tests[it.card]}
         onTest={() => void runTest(it.kind, it.ref, it.card)}
-        onEdit={() => setEditing(open ? null : it.card)}
+        onEdit={editor ? () => setEditing(open ? null : it.card) : undefined}
         editing={open}
         targeted={hash === `#${it.card}`}
       >
-        {open && editorFor(it)}
+        {open && editor}
       </MediaServerCard>
     );
   };

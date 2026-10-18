@@ -68,7 +68,7 @@ function MediaServersPage({ admin }: { admin: boolean }) {
       </nav>
 
       <ServerGroup server="plex">
-        <PlexServer cfg={cfg} err={err} />
+        <PlexServer cfg={cfg} err={err} admin={admin} />
         {cfg && <PlexMonitoring cfg={cfg} setCfg={setCfg} />}
         {/* Path mapping and the last scan; its own load and Save. */}
         <LibraryUpdates server="plex" />
@@ -131,9 +131,10 @@ function StatusLine({ name, status, lastError, lastPollAt }: { name: string; sta
 const connectButton = "inline-block rounded-lg px-3.5 py-2 text-base font-semibold";
 const connectStyle = { background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" };
 
-// PlexServer says which server Arrmada is connected to and how it's doing, and sends you
-// to the Plex card on Connections to connect or change it.
-function PlexServer({ cfg, err }: { cfg: PlexConfig | null; err: string | null }) {
+// PlexServer says which server Arrmada is connected to and how it's doing, and sends an
+// admin to the Plex card on Connections to connect or change it (the connection is the
+// admin's: its server decides who may sign in with Plex).
+function PlexServer({ cfg, err, admin }: { cfg: PlexConfig | null; err: string | null; admin: boolean }) {
   const connected = !!cfg && cfg.status !== "unconfigured";
   return (
     <Section id="plex-server" title="Plex server" subtitle="Insights records what's watched from it, library updates go to it, and Plex sign-in checks people against it. The connection itself — Sign in with Plex, the address and token, Test — is the Plex card in Settings → Connections.">
@@ -149,7 +150,9 @@ function PlexServer({ cfg, err }: { cfg: PlexConfig | null; err: string | null }
           )}
           <StatusLine name="Plex" status={cfg.status} lastError={cfg.last_error} lastPollAt={cfg.last_poll_at} />
           <div>
-            {connected ? (
+            {!admin ? (
+              <span className="text-xs text-ink-faint">An admin {connected ? "changes" : "connects"} the Plex server.</span>
+            ) : connected ? (
               <Link to={LINKS.plexConnection} className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Change the connection →</Link>
             ) : (
               <Link to={LINKS.plexConnection} className={connectButton} style={connectStyle}>Connect your Plex server →</Link>
@@ -168,8 +171,8 @@ function PlexMonitoring({ cfg, setCfg }: { cfg: PlexConfig; setCfg: (c: PlexConf
   const connected = cfg.status !== "unconfigured";
   // Until someone chooses, the server switches monitoring on when Plex is first connected,
   // so an unconnected install shows it on; a connected one that never chose isn't recording.
-  const on = useAutoSave(cfg.enabled_set ? cfg.enabled : !connected, (v) => insightsApi.updateInsightsConfig({ enabled: v }).then(setCfg));
-  const poll = useAutoSave(String(cfg.poll_seconds || 5), (v) => insightsApi.updateInsightsConfig({ poll_seconds: Number(v) }).then(setCfg), {
+  const on = useAutoSave(cfg.enabled_set ? cfg.enabled : !connected, (v) => insightsApi.updatePlexMonitoring({ enabled: v }).then(setCfg));
+  const poll = useAutoSave(String(cfg.poll_seconds || 5), (v) => insightsApi.updatePlexMonitoring({ poll_seconds: Number(v) }).then(setCfg), {
     validate: wholeNumber(2, 60, "The interval"),
   });
   return (

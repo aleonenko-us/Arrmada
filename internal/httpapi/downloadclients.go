@@ -15,6 +15,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/libroots"
+	"github.com/tristenlammi/arrmada/internal/netsafe"
 	"github.com/tristenlammi/arrmada/internal/scheduler"
 )
 
@@ -34,6 +35,9 @@ type clientView struct {
 	// BuiltIn says it's the all-in-one image's qBittorrent, which runs inside Arrmada's
 	// own container (the Compose bundle's is a container of its own).
 	BuiltIn bool `json:"built_in,omitempty"`
+	// AuthSaved says a password (SABnzbd: its API key) is saved, never what it is: the
+	// edit form asks for it again when the address changes only if there is one.
+	AuthSaved bool `json:"auth_saved,omitempty"`
 }
 
 // clientStatus is what the card says about a client that isn't answering. state is ok,
@@ -47,7 +51,7 @@ type clientStatus struct {
 }
 
 func (a *api) clientView(c download.Client) clientView {
-	v := clientView{Client: c}
+	v := clientView{Client: c, AuthSaved: c.Password != ""}
 	if c.Bundled && c.Kind == download.KindSABnzbd {
 		v.UIPort = sabUIPort()
 	}
@@ -259,6 +263,16 @@ func (a *api) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Request)
 	// save the rest and leave a qBittorrent row answering as something else.
 	if download.Kind(req.Kind) != cur.Kind {
 		a.writeError(w, http.StatusBadRequest, "a download client's kind can't be changed — add a new client instead")
+		return
+	}
+	// A blank password keeps the saved one (SABnzbd's API key lives there too), and that
+	// only ever goes to the address it was saved for.
+	if req.Password == "" && cur.Password != "" && !netsafe.SameEndpoint(req.URL, cur.URL) {
+		msg := errPasswordForNewAddress
+		if cur.Kind == download.KindSABnzbd {
+			msg = errKeyForNewAddress
+		}
+		a.writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	enabled := cur.Enabled

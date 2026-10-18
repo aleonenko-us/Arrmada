@@ -9,8 +9,8 @@ import type { PlexConfig } from "../src/lib/api";
 // behind Plex errors, and every tab fits a phone.
 
 // serveInsights answers the Insights endpoints for a saved server. It is registered after
-// the default table, so it wins for these paths. PUT /insights/plex records the body and
-// flips the served config to what was saved.
+// the default table, so it wins for these paths. PUT /insights/plex/monitoring records the
+// body and flips the served config to what was saved.
 async function serveInsights(page: Page, start: PlexConfig, opts: { plexDown?: boolean; empty?: boolean } = {}) {
   let cfg = start;
   const puts: unknown[] = [];
@@ -18,7 +18,7 @@ async function serveInsights(page: Page, start: PlexConfig, opts: { plexDown?: b
   await page.route((u) => u.pathname.startsWith("/api/v1/insights/"), async (route: Route) => {
     const req = route.request();
     const url = new URL(req.url());
-    if (req.method() === "PUT" && url.pathname === "/api/v1/insights/plex") {
+    if (req.method() === "PUT" && url.pathname === "/api/v1/insights/plex/monitoring") {
       const body = req.postDataJSON() as Partial<PlexConfig>;
       puts.push(body);
       cfg = { ...cfg, ...body, status: body.enabled ? "recording" : "off" };

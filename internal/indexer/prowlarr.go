@@ -99,7 +99,7 @@ func prowlarrDo(ctx context.Context, base, key, method, path string, body any) (
 	}
 	req.Header.Set("X-Api-Key", key)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := httpua.Client(20 * time.Second).Do(req)
+	resp, err := httpua.KeyedClient(20 * time.Second).Do(req) // the key never follows a redirect elsewhere
 	if err != nil {
 		return nil, fmt.Errorf("prowlarr: connect failed: %w", err)
 	}

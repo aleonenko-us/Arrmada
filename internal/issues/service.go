@@ -166,7 +166,7 @@ func (s *Service) alertStaff(ctx context.Context, i Issue) {
 	s.warn(ctx, i, map[string]any{
 		"id": i.ID, "media_type": i.MediaType, "tmdb_id": i.TMDBID, "title": i.Title, "year": i.Year,
 		"season": i.Season, "episode": i.Episode, "category": i.Category, "note": i.Note,
-		"reported_by_name": i.ReportedByName,
+		"reported_by_name": notify.PersonName(i.ReportedByName), // never an email: it leaves the app
 	})
 }
 

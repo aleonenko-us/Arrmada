@@ -336,7 +336,7 @@ Someone asked for something and it's waiting for your approval. Severity: info.
 | `title` | string | The title asked for. |
 | `year` | integer | Release year. |
 | `seasons` | string | For a show: which seasons (e.g. "S1–2"); empty for the whole show. |
-| `requested_by` | string | The requester's display name. |
+| `requested_by` | string | The requester's display name: their Plex or Jellyfin name, else their account name without any email domain. |
 | `note` | string | The requester's note, if they wrote one. |
 | `rerequest` | boolean | true when it was declined before and asked for again. |
 | `decline_reason` | string | Why it was declined before (re-requests). |
@@ -352,7 +352,7 @@ Someone allowed to auto-approve asked for something, and it's on its way. Severi
 | `tmdb_id` | integer | TMDB id (null for a book). |
 | `title` | string | The title asked for. |
 | `year` | integer | Release year. |
-| `requested_by` | string | The requester's display name. |
+| `requested_by` | string | The requester's display name: their Plex or Jellyfin name, else their account name without any email domain. |
 
 #### `issue.reported` — Problem reported
 
@@ -369,7 +369,7 @@ Someone reported a problem with a movie or episode in the library. Severity: war
 | `episode` | integer | For an episode: its number. |
 | `category` | string | video, audio, subtitles, wrong_file or other. |
 | `note` | string | What the reporter wrote. |
-| `reported_by` | string | The reporter's display name. |
+| `reported_by` | string | The reporter's display name: their Plex or Jellyfin name, else their account name without any email domain. |
 
 ### Downloads
 

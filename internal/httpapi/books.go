@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,7 +154,7 @@ func (a *api) handleAddBook(w http.ResponseWriter, r *http.Request) {
 		req.QualityProfile = a.deps.Quality.DefaultProfile(r.Context(), "book")
 	}
 	b, err := a.deps.Books.Add(r.Context(), req.OLKey, req.QualityProfile, monitored, metadata.BookResult{
-		Title: req.Title, Author: req.Author, Year: req.Year, CoverURL: req.CoverURL,
+		Title: req.Title, Author: req.Author, Year: req.Year, CoverURL: fallbackCover(req.CoverURL),
 	})
 	if errors.Is(err, books.ErrExists) {
 		a.writeError(w, http.StatusConflict, "that book is already in your library")
@@ -554,7 +555,7 @@ func (a *api) handleSetBookCover(w http.ResponseWriter, r *http.Request) {
 	if !a.decodeJSON(w, r, &req) {
 		return
 	}
-	if !strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://") {
+	if !webCoverURL(req.URL) {
 		a.writeError(w, http.StatusBadRequest, "url must be an http(s) image URL")
 		return
 	}
@@ -642,8 +643,48 @@ func (a *api) handleBookCoverImage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	// Signed-in only, so private; and only ever an image, whatever the file holds.
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	http.ServeFile(w, r, matches[0])
+}
+
+// webCoverURL reports whether u is an http(s) address with a host and no login in it: the
+// only kind of remote cover kept. The image cache checks where it really leads (public
+// addresses only, raster images only) when it fetches it.
+func webCoverURL(u string) bool {
+	p, err := url.Parse(strings.TrimSpace(u))
+	return err == nil && (p.Scheme == "http" || p.Scheme == "https") && p.Host != "" && p.User == nil
+}
+
+// catalogueCoverHosts are where the book catalogues serve covers: Open Library, Hardcover,
+// and Google Books (its thumbnails, and the image hosts they sometimes point at).
+var catalogueCoverHosts = []string{"covers.openlibrary.org", "hardcover.app", "books.google.com", "googleusercontent.com"}
+
+// catalogueCoverURL reports whether u is a web cover on a catalogue's own image host
+// (the host itself or one under it).
+func catalogueCoverURL(u string) bool {
+	if !webCoverURL(u) {
+		return false
+	}
+	p, _ := url.Parse(strings.TrimSpace(u))
+	host := strings.ToLower(strings.TrimSuffix(p.Hostname(), "."))
+	for _, h := range catalogueCoverHosts {
+		if host == h || strings.HasSuffix(host, "."+h) {
+			return p.Port() == ""
+		}
+	}
+	return false
+}
+
+// fallbackCover is a cover URL sent along as a fallback for the catalogue's own (adding,
+// rematching): kept when it's a web address, otherwise dropped.
+func fallbackCover(u string) string {
+	if webCoverURL(u) {
+		return strings.TrimSpace(u)
+	}
+	return ""
 }
 
 // allowedCoverExt guards which image extensions may be uploaded as covers.
@@ -1254,6 +1295,14 @@ func (a *api) handleOverrideBookMetadata(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
+	if !narratorOnly && req.CoverURL != "" && !webCoverURL(req.CoverURL) {
+		// A changed cover must be a web address; the one already set (an upload's own
+		// path among them) can come back as it is.
+		if b, err := a.deps.Books.Get(r.Context(), id); err == nil && b.CoverURL != req.CoverURL {
+			a.writeError(w, http.StatusBadRequest, "the cover must be an http(s) image URL")
+			return
+		}
+	}
 	if !narratorOnly {
 		err := a.deps.Books.OverrideMetadata(r.Context(), id, req.Title, req.Author, req.Year, req.Overview, req.CoverURL)
 		switch {
@@ -1414,7 +1463,7 @@ func (a *api) handleRematchBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, err := a.deps.Books.Rematch(r.Context(), id, strings.TrimSpace(req.OLKey), metadata.BookResult{
-		Key: req.OLKey, Title: req.Title, Author: req.Author, Year: req.Year, CoverURL: req.CoverURL,
+		Key: req.OLKey, Title: req.Title, Author: req.Author, Year: req.Year, CoverURL: fallbackCover(req.CoverURL),
 	}, req.Edits == "clear")
 	switch {
 	case errors.Is(err, books.ErrNotFound):

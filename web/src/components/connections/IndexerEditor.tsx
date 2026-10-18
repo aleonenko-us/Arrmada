@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { type Indexer, type NewIndexer } from "../../lib/api";
 import { indexerApi } from "../../lib/indexerApi";
 import { usenetIndexerLine } from "../../lib/indexerStatus";
+import { secretMoved } from "../../lib/sameEndpoint";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { Field } from "../../ui/Field";
 import { Switch } from "../../ui/Switch";
@@ -91,6 +92,9 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
   const [enabled, setEnabled] = useState(idx.enabled);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // A saved key is only sent to the address it was saved for: a changed URL needs it again.
+  // (The page doesn't know whether a key is saved; the server only refuses when one is.)
+  const keyMoved = !managed && !isTL && !isMAM && secretMoved({ saved: true, typed: apiKey, url, savedUrl: idx.url ?? "" });
 
   const body = (): NewIndexer => ({
     name,
@@ -168,8 +172,8 @@ function EditForm({ idx, onSaved }: { idx: Indexer; onSaved: () => void }) {
             <Labeled label="API URL" span2>
               <input className={field} style={fieldStyle} value={url} onChange={(e) => setUrl(e.target.value)} required />
             </Labeled>
-            <Labeled label="API key (blank = keep)">
-              <input className={field} style={fieldStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="leave blank to keep current" />
+            <Labeled label="API key (blank = keep)" hint={keyMoved ? "New address: enter its API key. A saved key is only sent to the address it was saved for." : undefined}>
+              <input className={field} style={fieldStyle} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={keyMoved ? "enter the key for the new address" : "leave blank to keep current"} />
             </Labeled>
           </>
         )}

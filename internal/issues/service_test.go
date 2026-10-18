@@ -373,3 +373,18 @@ func TestSweepRetriesUntold(t *testing.T) {
 		t.Errorf("stale untold: %+v", list)
 	}
 }
+
+// N6: the "Problem reported" alert leaves the app, so an email account name goes out as
+// the part before the @ only.
+func TestStaffAlertReporterNameIsNoEmail(t *testing.T) {
+	f := newFixture(t)
+	var name any
+	f.s.SetStaffAlert(func(_ context.Context, _ Issue, data map[string]any) { name = data["reported_by_name"] })
+	if _, _, err := f.s.Create(context.Background(), Report{MediaType: MediaMovie, TMDBID: 603, Category: "audio",
+		UserID: f.users["alice"], UserName: "alice.smith@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if name != "alice.smith" {
+		t.Fatalf("reported_by_name = %v", name)
+	}
+}

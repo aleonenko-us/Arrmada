@@ -15,10 +15,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 
+	"github.com/tristenlammi/arrmada/internal/netsafe"
 	"github.com/tristenlammi/arrmada/internal/safego"
 )
 
@@ -26,7 +30,58 @@ const (
 	keyPublic  = "webpush_vapid_public"
 	keyPrivate = "webpush_vapid_private"
 	sendTTL    = 6 * 3600 // seconds the push service may retry an offline device
+	// MaxPerUser is how many devices one account keeps subscribed; a new one past it
+	// drops that account's oldest.
+	MaxPerUser = 10
+	// sendTimeout bounds one push to one device.
+	sendTimeout = 15 * time.Second
 )
+
+// A subscription's endpoint is a URL the browser hands over, and the server then POSTs to
+// it. Taken as given, any signed-in account could make Arrmada post to any address, the
+// LAN included. So only the browsers' own push services are accepted, on subscribe and
+// again before every send (rows saved before this check are covered too): Chrome, Edge,
+// Opera, Samsung Internet and Brave use Firebase Cloud Messaging, Firefox Mozilla's
+// autopush, Safari Apple's, and legacy Edge Windows' notification service.
+var (
+	pushHosts        = map[string]bool{"fcm.googleapis.com": true, "android.googleapis.com": true}
+	pushHostSuffixes = []string{".push.services.mozilla.com", ".push.apple.com", ".notify.windows.com"}
+)
+
+// ErrBadEndpoint is a subscription whose endpoint isn't a browser push service.
+var ErrBadEndpoint = errors.New("that isn't a browser push service address")
+
+// ValidEndpoint checks a subscription endpoint: https on the standard port, no login in
+// it, at one of the browsers' push services.
+func ValidEndpoint(endpoint string) error {
+	u, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil || u.Scheme != "https" || u.User != nil || (u.Port() != "" && u.Port() != "443") {
+		return ErrBadEndpoint
+	}
+	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	if pushHosts[host] {
+		return nil
+	}
+	// Chrome sometimes hands out an FCM endpoint on another Google host
+	// (https://jmt17.google.com/fcm/send/…): taken for FCM's own path only.
+	if p := u.EscapedPath(); strings.HasSuffix(host, ".google.com") && strings.HasPrefix(p, "/fcm/") && !strings.Contains(p, "..") {
+		return nil
+	}
+	for _, sfx := range pushHostSuffixes {
+		if strings.HasSuffix(host, sfx) {
+			return nil
+		}
+	}
+	return ErrBadEndpoint
+}
+
+// pushClient sends the pushes: public addresses only, a bounded wait, and no redirects
+// (a push service answers; it never hands the message on).
+var pushClient = &http.Client{
+	Timeout:       sendTimeout,
+	Transport:     netsafe.PublicTransport(),
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
 
 // Settings is the tiny slice of the settings service this package needs.
 type Settings interface {
@@ -39,6 +94,15 @@ type Service struct {
 	db       *sql.DB
 	settings Settings
 	log      *slog.Logger
+	// httpClient, when set, replaces pushClient (tests).
+	httpClient webpush.HTTPClient
+}
+
+func (s *Service) client() webpush.HTTPClient {
+	if s.httpClient != nil {
+		return s.httpClient
+	}
+	return pushClient
 }
 
 func New(db *sql.DB, settings Settings, log *slog.Logger) *Service {
@@ -69,11 +133,23 @@ func (s *Service) PublicKey(ctx context.Context) (string, error) {
 // The endpoint is unique per subscription: re-subscribing after a permission
 // round-trip simply re-points the row (including to a different user on a shared
 // device — last sign-in wins, which is what a shared browser should do).
+//
+// Only a browser push service's endpoint is taken (ErrBadEndpoint), and an account keeps
+// at most MaxPerUser devices: subscribing one more drops its oldest.
 func (s *Service) Subscribe(ctx context.Context, userID int64, endpoint, p256dh, auth string) error {
-	_, err := s.db.ExecContext(ctx, `
+	if err := ValidEndpoint(endpoint); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES (?,?,?,?)
 		ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, p256dh=excluded.p256dh, auth=excluded.auth`,
-		userID, endpoint, p256dh, auth)
+		userID, endpoint, p256dh, auth); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		DELETE FROM push_subscriptions WHERE user_id = ? AND id NOT IN (
+			SELECT id FROM push_subscriptions WHERE user_id = ? ORDER BY id DESC LIMIT ?)`,
+		userID, userID, MaxPerUser)
 	return err
 }
 
@@ -172,10 +248,16 @@ func (s *Service) SendMessage(ctx context.Context, userID int64, m Message) (int
 	sent := 0
 	var lastErr error
 	for _, x := range subs {
-		resp, err := webpush.SendNotification(msg, &webpush.Subscription{
+		if ValidEndpoint(x.endpoint) != nil {
+			// Saved before endpoints were checked, and not a push service: never posted to.
+			lastErr = errors.New("the device's subscription isn't a browser push service — turn push on again there")
+			continue
+		}
+		resp, err := webpush.SendNotificationWithContext(ctx, msg, &webpush.Subscription{
 			Endpoint: x.endpoint,
 			Keys:     webpush.Keys{P256dh: x.p256dh, Auth: x.auth},
 		}, &webpush.Options{
+			HTTPClient:      s.client(),
 			Subscriber:      "https://github.com/tristenlammi/Arrmada",
 			VAPIDPublicKey:  pub,
 			VAPIDPrivateKey: priv,

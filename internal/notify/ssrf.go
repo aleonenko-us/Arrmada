@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/tristenlammi/arrmada/internal/netsafe"
 )
 
 // Requester-owned Apprise URLs: anyone signed in can save one (from outside the
@@ -30,37 +32,9 @@ type Resolver interface {
 	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
 }
 
-// blockedPrefixes are the ranges a requester's URL may never reach: loopback, private
-// and unique-local, link-local (the cloud metadata address 169.254.169.254 among them),
-// carrier-grade NAT, "this network", benchmarking, reserved, and the NAT64 prefix (which
-// can wrap any of the above).
-var blockedPrefixes = func() []netip.Prefix {
-	var out []netip.Prefix
-	for _, s := range []string{
-		"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
-		"172.16.0.0/12", "192.0.0.0/24", "192.168.0.0/16", "198.18.0.0/15", "240.0.0.0/4",
-		"::/128", "::1/128", "64:ff9b::/96", "fc00::/7", "fe80::/10",
-	} {
-		out = append(out, netip.MustParsePrefix(s))
-	}
-	return out
-}()
-
-// publicAddr reports whether ip is an ordinary public unicast address.
-func publicAddr(ip netip.Addr) bool {
-	ip = ip.Unmap() // ::ffff:10.0.0.1 is 10.0.0.1
-	if !ip.IsValid() || ip.IsUnspecified() || ip.IsLoopback() || ip.IsPrivate() ||
-		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() ||
-		ip.IsMulticast() || ip == netip.AddrFrom4([4]byte{255, 255, 255, 255}) {
-		return false
-	}
-	for _, p := range blockedPrefixes {
-		if p.Contains(ip) {
-			return false
-		}
-	}
-	return true
-}
+// publicAddr reports whether ip is an ordinary public unicast address (the one rule,
+// shared with the cover-image fetcher).
+var publicAddr = netsafe.PublicAddr
 
 // errInternalHost is the plain-words refusal for a host that isn't on the internet.
 var errInternalHost = errors.New("that address is on your own network, which isn't allowed for your account — use a public service")

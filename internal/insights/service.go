@@ -159,18 +159,24 @@ func (s *Service) pollSeconds(ctx context.Context) int {
 // SetConfig persists connection settings. An empty token leaves the stored one untouched (so the
 // UI can save other fields without re-entering the secret). A save that changes the URL or
 // token re-reads the server's identity, so the stored machine id and name never describe a
-// different server than the one saved.
+// different server than the one saved. A new address with no token is ErrTokenForNewAddress
+// (nothing saved): the saved token only goes to the address it was saved for.
 func (s *Service) SetConfig(ctx context.Context, url string, token *string, enabled *bool, poll *int) error {
+	typed := token != nil && *token != ""
+	if !typed && !s.savedTokenMayGo(ctx, url) {
+		return ErrTokenForNewAddress
+	}
 	changed := url != s.settings.Get(ctx, keyURL, "")
 	if err := s.settings.Set(ctx, keyURL, url); err != nil {
 		return err
 	}
-	if token != nil && *token != "" {
+	if typed {
 		changed = changed || *token != s.settings.Get(ctx, keyToken, "")
 		if err := s.settings.Set(ctx, keyToken, *token); err != nil {
 			return err
 		}
 	}
+	s.clearUnbound(ctx) // any save ends a waiting sign-in's exception
 	if enabled != nil {
 		if err := s.settings.SetBool(ctx, keyEnabled, *enabled); err != nil {
 			return err
@@ -184,6 +190,22 @@ func (s *Service) SetConfig(ctx context.Context, url string, token *string, enab
 	s.enableIfUnset(ctx)
 	if changed {
 		s.refreshIdentity(ctx)
+	}
+	return nil
+}
+
+// SetMonitoring saves only watch monitoring's switch and interval (nil = leave as is),
+// never the address or token: it's what managers may change about Plex.
+func (s *Service) SetMonitoring(ctx context.Context, enabled *bool, poll *int) error {
+	if enabled != nil {
+		if err := s.settings.SetBool(ctx, keyEnabled, *enabled); err != nil {
+			return err
+		}
+	}
+	if poll != nil {
+		if err := s.settings.Set(ctx, keyPoll, strconv.Itoa(*poll)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -252,25 +274,29 @@ type TestResult struct {
 }
 
 // Test validates a connection. If url/token are provided they're tested directly (before saving);
-// otherwise the stored config is used. A passing test of the saved connection also refreshes
-// the stored machine id and server name.
-func (s *Service) Test(ctx context.Context, url, token string) TestResult {
+// otherwise the stored config is used. A blank token means the saved one, which is only sent to
+// the saved address (ErrTokenForNewAddress otherwise, and nothing is sent). A passing test of
+// the saved connection also refreshes the stored machine id and server name.
+func (s *Service) Test(ctx context.Context, url, token string) (TestResult, error) {
 	savedURL, savedToken := s.settings.Get(ctx, keyURL, ""), s.settings.Get(ctx, keyToken, "")
 	if url == "" {
 		url = savedURL
 	}
 	if token == "" {
+		if !s.savedTokenMayGo(ctx, url) {
+			return TestResult{}, ErrTokenForNewAddress
+		}
 		token = savedToken
 	}
 	c := plex.New(url, token)
 	id, err := c.Identity(ctx)
 	if err != nil {
-		return TestResult{OK: false, Error: err.Error()}
+		return TestResult{OK: false, Error: err.Error()}, nil
 	}
 	name, _ := c.ServerName(ctx)
 	if url == savedURL && token == savedToken {
 		s.saveIdentity(ctx, id.MachineIdentifier, name)
 	}
 	libs, _ := c.Libraries(ctx) // best-effort; connection already proven
-	return TestResult{OK: true, MachineID: id.MachineIdentifier, ServerName: name, Version: id.Version, Libraries: libs}
+	return TestResult{OK: true, MachineID: id.MachineIdentifier, ServerName: name, Version: id.Version, Libraries: libs}, nil
 }

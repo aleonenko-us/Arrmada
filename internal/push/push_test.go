@@ -43,35 +43,35 @@ func TestSubscribeSemantics(t *testing.T) {
 	s := newTestService(t)
 	ctx := context.Background()
 
-	if err := s.Subscribe(ctx, 1, "https://push.example/abc", "p", "a"); err != nil {
+	if err := s.Subscribe(ctx, 1, "https://fcm.googleapis.com/fcm/send/abc", "p", "a"); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
-	if !s.HasSubscription(ctx, 1, "https://push.example/abc") {
+	if !s.HasSubscription(ctx, 1, "https://fcm.googleapis.com/fcm/send/abc") {
 		t.Fatal("subscription not recorded")
 	}
 
 	// Same endpoint, different user → row re-points to user 2.
-	if err := s.Subscribe(ctx, 2, "https://push.example/abc", "p2", "a2"); err != nil {
+	if err := s.Subscribe(ctx, 2, "https://fcm.googleapis.com/fcm/send/abc", "p2", "a2"); err != nil {
 		t.Fatalf("re-subscribe: %v", err)
 	}
-	if s.HasSubscription(ctx, 1, "https://push.example/abc") {
+	if s.HasSubscription(ctx, 1, "https://fcm.googleapis.com/fcm/send/abc") {
 		t.Fatal("old user still owns the endpoint")
 	}
-	if !s.HasSubscription(ctx, 2, "https://push.example/abc") {
+	if !s.HasSubscription(ctx, 2, "https://fcm.googleapis.com/fcm/send/abc") {
 		t.Fatal("new user doesn't own the endpoint")
 	}
 
 	// User 1 cannot remove user 2's subscription.
-	if err := s.Unsubscribe(ctx, 1, "https://push.example/abc"); err != nil {
+	if err := s.Unsubscribe(ctx, 1, "https://fcm.googleapis.com/fcm/send/abc"); err != nil {
 		t.Fatalf("unsubscribe: %v", err)
 	}
-	if !s.HasSubscription(ctx, 2, "https://push.example/abc") {
+	if !s.HasSubscription(ctx, 2, "https://fcm.googleapis.com/fcm/send/abc") {
 		t.Fatal("cross-user unsubscribe removed the row")
 	}
-	if err := s.Unsubscribe(ctx, 2, "https://push.example/abc"); err != nil {
+	if err := s.Unsubscribe(ctx, 2, "https://fcm.googleapis.com/fcm/send/abc"); err != nil {
 		t.Fatalf("owner unsubscribe: %v", err)
 	}
-	if s.HasSubscription(ctx, 2, "https://push.example/abc") {
+	if s.HasSubscription(ctx, 2, "https://fcm.googleapis.com/fcm/send/abc") {
 		t.Fatal("owner unsubscribe didn't remove the row")
 	}
 }

@@ -334,6 +334,12 @@ func (a *api) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// A book's cover is fetched and shown to staff and listening apps later, so a
+	// requester's own URL would be a way to make Arrmada fetch whatever they like. Only a
+	// cover on a catalogue's own image host is kept (what Books Discover showed them).
+	if in.MediaType == "book" && !catalogueCoverURL(in.PosterURL) {
+		in.PosterURL = ""
+	}
 	// The same filter Discover applies, on whatever title the request ended up with (the
 	// client's own, if the lookup above failed).
 	if adultfilter.Matches(in.Title) {

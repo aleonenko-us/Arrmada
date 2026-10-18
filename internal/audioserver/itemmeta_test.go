@@ -77,11 +77,11 @@ func TestCoverCacheHeaders(t *testing.T) {
 		}
 		return resp.Header.Get("Cache-Control")
 	}
-	if got := cacheOf(""); got != "public, max-age=86400" {
+	if got := cacheOf(""); got != "private, max-age=86400" {
 		t.Fatalf("plain cover: Cache-Control %q", got)
 	}
 	for _, q := range []string{"?ts=1760000000000", "?v=3"} {
-		if got := cacheOf(q); got != "public, max-age=31536000, immutable" {
+		if got := cacheOf(q); got != "private, max-age=31536000, immutable" {
 			t.Fatalf("cover%s: Cache-Control %q", q, got)
 		}
 	}
