@@ -35,6 +35,9 @@ type BookFile struct {
 	// Kindle: Send to Kindle's email takes this ebook's format (KindleAccepts). Set only
 	// where a page offers the send (the staff book page); never stored.
 	Kindle bool `json:"kindle,omitempty"`
+	// Kepub: the page may offer "Download for Kobo (KEPUB)" — an EPUB, with the conversion
+	// on. Set only where a page offers it; never stored.
+	Kepub bool `json:"kepub,omitempty"`
 }
 
 // Book is one book in the library. It can carry an ebook edition, an audiobook
@@ -160,6 +163,23 @@ func (r *Repo) SetSeries(ctx context.Context, bookID int64, name string, positio
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE books SET series_name = ?, series_position = ? WHERE id = ?`, name, position, bookID)
 	return err
+}
+
+// FillSeries records a series only for a book that has none, in one statement, so a series
+// someone set while a scan was running is never replaced by what the scan read. It
+// reports whether the book took it.
+func (r *Repo) FillSeries(ctx context.Context, bookID int64, name string, position float64) (bool, error) {
+	if strings.TrimSpace(name) == "" {
+		return false, nil
+	}
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE books SET series_name = ?, series_position = ? WHERE id = ? AND (series_name IS NULL OR series_name = '')`,
+		name, position, bookID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // SeriesSiblings returns every book sharing this series name, in reading order, including
@@ -387,6 +407,19 @@ func (r *Repo) UpdateMeta(ctx context.Context, id int64, description, coverURL s
 func (r *Repo) SetCoverURL(ctx context.Context, id int64, coverURL string) error {
 	res, err := r.db.ExecContext(ctx, `UPDATE books SET cover_url = ? WHERE id = ?`, coverURL, id)
 	return affected(res, err)
+}
+
+// FillCoverURL sets a cover only for a book that has none, in one statement, so a cover
+// someone picked while a scan was running is never replaced. It reports whether the book
+// took it.
+func (r *Repo) FillCoverURL(ctx context.Context, id int64, coverURL string) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE books SET cover_url = ? WHERE id = ? AND (cover_url IS NULL OR cover_url = '')`, coverURL, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // SetAudiobookNarrator records who reads the standard audiobook ("" = the files say).

@@ -26,6 +26,9 @@ export const READER_APPS: { name: string; where: string; how: string }[] = [
   { name: "Moon+ Reader", where: "Android", how: "Net Library → add a catalog, then the address; sign in when it asks." },
   { name: "Librera", where: "Android", how: "Library → Network (OPDS) → +, then the address; sign in when it asks." },
   { name: "Thorium Reader", where: "Windows, Mac, Linux", how: "Catalogs → Add OPDS feed, then the address; sign in when it asks." },
+  // The stock Kobo software has no OPDS support, and its web browser can't answer the
+  // catalogue's sign-in, so the honest route is a download and a USB cable.
+  { name: "Kobo (stock reader)", where: "Kobo e-readers without KOReader", how: "Kobo's own software can't open this catalogue. On a computer, open the book in Arrmada (on My shelf, or its page in Books), pick Download for Kobo (KEPUB), then plug the Kobo in by USB and copy the .kepub.epub file onto it. Keep the name ending in .kepub.epub — that's what gives you Kobo's page numbers and reading stats." },
 ];
 
 // CopyField is one value to type into the reader app, whole (it wraps rather than
@@ -94,7 +97,7 @@ export function EReaderPanel({ password, passwordCard }: { password?: ReaderPass
             {https
               ? "This is a secure (https) address, so it works away from home too."
               : "This address works on the home network. Away from home, use your https address instead — the password travels with every request, so never use plain http over the internet."}
-            {" "}Stock Kobo software and Apple Books can't open OPDS catalogues; menu names vary between app versions.
+            {" "}Apple Books can't open OPDS catalogues; menu names vary between app versions.
           </p>
         </>
       )}

@@ -190,7 +190,7 @@ export const myBooks: { books: MyBook[]; requests: MyRequest[]; listen: boolean;
     {
       book_id: 1, title: "A Field Guide to Tides", author: "Marina Coves", year: 2019, series: "Coastlines #1", series_name: "Coastlines", series_position: 1,
       description: "A walk along the shore, tide by tide: what the moon pulls, what the sea leaves behind, and how to read the line it draws.",
-      subjects: ["Nature", "Oceans"], ebook: { format: "epub", size_bytes: 2_400_000, kindle: true }, audiobook: false, mine: true, added_at: "2026-10-08 10:00:00",
+      subjects: ["Nature", "Oceans"], ebook: { format: "epub", size_bytes: 2_400_000, kindle: true, kepub: true }, audiobook: false, mine: true, added_at: "2026-10-08 10:00:00",
     },
     { book_id: 2, title: "The Lighthouse Keeper's Very Long and Winding Account of Thirty Winters", author: "Elias Rook", audiobook: true, mine: false, added_at: "2026-08-01 10:00:00", audiobooks: [{ version_id: 7, item_key: "b2v7", format: "m4b", size_bytes: 310_000_000, files: 1 }] },
     // An AZW3: Send to Kindle is shown disabled with the reason.

@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
-import { AutoText } from "../../components/settings/auto";
+import { AutoText, AutoToggle } from "../../components/settings/auto";
 import { api, type AudioServerAdmin } from "../../lib/api";
 import { useMe } from "../../lib/me";
 import { useAutoSave } from "../../lib/useAutoSave";
+import { useSetting } from "../../lib/useSettings";
 import { useToast } from "../../ui";
 import { Card, Loading, card, ghost, primary } from "../audiobooks/shared";
 import { OutgoingEmail } from "./OutgoingEmail";
 
 // Settings → Book server (admin): the switch for the server listening apps connect to,
 // the address they use from outside and a day of request tracing (it used to be the
-// Audiobooks page's Server tab; that page links here now), then the mail account Send to
-// Kindle goes out through (it used to be under Alerts). Who may connect is in Settings →
-// People & access.
+// Audiobooks page's Server tab; that page links here now), the KEPUB conversion for Kobo,
+// then the mail account Send to Kindle goes out through (it used to be under Alerts). Who
+// may connect is in Settings → People & access.
 export function AudiobookServerSettings() {
   const [data, setData] = useState<AudioServerAdmin | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -19,8 +20,27 @@ export function AudiobookServerSettings() {
   return (
     <div className="flex flex-col gap-6">
       {data ? <ServerView data={data} setData={setData} /> : <Loading error={error} />}
+      <KepubCard />
       {/* Its own load: a server that can't be read doesn't hide the mail card. */}
       <OutgoingEmail />
+    </div>
+  );
+}
+
+// KepubCard is "Convert EPUB to KEPUB for Kobo": the Kobo download on My shelf and the
+// book page, and the KEPUB link in the OPDS feeds. It belongs to the e-reader side of the
+// Book server, not the audiobook server's switch, so it saves on its own.
+function KepubCard() {
+  const kepub = useSetting("books_kepub");
+  return (
+    <div id="kobo-kepub" className="scroll-mt-20">
+      <Card title="Kobo">
+        <AutoToggle
+          label="Convert EPUB to KEPUB for Kobo"
+          hint="Kobo's own reader shows real page numbers, reading stats and better typography for a KEPUB. Arrmada makes one from the EPUB when someone downloads it for a Kobo; the library file is never changed."
+          save={kepub}
+        />
+      </Card>
     </div>
   );
 }

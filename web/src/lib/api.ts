@@ -1137,6 +1137,9 @@ export interface AppSettings {
   plex_signin_staff: boolean;
   /** Admins signing in with a password must use two-factor sign-in (set up at sign-in). */
   two_factor_admins: boolean;
+  /** Convert EPUB to KEPUB for Kobo (Settings → Book server): the Kobo download and the
+   *  KEPUB link in the OPDS feeds. On by default. */
+  books_kepub: boolean;
   /** Legacy: true when a new Plex sign-in auto-approves every type. */
   plex_login_auto_approve: boolean;
   /** The types a new Plex sign-in auto-approves, "movie,series,book" (any subset). */
@@ -1765,8 +1768,9 @@ export interface MyBook {
   series_name?: string;
   series_position?: number;
   subjects?: string[];
-  /** kindle: Send to Kindle's email takes this format (EPUB, PDF). */
-  ebook?: { format: string; size_bytes: number; kindle?: boolean };
+  /** kindle: Send to Kindle's email takes this format (EPUB, PDF). kepub: "Download for
+   *  Kobo (KEPUB)" is offered (an EPUB, with the server's conversion on). */
+  ebook?: { format: string; size_bytes: number; kindle?: boolean; kepub?: boolean };
   audiobook: boolean;
   mine: boolean; // the signed-in user requested it
   /** Downloadable audiobooks: the standard one (version_id 0) and any extra versions.
@@ -2243,6 +2247,8 @@ export interface BookFile {
   file_count: number;
   /** The ebook on the book page: Send to Kindle's email takes this format (EPUB, PDF). */
   kindle?: boolean;
+  /** The ebook on the book page: "Download for Kobo (KEPUB)" is offered. */
+  kepub?: boolean;
 }
 export interface BookFileEntry {
   name: string;

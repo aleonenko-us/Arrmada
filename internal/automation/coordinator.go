@@ -53,6 +53,7 @@ type Coordinator struct {
 	series       *series.Service // set post-construction via SetSeries
 	fileFacts    FileFactsSource // Convert's probed facts for library files; nil = release names only
 	books        *books.Service  // set post-construction via SetBooks
+	bookCovers   string          // <data>/covers, for a Calibre folder's cover.jpg (SetBookCoverDir); "" = not used
 	music        *music.Service  // set post-construction via SetMusic
 	imp          *library.Importer
 	recycle      string      // recycle-bin dir for book deletes ("" = bin off); set via SetRecycleDir
@@ -315,6 +316,11 @@ func (c *Coordinator) tvImp(ctx context.Context, s series.Series) *library.Impor
 
 // SetBooks wires the books module (shares the importer set by SetSeries).
 func (c *Coordinator) SetBooks(b *books.Service) { c.books = b }
+
+// SetBookCoverDir names where uploaded book covers live (<data>/covers, served by
+// GET /books/{id}/cover-image). A library scan copies a Calibre folder's cover.jpg there
+// for a book the catalogue has no cover for; the Calibre folder itself is never written.
+func (c *Coordinator) SetBookCoverDir(dir string) { c.bookCovers = dir }
 
 // SetMusic wires the music module (shares the importer set by SetSeries).
 func (c *Coordinator) SetMusic(m *music.Service) { c.music = m }

@@ -312,6 +312,11 @@ function EditionPanel({ label, file, wanted, bookId, kind, onChange, toast, sear
               <Suspense fallback={null}>
                 <KindleButton book={{ book_id: bookId, title: search.book.title, ebook: { format: file.format, size_bytes: file.size_bytes, kindle: file.kindle } }} />
               </Suspense>
+              {file.kepub && (
+                <a href={`${api.ebookDownloadURL(bookId)}?format=kepub`} download className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }} title="An EPUB made for Kobo's own reader: copy it onto the Kobo over USB">
+                  Download for Kobo (KEPUB)
+                </a>
+              )}
             </div>
           )}
           {multi && kind === "audiobook" && <MergeButton bookId={bookId} fileCount={file.file_count} onDone={onChange} toast={toast} />}

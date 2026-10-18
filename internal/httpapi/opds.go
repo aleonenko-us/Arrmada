@@ -33,6 +33,9 @@ func (a *api) registerOPDS(mux *router) {
 	if a.deps.Books != nil {
 		d.Library = a.deps.Books
 	}
+	if a.deps.Kepub != nil {
+		d.Kepub = a.deps.Kepub
+	}
 	if a.deps.AudioServer != nil {
 		d.Auth = a.deps.AudioServer.Accounts
 		srv := a.deps.AudioServer
