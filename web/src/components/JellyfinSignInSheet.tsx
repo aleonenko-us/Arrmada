@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { ApiError, type AuthUser } from "../lib/api";
+import { ApiError, type LoginAnswer } from "../lib/api";
 import { jellyfinSignIn, type QuickConnectStart } from "../lib/jellyfinSignIn";
 import { usePoll } from "../lib/usePoll";
 import { Field } from "../ui/Field";
@@ -152,14 +152,15 @@ const BOX = "w-full px-3 py-2.5 text-md";
 export default function JellyfinLoginSheet({ quickConnect, onClose, onSignedIn }: {
   quickConnect: boolean;
   onClose: () => void;
-  onSignedIn: (user: AuthUser) => void;
+  /** Who signed in, or the two-factor step (a staff account that has it on). */
+  onSignedIn: (answer: LoginAnswer) => void;
 }) {
   return (
-    <JellyfinSheet<AuthUser>
+    <JellyfinSheet<LoginAnswer>
       title="Sign in with Jellyfin"
       submitLabel="Sign in"
       quickConnect={quickConnect}
-      password={async (u, p) => (await jellyfinSignIn.login(u, p)).user}
+      password={jellyfinSignIn.login}
       qcStart={jellyfinSignIn.loginQCStart}
       qcPoll={jellyfinSignIn.loginQCPoll}
       onDone={onSignedIn}

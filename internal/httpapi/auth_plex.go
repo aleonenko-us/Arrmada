@@ -187,7 +187,7 @@ func (a *api) handlePlexLoginPoll(w http.ResponseWriter, r *http.Request) {
 	if u.Role.AtLeast(auth.RoleManager) {
 		a.deps.Log.Info("users: staff signed in with Plex", "user_id", u.ID)
 	}
-	a.startSession(w, r, u, http.StatusOK)
+	a.finishExternalSignIn(w, r, u)
 }
 
 // keyPlexSignInStaff (Settings → Media servers, admin, default off): whether Sign in with Plex may

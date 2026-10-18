@@ -66,6 +66,13 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
     }
   };
 
+  // Plex and Jellyfin sign-in into a staff account with two-factor on ask for the code too.
+  const afterServerSignIn = (r: LoginAnswer) => {
+    if (!r.two_factor) { continueAfterSignIn(r.user); return; }
+    setJellyfin((j) => ({ ...j, open: false }));
+    setSecond({ step: r.two_factor, ticket: r.ticket });
+  };
+
   const setup = mode === "setup";
 
   return (
@@ -121,7 +128,7 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
                 and signs it into its requester account. */}
             {!setup && plexEnabled && (
               <Suspense fallback={<button type="button" disabled className={SERVER_BUTTON} style={{ background: "var(--plex)", color: "var(--plex-ink)" }}><PlexMark />Sign in with Plex</button>}>
-                <PlexLoginButton disabled={busy} onBusy={setPlexBusy} onError={setError} onSignedIn={continueAfterSignIn} />
+                <PlexLoginButton disabled={busy} onBusy={setPlexBusy} onError={setError} onSignedIn={afterServerSignIn} />
               </Suspense>
             )}
             {/* Sign in with Jellyfin: Jellyfin checks the username and password (or the
@@ -135,7 +142,7 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
         )}
         {jellyfin.open && (
           <Suspense fallback={null}>
-            <JellyfinLoginSheet quickConnect={jellyfin.quickConnect} onClose={() => setJellyfin((j) => ({ ...j, open: false }))} onSignedIn={continueAfterSignIn} />
+            <JellyfinLoginSheet quickConnect={jellyfin.quickConnect} onClose={() => setJellyfin((j) => ({ ...j, open: false }))} onSignedIn={afterServerSignIn} />
           </Suspense>
         )}
       </div>

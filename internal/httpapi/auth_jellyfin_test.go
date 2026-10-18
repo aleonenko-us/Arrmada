@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/auth"
 )
@@ -130,6 +131,57 @@ func TestJellyfinAdminNotMadeRequester(t *testing.T) {
 	_ = s.deps.Settings.SetBool(ctx, keyJellyfinSignInStaff, true)
 	if u := signedInAs(t, jfLogin(s, lan, "boss", "boss-password-1")); u.ID != admin.ID {
 		t.Errorf("staff sign-in landed in %d, want the admin %d", u.ID, admin.ID)
+	}
+}
+
+// Staff Jellyfin sign-in goes through the same two-factor step as a password: with it on,
+// a code ticket and no session; under "Require two-factor for admins", setting it up
+// first. A requester's Jellyfin sign-in is untouched.
+func TestJellyfinStaffSignInAsksForTwoFactor(t *testing.T) {
+	s, _, _ := jellyfinLoginServer(t)
+	ctx := context.Background()
+	admin, _ := s.user(t, "owner@example.com", auth.RoleAdmin)
+	if err := s.auth.LinkJellyfin(ctx, admin.ID, "jf-boss", "boss"); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.deps.Settings.SetBool(ctx, keyJellyfinSignInStaff, true)
+	ticketFor := func(rec *httptest.ResponseRecorder, step string) string {
+		t.Helper()
+		noSession(t, rec)
+		var out struct {
+			TwoFactor string     `json:"two_factor"`
+			Ticket    string     `json:"ticket"`
+			User      *auth.User `json:"user"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		if rec.Code != http.StatusOK || out.TwoFactor != step || out.Ticket == "" || out.User != nil {
+			t.Fatalf("want a %q ticket and no user: HTTP %d %s", step, rec.Code, rec.Body)
+		}
+		return out.Ticket
+	}
+
+	// The admin policy, with two-factor not set up yet: set it up first.
+	_ = s.deps.Settings.SetBool(ctx, keyTwoFactorAdmins, true)
+	ticketFor(jfLogin(s, lan, "boss", "boss-password-1"), "setup")
+	_ = s.deps.Settings.SetBool(ctx, keyTwoFactorAdmins, false)
+
+	// Two-factor on for the account: the code, and only the code makes the session.
+	setup, err := s.auth.BeginTOTP(ctx, admin.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.auth.ConfirmTOTP(ctx, admin.ID, totpAt(t, setup.Secret, time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	ticket := ticketFor(jfLogin(s, lan, "boss", "boss-password-1"), "code")
+	body, _ := json.Marshal(map[string]string{"ticket": ticket, "code": "000000"})
+	if rec := s.doFrom("POST", "/api/v1/auth/login/code", string(body), lan); rec.Code != http.StatusUnauthorized {
+		t.Errorf("wrong code: HTTP %d %s", rec.Code, rec.Body)
+	}
+
+	// A requester signs straight in.
+	if u := signedInAs(t, jfLogin(s, lan, "kid", "kid-password-1")); u.Role != auth.RoleRequester {
+		t.Errorf("requester sign-in: %+v", u)
 	}
 }
 

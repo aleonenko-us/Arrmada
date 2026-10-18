@@ -1,4 +1,5 @@
-import { req, type AuthUser } from "./api";
+import { req } from "./api";
+import { answered, type PolledAnswer } from "./signInAnswer";
 import type { PlexMode, PlexPin } from "./plexSignIn";
 
 // The Plex sign-in calls. They live here rather than in api.ts so they only download with
@@ -7,9 +8,10 @@ import type { PlexMode, PlexPin } from "./plexSignIn";
 const mode = (m: PlexMode) => (m === "redirect" ? "?mode=redirect" : "");
 
 export const plexApi = {
-  // Sign in with Plex on the login page. user is set once Plex has approved.
+  // Sign in with Plex on the login page. The poll answers null until Plex has approved,
+  // then who signed in (or the two-factor step for a staff account that has it on).
   loginStart: (m: PlexMode) => req<PlexPin>(`/api/v1/auth/plex/pin${mode(m)}`, { method: "POST" }),
-  loginPoll: (id: number) => req<{ pending?: boolean; user?: AuthUser }>(`/api/v1/auth/plex/pin/${id}`),
+  loginPoll: async (id: number) => answered(await req<PolledAnswer>(`/api/v1/auth/plex/pin/${id}`)),
   // The Plex card on Settings → Connections: connect the server (stores the token, finds it).
   connectStart: (m: PlexMode) => req<PlexPin>(`/api/v1/insights/plex/auth${mode(m)}`, { method: "POST" }),
   connectPoll: (id: number) => req<PlexConnectResult>(`/api/v1/insights/plex/auth/${id}`),
