@@ -76,4 +76,3 @@ func baseURL(r *http.Request) string {
 	}
 	return scheme + "://" + r.Host
 }
-
