@@ -1,0 +1,24 @@
+# Each row names a function and what it guarantees. Keep a row only while the function
+# really does what its comment says: a wrong row hides real findings.
+extensions:
+  - addsTo:
+      pack: codeql/go-all
+      extensible: barrierGuardModel
+    data:
+      # pathguard.Within(p, roots...) is true only when p, resolved through every link, is inside a root.
+      - ["github.com/tristenlammi/arrmada/internal/pathguard", "", False, "Within", "", "", "Argument[0]", "true", "path-injection", "manual"]
+      # pathguard.Under(p, dir) is true only when p, resolved through every link, is inside dir.
+      - ["github.com/tristenlammi/arrmada/internal/pathguard", "", False, "Under", "", "", "Argument[0]", "true", "path-injection", "manual"]
+      # underLibraryRoot(ctx, path) is true only when path is inside one of the library folders.
+      - ["github.com/tristenlammi/arrmada/internal/httpapi", "api", True, "underLibraryRoot", "", "", "Argument[1]", "true", "path-injection", "manual"]
+  - addsTo:
+      pack: codeql/go-all
+      extensible: barrierModel
+    data:
+      # checkImportPath returns a cleaned absolute path inside the downloads/library roots, or an error.
+      - ["github.com/tristenlammi/arrmada/internal/httpapi", "api", True, "checkImportPath", "", "", "ReturnValue[0]", "path-injection", "manual"]
+      # recyclebin's resolve returns a path inside one bin (filepath.Rel checked).
+      - ["github.com/tristenlammi/arrmada/internal/recyclebin", "Service", True, "resolve", "", "", "ReturnValue[0]", "path-injection", "manual"]
+      # The Plex image proxy's path validators return a cleaned /library/ or /photo/ path only.
+      - ["github.com/tristenlammi/arrmada/internal/httpapi", "", False, "validatePlexImagePath", "", "", "ReturnValue[0]", "request-forgery", "manual"]
+      - ["github.com/tristenlammi/arrmada/internal/plex", "", False, "safeImagePath", "", "", "ReturnValue[0]", "request-forgery", "manual"]
