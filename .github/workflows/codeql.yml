@@ -1,0 +1,59 @@
+name: CodeQL
+
+# GitHub's code scanning: static analysis of the Go backend and the TypeScript UI for
+# security bugs (injection, path traversal, SSRF, unsafe redirects, ...). Findings show
+# in the repo's Security tab and as a check on pull requests. Read-only on the code: the
+# only thing it writes is the scan result (security-events), never a push or a comment.
+# The weekly run re-checks main against newly added CodeQL queries.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "27 3 * * 1"
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Go is analysed while it compiles, so it's built here by hand.
+          - language: go
+            build-mode: manual
+          # TypeScript is read from source; no install or build needed.
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v7
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+          cache: true
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      # internal/webui embeds the built UI (//go:embed all:dist), which isn't committed. A
+      # placeholder page satisfies the embed; the UI itself is analysed as TypeScript.
+      - if: matrix.build-mode == 'manual'
+        name: Build (Go)
+        run: |
+          mkdir -p internal/webui/dist && echo '<!doctype html>' > internal/webui/dist/index.html
+          go build ./...
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"

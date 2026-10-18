@@ -10,7 +10,7 @@
 # The media lives in a Docker volume rather than a host folder: Jellyfin, the ffmpeg container
 # and the Go test container all mount it at /media, so a folder the tests add is at the same
 # path Jellyfin sees, and no host-path translation is needed (Docker Desktop on Windows mangles
-# bind-mounted temp paths). The Go tests run in golang:1.25 on the rig's own Docker network and
+# bind-mounted temp paths). The Go tests run in golang:1.26 on the rig's own Docker network and
 # reach Jellyfin by container name.
 #
 # Usage (from anywhere in the repo; needs docker and curl):
@@ -29,7 +29,7 @@ set -eu
 
 JF_IMAGE=${JF_IMAGE:-jellyfin/jellyfin:12.2.20261005-225228}
 FF_IMAGE=${FF_IMAGE:-arrmada:sycl}
-GO_IMAGE=${GO_IMAGE:-golang:1.25}
+GO_IMAGE=${GO_IMAGE:-golang:1.26}
 
 # Git Bash would rewrite /media and friends into Windows paths before docker sees them.
 MSYS_NO_PATHCONV=1

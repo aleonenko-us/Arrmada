@@ -3,7 +3,9 @@ name: CI
 # Guards every push and PR to main: the Go module must build, vet clean, and pass
 # its full test suite; the embedded web UI must lint (errors only), pass its unit
 # tests, type-check, build and pass its browser smoke tests; the install and update
-# scripts must pass shellcheck.
+# scripts must pass shellcheck; and no known vulnerability may be reachable from our Go
+# code (govulncheck) or sit in the UI's production dependencies at high or critical
+# (npm audit).
 # This is the net under all future changes — nothing merges red.
 on:
   push:
@@ -15,6 +17,12 @@ on:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+# The token only reads the code: no job pushes, comments or publishes. Caches and the
+# Playwright report upload use the Actions runtime, not this token. A job that ever
+# needs more gets it at job level.
+permissions:
+  contents: read
 
 # Runners are pinned to ubuntu-24.04 rather than ubuntu-latest, which moved to Ubuntu 26
 # on 2026-10-19: a new OS image should be a change made on purpose here, not a surprise
@@ -43,9 +51,12 @@ jobs:
       - name: Build the embedded web UI
         run: npm ci && npm run build
         working-directory: web
+      # The newest 1.26 patch: without check-latest, setup-go takes whatever 1.26.x the
+      # runner image has cached, which can be a patch behind on security fixes.
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25.x"
+          go-version: "1.26.x"
+          check-latest: true
           cache: true
       - name: Build
         run: go build ./...
@@ -90,6 +101,40 @@ jobs:
                 + ([.[] | select(.Action == "build-output") | .Output] | join("") | .[-3000:] | esc))
           ' go-test.json
           exit $status
+
+  audit:
+    name: Vulnerability scan (govulncheck, npm audit)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # Same Go as the go job: govulncheck judges the standard library by the Go that runs it.
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+          cache: true
+      # govulncheck type-checks every package, and internal/webui embeds the built UI
+      # (//go:embed all:dist). A placeholder page satisfies the embed; no UI build needed.
+      - name: Placeholder web UI for the embed
+        run: mkdir -p internal/webui/dist && echo '<!doctype html>' > internal/webui/dist/index.html
+      # Fails only when our code can actually reach a vulnerable function, in the standard
+      # library or a module. Ones in code we only import are listed but don't fail the
+      # run; Dependabot proposes those upgrades. It reads the live vulnerability database,
+      # so a newly published Go advisory can turn this red with no change here: the fix is
+      # the next Go patch (Dockerfile and setup-go) or a module upgrade.
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          govulncheck ./...
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # Production dependencies only (what ships in the UI), high or critical. Dev-only
+      # findings (test runner, build tools) don't fail CI; Dependabot handles those.
+      # npm audit reads the lockfile, so no install is needed.
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: web
 
   scripts:
     name: Shell scripts (shellcheck)
