@@ -160,13 +160,18 @@ trust, here is what runs before anything reaches `main`:
   `gofmt`, shellcheck on the install and update scripts, and the web app's lint, type check,
   unit tests (about 800) and browser tests (about 700, at desktop and phone sizes). Every image
   is built for x86-64 and arm64.
+- **Known vulnerabilities and code scanning:** every push also runs `govulncheck` (fails if
+  our code can reach a known hole in Go or a Go library), `npm audit` on the web app's
+  shipped dependencies, and GitHub's CodeQL scan.
 - **Guard rails as tests:** a fixed table of every API route and who may call it, so a route
   can't quietly become public; architecture rules (`internal/archtest`) that fail the build
   when code takes a shortcut they forbid; and a scan that keeps secrets out of logs and support
   bundles.
 - **A separate review of each feature** before it merges, looking for data loss, security
   holes and regressions for existing installs. These reviews are AI-run too: they catch a lot,
-  but they are not a human security audit.
+  but they are not a human security audit. Periodic security-only audits (sign-in and
+  permissions, public routes, file handling, outbound requests and secrets, deployment) are
+  run the same way, and their findings are fixed before anything else.
 
 If you find a problem, especially in sign-in or anything that touches your files, please open
 an issue, or report security problems privately (see [Security](SECURITY.md)). A second pair
