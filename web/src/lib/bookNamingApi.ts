@@ -2,8 +2,8 @@ import { req, type JobRef } from "./api";
 
 // Book naming (staff): the audiobook and ebook templates' presets and live preview, and the
 // library-wide rename that applies them. Its own module, not part of lib/api.ts: only the
-// Settings → Naming & metadata card loads it, so none of it lands in a requester's first
-// load.
+// Settings → Naming & metadata card and the book page's rename preview load it, so none of
+// it lands in a requester's first load.
 
 /** One kind of book's templates: the folder ("/" between levels), a single file, and each
  * file of a multi-file audiobook (track; audiobooks only). */
@@ -70,10 +70,10 @@ export const bookNamingApi = {
     const q = new URLSearchParams({ kind, folder: n.folder, file: n.file, track: n.track ?? "" });
     return req<BookNamingPreview>(`/api/v1/books/naming/preview?${q.toString()}`, { signal });
   },
-  // The dry run over every book; nothing moves.
-  organizePreview: (offset = 0, limit = 200) =>
-    req<BookOrganizePreview>(`/api/v1/books/organize?offset=${offset}&limit=${limit}`),
+  // The dry run over every book, or one (bookId: the book page's "Preview rename"); nothing moves.
+  organizePreview: (offset = 0, limit = 200, bookId?: number) =>
+    req<BookOrganizePreview>(`/api/v1/books/organize?offset=${offset}&limit=${limit}${bookId ? `&book_id=${bookId}` : ""}`),
   // Applies exactly the previewed plan as a background job; a plan that changed answers 409.
-  organizeApply: (token: string) =>
-    req<{ status: string; total: number } & JobRef>("/api/v1/books/organize", { method: "POST", body: JSON.stringify({ token }) }),
+  organizeApply: (token: string, bookId?: number) =>
+    req<{ status: string; total: number } & JobRef>("/api/v1/books/organize", { method: "POST", body: JSON.stringify(bookId ? { token, book_id: bookId } : { token }) }),
 };

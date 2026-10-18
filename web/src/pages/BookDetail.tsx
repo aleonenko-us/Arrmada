@@ -9,9 +9,10 @@ import { FileDetailsModal } from "../components/FileDetailsModal";
 import { AddAudioVersion, AudioVersionPanel } from "../components/AudioVersions";
 import { api, importListNotice, type BookSeriesEntry, type BookSource, type Book, type BookFile, type BookFileEntry, type BookImportCandidate, type BookLookup, type BookSeries, type MovieEvent } from "../lib/api";
 import { qualityApi } from "../lib/qualityApi";
+import { bookEditApi } from "../lib/bookEditApi";
+import { langName, useLanguages } from "../lib/languages";
 import { useCanHover } from "../lib/useCanHover";
 import { usePoll } from "../lib/usePoll";
-import { useUnsavedGuard } from "../lib/useUnsavedGuard";
 import { jobFailed, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { LastSearches, refreshSearches } from "../components/LastSearch";
@@ -26,6 +27,9 @@ import { lazyPage } from "../lib/lazyPage";
 // Send to Kindle for the ebook, to the signed-in person's own Kindle — the same lazy
 // module My shelf uses (the first-time sheet, the address kept on the Me page).
 const KindleButton = lazyPage(() => import("../components/Kindle"), "KindleButton");
+// Edit details and the per-book rename preview load when opened.
+const EditBookDetails = lazyPage(() => import("../components/EditBookDetails"), "EditBookDetails");
+const BookOrganizeModal = lazyPage(() => import("../components/BookOrganizeModal"), "BookOrganizeModal");
 
 // ALIAS_SOURCE names where a former catalogue key came from, for the "Also catalogued as" line.
 const ALIAS_SOURCE: Record<string, string> = {
@@ -49,6 +53,8 @@ export function BookDetail() {
     });
   }, [bid]);
   useEffect(() => { load(); }, [load]);
+  // The language table names a language edited onto the book; fetched only then.
+  const languages = useLanguages(!!b?.language);
   // "Search now" beside a wanted edition runs a books.search job; when it ends the page
   // says what it found (a toast, and a line under the toolbar) and reloads its search state.
   const [searchJob, setSearchJob] = useState<number | null>(null);
@@ -112,9 +118,25 @@ export function BookDetail() {
                   <a href={b.catalogue.url} target="_blank" rel="noreferrer" className="rounded px-1.5 py-0.5 font-mono text-xs font-bold" style={b.catalogue.name === "Open Library" ? { background: "#0a3d62", color: "#fff" } : { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>{b.catalogue.name}</a>
                 )}
               </div>
+              {b.subtitle && <div className="mt-1.5 text-md text-ink">{b.subtitle}</div>}
               <div className="mt-1.5 text-md font-semibold text-ink-dim">
                 {b.author_id ? <Link to={`/books/authors/${b.author_id}`} className="hover:underline hover:text-[var(--accent)]">{b.author}</Link> : (b.author || "Unknown author")}
               </div>
+              {/* Details only a hand edit fills, and a marker when any detail was edited
+                  (Fix ▾ Edit details shows which, with what the catalogue says). */}
+              {(b.publisher || b.language || b.isbn || Object.keys(b.edited ?? {}).length > 0) && (
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-faint">
+                  {(b.publisher || b.language || b.isbn) && (
+                    <span>{[b.publisher, b.language ? langName(b.language, languages) : "", b.isbn ? `ISBN ${b.isbn}` : ""].filter(Boolean).join(" · ")}</span>
+                  )}
+                  {Object.keys(b.edited ?? {}).length > 0 && (
+                    <span data-testid="book-edited" className="rounded px-1.5 py-px font-mono text-2xs" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink-dim)" }}
+                      title="Some details were edited by hand. Fix ▾ Edit details shows which, and what the catalogue says.">
+                      Edited by hand
+                    </span>
+                  )}
+                </div>
+              )}
               {/* Keys the book had before (a Change match, the Hardcover upgrade): cards
                   still carrying one of them show this book as in the library. */}
               {b.aliases && b.aliases.length > 0 && (
@@ -461,6 +483,10 @@ function Toolbar({ book, onChange, toast, onSearch, searching }: { book: Book; o
   const [showPaste, setShowPaste] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showMatch, setShowMatch] = useState(false);
+  // An edit changed what the book's files would be called: offer the rename preview.
+  // Files are never renamed by an edit itself.
+  const [renameOffer, setRenameOffer] = useState(false);
+  const [showRename, setShowRename] = useState(false);
 
   const run = async (key: string, fn: () => Promise<void>) => { setBusy(key); try { await fn(); } catch (e) { toast((e as Error).message, { tone: "error" }); } finally { setBusy(null); } };
   const trigger = "inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-base font-semibold";
@@ -500,14 +526,30 @@ function Toolbar({ book, onChange, toast, onSearch, searching }: { book: Book; o
           { label: "Manual import…", title: "Import a book file that's already in the downloads folder", onSelect: () => setShowImport(true) },
         ])}
         {group("Fix", [
-          { label: "Edit metadata…", title: "Manually fix title/author/year when the metadata providers got it wrong", onSelect: () => setShowEdit(true) },
+          { label: "Edit details…", title: "Fix the title, author, series and other details the catalogue got wrong — what it matched stays underneath", onSelect: () => setShowEdit(true) },
           { label: "Change match…", title: "This is the wrong book — search the catalogue and re-link it to the right one, keeping your files", onSelect: () => setShowMatch(true) },
           { label: "Rename files", busyLabel: "Renaming…", disabled: busy !== null, title: "Rename the files on disk to the library's naming", onSelect: () => run("rename", rename) },
           { label: "Refresh & rescan", busyLabel: "Refreshing…", disabled: busy !== null, title: "Fetch the metadata again and rescan the files on disk", onSelect: () => run("refresh", async () => { await api.refreshBook(book.id); onChange(); toast("Refreshed metadata and rescanned disk."); }) },
         ])}
         <DeleteButton book={book} />
       </div>
-      {showEdit && <EditMetadataModal book={book} onClose={() => setShowEdit(false)} onSaved={() => { onChange(); toast("Metadata updated."); }} />}
+      {renameOffer && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm" role="status" style={{ color: "var(--ink-dim)" }}>
+          Files can be renamed to match:
+          <button type="button" onClick={() => setShowRename(true)} className="font-semibold underline-offset-2 hover:underline" style={{ color: "var(--accent-text)" }}>Preview rename</button>
+          <IconButton label="Dismiss" onClick={() => setRenameOffer(false)} className="h-6 w-6 rounded-md text-xs text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
+        </div>
+      )}
+      <Suspense fallback={null}>
+        {showEdit && (
+          <EditBookDetails book={book} onClose={() => setShowEdit(false)} onSaved={(r) => {
+            onChange();
+            setRenameOffer(r.rename_available);
+            toast(r.changed.length > 0 ? "Details saved." : "Nothing changed.");
+          }} />
+        )}
+        {showRename && <BookOrganizeModal bookId={book.id} onClose={() => setShowRename(false)} onRenamed={() => { setRenameOffer(false); onChange(); }} />}
+      </Suspense>
       {showMatch && <RematchModal book={book} onClose={() => setShowMatch(false)} onMatched={() => { onChange(); toast("Re-matched to the chosen work."); }} />}
       {showSearch && (
         <BookReleaseModal
@@ -623,65 +665,6 @@ function Shell({ children }: { children: React.ReactNode }) {
   return <><PageHeader title="Books" /><Page>{children}</Page></>;
 }
 
-// EditMetadataModal lets a user manually correct a book's title/author/year/cover/overview when
-// the metadata providers get it wrong (the Books "manual override" escape hatch).
-function EditMetadataModal({ book, onClose, onSaved }: { book: Book; onClose: () => void; onSaved: () => void }) {
-  const [title, setTitle] = useState(book.title);
-  const [author, setAuthor] = useState(book.author);
-  const [year, setYear] = useState(String(book.year || ""));
-  const [cover, setCover] = useState(book.cover_url ?? "");
-  const [overview, setOverview] = useState(book.description ?? "");
-  const [narrator, setNarrator] = useState(book.audiobook_narrator ?? "");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  useUnsavedGuard(title !== book.title || author !== book.author || year !== String(book.year || "") || cover !== (book.cover_url ?? "")
-    || overview !== (book.description ?? "") || narrator !== (book.audiobook_narrator ?? ""));
-
-  const inp = "w-full rounded-lg px-2.5 py-1.5 text-base";
-  const inpStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
-  const lbl = "mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-faint";
-
-  const save = async () => {
-    if (!title.trim() || !author.trim()) { setErr("Title and author are required."); return; }
-    setBusy(true);
-    try {
-      await api.overrideBookMetadata(book.id, { title: title.trim(), author: author.trim(), year: Number(year) || 0, overview, cover_url: cover.trim(),
-        ...(book.audiobook ? { narrator: narrator.trim() } : {}) });
-      onSaved(); onClose();
-    } catch (e) { setErr((e as Error).message); setBusy(false); }
-  };
-
-  return (
-    <Modal
-      onClose={onClose}
-      title="Edit metadata"
-      size="sm"
-      dismissible={!busy}
-      footer={<>
-        <Button variant="ghost" onClick={onClose} disabled={busy} style={{ border: "1px solid var(--line)" }}>Cancel</Button>
-        <Button variant="primary" onClick={save} busy={busy} busyLabel="Saving…">Save</Button>
-      </>}
-    >
-        <p className="mt-1 mb-3 text-sm text-ink-dim">Manually fix the details when a provider got them wrong. This overrides what was fetched.</p>
-        <div className="flex flex-col gap-3">
-          <label className="block"><span className={lbl}>Title</span><input value={title} onChange={(e) => setTitle(e.target.value)} className={inp} style={inpStyle} /></label>
-          <div className="flex gap-3">
-            <label className="block flex-1"><span className={lbl}>Author</span><input value={author} onChange={(e) => setAuthor(e.target.value)} className={inp} style={inpStyle} /></label>
-            <label className="block w-[88px]"><span className={lbl}>Year</span><input type="number" value={year} onChange={(e) => setYear(e.target.value)} className={inp} style={inpStyle} /></label>
-          </div>
-          <label className="block"><span className={lbl}>Cover URL</span><input value={cover} onChange={(e) => setCover(e.target.value)} placeholder="https://…" className={inp} style={inpStyle} /></label>
-          {book.audiobook && (
-            // Who reads the standard audiobook, as listening apps show it; empty leaves it
-            // to the audio files' tags.
-            <label className="block"><span className={lbl}>Narrator</span><input value={narrator} onChange={(e) => setNarrator(e.target.value)} placeholder="From the audio files' tags" maxLength={200} className={inp} style={inpStyle} /></label>
-          )}
-          <label className="block"><span className={lbl}>Overview</span><textarea value={overview} onChange={(e) => setOverview(e.target.value)} rows={4} className={inp} style={inpStyle} /></label>
-        </div>
-        {err && <p role="alert" className="mb-0 mt-2 text-sm" style={{ color: "var(--reject-text)" }}>{err}</p>}
-    </Modal>
-  );
-}
-
 // Short names for events whose stored name won't fit the History column. The stored
 // name stays as it is: the duplicate review reads it.
 const EVENT_LABELS: Record<string, string> = {
@@ -750,6 +733,10 @@ function RematchModal({ book, onClose, onMatched }: { book: Book; onClose: () =>
   const [source, setSource] = useState<BookSource>("openlibrary");
   const [olResults, setOlResults] = useState<BookLookup[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Details edited by hand: kept through the re-match by default (the new entry's go
+  // underneath), or cleared when they were about the book it was wrongly matched to.
+  const editedCount = Object.keys(book.edited ?? {}).length;
+  const [edits, setEdits] = useState<"keep" | "clear">("keep");
 
   const search = useCallback(async (q: string) => {
     if (!q.trim()) return;
@@ -772,7 +759,7 @@ function RematchModal({ book, onClose, onMatched }: { book: Book; onClose: () =>
   const choose = async (r: BookLookup) => {
     setSaving(r.key); setError(null);
     try {
-      await api.rematchBook(book.id, { ol_key: r.key, title: r.title, author: r.author, year: r.year, cover_url: r.cover_url ?? "" });
+      await bookEditApi.rematch(book.id, { ol_key: r.key, title: r.title, author: r.author, year: r.year, cover_url: r.cover_url ?? "", edits });
       onMatched();
       onClose();
     } catch (e) { setError((e as Error).message); setSaving(null); }
@@ -785,6 +772,19 @@ function RematchModal({ book, onClose, onMatched }: { book: Book; onClose: () =>
           <IconButton label="Close" onClick={onClose} className="h-7 w-7 flex-none rounded-md text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
         </div>
         <p className="mb-3 text-sm text-ink-dim">Pick the correct catalogue entry. Your files, monitoring and quality profile are kept — only the metadata changes.</p>
+        {editedCount > 0 && (
+          <fieldset className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--line)" }}>
+            <legend className="px-1 text-ink-dim">You edited {editedCount === 1 ? "1 detail" : `${editedCount} details`} of this book by hand</legend>
+            <label className="flex items-center gap-2 py-0.5">
+              <input type="radio" name="rematch-edits" checked={edits === "keep"} onChange={() => setEdits("keep")} />
+              Keep my edits <span className="text-ink-faint">— the new entry's details go underneath them</span>
+            </label>
+            <label className="flex items-center gap-2 py-0.5">
+              <input type="radio" name="rematch-edits" checked={edits === "clear"} onChange={() => setEdits("clear")} />
+              Clear my edits <span className="text-ink-faint">— they were for the wrong book</span>
+            </label>
+          </fieldset>
+        )}
 
         <form className="mb-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void search(query); }}>
           <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search the catalogue" placeholder={source === "hardcover" ? "Search Hardcover…" : "Search Open Library…"} className="min-w-0 flex-1 rounded-lg px-3 py-2 text-md" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
