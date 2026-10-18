@@ -58,6 +58,40 @@ func TestExtractCollisionDisambiguates(t *testing.T) {
 	}
 }
 
+// An entry whose base name isn't a plain local name is written as "file" inside the
+// folder, never at the folder's parent, and the plan names it the same way.
+func TestFlatNameStaysLocal(t *testing.T) {
+	used := map[string]int{}
+	for _, tc := range [][2]string{
+		{"CD1/movie.mkv", "movie.mkv"},
+		{"x/..", "file"},
+		{"..", "file.2"},
+		{"/", "file.3"},
+		{"a/b/file", "file.4"},
+		{"CD2/movie.mkv", "movie.2.mkv"},
+	} {
+		if got := flatName(used, tc[0]); got != tc[1] {
+			t.Errorf("flatName(%q) = %q, want %q", tc[0], got, tc[1])
+		}
+	}
+
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "dl")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	makeZip(t, filepath.Join(dir, "pack.zip"), [][2]string{{"sub/..", "odd-entry"}, {"movie.mkv", "video"}})
+	if _, err := ExtractAll(dir); err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "file")); err != nil || string(b) != "odd-entry" {
+		t.Errorf("file = %q err=%v", b, err)
+	}
+	if ents, _ := os.ReadDir(parent); len(ents) != 1 {
+		t.Errorf("wrote next to the folder: %v", ents)
+	}
+}
+
 // TestExtractAtomicNoTempLeft pins fix #3: extraction goes through a temp+rename,
 // and no *.arrmada-tmp files remain after a successful pass.
 func TestExtractAtomicNoTempLeft(t *testing.T) {

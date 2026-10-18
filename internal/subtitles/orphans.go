@@ -144,7 +144,15 @@ func (s *Service) AdoptOrphan(ctx context.Context, movieID int64, name string, l
 	if variant != nil {
 		v = strings.ToLower(strings.TrimSpace(*variant))
 	}
-	if v != VariantFull && v != VariantForced && v != VariantSDH {
+	// The variant goes into the new file name, so it is always one of the constants.
+	switch v {
+	case VariantFull:
+		v = VariantFull
+	case VariantForced:
+		v = VariantForced
+	case VariantSDH:
+		v = VariantSDH
+	default:
 		return "", ErrBadLanguage
 	}
 	newName, err := s.adoptOne(ctx, m, o, tag, v)
