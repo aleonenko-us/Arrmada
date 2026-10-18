@@ -33,19 +33,21 @@ var (
 	// ExtractTree / ExtractArchive) may unpack, every archive in it together.
 	maxUnpackedBytes int64 = 200 << 30 // 200 GiB
 
-	// An archive may unpack to at most its own size on disk (every volume of a RAR set)
-	// times ratioNum/ratioDen, plus a slack for small, compressible extras (subtitles,
-	// NFOs). An archive found inside another gets far less slack: a bomb is archives in
-	// archives, each level inflating the last.
+	// An archive in the download may unpack to at most its own size on disk (every volume
+	// of a RAR set) times ratioNum/ratioDen, plus a slack for small, compressible extras
+	// (subtitles, NFOs). One found inside another archive draws on what is left of its
+	// parent's allowance instead (or its own ratio, when that's more): a bomb is archives
+	// in archives, each level inflating the last, and they all share the first one's.
 	ratioNum, ratioDen int64 = 3, 2 // 1.5×
 	topSlack           int64 = 1 << 30
-	nestedSlack        int64 = 16 << 20
 
-	// maxEntries is how many entries (files and folders) one archive may hold.
-	maxEntries = 5000
+	// maxEntries is how many entries (files and folders) one archive may hold. A RAR'd
+	// full Blu-ray (BDMV with its CLIPINF, STREAM, PLAYLIST and BACKUP folders) has
+	// thousands.
+	maxEntries = 20000
 
-	// maxNestDepth is how deep archives inside archives are followed: the archive itself
-	// is depth 0, one it contains depth 1, and so on. Deeper ones are left packed.
+	// maxNestDepth is how deep archives inside archives are followed: an archive in the
+	// download is depth 0, one it holds depth 1, and so on. Deeper ones are left packed.
 	maxNestDepth = 2
 
 	// freeBytes is the space free where an archive is unpacked; ok is false when it
@@ -56,15 +58,27 @@ var (
 	}
 )
 
-// ErrUnpackLimit is returned when an extraction would exceed an unpack cap: the call's
-// total, or an archive's own (its size × 1.5, plus slack).
+// ErrUnpackLimit is returned when an extraction would take the call's total unpacked
+// bytes past maxUnpackedBytes. Nothing more is unpacked in that call.
 var ErrUnpackLimit = errors.New("archive unpack limit exceeded")
 
-// ErrTooManyEntries is returned for an archive with more entries than maxEntries.
+// ErrArchiveLimit is returned for one archive that would unpack to more than its own
+// allowance (its size × 1.5, plus slack). That archive is skipped; the rest carry on.
+var ErrArchiveLimit = errors.New("archive unpacks to far more than its size")
+
+// ErrTooManyEntries is returned for an archive with more entries than maxEntries. That
+// archive is skipped; the rest carry on.
 var ErrTooManyEntries = errors.New("archive has too many entries")
 
 // ErrNoSpace is returned when what an archive says it holds won't fit on the disk.
+// Nothing more is unpacked in that call.
 var ErrNoSpace = errors.New("not enough free space to unpack the archive")
+
+// stops says err ends the whole call: the shared total, or the disk. Any other failure
+// is that one archive's.
+func stops(err error) bool {
+	return errors.Is(err, ErrUnpackLimit) || errors.Is(err, ErrNoSpace)
+}
 
 // budget tracks how many bytes an extraction call tree may still write.
 type budget struct{ remaining int64 }
@@ -79,13 +93,18 @@ func IsArchive(path string) bool {
 // directory extractors). A non-first RAR volume is a no-op — rardecode follows the
 // chain from the first volume.
 func ExtractArchive(archivePath, destDir string) error {
-	b := &budget{remaining: maxUnpackedBytes}
 	if !IsArchive(archivePath) || !isFirstRarVolume(filepath.Base(archivePath)) {
 		return nil
 	}
+	b := &budget{remaining: maxUnpackedBytes}
 	nested := loadNested(destDir)
 	defer nested.save()
-	return extractNested(archivePath, destDir, b, 0, nested)
+	allow := &allowance{remaining: topLimit(archivePath)}
+	outs, err := extractOne(archivePath, destDir, b, allow)
+	if err != nil {
+		return err
+	}
+	return extractInner(destDir, b, nestedFrom(archivePath, outs, allow, 1), nested)
 }
 
 // ExtractAll finds archives directly inside dir and extracts them into dir. For
@@ -95,6 +114,9 @@ func ExtractAll(dir string) (int, error) {
 	return extractAll(dir, &budget{remaining: maxUnpackedBytes})
 }
 
+// extractAll unpacks the archives directly in dir, then the archives they held. An
+// archive that's refused or broken is skipped and reported, and the rest carry on; only
+// the call's total or the disk running out stops it.
 func extractAll(dir string, b *budget) (int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -103,7 +125,11 @@ func extractAll(dir string, b *budget) (int, error) {
 	nested := loadNested(dir)
 	defer nested.save()
 
-	count := 0
+	var (
+		count int
+		errs  []error
+		inner []candidate
+	)
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -119,21 +145,33 @@ func extractAll(dir string, b *budget) (int, error) {
 		if nested.has(full) {
 			continue
 		}
-		if err := extractNested(full, dir, b, 0, nested); err != nil {
-			return count, fmt.Errorf("extract %s: %w", name, err)
+		allow := &allowance{remaining: topLimit(full)}
+		outs, err := extractOne(full, dir, b, allow)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("extract %s: %w", name, err))
+			if stops(err) {
+				return count, errors.Join(errs...)
+			}
+			continue
 		}
 		count++
+		inner = append(inner, nestedFrom(full, outs, allow, 1)...)
 	}
-	return count, nil
+	// Only now, with every archive here unpacked: a RAR set whose volumes came in separate
+	// zips (0-day style) is complete only once all of them have been.
+	if err := extractInner(dir, b, inner, nested); err != nil {
+		errs = append(errs, err)
+	}
+	return count, errors.Join(errs...)
 }
 
 // ExtractTree extracts archives found anywhere under dir (recursively), so a season
 // pack whose episodes each live in their own subfolder of RARs is fully unpacked.
-// Best-effort: a failure in one folder doesn't stop the rest — except blowing an
-// unpack cap or running out of space, which aborts the walk. Returns the total count.
+// Best-effort: a failure in one folder (or of one archive) doesn't stop the rest — only
+// the shared total or the disk running out ends the walk. Returns the total count.
 func ExtractTree(dir string) (int, error) {
 	total := 0
-	var firstErr error
+	var errs []error
 	b := &budget{remaining: maxUnpackedBytes} // one cap for the whole tree
 	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 		if err != nil || !d.IsDir() {
@@ -141,38 +179,80 @@ func ExtractTree(dir string) (int, error) {
 		}
 		n, e := extractAll(p, b)
 		total += n
-		if e != nil && firstErr == nil {
-			firstErr = e
+		if e != nil {
+			errs = append(errs, e)
 		}
-		if errors.Is(e, ErrUnpackLimit) || errors.Is(e, ErrTooManyEntries) || errors.Is(e, ErrNoSpace) {
-			return filepath.SkipAll // a hostile or oversized download: stop unpacking it
+		if stops(e) {
+			return filepath.SkipAll // nothing further can be unpacked
 		}
 		return nil
 	})
-	return total, firstErr
+	return total, errors.Join(errs...)
 }
 
-// extractNested unpacks one archive and then, up to maxNestDepth, the archives it held,
-// all against the same call budget. Every archive that came out of it is recorded in
-// nested, so a later pass leaves it to this one.
-func extractNested(archivePath, destDir string, b *budget, depth int, nested *nestedSet) error {
-	outs, err := extractOne(archivePath, destDir, b, depth)
-	if err != nil {
-		return err
+// allowance is what an archive (and every archive it held) may still unpack.
+type allowance struct{ remaining int64 }
+
+// topLimit is an archive in the download's allowance (see ratioNum).
+func topLimit(path string) int64 {
+	return ratioLimit(path) + topSlack
+}
+
+// ratioLimit is the archive at path's size on disk times the ratio.
+func ratioLimit(path string) int64 {
+	return archiveSize(path) / ratioDen * ratioNum
+}
+
+// candidate is an archive that came out of another, waiting to be unpacked.
+type candidate struct {
+	path   string
+	parent *allowance
+	depth  int
+}
+
+// nestedFrom lists the archives among outs (the files an archive wrote just now), never
+// the archive itself.
+func nestedFrom(archivePath string, outs []string, parent *allowance, depth int) []candidate {
+	var out []candidate
+	for _, o := range outs {
+		if IsArchive(o) && filepath.Clean(o) != filepath.Clean(archivePath) {
+			out = append(out, candidate{path: o, parent: parent, depth: depth})
+		}
 	}
-	for _, out := range outs {
-		if !IsArchive(out) {
+	return out
+}
+
+// extractInner unpacks archives that came out of other archives, against the call's
+// budget and their parent's remaining allowance, as deep as maxNestDepth. Each one done
+// (or left packed: too deep, or a later volume of a set) is recorded in nested, so a
+// later pass leaves it be. One that fails isn't: a later pass tries it again as an
+// archive of the download in its own right. Only the total or the disk stops it.
+func extractInner(dir string, b *budget, queue []candidate, nested *nestedSet) error {
+	var errs []error
+	for len(queue) > 0 {
+		c := queue[0]
+		queue = queue[1:]
+		if !isFirstRarVolume(filepath.Base(c.path)) || c.depth > maxNestDepth {
+			nested.add(c.path)
 			continue
 		}
-		nested.add(out)
-		if depth+1 > maxNestDepth || !isFirstRarVolume(filepath.Base(out)) {
+		// Its parent's leftover allowance, or its own ratio when that's more. What it
+		// writes comes off the parent's too, which its siblings share.
+		allow := &allowance{remaining: max(ratioLimit(c.path), c.parent.remaining)}
+		before := allow.remaining
+		outs, err := extractOne(c.path, dir, b, allow)
+		c.parent.remaining -= before - allow.remaining
+		if err != nil {
+			errs = append(errs, fmt.Errorf("extract %s: %w", filepath.Base(c.path), err))
+			if stops(err) {
+				break
+			}
 			continue
 		}
-		if err := extractNested(out, destDir, b, depth+1, nested); err != nil {
-			return fmt.Errorf("inside %s: %w", filepath.Base(archivePath), err)
-		}
+		nested.add(c.path)
+		queue = append(queue, nestedFrom(c.path, outs, allow, c.depth+1)...)
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // isFirstRarVolume reports whether name is the first volume of a RAR set. Plain
@@ -231,15 +311,6 @@ func archiveSize(path string) int64 {
 	return size
 }
 
-// archiveLimit is how many bytes the archive at path may unpack to (see ratioNum).
-func archiveLimit(path string, depth int) int64 {
-	slack := topSlack
-	if depth > 0 {
-		slack = nestedSlack
-	}
-	return archiveSize(path)/ratioDen*ratioNum + slack
-}
-
 // entry is one entry an archive says it holds.
 type entry struct {
 	dir  bool
@@ -247,11 +318,11 @@ type entry struct {
 	size int64 // what the archive's headers declare for a file; -1 when unknown
 }
 
-// extractOne unpacks one archive into destDir and returns every file it holds there
-// (written now or by an earlier pass). Before anything is written, what the archive
-// declares is checked against its limits and the free space; the actual bytes are capped
-// too while writing, since headers can lie.
-func extractOne(archivePath, destDir string, b *budget, depth int) ([]string, error) {
+// extractOne unpacks one archive into destDir and returns the files it wrote there now
+// (not ones an earlier pass wrote, which are left as they are). Before anything is
+// written, what the archive declares is checked against its allowance and the free space;
+// the actual bytes are capped too while writing, since headers can lie.
+func extractOne(archivePath, destDir string, b *budget, allow *allowance) ([]string, error) {
 	var (
 		entries []entry
 		err     error
@@ -265,11 +336,10 @@ func extractOne(archivePath, destDir string, b *budget, depth int) ([]string, er
 	if err != nil {
 		return nil, err
 	}
-	limit := archiveLimit(archivePath, depth)
-	if err := checkPlan(archivePath, destDir, entries, limit, b); err != nil {
+	if err := checkPlan(archivePath, destDir, entries, allow.remaining, b); err != nil {
 		return nil, err
 	}
-	w := &writer{destDir: destDir, b: b, limit: limit, used: map[string]int{}}
+	w := &writer{destDir: destDir, self: archivePath, b: b, allow: allow, used: map[string]int{}}
 	if isZip {
 		err = w.zip(archivePath)
 	} else {
@@ -279,7 +349,7 @@ func extractOne(archivePath, destDir string, b *budget, depth int) ([]string, er
 }
 
 // checkPlan refuses an archive with too many entries, one that declares more than it may
-// unpack to, and one whose new files won't fit in the free space.
+// unpack to, and one whose new files won't fit in the budget or the free space.
 func checkPlan(archivePath, destDir string, entries []entry, limit int64, b *budget) error {
 	name := filepath.Base(archivePath)
 	if len(entries) > maxEntries {
@@ -295,14 +365,14 @@ func checkPlan(archivePath, destDir string, entries []entry, limit int64, b *bud
 		if e.size < 0 {
 			continue // unknown: the cap while writing still applies
 		}
-		declared += e.size
 		if fi, err := os.Stat(dst); err == nil && fi.Size() > 0 {
 			continue // unpacked by an earlier pass: written again, it would be skipped
 		}
+		declared += e.size
 		need += e.size
 	}
 	if declared > limit {
-		return fmt.Errorf("%w: %s says it unpacks to %d bytes, more than %d for an archive of its size", ErrUnpackLimit, name, declared, limit)
+		return fmt.Errorf("%w: %s says it unpacks to %d bytes, more than the %d an archive of its size may", ErrArchiveLimit, name, declared, limit)
 	}
 	if need > b.remaining {
 		return fmt.Errorf("%w: %s would take the unpacked total past %d bytes", ErrUnpackLimit, name, maxUnpackedBytes)
@@ -357,11 +427,12 @@ func listRar(archivePath string) ([]entry, error) {
 }
 
 // writer unpacks one archive's files into destDir under both the call budget and the
-// archive's own limit.
+// archive's own allowance. outs is what it wrote, never the archive itself.
 type writer struct {
 	destDir string
+	self    string
 	b       *budget
-	limit   int64
+	allow   *allowance
 	used    map[string]int
 	outs    []string
 	entries int
@@ -429,10 +500,13 @@ func (w *writer) rar(archivePath string) error {
 
 func (w *writer) write(in io.Reader, entryName string) error {
 	dst := filepath.Join(w.destDir, flatName(w.used, entryName))
-	if err := writeFile(in, dst, w.b, &w.limit); err != nil {
+	wrote, err := writeFile(in, dst, w.b, &w.allow.remaining)
+	if err != nil {
 		return err
 	}
-	w.outs = append(w.outs, dst)
+	if wrote && filepath.Clean(dst) != filepath.Clean(w.self) {
+		w.outs = append(w.outs, dst)
+	}
 	return nil
 }
 
@@ -455,24 +529,25 @@ func flatName(used map[string]int, entryName string) string {
 // writeFile extracts one entry to dst atomically: it writes a temp file in the
 // destination directory and renames it into place on success, so a completed dst is
 // always a fully-extracted file and a crash never leaves a plausible-looking partial.
-// It writes at most what both the call budget b and the archive's own limit allow.
-func writeFile(in io.Reader, dst string, b *budget, limit *int64) error {
+// It writes at most what both the call budget b and the archive's allowance limit allow,
+// and reports whether it wrote anything (false for a file an earlier pass unpacked).
+func writeFile(in io.Reader, dst string, b *budget, limit *int64) (bool, error) {
 	// Idempotent: if we've already extracted this file, don't rewrite it. A season pack
 	// gets re-scanned while it still has missing episodes, and re-copying multi-GB videos
 	// every pass would be pointless churn. Safe: completed files only exist via the
 	// rename below, so an existing dst is never a partial.
 	if fi, err := os.Stat(dst); err == nil && fi.Size() > 0 {
-		return nil
+		return false, nil
 	}
 	out, err := os.CreateTemp(filepath.Dir(dst), filepath.Base(dst)+".*.arrmada-tmp")
 	if err != nil {
-		return err
+		return false, err
 	}
 	tmp := out.Name()
-	fail := func(e error) error {
+	fail := func(e error) (bool, error) {
 		out.Close()
 		_ = os.Remove(tmp)
-		return e
+		return false, e
 	}
 	// Copy at most the smaller allowance (+1 so exceeding is detectable): the zip-bomb
 	// guard, whatever the headers said.
@@ -481,24 +556,27 @@ func writeFile(in io.Reader, dst string, b *budget, limit *int64) error {
 	b.remaining -= n
 	*limit -= n
 	if n > allow {
-		return fail(fmt.Errorf("%w extracting %s", ErrUnpackLimit, filepath.Base(dst)))
+		if b.remaining < 0 {
+			return fail(fmt.Errorf("%w extracting %s", ErrUnpackLimit, filepath.Base(dst)))
+		}
+		return fail(fmt.Errorf("%w extracting %s", ErrArchiveLimit, filepath.Base(dst)))
 	}
 	if err != nil {
 		return fail(err)
 	}
 	if err := out.Close(); err != nil {
 		_ = os.Remove(tmp)
-		return err
+		return false, err
 	}
 	if err := os.Chmod(tmp, 0o644); err != nil { // CreateTemp makes 0600
 		_ = os.Remove(tmp)
-		return err
+		return false, err
 	}
 	if err := os.Rename(tmp, dst); err != nil {
 		_ = os.Remove(tmp)
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }
 
 // nestedFile, in a folder archives were unpacked into, lists the archives that came out

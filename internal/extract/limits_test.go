@@ -151,18 +151,171 @@ func TestExtractRatioLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := ExtractTree(dir)
-	if !errors.Is(err, ErrUnpackLimit) {
-		t.Fatalf("err = %v, want ErrUnpackLimit", err)
+	if !errors.Is(err, ErrArchiveLimit) || errors.Is(err, ErrUnpackLimit) {
+		t.Fatalf("err = %v, want ErrArchiveLimit", err)
 	}
 	noneLeft(t, dir, "zeros.bin")
 
 	// Headers that lie (declaring less than the entry holds) are caught while writing.
 	lim := int64(1000)
-	err = writeFile(strings.NewReader(strings.Repeat("x", 5000)), filepath.Join(dir, "liar.bin"), &budget{remaining: 1 << 30}, &lim)
-	if !errors.Is(err, ErrUnpackLimit) {
+	_, err = writeFile(strings.NewReader(strings.Repeat("x", 5000)), filepath.Join(dir, "liar.bin"), &budget{remaining: 1 << 30}, &lim)
+	if !errors.Is(err, ErrArchiveLimit) {
 		t.Fatalf("writeFile past the archive's limit = %v", err)
 	}
 	noneLeft(t, dir, "liar.bin")
+	// … and past the call's total, that's the total's error.
+	lim = 1 << 30
+	_, err = writeFile(strings.NewReader(strings.Repeat("x", 5000)), filepath.Join(dir, "liar.bin"), &budget{remaining: 1000}, &lim)
+	if !errors.Is(err, ErrUnpackLimit) {
+		t.Fatalf("writeFile past the total = %v", err)
+	}
+}
+
+// One archive over its own allowance (or with too many entries) is skipped and reported;
+// every other archive in the download still unpacks, on every pass.
+func TestExtractOneRefusalDoesntStopTheRest(t *testing.T) {
+	old, oldMax := topSlack, maxEntries
+	topSlack, maxEntries = 64<<10, 10
+	defer func() { topSlack, maxEntries = old, oldMax }()
+	root := t.TempDir()
+	a, b := filepath.Join(root, "a"), filepath.Join(root, "b")
+	for _, d := range []string{a, b} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var many [][2]string
+	for i := 0; i < 11; i++ {
+		many = append(many, [2]string{fmt.Sprintf("f%02d.txt", i), "x"})
+	}
+	write := func(p string, b []byte) {
+		if err := os.WriteFile(p, b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(a, "1-bomb.zip"), zipBytes(t, [][2]string{{"zeros.bin", strings.Repeat("\x00", 4<<20)}}))
+	write(filepath.Join(a, "2-many.zip"), zipBytes(t, many))
+	write(filepath.Join(a, "3-good.zip"), zipBytes(t, [][2]string{{"good-a.mkv", "video a"}}))
+	write(filepath.Join(b, "good.zip"), zipBytes(t, [][2]string{{"good-b.mkv", "video b"}}))
+	for pass := 1; pass <= 2; pass++ {
+		n, err := ExtractTree(root)
+		if !errors.Is(err, ErrArchiveLimit) || !errors.Is(err, ErrTooManyEntries) || n != 2 {
+			t.Errorf("pass %d: %d archives, %v", pass, n, err)
+		}
+		for _, p := range []string{filepath.Join(a, "good-a.mkv"), filepath.Join(b, "good-b.mkv")} {
+			if _, err := os.Stat(p); err != nil {
+				t.Errorf("pass %d: %s wasn't unpacked", pass, filepath.Base(p))
+			}
+		}
+	}
+	noneLeft(t, a, "zeros.bin", "f00.txt")
+}
+
+// 0-day style: each zip holds one volume of a RAR set (and a .diz). The set is unpacked
+// once every zip has been, in the same pass.
+func TestExtractZipsOfRarVolumes(t *testing.T) {
+	for _, set := range [][]string{
+		{"oldstyle.rar", "oldstyle.r00", "oldstyle.r01"},
+		{"newstyle.part1.rar", "newstyle.part2.rar", "newstyle.part3.rar"},
+	} {
+		dir := t.TempDir()
+		for i, vol := range set {
+			b, err := os.ReadFile(filepath.Join("testdata", vol))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The first volume in the last zip: its siblings' volumes come later in the pass.
+			name := fmt.Sprintf("rel%02d.zip", len(set)-i)
+			if err := os.WriteFile(filepath.Join(dir, name), zipBytes(t, [][2]string{{vol, string(b)}, {"file_id.diz", "diz"}}), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		n, err := ExtractTree(dir)
+		if err != nil || n != 3 {
+			t.Fatalf("%s: %d archives, %v", set[0], n, err)
+		}
+		file, sum := "Show.S01E01.mkv", "oldstyle.sha256"
+		if strings.HasPrefix(set[0], "new") {
+			file, sum = "Show.S01E02.mkv", "newstyle.sha256"
+		}
+		want, _ := os.ReadFile(filepath.Join("testdata", sum))
+		if got := fileSHA(t, filepath.Join(dir, file)); got != strings.TrimSpace(string(want)) {
+			t.Errorf("%s: unpacked wrong", file)
+		}
+		// A second pass: nothing new, no errors, the volumes left as the zips' contents.
+		if _, err := ExtractTree(dir); err != nil {
+			t.Errorf("second pass: %v", err)
+		}
+	}
+}
+
+// Scene vobsubs: Subs/<ep>.subs.zip holds the .idx and another zip with a large, very
+// compressible .sub. The inner zip draws on its parent's allowance (not a small fixed
+// one), and the episodes beside it unpack too.
+func TestExtractNestedSubsZip(t *testing.T) {
+	root := t.TempDir()
+	sub := strings.Repeat("\x00\x00\x01\xba\xff\xff", 5<<20) // 30 MB that deflates to very little
+	inner := zipBytesDeflate(t, "x.subs.sub", sub)
+	for _, ep := range []string{"E01", "E02", "E03"} {
+		d := filepath.Join(root, "Show.S01"+ep)
+		if err := os.MkdirAll(filepath.Join(d, "Subs"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, ep+".zip"), zipBytes(t, [][2]string{{"Show.S01" + ep + ".mkv", strings.Repeat("v", 1<<20)}}), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, "Subs", ep+".subs.zip"), zipBytes(t, [][2]string{{ep + ".subs.idx", "idx"}, {ep + ".inner.zip", string(inner)}}), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for pass := 1; pass <= 2; pass++ {
+		if _, err := ExtractTree(root); err != nil {
+			t.Fatalf("pass %d: %v", pass, err)
+		}
+	}
+	for _, ep := range []string{"E01", "E02", "E03"} {
+		if _, err := os.Stat(filepath.Join(root, "Show.S01"+ep, "Show.S01"+ep+".mkv")); err != nil {
+			t.Errorf("%s's video never unpacked", ep)
+		}
+		if fi, err := os.Stat(filepath.Join(root, "Show.S01"+ep, "Subs", "x.subs.sub")); err != nil || fi.Size() != int64(len(sub)) {
+			t.Errorf("%s's subtitles never unpacked: %v", ep, err)
+		}
+	}
+}
+
+// zipBytesDeflate is one deflated entry: what a real zip of compressible data looks like.
+func zipBytesDeflate(t *testing.T, name, data string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Deflate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte(data)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// An archive that holds a file with its own name never takes itself for one it held.
+func TestExtractArchiveNeverNestsItself(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "self.zip"), zipBytes(t, [][2]string{{"self.zip", "not really"}, {"a.mkv", "video"}}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := ExtractTree(dir); err != nil || n != 1 {
+		t.Fatalf("= %d, %v", n, err)
+	}
+	if loadNested(dir).has(filepath.Join(dir, "self.zip")) {
+		t.Error("the archive marked itself as one it held")
+	}
+	if n, _ := ExtractTree(dir); n != 1 {
+		t.Errorf("a later pass skipped it (%d)", n)
+	}
 }
 
 // An archive with more entries than maxEntries is refused before anything is written.
