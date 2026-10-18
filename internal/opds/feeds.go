@@ -309,7 +309,7 @@ func issued(b books.Book) string {
 // --- entries -------------------------------------------------------------------------
 
 // bookEntry is one book in an acquisition feed: what it is, its cover, and where to
-// download it. authorHref is its author's feed ("" when it has none). kepub adds a second
+// download it. authorHref is its author's feed ("" when it has none). withKepub adds a second
 // download, a KEPUB for Kobo's stock reader, to an EPUB; readers that don't know the type
 // (KOReader, Moon+) keep taking the EPUB.
 func bookEntry(b books.Book, authorHref string, now time.Time, withKepub bool) entry {
