@@ -88,6 +88,9 @@ test.describe("command palette (staff)", () => {
     await page.getByRole("dialog", { name: "Search" }).getByRole("combobox").fill("calendar");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/calendar$/);
+    // The palette closes on its way to the page; open it again only once it has gone, or
+    // the closing one is mistaken for the new one.
+    await expect(page.getByRole("dialog", { name: "Search" })).toBeHidden();
     await pressShortcut(page);
     const recent = page.getByRole("dialog", { name: "Search" }).getByRole("group", { name: "Recent" });
     await expect(recent.getByRole("option", { name: /Calendar/ })).toBeVisible();
