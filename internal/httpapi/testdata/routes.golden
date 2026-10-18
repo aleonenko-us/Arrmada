@@ -151,7 +151,7 @@ GET /api/v1/insights/import/tautulli admin -
 GET /api/v1/insights/libraries staff -
 GET /api/v1/insights/library staff -
 GET /api/v1/insights/plex staff -
-GET /api/v1/insights/plex/auth/{id} staff -
+GET /api/v1/insights/plex/auth/{id} admin -
 GET /api/v1/insights/plex/scan staff -
 GET /api/v1/insights/recently-added staff -
 GET /api/v1/insights/reliability staff -
@@ -377,7 +377,7 @@ POST /api/v1/indexers/{id}/test staff -
 POST /api/v1/insights/import/overlaps/remove admin -
 POST /api/v1/insights/import/runs/{id}/retry admin -
 POST /api/v1/insights/import/tautulli admin -
-POST /api/v1/insights/plex/auth staff -
+POST /api/v1/insights/plex/auth admin -
 POST /api/v1/insights/plex/scan/test staff -
 POST /api/v1/insights/plex/test staff -
 POST /api/v1/issues requester ext key
@@ -539,7 +539,8 @@ PUT /api/v1/downloadclients/{id} staff -
 PUT /api/v1/downloadclients/{id}/settings staff -
 PUT /api/v1/indexers/prowlarr staff -
 PUT /api/v1/indexers/{id} staff -
-PUT /api/v1/insights/plex staff -
+PUT /api/v1/insights/plex admin -
+PUT /api/v1/insights/plex/monitoring staff -
 PUT /api/v1/insights/plex/scan staff -
 PUT /api/v1/jellyfin admin -
 PUT /api/v1/jellyfin/monitoring staff -

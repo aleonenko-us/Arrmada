@@ -27,9 +27,12 @@ function srv(server?: InsightsServer, first = false): string {
 // requester's first load. Every read takes an optional server: absent means both.
 export const insightsApi = {
   insightsConfig: () => req<PlexConfig>("/api/v1/insights/plex"),
-  // Each field is optional; a missing url or token keeps the saved one.
+  // The connection (admin only). Each field is optional; a missing url or token keeps the saved one.
   updateInsightsConfig: (body: { url?: string; token?: string; enabled?: boolean; poll_seconds?: number }) =>
     req<PlexConfig>("/api/v1/insights/plex", { method: "PUT", body: JSON.stringify(body) }),
+  // Plex's "record what's watched" switch and poll interval (a manager's, like Jellyfin's).
+  updatePlexMonitoring: (body: { enabled?: boolean; poll_seconds?: number }) =>
+    req<PlexConfig>("/api/v1/insights/plex/monitoring", { method: "PUT", body: JSON.stringify(body) }),
   testInsights: (body: { url?: string; token?: string }) =>
     req<PlexTestResult>("/api/v1/insights/plex/test", { method: "POST", body: JSON.stringify(body) }),
   // Each server Insights can watch, connected or not, and what its monitoring is doing.

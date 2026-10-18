@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/insights"
+	"github.com/tristenlammi/arrmada/internal/netsafe"
 )
 
 // Query-parameter clamps: user-supplied window/limit/page_size values flow into
@@ -176,7 +178,31 @@ func (a *api) handleUpdateInsightsConfig(w http.ResponseWriter, r *http.Request)
 	a.writeJSON(w, http.StatusOK, a.deps.Insights.Config(r.Context()))
 }
 
+// handlePlexMonitoring answers PUT /api/v1/insights/plex/monitoring {enabled?,
+// poll_seconds?}: watch monitoring, which managers run, without the connection (the
+// admin's). Answers with the saved connection.
+func (a *api) handlePlexMonitoring(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Enabled     *bool `json:"enabled"`
+		PollSeconds *int  `json:"poll_seconds"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	if req.PollSeconds != nil && (*req.PollSeconds < 2 || *req.PollSeconds > 60) {
+		a.writeError(w, http.StatusBadRequest, "the interval must be 2 to 60 seconds")
+		return
+	}
+	if err := a.deps.Insights.SetMonitoring(r.Context(), req.Enabled, req.PollSeconds); err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not save Plex monitoring")
+		return
+	}
+	a.recheckHealth(r, "plex.connection")
+	a.writeJSON(w, http.StatusOK, a.deps.Insights.Config(r.Context()))
+}
+
 // handleInsightsTest validates a Plex connection (using provided or stored credentials).
+// Only an admin tests another address or token; a manager tests the saved connection.
 func (a *api) handleInsightsTest(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		URL   string `json:"url"`
@@ -184,6 +210,12 @@ func (a *api) handleInsightsTest(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.decodeJSON(w, r, &req) { // send {} to test the stored config
 		return
+	}
+	if me, _ := userFrom(r); me == nil || !me.Role.AtLeast(auth.RoleAdmin) {
+		if req.Token != "" || (strings.TrimSpace(req.URL) != "" && !netsafe.SameEndpoint(req.URL, a.deps.Insights.Config(r.Context()).URL)) {
+			a.writeError(w, http.StatusForbidden, "Only an admin can test another Plex address or token; you can test the saved connection.")
+			return
+		}
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()

@@ -2,6 +2,7 @@ package insights
 
 import (
 	"context"
+	"errors"
 
 	"github.com/tristenlammi/arrmada/internal/plex"
 )
@@ -71,11 +72,16 @@ type PlexAuthResult struct {
 	Choices    []ServerChoice `json:"choices,omitempty"`
 }
 
-// PollPlexAuth checks whether the user has authorized the sign-in. On success it stores
-// the token, then makes sure the saved URL is a server that answers: the stored one if it
-// still does, else the owned server plex.tv lists that answers (with the machine id
-// plex.tv gave for it). A friend's server shared with the account is never picked.
-// Monitoring is switched on unless someone already chose.
+// PollPlexAuth checks whether the user has authorized the sign-in. On success it reads
+// the account's own servers from plex.tv, stores the token, and makes sure the saved URL
+// is one of those servers: the stored one if it still is, else the owned server plex.tv
+// lists that answers (with the machine id plex.tv gave for it). A friend's server shared
+// with the account is never picked. Monitoring is switched on unless someone already chose.
+//
+// The token is the owner's plex.tv token, so it's only ever sent to an address that has
+// first said, without it, that it's one of the account's own servers. When plex.tv can't
+// list them nothing can be checked: the sign-in fails and nothing changes. A saved URL
+// that isn't one of them is cleared rather than left to be polled with the new token.
 func (s *Service) PollPlexAuth(ctx context.Context, pinID int) (PlexAuthResult, error) {
 	cid := s.clientID(ctx)
 	token, err := plex.CheckPIN(ctx, cid, pinID)
@@ -85,33 +91,35 @@ func (s *Service) PollPlexAuth(ctx context.Context, pinID int) (PlexAuthResult, 
 	if token == "" {
 		return PlexAuthResult{}, nil // still pending
 	}
+	cands, err := plex.DiscoverServers(ctx, cid, token)
+	if err != nil {
+		s.log.Warn("insights: could not list your Plex servers after sign-in", "err", err)
+		return PlexAuthResult{}, errors.New("plex.tv didn't list your servers, so nothing was changed — try signing in again")
+	}
 	if err := s.settings.Set(ctx, keyToken, token); err != nil {
 		return PlexAuthResult{}, err
 	}
 	res := PlexAuthResult{Authorized: true}
-	cands, listErr := plex.DiscoverServers(ctx, cid, token)
 
-	// The saved URL stays when it still answers and is a server this account owns (or
-	// plex.tv can't be asked right now, so ownership can't be checked either way).
+	// The saved URL stays when it says it's a server this account owns, and then answers
+	// to the token as that same server.
 	if url := s.settings.Get(ctx, keyURL, ""); url != "" {
-		if id, name, err := s.probe(ctx, url, token); err == nil && (listErr != nil || ownsMachine(cands, id)) {
+		if id, name, ok := s.ownedProbe(ctx, url, token, cands); ok {
 			s.saveIdentity(ctx, id, name)
 			s.enableIfUnset(ctx)
 			s.clearUnbound(ctx)
 			res.ServerName = name
 			return res, nil
 		}
-	}
-	if listErr != nil {
-		s.log.Warn("insights: could not list your Plex servers after sign-in", "err", listErr)
-		s.markUnbound(ctx, nil) // the address is theirs to type
-		return res, nil
+		// Not one of theirs (or not answering): the new token is never polled against it.
+		_ = s.settings.Set(ctx, keyURL, "")
+		s.saveIdentity(ctx, "", "")
 	}
 	var answering []ServerChoice
 	for _, c := range cands {
 		for _, conn := range c.Conns {
-			id, name, err := s.probe(ctx, conn.URL(), token)
-			if err != nil || id != c.MachineID {
+			id, name, ok := s.ownedProbe(ctx, conn.URL(), token, []plex.ServerCandidate{c})
+			if !ok {
 				continue // dead, or something else answering at that address
 			}
 			if name == "" {
@@ -124,7 +132,7 @@ func (s *Service) PollPlexAuth(ctx context.Context, pinID int) (PlexAuthResult, 
 	switch len(answering) {
 	case 0:
 		s.log.Warn("insights: signed in with Plex, but none of your servers answered", "servers", len(cands))
-		s.markUnbound(ctx, nil) // the address is theirs to type
+		s.markUnbound(ctx, nil, cands) // the address is theirs to type
 	case 1:
 		ch := answering[0]
 		if err := s.settings.Set(ctx, keyURL, ch.URL); err != nil {
@@ -136,9 +144,25 @@ func (s *Service) PollPlexAuth(ctx context.Context, pinID int) (PlexAuthResult, 
 		res.ServerName = ch.Name
 	default:
 		res.Choices = answering
-		s.markUnbound(ctx, answering) // one of these is picked next
+		s.markUnbound(ctx, answering, cands) // one of these is picked next
 	}
 	return res, nil
+}
+
+// ownedProbe checks url without the token first: only a server that says it's one of
+// cands is then asked with it, and must answer as that same server.
+func (s *Service) ownedProbe(ctx context.Context, url, token string, cands []plex.ServerCandidate) (machineID, name string, ok bool) {
+	pctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	pub, err := plex.PublicIdentity(pctx, url)
+	cancel()
+	if err != nil || !ownsMachine(cands, pub.MachineIdentifier) {
+		return "", "", false
+	}
+	id, name, err := s.probe(ctx, url, token)
+	if err != nil || id != pub.MachineIdentifier {
+		return "", "", false
+	}
+	return id, name, true
 }
 
 func ownsMachine(cands []plex.ServerCandidate, machineID string) bool {

@@ -45,8 +45,9 @@ export function MediaServerCard({ server, item, identity, test, onTest, onEdit, 
   identity?: string;
   test?: CardTest;
   onTest?: () => void;
-  /** Opens (or closes) the editor inside the card. */
-  onEdit: () => void;
+  /** Opens (or closes) the editor inside the card. Absent: this viewer can't change the
+   * connection (an admin's), so the card is read-only. */
+  onEdit?: () => void;
   editing: boolean;
   targeted?: boolean;
   children?: ReactNode;
@@ -69,9 +70,13 @@ export function MediaServerCard({ server, item, identity, test, onTest, onEdit, 
           </div>
         </div>
         <div>
-          <Button size="sm" variant={editing ? "ghost" : "secondary"} onClick={onEdit} aria-expanded={editing}>
-            {editing ? "Close" : `Connect ${name}`}
-          </Button>
+          {onEdit ? (
+            <Button size="sm" variant={editing ? "ghost" : "secondary"} onClick={onEdit} aria-expanded={editing}>
+              {editing ? "Close" : `Connect ${name}`}
+            </Button>
+          ) : (
+            <span className="text-xs text-ink-faint">An admin connects {name}.</span>
+          )}
         </div>
         {children}
       </div>
@@ -120,11 +125,15 @@ export function MediaServerCard({ server, item, identity, test, onTest, onEdit, 
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        {failing && !editing && <Button size="sm" variant="primary" onClick={onEdit}>Fix</Button>}
+        {failing && !editing && onEdit && <Button size="sm" variant="primary" onClick={onEdit}>Fix</Button>}
         {item.testable && onTest && (
           <Button size="sm" variant="secondary" onClick={onTest} busy={test?.running} busyLabel="Testing…">Test</Button>
         )}
-        <Button size="sm" variant="ghost" onClick={onEdit} aria-expanded={editing}>{editing ? "Close" : "Edit"}</Button>
+        {onEdit ? (
+          <Button size="sm" variant="ghost" onClick={onEdit} aria-expanded={editing}>{editing ? "Close" : "Edit"}</Button>
+        ) : (
+          <span className="text-xs text-ink-faint">An admin changes this connection.</span>
+        )}
       </div>
       {children}
     </div>

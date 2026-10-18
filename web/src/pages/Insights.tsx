@@ -136,7 +136,7 @@ function InsightsPage() {
         setServers(await insightsApi.insightsServers());
       } else {
         if (!cfg) return;
-        setCfg(await insightsApi.updateInsightsConfig({ enabled: true }));
+        setCfg(await insightsApi.updatePlexMonitoring({ enabled: true }));
       }
       say("Monitoring is on");
     } catch (e) { say((e as Error).message, true); } finally { setTurningOn(false); }

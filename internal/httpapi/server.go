@@ -750,10 +750,13 @@ func (a *api) registerRoutes(mux *router) {
 
 	// Insights (Tautulli replacement — Plex watch monitoring). I0: connection config + test.
 	mux.HandleFunc("GET /api/v1/insights/plex", a.requireRole(auth.RoleManager, a.handleInsightsConfig))
-	mux.HandleFunc("PUT /api/v1/insights/plex", a.requireRole(auth.RoleManager, a.handleUpdateInsightsConfig))
+	// The Plex connection (address, token, Sign in with Plex) is the admin's, like Jellyfin's:
+	// the server it names gates Plex sign-in. Managers keep monitoring and Test of the saved one.
+	mux.HandleFunc("PUT /api/v1/insights/plex", a.requireRole(auth.RoleAdmin, a.handleUpdateInsightsConfig))
+	mux.HandleFunc("PUT /api/v1/insights/plex/monitoring", a.requireRole(auth.RoleManager, a.handlePlexMonitoring))
 	mux.HandleFunc("POST /api/v1/insights/plex/test", a.requireRole(auth.RoleManager, a.handleInsightsTest))
-	mux.HandleFunc("POST /api/v1/insights/plex/auth", a.requireRole(auth.RoleManager, a.handleInsightsPlexAuthStart))
-	mux.HandleFunc("GET /api/v1/insights/plex/auth/{id}", a.requireRole(auth.RoleManager, a.handleInsightsPlexAuthPoll))
+	mux.HandleFunc("POST /api/v1/insights/plex/auth", a.requireRole(auth.RoleAdmin, a.handleInsightsPlexAuthStart))
+	mux.HandleFunc("GET /api/v1/insights/plex/auth/{id}", a.requireRole(auth.RoleAdmin, a.handleInsightsPlexAuthPoll))
 	// Library updates: scan-after-changes toggle, path mappings, Test / Scan now.
 	mux.HandleFunc("GET /api/v1/insights/plex/scan", a.requireRole(auth.RoleManager, a.handlePlexScanView))
 	mux.HandleFunc("PUT /api/v1/insights/plex/scan", a.requireRole(auth.RoleManager, a.handlePlexScanSave))

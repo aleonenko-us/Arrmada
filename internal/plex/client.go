@@ -91,6 +91,42 @@ func (c *Client) Identity(ctx context.Context) (Identity, error) {
 	return Identity{MachineIdentifier: r.MediaContainer.MachineIdentifier, Version: r.MediaContainer.Version}, nil
 }
 
+// PublicIdentity asks whatever answers at baseURL which server it is, without a token:
+// Plex answers /identity to anyone. It's how an address is checked before a token is
+// ever sent to it.
+func PublicIdentity(ctx context.Context, baseURL string) (Identity, error) {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if base == "" {
+		return Identity{}, ErrNotConfigured
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/identity", nil)
+	if err != nil {
+		return Identity{}, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	if err != nil {
+		return Identity{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return Identity{}, fmt.Errorf("plex returned HTTP %d", resp.StatusCode)
+	}
+	var r struct {
+		MediaContainer struct {
+			MachineIdentifier string `json:"machineIdentifier"`
+			Version           string `json:"version"`
+		} `json:"MediaContainer"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r); err != nil {
+		return Identity{}, err
+	}
+	if r.MediaContainer.MachineIdentifier == "" {
+		return Identity{}, errors.New("not a Plex server")
+	}
+	return Identity{MachineIdentifier: r.MediaContainer.MachineIdentifier, Version: r.MediaContainer.Version}, nil
+}
+
 // ServerName is the server's own name (what Plex apps show it as), from its root endpoint.
 func (c *Client) ServerName(ctx context.Context) (string, error) {
 	var r struct {

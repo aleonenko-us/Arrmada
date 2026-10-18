@@ -176,9 +176,7 @@ func (s *Service) SetConfig(ctx context.Context, url string, token *string, enab
 			return err
 		}
 	}
-	if changed {
-		s.clearUnbound(ctx) // the waiting sign-in's token has its address now
-	}
+	s.clearUnbound(ctx) // any save ends a waiting sign-in's exception
 	if enabled != nil {
 		if err := s.settings.SetBool(ctx, keyEnabled, *enabled); err != nil {
 			return err
@@ -192,6 +190,22 @@ func (s *Service) SetConfig(ctx context.Context, url string, token *string, enab
 	s.enableIfUnset(ctx)
 	if changed {
 		s.refreshIdentity(ctx)
+	}
+	return nil
+}
+
+// SetMonitoring saves only watch monitoring's switch and interval (nil = leave as is),
+// never the address or token: it's what managers may change about Plex.
+func (s *Service) SetMonitoring(ctx context.Context, enabled *bool, poll *int) error {
+	if enabled != nil {
+		if err := s.settings.SetBool(ctx, keyEnabled, *enabled); err != nil {
+			return err
+		}
+	}
+	if poll != nil {
+		if err := s.settings.Set(ctx, keyPoll, strconv.Itoa(*poll)); err != nil {
+			return err
+		}
 	}
 	return nil
 }

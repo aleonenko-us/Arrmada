@@ -112,6 +112,64 @@ func TestIndexerSavedKeyStaysWithItsAddress(t *testing.T) {
 	}
 }
 
+// N1 (review): hopping through a site-bound kind (TorrentLeech, MyAnonaMouse) can't move
+// the saved key either: a kind change with the key left blank is refused, the site-bound
+// kinds keep no address, and the key never reaches the new server.
+func TestIndexerSavedKeyCantHopThroughAnotherKind(t *testing.T) {
+	for _, hop := range []indexer.Kind{indexer.KindTorrentLeech, indexer.KindMAM} {
+		t.Run(string(hop), func(t *testing.T) {
+			a, svc := indexerAPI(t)
+			ctx := context.Background()
+			row, err := svc.Create(ctx, indexer.Indexer{Name: "Saved", Kind: indexer.KindTorznab, URL: "http://tracker.invalid/api", APIKey: "saved-key", Enabled: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got atomic.Value
+			got.Store("")
+			evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if k := r.URL.Query().Get("apikey"); k != "" {
+					got.Store(k)
+				}
+				_, _ = w.Write([]byte(`<caps><searching><movie-search available="yes" supportedParams="q"/></searching><categories><category id="2000"/></categories></caps>`))
+			}))
+			defer evil.Close()
+			id := strconv.FormatInt(row.ID, 10)
+
+			w := callIndexer(t, a.handleUpdateIndexer, http.MethodPut, "/api/v1/indexers/"+id, id,
+				`{"name":"Saved","kind":"`+string(hop)+`","url":"`+evil.URL+`","api_key":""}`)
+			if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "another kind of indexer") {
+				t.Fatalf("kind change with a blank key: %d %s", w.Code, w.Body)
+			}
+			w = callIndexer(t, a.handleUpdateIndexer, http.MethodPut, "/api/v1/indexers/"+id, id,
+				`{"name":"Saved","kind":"torznab","url":"`+evil.URL+`","api_key":""}`)
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("then a new address: %d %s", w.Code, w.Body)
+			}
+			_ = callIndexer(t, a.handleTestIndexer, http.MethodPost, "/api/v1/indexers/"+id+"/test", id, ``)
+			if got.Load().(string) == "saved-key" {
+				t.Fatal("the saved key reached the new server")
+			}
+
+			// A site-bound row keeps no address, so it can't carry one into a later edit.
+			if hop == indexer.KindTorrentLeech {
+				tl, err := svc.Create(ctx, indexer.Indexer{Name: "TL", Kind: indexer.KindTorrentLeech, Username: "u", Password: "pw", Enabled: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				tid := strconv.FormatInt(tl.ID, 10)
+				w = callIndexer(t, a.handleUpdateIndexer, http.MethodPut, "/api/v1/indexers/"+tid, tid,
+					`{"name":"TL","kind":"torrentleech","url":"`+evil.URL+`","username":"u","password":""}`)
+				if w.Code != http.StatusNoContent {
+					t.Fatalf("TorrentLeech edit: %d %s", w.Code, w.Body)
+				}
+				if got, _ := svc.Get(ctx, tl.ID); got.URL != "" || got.Password != "pw" {
+					t.Fatalf("TorrentLeech row = url %q, password kept %v", got.URL, got.Password == "pw")
+				}
+			}
+		})
+	}
+}
+
 // N1: a SABnzbd edit with a new address and the API key left blank is refused (with the
 // key's wording), and testing the client afterwards still goes to its saved address.
 func TestDownloadClientSavedKeyStaysWithItsAddress(t *testing.T) {
@@ -145,13 +203,18 @@ func TestPlexSavedTokenStaysWithItsAddress(t *testing.T) {
 	a := plexScanAPI(t, pms.URL)
 	evil, hits := trap(t)
 
-	rec := httptest.NewRecorder()
-	a.handleInsightsTest(rec, httptest.NewRequest("POST", "/api/v1/insights/plex/test", strings.NewReader(`{"url":"`+evil.URL+`"}`)))
+	admin := &auth.User{ID: 1, Username: "owner", Role: auth.RoleAdmin}
+	call := func(h http.HandlerFunc, method, path, body string, u *auth.User) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h(rec, withUser(httptest.NewRequest(method, path, strings.NewReader(body)), u))
+		return rec
+	}
+
+	rec := call(a.handleInsightsTest, "POST", "/api/v1/insights/plex/test", `{"url":"`+evil.URL+`"}`, admin)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "Enter the token again") {
 		t.Fatalf("test, new address: %d %s", rec.Code, rec.Body)
 	}
-	rec = httptest.NewRecorder()
-	a.handleUpdateInsightsConfig(rec, httptest.NewRequest("PUT", "/api/v1/insights/plex", strings.NewReader(`{"url":"`+evil.URL+`"}`)))
+	rec = call(a.handleUpdateInsightsConfig, "PUT", "/api/v1/insights/plex", `{"url":"`+evil.URL+`"}`, admin)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("save, new address: %d %s", rec.Code, rec.Body)
 	}
@@ -162,15 +225,50 @@ func TestPlexSavedTokenStaysWithItsAddress(t *testing.T) {
 		t.Fatalf("a refused save changed the connection: %+v", got)
 	}
 	// The saved address, with a trailing slash, still tests with the saved token.
-	rec = httptest.NewRecorder()
-	a.handleInsightsTest(rec, httptest.NewRequest("POST", "/api/v1/insights/plex/test", strings.NewReader(`{"url":"`+pms.URL+`/"}`)))
-	if rec.Code != http.StatusOK {
+	if rec = call(a.handleInsightsTest, "POST", "/api/v1/insights/plex/test", `{"url":"`+pms.URL+`/"}`, admin); rec.Code != http.StatusOK {
 		t.Fatalf("test, saved address: %d %s", rec.Code, rec.Body)
 	}
-	// A token typed for the new address is the caller's own to send.
-	rec = httptest.NewRecorder()
-	a.handleInsightsTest(rec, httptest.NewRequest("POST", "/api/v1/insights/plex/test", strings.NewReader(`{"url":"`+evil.URL+`","token":"typed"}`)))
+	// A token typed for the new address is the admin's own to send.
+	rec = call(a.handleInsightsTest, "POST", "/api/v1/insights/plex/test", `{"url":"`+evil.URL+`","token":"typed"}`, admin)
 	if rec.Code != http.StatusOK || hits.Load() == 0 {
 		t.Fatalf("test with a typed token: %d %s, hits %d", rec.Code, rec.Body, hits.Load())
+	}
+}
+
+// The Plex connection is the admin's (its server gates Plex sign-in): a manager tests
+// only the saved connection (no other address, no token) and changes only monitoring.
+// The connection's own routes being admin-only is in testdata/routes.golden.
+func TestPlexConnectionIsTheAdmins(t *testing.T) {
+	pms := (&fakePMS{}).server(t)
+	a := plexScanAPI(t, pms.URL)
+	evil, hits := trap(t)
+	mgr := &auth.User{ID: 2, Username: "mgr", Role: auth.RoleManager}
+	call := func(h http.HandlerFunc, method, path, body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h(rec, withUser(httptest.NewRequest(method, path, strings.NewReader(body)), mgr))
+		return rec
+	}
+	for _, body := range []string{`{"url":"` + evil.URL + `"}`, `{"url":"` + evil.URL + `","token":"x"}`, `{"token":"x"}`} {
+		if rec := call(a.handleInsightsTest, "POST", "/api/v1/insights/plex/test", body); rec.Code != http.StatusForbidden {
+			t.Errorf("manager test %s: %d %s", body, rec.Code, rec.Body)
+		}
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("a manager's test reached another address %d times", hits.Load())
+	}
+	for _, body := range []string{`{}`, `{"url":"` + pms.URL + `/"}`} {
+		if rec := call(a.handleInsightsTest, "POST", "/api/v1/insights/plex/test", body); rec.Code != http.StatusOK {
+			t.Errorf("manager test of the saved connection %s: %d %s", body, rec.Code, rec.Body)
+		}
+	}
+	rec := call(a.handlePlexMonitoring, "PUT", "/api/v1/insights/plex/monitoring", `{"enabled":false,"poll_seconds":12}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("monitoring: %d %s", rec.Code, rec.Body)
+	}
+	if got := a.deps.Insights.Config(t.Context()); got.Enabled || got.PollSeconds != 12 || got.URL != pms.URL || !got.TokenSet {
+		t.Fatalf("after monitoring: %+v", got)
+	}
+	if rec := call(a.handlePlexMonitoring, "PUT", "/api/v1/insights/plex/monitoring", `{"poll_seconds":1}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("interval 1: %d", rec.Code)
 	}
 }
