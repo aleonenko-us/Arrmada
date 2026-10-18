@@ -26,10 +26,26 @@ type StaffAlerts struct {
 	// PushedByAlerts is who already gets the event as Web Push through an alert connection
 	// ("This device"); they aren't pushed a second time here.
 	PushedByAlerts func(ctx context.Context, key string) (map[int64]bool, error)
+	// Name is how alerts name an account: its Plex or Jellyfin name when it has one
+	// ("" = unknown; the account name, any email cut to its local part, is used then).
+	Name func(ctx context.Context, userID int64) string
 }
 
 // SetStaffAlerts wires the "New request" alert, staff inbox and staff Web Push.
 func (s *Service) SetStaffAlerts(a StaffAlerts) { s.staffAlerts = a }
+
+// AlertName is how alerts and webhooks name a person: a display name (StaffAlerts.Name)
+// when there is one, else the account name with an email cut to the part before the @.
+// The account name itself, often an email address, never leaves the app this way; the
+// staff pages inside it still show it.
+func (s *Service) AlertName(ctx context.Context, userID int64, accountName string) string {
+	if f := s.staffAlerts.Name; f != nil && userID > 0 {
+		if n := notify.PersonName(f(ctx, userID)); n != "" {
+			return n
+		}
+	}
+	return notify.PersonName(accountName)
+}
 
 // alertStaff tells staff about a new ask waiting for their approval: the admin's alert
 // connections (Apprise, "This device"), and each manager's and admin's inbox and Web Push
@@ -50,7 +66,7 @@ func (s *Service) alertStaff(ctx context.Context, req Request) {
 	}
 	data := map[string]any{
 		"id": req.ID, "media_type": req.MediaType, "tmdb_id": req.TMDBID, "title": req.Title, "year": req.Year,
-		"requested_by_name": req.RequestedByName, "note": req.Note,
+		"requested_by_name": s.AlertName(ctx, req.RequestedBy, req.RequestedByName), "note": req.Note,
 		"rerequest": req.ReRequest > 0, "decline_reason": req.DeclineReason,
 	}
 	if req.MediaType == "series" && len(req.Seasons) > 0 {

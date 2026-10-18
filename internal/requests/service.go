@@ -663,7 +663,7 @@ func (s *Service) autoApprove(ctx context.Context, created Request, opts CreateO
 	if err == nil && !opts.Silent {
 		// The staff "Auto-approved request" alert: once, for this new row (an import's
 		// old requests don't raise it).
-		s.publishAutoApproved(approved)
+		s.publishAutoApproved(ctx, approved)
 	}
 	return approved, err
 }

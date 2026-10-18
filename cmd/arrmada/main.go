@@ -913,6 +913,13 @@ func main() {
 		},
 		Staff:          authSvc.StaffIDs,
 		PushedByAlerts: notifySvc.PushUsersFor,
+		// Alerts name people by their Plex or Jellyfin name, never the sign-in name.
+		Name: func(ctx context.Context, uid int64) string {
+			if u, err := authSvc.UserByID(ctx, uid); err == nil {
+				return notify.PersonName(u.PlexUsername, u.JellyfinUsername)
+			}
+			return ""
+		},
 	})
 	// Request limits: a person's own (Settings → Users → edit), else the global ones
 	// (Settings → Users → Request limits). Unlimited until the owner sets one.
@@ -976,6 +983,7 @@ func main() {
 		return requestsSvc.NotifyUsers(ctx, userIDs, requests.UserNotice{Title: n.Title, Body: n.Body, Ref: n.Ref, Kind: n.Kind, MediaType: n.MediaType})
 	})
 	issuesSvc.SetStaffAlert(func(ctx context.Context, i issues.Issue, data map[string]any) {
+		data["reported_by_name"] = requestsSvc.AlertName(ctx, i.ReportedBy, i.ReportedByName)
 		requestsSvc.AlertStaff(ctx, requests.StaffNotice{
 			Event: notify.EventIssueReported, Dedupe: issues.StaffAlertDedupe(i.ID), Data: data,
 			Ref: fmt.Sprintf("issue:%d:new", i.ID), MediaType: i.MediaType,

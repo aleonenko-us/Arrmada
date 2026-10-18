@@ -122,3 +122,37 @@ func TestStaffAlertInbox(t *testing.T) {
 		t.Errorf("pushes after a repeat = %v", got)
 	}
 }
+
+// N6: alerts leave the app, so they never carry the account name when it's an email: a
+// Plex or Jellyfin name is used when the account has one, else the part before the @.
+func TestStaffAlertNamesNoEmail(t *testing.T) {
+	s, _, _ := quietFixture(t)
+	var mu sync.Mutex
+	var names []string
+	s.SetStaffAlerts(StaffAlerts{
+		Emit: func(_ context.Context, _, _ string, data map[string]any) error {
+			mu.Lock()
+			defer mu.Unlock()
+			names = append(names, data["requested_by_name"].(string))
+			return nil
+		},
+		Name: func(_ context.Context, uid int64) string {
+			if uid == 8 {
+				return "BobOnPlex"
+			}
+			return ""
+		},
+	})
+	ctx := context.Background()
+	if _, _, err := s.Create(ctx, Request{MediaType: "movie", TMDBID: 1, Title: "A", RequestedBy: 7, RequestedByName: "alice.smith@example.com"}, CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Create(ctx, Request{MediaType: "movie", TMDBID: 2, Title: "B", RequestedBy: 8, RequestedByName: "bob@example.com"}, CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(names) != 2 || names[0] != "alice.smith" || names[1] != "BobOnPlex" {
+		t.Fatalf("alert names = %q", names)
+	}
+}
