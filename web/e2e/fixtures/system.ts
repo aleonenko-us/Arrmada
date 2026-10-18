@@ -247,6 +247,7 @@ export const settings: AppSettings = {
   downloads_disk_guard_pause_pct: "95",
   downloads_disk_guard_resume_pct: "90",
   downloads_disk_guard_measure_path: "",
+  downloads_disk_guard_pause_free_gb: "0",
   downloads_stall_minutes: 60,
   upgrade_max_grabs_per_sweep: 10,
   app_public_url: "",

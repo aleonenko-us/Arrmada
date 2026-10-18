@@ -336,12 +336,30 @@ Arrmada a read-only view of the pool and measure that:
   Device**, and add a Path with Container Path `/cache`, Host Path `/mnt/cache` (or your
   pool's name, such as `/mnt/fastpool`) and Access Mode **Read Only**. Apply, then pick
   `/cache` under Measure a different drive.
-- **Docker Compose:** add `- /mnt/cache:/cache:ro` under Arrmada's `volumes` (in
-  `docker-compose.override.yml`), recreate the container, then pick `/cache`.
+- **Docker Compose:** in `docker-compose.override.yml`, add `- /mnt/cache:/cache:ro` to the
+  `volumes:` of the `arrmada-app` service (`services:` → `arrmada-app:` → `volumes:`), run
+  `docker compose up -d` to recreate the container with it, then pick `/cache`.
 
-The path must exist inside the container, be a folder whose disk usage can be read, and not
-be on the same filesystem as the downloads folder (that's already what the guard measures).
-The card then shows the path it reads, how full it is and its size and free space.
+The path must exist inside the container, be a folder whose disk usage can be read, not be
+`/` or on a RAM or container filesystem (tmpfs, overlay and the like), and not be on the same
+filesystem as the downloads folder (that's already what the guard measures). The RAM check
+catches a pool name typed wrong on Unraid: Docker then creates the missing Host Path as an
+empty folder in RAM, which would otherwise pass and never fill up. The card then shows the
+path it reads, how full it is and its size and free space.
+
+**Free-space limit.** **Also pause when free space drops below (GB)** adds a second line,
+off (0) by default: downloads pause when the drive is past the percentage **or** has less
+free space than this. Held downloads resume once the percentage is back under its resume
+point **and** free space is back above the limit plus 10% (at least 1 GB more), so a drive
+hovering at the limit doesn't pause and resume every few minutes. It applies to whatever is
+measured, the downloads folder or a different drive. GB here is 1024³ bytes, as the card
+shows sizes.
+
+**ZFS pools.** On a ZFS pool (the default for new Unraid pools since 6.12) every share is a
+dataset of its own, and the pool's root only reports its own dataset's usage: the percentage
+reads near 0% however full the pool is, while its free space is right. When the measured
+drive is ZFS the card says so, and Settings → Status warns until a free-space limit is set.
+Set one, sized to what your downloads need to finish (say 100–200 GB).
 
 **More than one downloads folder.** When library folders have downloads folders of their own
 ([Libraries on separate disks](#libraries-on-separate-disks)), the drive you set stands in
@@ -351,10 +369,13 @@ all one filesystem there. A downloads folder on a disk mounted on its own keeps 
 measurement.
 
 **If the drive goes away.** If the path can no longer be read (the mapping was removed, or
-the pool isn't mounted), the guard doesn't fall back to the downloads folder: that's exactly
-the reading the setting replaces. It pauses nothing new and resumes nothing for the folders
-it measures, keeps anything it already paused paused until the drive can be read again,
-and says so in the card and in Settings → Status. Map the path back, or clear the setting.
+the pool isn't mounted), or it now reads as a RAM or container filesystem (Docker recreated a
+missing Host Path), the guard doesn't fall back to the downloads folder: that's exactly the
+reading the setting replaces. It pauses nothing new and resumes nothing for the folders it
+measures there (downloads folders on other drives are still guarded), and says so in the card
+and in Settings → Status. Anything it already paused stays paused for now; you can resume it
+by hand, and turning the guard off releases it. Clearing the setting releases it too, unless
+the downloads folder's own drive is over the line. Map the path back, or clear the setting.
 
 ## Recycle bin
 

@@ -5,7 +5,7 @@ import { AutoNumber, AutoSelect, AutoText, AutoToggle, SavedTick, wholeNumber } 
 import { Note, Section, input, inputStyle } from "../../components/settings/ui";
 import { Field } from "../../ui/Field";
 import { Button } from "../../ui/Button";
-import { measurePathProblem, sizeAndFree } from "../../lib/diskGuard";
+import { measurePathProblem, pauseFreeProblem, sizeAndFree } from "../../lib/diskGuard";
 import { api, type DiskGuardStatus, type NetworkPreference, type RecycleBinStats, type RecycleItem, type RecycleStats } from "../../lib/api";
 import { downloadClientApi } from "../../lib/downloadClientApi";
 import { hasUsenetClient, NETWORK_PREFERENCES } from "../../lib/network";
@@ -296,6 +296,7 @@ function DiskGuardSection() {
   const { s } = useLoadedSettings();
   const overrideSaved = (s.downloads_disk_guard_measure_path ?? "").trim() !== "";
   const size = status ? sizeAndFree(status.total_bytes, status.free_bytes) : null;
+  const floor = useSetting("downloads_disk_guard_pause_free_gb", { validate: pauseFreeProblem });
 
   return (
     <Section
@@ -344,13 +345,30 @@ function DiskGuardSection() {
               )}
             </div>
           )}
+          {status.measurable && status.zfs && (
+            <div className="mt-1 text-sm" style={{ color: "var(--avoid-text)" }}>
+              This is a ZFS pool: the percentage only counts part of it — use the free-space limit below.
+            </div>
+          )}
           {status.measure_unreadable ? (
             <div role="alert" className="mt-1 text-sm" style={{ color: "var(--reject-text)" }}>
-              Arrmada can't read the drive at <span className="font-mono">{status.measure_path}</span> any more,
-              so the guard isn't pausing or resuming downloads for it. It doesn't fall back to the
-              downloads folder, which would measure the wrong drive. Anything it already paused stays
-              paused until the drive can be read again. Check the path is still mapped into the
-              container, or clear it below.
+              {status.measure_not_disk ? (
+                <>
+                  <span className="font-mono">{status.measure_path}</span> reads as a RAM or container
+                  filesystem ({status.measure_not_disk}), not a disk: the mapping is gone, or its Host Path
+                  doesn't match your pool's name.
+                </>
+              ) : (
+                <>Arrmada can't read the drive at <span className="font-mono">{status.measure_path}</span> any more.</>
+              )}{" "}
+              {status.measurable
+                ? "Downloads measured there aren't paused or resumed until it can be read; downloads folders on other drives are still guarded."
+                : "The guard isn't pausing or resuming downloads until it can be read."}{" "}
+              It doesn't fall back to the downloads folder, which would measure the wrong drive.
+              Anything it already paused stays paused for now: resume it by hand, or turn the guard
+              off to release it (clearing the setting releases it too, unless the downloads folder's
+              own drive is over the line). Check the path is still mapped into the container, or
+              clear it below.
             </div>
           ) : !status.measurable && (
             <div className="mt-1 text-sm" style={{ color: "var(--reject-text)" }}>
@@ -417,6 +435,21 @@ function DiskGuardSection() {
             </Field>
           </div>
           <SavedTick save={pair} />
+          <AutoText
+            label="Also pause when free space drops below (GB)"
+            save={floor}
+            mono={false}
+            inputMode="numeric"
+            placeholder="0"
+            filter={(v) => v.replace(/[^0-9]/g, "").slice(0, 7)}
+          >
+            <span className="text-xs text-ink-faint">
+              0 = off. Applies to whichever drive is measured, alongside the percentage. Held downloads
+              resume once free space is back above this plus 10% (at least 1 GB more) and the
+              percentage is under its resume point. Set this on a ZFS pool, where the percentage only
+              counts part of the pool.
+            </span>
+          </AutoText>
         </>
       )}
       <MeasureDriveField onSaved={loadStatus} />
@@ -424,8 +457,8 @@ function DiskGuardSection() {
   );
 }
 
-// The folder picker lives with the Library page; loaded when Browse is pressed, so this
-// section doesn't pull that page in with it.
+// FolderPicker is exported from the Library page's module, which this section otherwise
+// doesn't need: it's fetched when Browse is pressed rather than with the section.
 const FolderPicker = lazy(() => import("../Library").then((m) => ({ default: m.FolderPicker })));
 
 // MeasureDriveField is "Measure a different drive". On Unraid the downloads folder is in a
@@ -481,8 +514,13 @@ function MeasureDriveField({ onSaved }: { onSaved: () => void }) {
           Mode <b>Read Only</b>. Apply, then pick <code>/cache</code> here.
         </span>
         <span>
-          <b className="text-ink-dim">Docker Compose:</b> add <code>- /mnt/cache:/cache:ro</code> under
-          Arrmada's <code>volumes</code>, recreate the container, then pick <code>/cache</code> here.
+          <b className="text-ink-dim">Docker Compose:</b> add <code>- /mnt/cache:/cache:ro</code> to
+          the <code>arrmada-app</code> service's <code>volumes</code>, run <code>docker compose up -d</code>,
+          then pick <code>/cache</code> here.
+        </span>
+        <span>
+          <b className="text-ink-dim">ZFS pool:</b> the percentage only counts part of a ZFS pool, so
+          also set the free-space limit above.
         </span>
       </div>
       {picking && (

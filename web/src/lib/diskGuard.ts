@@ -18,6 +18,15 @@ export function sizeAndFree(total: number | undefined, free: number | undefined)
   return `${shortBytes(total)}, ${shortBytes(free ?? 0)} free`;
 }
 
+// The free-space limit is whole GB; blank or 0 is off. The server's cap is 2^20 GB.
+export const MAX_PAUSE_FREE_GB = 1048576;
+export function pauseFreeProblem(v: string): string | null {
+  const t = v.trim();
+  if (t === "") return null;
+  if (!/^\d+$/.test(t) || Number(t) > MAX_PAUSE_FREE_GB) return "Free space needs a whole number of GB (0 = off).";
+  return null;
+}
+
 // measurePathProblem checks "Measure a different drive" before it's sent: empty clears it,
 // anything else has to be a full path inside the container. The server checks the rest
 // (that it exists, can be measured and isn't the downloads folder's own drive).

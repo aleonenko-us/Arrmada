@@ -1075,6 +1075,7 @@ export interface DiskGuardVolume {
   override: boolean;
   total_bytes: number;
   free_bytes: number;
+  zfs?: boolean;
 }
 
 export interface DiskGuardStatus {
@@ -1092,10 +1093,17 @@ export interface DiskGuardStatus {
   measured_path: string;
   /** measured_path is the "Measure a different drive" path, not the downloads folder. */
   override: boolean;
-  /** The saved measure_path can't be read now: the guard pauses and resumes nothing for it. */
+  /** The saved measure_path can't be used now: the guard pauses and resumes nothing for it. */
   measure_unreadable: boolean;
+  /** Set when that's because it reads as a RAM or container filesystem ("tmpfs", "overlay"…). */
+  measure_not_disk?: string;
   total_bytes: number;
   free_bytes: number;
+  /** measured_path is a ZFS pool: its percentage only counts part of it. */
+  zfs?: boolean;
+  /** The free-space limit in bytes (0 = off), and the free space needed to resume. */
+  pause_free_bytes?: number;
+  resume_free_bytes?: number;
   /** Each downloads folder, when there's more than one. */
   volumes?: DiskGuardVolume[];
   // The library folders (the ones picked in Settings → Library) on the same drive as
@@ -1198,6 +1206,8 @@ export interface AppSettings {
   downloads_disk_guard_resume_pct: string;
   /** "Measure a different drive": a path whose drive the guard reads instead of the downloads folder's; "" = the downloads folder. Admin only. */
   downloads_disk_guard_measure_path: string;
+  /** "Also pause when free space drops below" in whole GB (1024³ bytes); "0" = off. Admin only. */
+  downloads_disk_guard_pause_free_gb: string;
   /** Minutes with no progress before another release is tried; 0 = never. Default 360. */
   downloads_stall_minutes: number;
   /** How many upgrades one upgrade sweep may grab; 0 = no limit. Default 10. */

@@ -120,7 +120,8 @@ test.describe("admin", () => {
     const warning = card.getByRole("alert").filter({ hasText: /can't read the drive at \/cache any more/ });
     await expect(warning).toBeVisible();
     await expect(warning).toContainText("doesn't fall back to the downloads folder");
-    await expect(warning).toContainText("stays paused until the drive can be read again");
+    await expect(warning).toContainText("isn't pausing or resuming downloads until it can be read");
+    await expect(warning).toContainText("resume it by hand, or turn the guard off to release it");
     await expect(card.getByText(/\d% full/)).toHaveCount(0);
 
     await card.getByRole("button", { name: "Clear" }).click();
@@ -128,5 +129,41 @@ test.describe("admin", () => {
     expect(api.callsTo("PUT", "/api/v1/settings")[0].body).toEqual({ downloads_disk_guard_measure_path: "" });
     await expect(warning).toHaveCount(0);
     await expect(card.getByText("69.2% full · 40 TB, 12 TB free")).toBeVisible();
+  });
+
+  test("a saved drive that turned into a RAM folder says so, and other drives are still guarded", async ({ page, api }) => {
+    await answer(page, api, [
+      { method: "GET", path: "/api/v1/settings", respond: () => ({ ...settings, downloads_disk_guard_measure_path: "/cache" }) },
+      { method: "GET", path: "/api/v1/downloads/disk-guard", respond: () => ({
+        ...poolGone, measurable: true, used_pct: 50, measure_not_disk: "tmpfs", measured_path: "/mnt/disk3/dl", total_bytes: 8 * TB, free_bytes: 4 * TB,
+        volumes: [
+          { path: "/storage/downloads", measurable: false, used_pct: 0, measured_path: "/cache", override: true, total_bytes: 0, free_bytes: 0 },
+          { path: "/mnt/disk3/dl", measurable: true, used_pct: 50, measured_path: "/mnt/disk3/dl", override: false, total_bytes: 8 * TB, free_bytes: 4 * TB },
+        ],
+      }) },
+    ]);
+    await page.goto("/settings/downloads#disk-guard");
+    const warning = page.locator("#disk-guard").getByRole("alert");
+    await expect(warning).toContainText("reads as a RAM or container filesystem (tmpfs), not a disk");
+    await expect(warning).toContainText("Host Path doesn't match your pool's name");
+    await expect(warning).toContainText("downloads folders on other drives are still guarded");
+    await expect(page.locator("#disk-guard").getByText("can't be read")).toBeVisible();
+  });
+
+  test("on a ZFS pool the card points at the free-space limit, which saves as whole GB", async ({ page, api }) => {
+    await answer(page, api, [
+      { method: "GET", path: "/api/v1/settings", respond: () => ({ ...settings, downloads_disk_guard_measure_path: "/cache" }) },
+      { method: "GET", path: "/api/v1/downloads/disk-guard", respond: () => ({ ...onPool, used_pct: 2.1, zfs: true, holding: 0 }) },
+      { method: "PUT", path: "/api/v1/settings", respond: (b) => ({ ...settings, ...(b as object) }) },
+    ]);
+    await page.goto("/settings/downloads#disk-guard");
+    const card = page.locator("#disk-guard");
+    await expect(card.getByText("This is a ZFS pool: the percentage only counts part of it — use the free-space limit below.")).toBeVisible();
+    const floor = card.getByRole("textbox", { name: "Also pause when free space drops below (GB)" });
+    await expect(floor).toHaveValue("0");
+    await floor.fill("150");
+    await floor.press("Enter");
+    await expect(card.getByText("Saved ✓")).toBeVisible();
+    expect(api.callsTo("PUT", "/api/v1/settings").map((c) => c.body)).toEqual([{ downloads_disk_guard_pause_free_gb: "150" }]);
   });
 });

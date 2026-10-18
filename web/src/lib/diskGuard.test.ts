@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { measurePathProblem, shortBytes, sizeAndFree } from "./diskGuard";
+import { measurePathProblem, pauseFreeProblem, shortBytes, sizeAndFree } from "./diskGuard";
 
 const GB = 1024 ** 3;
 const TB = 1024 ** 4;
@@ -18,6 +18,15 @@ describe("sizeAndFree", () => {
   it("rounds from 10 up", () => {
     expect(shortBytes(10.4 * GB)).toBe("10 GB");
     expect(shortBytes(9.94 * GB)).toBe("9.9 GB");
+  });
+});
+
+describe("pauseFreeProblem", () => {
+  it("takes whole GB, blank or 0 for off", () => {
+    for (const ok of ["", " ", "0", "100", " 250 ", "1048576"]) expect(pauseFreeProblem(ok)).toBeNull();
+  });
+  it("refuses anything else", () => {
+    for (const bad of ["1.5", "-1", "abc", "1048577"]) expect(pauseFreeProblem(bad)).toMatch(/whole number of GB/);
   });
 });
 

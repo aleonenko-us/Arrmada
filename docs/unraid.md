@@ -60,7 +60,14 @@ Give Arrmada a read-only view of the pool and measure that instead:
 
 The card then shows `/cache`, how full the pool is and its free space. Keep the downloads
 folder in the share (`/storage/downloads`) as above, so imports still hardlink; only the
-measurement moves. Arrmada's template doesn't add this path itself: pools have different
+measurement moves. Arrmada refuses a path that reads as RAM: if the pool's name in the Host
+Path is wrong, Docker makes an empty folder in RAM instead, and the guard would never pause.
+
+**A ZFS pool** (the default for new pools since Unraid 6.12) needs one more setting. Each
+share on it is its own dataset, and the pool's root counts only its own, so the percentage
+reads near 0% however full the pool is. Its free space is right, so set **Also pause when
+free space drops below** in the same card (say 100–200 GB); the card and Settings → Status
+remind you when the measured drive is ZFS. Arrmada's template doesn't add this path itself: pools have different
 names, and Docker would quietly create a missing host path in RAM.
 If the path later goes away, the guard warns (in the card and Settings → Status) and stops
 pausing or resuming rather than measuring the array again. More in
