@@ -55,9 +55,9 @@ Open that address and create your admin account.
 > The admin account can only be created from your home network (or the server itself), so a
 > fresh install that's already reachable from the internet can't be claimed by a stranger.
 > Installing on a remote server? Open the page through an SSH tunnel
-> (`ssh -L 7878:localhost:7878 you@server`, then `http://localhost:7878`), or allow it for
-> once with `ARRMADA_ALLOW_REMOTE_SETUP`
-> ([Configuration](configuration.md#env-settings)) and take it out again once you're in.
+> (`ssh -L 7878:localhost:7878 you@server`, then `http://localhost:7878`), or add
+> `ARRMADA_ALLOW_REMOTE_SETUP=1` to `.env`, run `docker compose up -d`, and take it out again
+> once you're in ([Configuration](configuration.md#env-settings)).
 
 A short setup then walks you through:
 

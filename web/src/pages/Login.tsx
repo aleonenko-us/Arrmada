@@ -98,7 +98,8 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
         {mode === "remote" && (
           <div role="status" className="rounded-2xl p-5 text-md leading-snug" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
             For safety, the first admin account can only be made from your home network. Open Arrmada at its address there
-            (like <b>http://192.168.1.10:7878</b>), or set <code>ARRMADA_ALLOW_REMOTE_SETUP=1</code> and restart it.
+            (like <b>http://192.168.1.10:7878</b>), or add <code>ARRMADA_ALLOW_REMOTE_SETUP=1</code> to <code>.env</code> and
+            run <code>docker compose up -d</code>.
           </div>
         )}
         {(mode === "login" || mode === "setup") && !second && (

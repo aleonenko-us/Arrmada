@@ -63,18 +63,22 @@ func ClientIP(r *http.Request) string {
 // entry is used only when every hop is private, a LAN client behind a local proxy). Then
 // the Forwarded header's for= by the same rule.
 //
-// Cf-Connecting-Ip is believed only where Cloudflare must have set it. It used to come
-// first from any local proxy, but nginx, Caddy and Traefik pass it through untouched, so a
-// visitor behind one of them could type in any address: a LAN one to look like they were
-// at home, or a new one on every try to slip the per-address limits. Now it counts when
+// Cf-Connecting-Ip no longer comes first. It used to win from any local proxy, but nginx,
+// Caddy and Traefik pass it through untouched, so a visitor behind one of them could type
+// in any address: a LAN one to look like they were at home, or a new one on every try to
+// slip the per-address limits. Now it counts only when
 //   - the forwarding chain names no internet address at all: cloudflared talking to us
 //     directly, or a local proxy that records only cloudflared's own address. A proxy that
 //     records a visitor's real address puts it in the chain, and that wins;
 //   - or the nearest internet hop in the chain is Cloudflare's edge (an orange-cloud site
 //     in front of a local proxy), which overwrites the header.
 //
-// Cloudflare's edge also adds the visitor to X-Forwarded-For, so through a tunnel the two
-// agree. A Cf-Ray header proves nothing: it's as easy to type as Cf-Connecting-Ip.
+// The first case isn't proof that Cloudflare set it: a LAN device or container reaching
+// the port directly (or rootless Docker, where every peer looks local) can still send the
+// header, as it always could X-Forwarded-For. What's closed is the internet visitor behind
+// a proxy that records their real address. Cloudflare's edge also adds the visitor to
+// X-Forwarded-For, so through a tunnel the two agree. A Cf-Ray header proves nothing: it's
+// as easy to type as Cf-Connecting-Ip.
 // ARRMADA_TRUST_CF_HEADER=1 brings back believing the header from any local proxy; =0
 // never believes it.
 func ForwardedClientIP(r *http.Request) net.IP {
