@@ -57,8 +57,15 @@ const (
 	Staged State = "staged"
 	// Verified: the copy is tagged and checked (tags read back, audio unchanged).
 	Verified State = "verified"
-	// Binned: the library file it replaces is in the recycle bin. From here the staged
-	// copy is the track's newest file and is only ever moved into place, never deleted.
+	// Arriving: the copy is being linked into the album folder under a temporary name
+	// (Item.Temp), beside the file it replaces, which is still in place.
+	Arriving State = "arriving"
+	// Binning: the file it replaces is being moved to the recycle bin; the new one is
+	// ready beside it under its temporary name. Whether the old file is still at the
+	// final path says whether the bin took it.
+	Binning State = "binning"
+	// Binned: the library file it replaces is in the recycle bin. From here the new file
+	// is only ever moved into place — or, if that can't happen, the old one comes back.
 	Binned State = "binned"
 	// Placed: the file is at its final path.
 	Placed State = "placed"
@@ -86,6 +93,8 @@ type Item struct {
 	// Retire is an old file of the same track under another name (an .mp3 a .flac
 	// replaces): to the bin once the new one is in place, best effort.
 	Retire string `json:"retire,omitempty"`
+	// Temp is the new file's temporary name beside Final while it replaces a file there.
+	Temp string `json:"temp,omitempty"`
 	// Binned is where Replace went in the bin.
 	Binned string `json:"binned,omitempty"`
 	State  State  `json:"state"`

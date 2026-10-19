@@ -237,8 +237,11 @@ func sniff(f *os.File) (format, error) {
 	case len(head) >= 8 && string(head[4:8]) == "ftyp":
 		return formatMP4, nil
 	case bytes.HasPrefix(head, []byte("ID3")):
-		// ID3v2 is also (wrongly) prepended to some FLAC files; those fail later
-		// in the MP3 path rather than being misparsed.
+		// ID3v2 is also (wrongly) put in front of some FLAC files: a FLAC is what
+		// follows the tag there, and players read it as one (flacid3.go).
+		if flacAfterID3(f) {
+			return formatFLAC, nil
+		}
 		return formatMP3, nil
 	case len(head) >= 2 && head[0] == 0xFF && head[1]&0xE0 == 0xE0:
 		// Bare MPEG audio frame sync with no ID3 tag yet.

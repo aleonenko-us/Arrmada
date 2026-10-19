@@ -81,6 +81,9 @@ func (f *houseFake) Write(p string, t audiotag.Tags, opts audiotag.WriteOptions)
 	return os.Rename(tmp, p)
 }
 
+// tagger hands the fake to placement (stage keeps writing to itself).
+func (f *houseFake) tagger() stage.Tagger { return stage.NewTagger(f.Read, f.ReadFrontCover, f.Write) }
+
 func houseHash(_ context.Context, p string) (string, error) {
 	b, err := os.ReadFile(p)
 	if err != nil {
@@ -100,12 +103,12 @@ func (f *fakeCovers) Front(_ context.Context, _, _ string, size int) ([]byte, er
 }
 
 // withHouseTags turns house tags on for a harness, with covers.
-func withHouseTags(h *musicHarness, tagger stage.Tagger) *fakeCovers {
+func withHouseTags(h *musicHarness, fake *houseFake) *fakeCovers {
 	covers := &fakeCovers{}
 	h.c.SetMusicPlacement(func(context.Context) MusicPlacementPrefs {
 		return MusicPlacementPrefs{WriteTags: true}
 	}, covers, houseHash)
-	h.c.musicPlace.tagger = tagger
+	h.c.musicPlace.tagger = fake.tagger()
 	return covers
 }
 
@@ -211,7 +214,7 @@ func TestImportWritesHouseTagsFromStaging(t *testing.T) {
 func TestImportKeepsFilesAsDownloaded(t *testing.T) {
 	h, _ := musicImportHarness(t)
 	h.c.SetMusicPlacement(func(context.Context) MusicPlacementPrefs { return MusicPlacementPrefs{} }, &fakeCovers{}, houseHash)
-	h.c.musicPlace.tagger = &houseFake{}
+	h.c.musicPlace.tagger = (&houseFake{}).tagger()
 	a := h.addArtist(t, "Radiohead", "", []string{"OK Computer"}, nil, "1997-05-21")
 	al := h.album(t, a.ID, "OK Computer")
 	_ = h.svc.EnsureTracks(h.ctx, al)
@@ -329,7 +332,7 @@ func TestRecoverMusicStagingRecordsPlacedFiles(t *testing.T) {
 // MUS-33 step 7: a retag stages a tagged copy and swaps it in; the original goes to the bin.
 func TestRetagAlbumSwapsThroughTheBin(t *testing.T) {
 	h, bin := musicImportHarness(t)
-	h.c.musicPlace.tagger = &houseFake{}
+	h.c.musicPlace.tagger = (&houseFake{}).tagger()
 	h.c.musicPlace.audioHash = houseHash
 	a := h.addArtist(t, "Radiohead", "", []string{"OK Computer"}, nil, "1997-05-21")
 	al := h.album(t, a.ID, "OK Computer")

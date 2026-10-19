@@ -19,11 +19,18 @@ import (
 // download saved straight into the downloads folder brings none, rather than its
 // neighbours' files. Audio is never an extra, whatever the allowlist says: the album's
 // audio is placed as tracks, and a stray copy beside them would be a duplicate.
-func (c *Coordinator) bringExtras(al music.Album, contentRoot string, placed []placement, allow map[string]bool) {
+func (c *Coordinator) bringExtras(al music.Album, contentRoot, release string, placed []placement, allow map[string]bool) {
 	if len(placed) == 0 || len(allow) == 0 || contentRoot == "" {
 		return
 	}
 	if fi, err := os.Stat(contentRoot); err != nil || !fi.IsDir() {
+		return
+	}
+	if !ownedByDownload(contentRoot, release) {
+		// A torrent saved without a folder of its own (qBittorrent's "no subfolder"
+		// layout) reports the shared category folder as its content: walking that would
+		// bring other downloads' files along.
+		c.log.Info("music: the download has no folder of its own — its extras stay behind", "album", al.Title, "content", contentRoot)
 		return
 	}
 	var dirs []string
@@ -51,4 +58,26 @@ func (c *Coordinator) bringExtras(al music.Album, contentRoot string, placed []p
 	if len(n) > 0 || skipped > 0 {
 		c.log.Info("music: brought the album's extras along", "album", al.Title, "placed", len(n), "skipped", skipped)
 	}
+}
+
+// ownedByDownload reports whether contentRoot is (or sits inside) a folder of this
+// download's own: one named like the release, as a client names a torrent's folder. A
+// discography's album folders sit a level or two inside it.
+func ownedByDownload(contentRoot, release string) bool {
+	release = strings.TrimSpace(release)
+	if release == "" {
+		return false
+	}
+	dir := filepath.Clean(contentRoot)
+	for i := 0; i < 4; i++ {
+		if strings.EqualFold(filepath.Base(dir), release) {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return false
 }

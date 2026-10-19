@@ -275,9 +275,12 @@ func renderTemplate(nodes []bnNode, r tokenValuer) []string {
 			}
 			b.WriteRune(c)
 		}
-		s := strings.TrimSpace(b.String())
-		if strings.Trim(s, ".") == "" {
-			continue // "", "." and ".." name no folder (and ".." would leave the library)
+		// A name starting with a dot is a hidden file or folder: scanners and media servers
+		// skip it ("...Baby One More Time" would vanish from the library). Leading dots go;
+		// "", "." and ".." name nothing at all (and ".." would leave the library).
+		s := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(b.String()), "."))
+		if s == "" {
+			continue
 		}
 		out = append(out, s)
 	}

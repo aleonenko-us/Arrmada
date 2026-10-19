@@ -150,6 +150,9 @@ func parseFLACPicture(d []byte) (typ uint32, data []byte, ok bool) {
 }
 
 func readFLACCover(f *os.File) ([]byte, error) {
+	if _, err := seekFLAC(f); err != nil {
+		return nil, err
+	}
 	meta, err := flac.ParseMetadata(f)
 	if err != nil {
 		return nil, fmt.Errorf("flac: %w", err)

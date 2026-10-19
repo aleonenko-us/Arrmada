@@ -53,6 +53,7 @@ const (
 	reasonMusicSameTarget = "another file of this album would get the same name"
 	reasonMusicChain      = "its new name is another file's that is moving too — rename again once this one is done"
 	reasonMusicOwned      = "that name is another track's file"
+	reasonMusicSameEntry  = "the new name is this same file reached through a link or a mounted folder"
 )
 
 // MusicRenamePlan lists the moves that would put an album's files at their names under
@@ -199,6 +200,11 @@ func markRenameConflicts(ctx context.Context, c *Coordinator, items []MusicRenam
 			if fi, err := os.Lstat(it.To); err == nil {
 				if si, serr := os.Lstat(it.From); serr != nil || !os.SameFile(si, fi) {
 					it.Conflict = reasonTargetExists
+				} else if stage.SameEntry(it.From, it.To) {
+					// The new name reaches this very file another way (a symlinked or
+					// mounted folder, a spelling the drive treats as the same): "moving"
+					// would mean removing its only name.
+					it.Conflict = reasonMusicSameEntry
 				}
 			}
 		}

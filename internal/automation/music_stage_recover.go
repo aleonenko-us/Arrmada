@@ -71,7 +71,14 @@ func (c *Coordinator) recordRecovered(ctx context.Context, m stage.Manifest, it 
 		if meta.Extra {
 			return nil
 		}
-		return c.music.MoveFilePath(ctx, it.Source, it.Final)
+		err := c.music.MoveFilePath(ctx, it.Source, it.Final)
+		if errors.Is(err, music.ErrPathInUse) {
+			// A library scan got there first and recorded the file at its new name: the
+			// journal is settled; the stale row for the old name is the scan's to clear.
+			c.log.Warn("music: a renamed file is already recorded at its new name", "from", it.Source, "to", it.Final)
+			return nil
+		}
+		return err
 	}
 	return nil
 }

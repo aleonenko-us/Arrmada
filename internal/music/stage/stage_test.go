@@ -63,7 +63,7 @@ func (f *fakeTagger) ReadFrontCover(p string) ([]byte, error) {
 	return c, nil
 }
 
-func (f *fakeTagger) Write(p string, t audiotag.Tags, opts audiotag.WriteOptions) error {
+func (f *fakeTagger) write(p string, t audiotag.Tags, opts audiotag.WriteOptions) error {
 	if f.fail != nil {
 		return f.fail
 	}
@@ -512,7 +512,11 @@ func TestRecoverKeepsWhatItCantSettle(t *testing.T) {
 func TestRecoverPutsTheOldFileBack(t *testing.T) {
 	w := newWorld(t)
 	_, final, j := crashAfter(t, w, "bin", true)
+	// Both of the new file's copies are gone (a person cleaned up).
 	if err := os.Remove(j.Items()[0].Staged); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(j.Items()[0].Temp); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Recover(context.Background(), w.root, w.deps, w.record); err != nil {

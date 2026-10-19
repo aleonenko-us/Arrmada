@@ -47,6 +47,10 @@ func (r *Repo) MoveFilePath(ctx context.Context, from, to string) error {
 		var other int64
 		err := tx.QueryRowContext(ctx, `SELECT id FROM music_track_files WHERE path = ?`, to).Scan(&other)
 		if err == nil {
+			var old int64
+			if err := tx.QueryRowContext(ctx, `SELECT id FROM music_track_files WHERE path = ?`, from).Scan(&old); errors.Is(err, sql.ErrNoRows) {
+				return nil // already recorded at the new path, and nothing at the old one
+			}
 			return ErrPathInUse
 		}
 		if !errors.Is(err, sql.ErrNoRows) {

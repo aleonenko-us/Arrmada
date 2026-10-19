@@ -13,9 +13,10 @@ import (
 
 // Extras (MUS-36): what else a download brings for an album besides its audio — artwork
 // and scans, a booklet PDF, lyrics, the rip log, cue sheets, playlists — moves with the
-// album. Extras are never tagged or changed, so they are hardlinked into the album folder
-// (copied when the drives differ) even while the download seeds, and nothing already in
-// the album folder is ever replaced: an extra whose name is taken is skipped.
+// album. They are copied, not hardlinked: they're small, and a media server that writes
+// folder.jpg or a .lrc in the album folder must never be able to change a file a torrent
+// is still seeding. Nothing already in the album folder is ever replaced: an extra whose
+// name is taken is skipped.
 
 // DefaultExtras is the allowlist (the music_extras setting) Arrmada starts with.
 const DefaultExtras = ".jpg .jpeg .png .webp .gif .pdf .lrc .txt .log .cue .accurip .m3u .m3u8 .nfo"
@@ -106,7 +107,7 @@ func isImage(ext string) bool {
 	return false
 }
 
-// PlaceExtras hardlinks (or copies) each extra into place, never over anything: an extra
+// PlaceExtras copies each extra into place, never over anything: an extra
 // whose target is taken is skipped and logged, unless it's the very same content. It
 // returns the paths placed and how many were skipped.
 func PlaceExtras(extras []Extra, log *slog.Logger) (placed []string, skipped int) {
@@ -122,7 +123,7 @@ func PlaceExtras(extras []Extra, log *slog.Logger) (placed []string, skipped int
 			skipped++
 			continue
 		}
-		if err := linkOrCopyNew(e.From, e.To); err != nil {
+		if err := copyNoClobber(e.From, e.To); err != nil {
 			if !errors.Is(err, ErrTargetTaken) {
 				log.Warn("music: couldn't bring an extra along", "extra", e.From, "err", err)
 			}

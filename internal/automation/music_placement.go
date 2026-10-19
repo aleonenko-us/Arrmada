@@ -200,7 +200,7 @@ func (c *Coordinator) placeMatch(ctx context.Context, a music.Artist, al music.A
 	} else {
 		placedFrom = c.placeLinked(ctx, al, plan, release, &res)
 	}
-	c.bringExtras(al, m.ContentRoot, placedFrom, prefs.Extras)
+	c.bringExtras(al, m.ContentRoot, release, placedFrom, prefs.Extras)
 	return res
 }
 
@@ -342,6 +342,13 @@ func (c *Coordinator) placeStaged(ctx context.Context, al music.Album, tc music.
 				// Not a format the tag library writes: the file goes in as it arrived.
 				c.log.Info("music import: no house tags for this file type — placing it as downloaded", "file", filepath.Base(p.f.Path))
 				placed = append(placed, c.placeLinked(ctx, al, []placement{p}, release, res)...)
+				continue
+			}
+			if errors.Is(err, stage.ErrTransient) || ctx.Err() != nil {
+				// The check couldn't run just now (a decode timed out, shutting down): try
+				// the import again later rather than send it to Review.
+				res.failed++
+				c.log.Warn("music import: couldn't check a tagged copy just now — trying again later", "track", p.t.Title, "err", err)
 				continue
 			}
 			res.tagFailed++

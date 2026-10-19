@@ -164,7 +164,9 @@ func TestBookTemplateCollapse(t *testing.T) {
 func TestBookTemplateSanitises(t *testing.T) {
 	n := BookName{Author: "../../etc", Title: "Who/What: a \"Book\"?", Series: "..", SeriesPosition: 1}
 	got := render(t, "{Author}/{Series}/{Title}", "{Title}", n)
-	if want := "....etc/WhoWhat a Book/WhoWhat a Book.m4b"; got != want {
+	// "../../etc" loses its slashes, and then its leading dots: a name starting with a dot
+	// would be a hidden folder (MUS-34 review, 2026-10-20).
+	if want := "etc/WhoWhat a Book/WhoWhat a Book.m4b"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 	dots := render(t, "{Author}/{Title}", "{Title}", BookName{Author: "..", Title: "."})

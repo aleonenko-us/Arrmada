@@ -17,6 +17,9 @@ import (
 const maxFLACBlock = 1<<24 - 1
 
 func readFLAC(f *os.File) (map[string][]string, error) {
+	if _, err := seekFLAC(f); err != nil {
+		return nil, err
+	}
 	meta, err := flac.ParseMetadata(f)
 	if err != nil {
 		return nil, fmt.Errorf("flac: %w", err)
@@ -46,6 +49,12 @@ func readFLAC(f *os.File) (map[string][]string, error) {
 // writeFLAC rewrites the metadata blocks and then copies the audio frames
 // byte for byte from the original.
 func writeFLAC(src *os.File, dst io.Writer, t Tags, opts WriteOptions) error {
+	// An ID3v2 tag in front of the FLAC is skipped and not written back: the output
+	// starts at "fLaC" (flacid3.go).
+	off, err := seekFLAC(src)
+	if err != nil {
+		return err
+	}
 	meta, err := flac.ParseMetadata(src)
 	if err != nil {
 		return fmt.Errorf("flac: %w", err)
@@ -53,7 +62,7 @@ func writeFLAC(src *os.File, dst io.Writer, t Tags, opts WriteOptions) error {
 	// ParseMetadata reads exactly the header and blocks (src is unbuffered), but
 	// compute the audio offset from the block sizes instead of trusting the
 	// file position.
-	audioStart := int64(4)
+	audioStart := off + 4
 	for _, b := range meta.Meta {
 		audioStart += 4 + int64(len(b.Data))
 	}
@@ -130,6 +139,10 @@ func writeFLAC(src *os.File, dst io.Writer, t Tags, opts WriteOptions) error {
 
 // flacProperties decodes STREAMINFO.
 func flacProperties(f *os.File) (AudioProperties, error) {
+	off, err := seekFLAC(f)
+	if err != nil {
+		return AudioProperties{}, err
+	}
 	meta, err := flac.ParseMetadata(f)
 	if err != nil {
 		return AudioProperties{}, fmt.Errorf("flac: %w", err)
@@ -151,7 +164,7 @@ func flacProperties(f *os.File) (AudioProperties, error) {
 	if samples := v & (1<<36 - 1); p.SampleRate > 0 {
 		p.Duration = time.Duration(float64(samples) / float64(p.SampleRate) * float64(time.Second))
 	}
-	audioStart := int64(4)
+	audioStart := off + 4
 	for _, b := range meta.Meta {
 		audioStart += 4 + int64(len(b.Data))
 	}

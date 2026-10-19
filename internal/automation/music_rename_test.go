@@ -22,7 +22,7 @@ func TestMusicRenamePreviewThenApply(t *testing.T) {
 	al := h.album(t, a.ID, "OK Computer")
 	_ = h.svc.EnsureTracks(h.ctx, al)
 	dl, _ := houseDownload(t, "Radiohead - OK Computer (1997) [FLAC]")
-	if res := h.c.importAlbumContent(h.ctx, a, h.album(t, a.ID, "OK Computer"), dl, "r"); res.placed != 2 {
+	if res := h.c.importAlbumContent(h.ctx, a, h.album(t, a.ID, "OK Computer"), dl, "Radiohead - OK Computer (1997) [FLAC]"); res.placed != 2 {
 		t.Fatalf("import %+v", res)
 	}
 	tracks, _ := h.svc.Tracks(h.ctx, al.ID)

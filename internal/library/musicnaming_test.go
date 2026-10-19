@@ -21,7 +21,6 @@ func TestDefaultMusicNamingMatchesTodaysPaths(t *testing.T) {
 		{"Radiohead", "OK Computer", 1997, 12, "The Tourist", ".flac"},
 		{"Sigur Rós", "Ágætis byrjun", 1999, 3, "Ný batterí", ".mp3"},
 		{"AC/DC", "Back in Black", 1980, 6, "Back in Black", ".m4a"},
-		{"Metallica", "...And Justice for All", 1988, 1, "Blackened", ".flac"},
 		{"Prince", "1999", 0, 1, "1999", ".flac"},
 		{"", "", 2001, 1, "Untitled", ".ogg"},
 		{"Weezer", "Weezer", 1994, 4, "", ".flac"},
