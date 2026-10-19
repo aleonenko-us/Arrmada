@@ -180,6 +180,16 @@ func (a *api) loadTitleCard(ctx context.Context, kind string, id int64) titleCar
 			card.byline = art.Name
 		}
 		return card
+	case "music_artist":
+		// A discography, grabbed for the artist (the id is the artist's).
+		if a.deps.Music == nil {
+			break
+		}
+		art, err := a.deps.Music.GetArtist(ctx, id)
+		if err != nil {
+			break
+		}
+		return titleCard{found: true, title: art.Name, poster: art.ImageURL}
 	}
 	return titleCard{}
 }
@@ -231,6 +241,8 @@ func (a *api) transferItemFor(ctx context.Context, acq automation.Acquisition, r
 // needs no chip.
 func scopeLabel(acq automation.Acquisition, card titleCard) string {
 	switch acq.MediaType {
+	case "music_artist":
+		return "Discography"
 	case "movie":
 		if acq.VersionID > 0 {
 			if l := card.versions[acq.VersionID]; l != "" {

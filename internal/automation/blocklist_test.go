@@ -21,7 +21,7 @@ func TestListAllBlocks(t *testing.T) {
 	c.addBlockBook(ctx, book.ID, "Frank Herbert - Dune [EPUB]", "MAM", "stalled")
 	c.addBlockGlobal(ctx, "Totally.Legit.2024.1080p.exe", "Bad", "executables")
 	_ = c.addBlock(ctx, book.ID, "Not.Dune.2020.1080p", "", "", "manually blocklisted")
-	c.addBlockMusic(ctx, book.ID, "Radiohead - Discography (1993-2016) [FLAC]", "", "manually blocklisted")
+	c.addBlockMusicArtist(ctx, book.ID, "Radiohead - Discography (1993-2016) [FLAC]", "", "manually blocklisted")
 
 	all, total, err := c.ListAllBlocks(ctx, BlockFilter{})
 	if err != nil {

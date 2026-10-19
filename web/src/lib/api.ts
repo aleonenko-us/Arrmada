@@ -382,7 +382,8 @@ export interface ActivityDownload {
 
 /** The library title a transfer was grabbed for, from the acquisition record. */
 export interface TransferItem {
-  kind: "movie" | "series" | "book" | "music";
+  /** music_artist: a discography, grabbed for the artist (id is the artist's). */
+  kind: "movie" | "series" | "book" | "music" | "music_artist";
   id: number;
   title: string;
   year?: number;

@@ -668,9 +668,16 @@ func (c *Coordinator) markSeriesGrabImported(ctx context.Context, seriesID int64
 // setSeriesGrabStatus finds the grab a download came from — by info hash first, since a
 // name survives the round trip through the client only by luck — and sets its status.
 func (c *Coordinator) setSeriesGrabStatus(ctx context.Context, seriesID int64, infoHash, releaseName, status string) {
+	c.setItemGrabStatus(ctx, "series", seriesID, infoHash, releaseName, status)
+}
+
+// setItemGrabStatus is setSeriesGrabStatus for any media type: the in-flight grabs of one
+// library item, matched by info hash first and by normalized release name only when no
+// hash matches, are set to status.
+func (c *Coordinator) setItemGrabStatus(ctx context.Context, mediaType string, itemID int64, infoHash, releaseName, status string) {
 	defer c.grabsChanged()
 	rows, err := c.db.QueryContext(ctx,
-		`SELECT id, title, info_hash FROM grabs WHERE movie_id = ? AND media_type = 'series' AND `+inFlightWhere, seriesID)
+		`SELECT id, title, info_hash FROM grabs WHERE movie_id = ? AND media_type = ? AND `+inFlightWhere, itemID, mediaType)
 	if err != nil {
 		return
 	}
@@ -696,7 +703,7 @@ func (c *Coordinator) setSeriesGrabStatus(ctx context.Context, seriesID int64, i
 	rows.Close() // close before writing — SQLite won't take a write while a read is open
 	for _, id := range ids {
 		if _, err := c.db.ExecContext(ctx, `UPDATE grabs SET status = ? WHERE id = ?`, status, id); err != nil {
-			c.log.Warn("series: mark grab status failed", "status", status, "err", err)
+			c.log.Warn("automation: mark grab status failed", "kind", mediaType, "status", status, "err", err)
 		}
 	}
 }
@@ -762,6 +769,31 @@ func (c *Coordinator) addBlockMusic(ctx context.Context, albumID int64, title, i
 // blockedSetMusic returns the normalized titles blocklisted for an album.
 func (c *Coordinator) blockedSetMusic(ctx context.Context, albumID int64) (map[string]bool, error) {
 	return c.blockedSetOf(ctx, albumID, "music")
+}
+
+// addBlockMusicArtist blocklists a discography release for an artist. A discography is
+// grabbed against the artist (mediaMusicArtist), so its block is kept there too: keyed on
+// the album id column, it blocked it for whichever album shared the artist's number.
+func (c *Coordinator) addBlockMusicArtist(ctx context.Context, artistID int64, title, indexer, reason string) {
+	_, err := c.db.ExecContext(ctx,
+		`INSERT INTO blocklist (movie_id, norm_title, title, indexer, download_url, reason, media_type)
+		 VALUES (?, ?, ?, ?, '', ?, ?)`,
+		artistID, normTitle(title), title, indexer, reason, mediaMusicArtist)
+	if err != nil {
+		c.log.Warn("music: blocklist failed", "err", err)
+	}
+}
+
+// blockedSetMusicArtist returns the normalized discography titles blocklisted for an artist.
+func (c *Coordinator) blockedSetMusicArtist(ctx context.Context, artistID int64) (map[string]bool, error) {
+	return c.blockedSetOf(ctx, artistID, mediaMusicArtist)
+}
+
+// setMusicGrabStatus finds the grab a music download came from and sets its status: an
+// album grab ("music", album id) or a discography (mediaMusicArtist, artist id). By info
+// hash first, then by release name, like setSeriesGrabStatus.
+func (c *Coordinator) setMusicGrabStatus(ctx context.Context, mediaType string, id int64, infoHash, releaseName, status string) {
+	c.setItemGrabStatus(ctx, mediaType, id, infoHash, releaseName, status)
 }
 
 // setGrabInfoHash records the torrent's real identity on a grab that was recorded

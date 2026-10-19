@@ -132,5 +132,9 @@ func (c *Coordinator) noteHandoff(ctx context.Context, mediaType string, itemID 
 				c.music.AddEvent(ctx, al.ArtistID, handoffEvent, detail)
 			}
 		}
+	case mediaMusicArtist:
+		if c.music != nil {
+			c.music.AddEvent(ctx, itemID, handoffEvent, detail) // a discography: the artist's id
+		}
 	}
 }

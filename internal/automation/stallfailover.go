@@ -616,6 +616,42 @@ func (c *Coordinator) detectStalledMusic(ctx context.Context, g grab, queue []do
 	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) { return c.musicStallTarget(ctx, al, g) })
 }
 
+// detectStalledDiscography is the stall check of a discography grab (mediaMusicArtist,
+// the artist id in movie_id). It is judged on its own download, never on an album: done
+// once anything from it was imported (its hash is in imports), otherwise the usual stall
+// rules with nothing to replace it by — a discography is only ever grabbed on request.
+func (c *Coordinator) detectStalledDiscography(ctx context.Context, g grab, queue []download.Item, tick *stallTick) {
+	if c.hashAlreadyImported(ctx, g.InfoHash) {
+		c.closeStale(ctx, g, grabStatusImported, tick)
+		return
+	}
+	if c.music == nil {
+		return // left as it is: there's no artist to judge it for, and nothing is lost by waiting
+	}
+	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) {
+		return c.discographyStallTarget(ctx, g)
+	})
+}
+
+// discographyStallTarget is what a fail-over of discography grab g needs. Nothing replaces
+// it automatically, so a stalled one still in the client is kept and said so; one that
+// has left the client is closed (and blocklisted for the artist if it vanished before).
+func (c *Coordinator) discographyStallTarget(ctx context.Context, g grab) (stallTarget, bool) {
+	a, err := c.music.GetArtist(ctx, g.MovieID)
+	if err != nil {
+		return stallTarget{}, false
+	}
+	return stallTarget{
+		kind: mediaMusicArtist, id: a.ID, name: a.Name + " (discography)",
+		block: func(ctx context.Context, reason string) error {
+			c.addBlockMusicArtist(ctx, a.ID, g.Title, g.Indexer, reason)
+			return nil
+		},
+		event:   func(ctx context.Context, detail string) { c.music.AddEvent(ctx, a.ID, "failed", "Discography: "+detail) },
+		replace: func(context.Context, map[string]bool) (string, error) { return "", nil },
+	}, true
+}
+
 // musicStallTarget is what a fail-over of album grab g needs.
 func (c *Coordinator) musicStallTarget(ctx context.Context, al music.Album, g grab) (stallTarget, bool) {
 	a, err := c.music.GetArtist(ctx, al.ArtistID)

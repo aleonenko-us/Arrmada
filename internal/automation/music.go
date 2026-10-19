@@ -21,6 +21,13 @@ import (
 // importer handles them, not the movie/series/book importers.
 const musicCategory = download.CategoryMusic
 
+// mediaMusicArtist is the grabs and blocklist media type of a discography: one release
+// covering an artist's whole catalogue, recorded against the ARTIST id (in movie_id). An
+// album grab is "music" with the album id. They were both "music" once, so the stall check,
+// the blocklist and seed cleanup judged a discography by whichever album happened to share
+// the artist's number.
+const mediaMusicArtist = "music_artist"
+
 // SearchMusicMissing sweeps monitored albums that are missing tracks and grabs the best
 // release for each.
 //
@@ -377,7 +384,7 @@ func (c *Coordinator) grabAlbumExcluding(ctx context.Context, a music.Artist, al
 		c.log.Warn("music: grab failed", "album", al.Title, "err", err)
 		return albumOutcome{Code: outcomeGrabFailed, Detail: err.Error(), Release: best.Title}
 	}
-	c.recordMusicGrab(ctx, al.ID, best.Title, best.Indexer, a.QualityProfile, hash)
+	c.recordMusicGrab(ctx, "music", al.ID, best.Title, best.Indexer, a.QualityProfile, hash)
 	c.music.AddEvent(ctx, a.ID, "grabbed",
 		fmt.Sprintf("Grabbed %q from %s: %s", al.Title, best.Indexer, best.Title))
 	c.log.Info("music: grabbing", "artist", a.Name, "album", al.Title,
@@ -514,6 +521,8 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 			switch {
 			case placed > 0:
 				c.recordImportedHash(ctx, it.Hash, it.Name, it.SizeBytes)
+				// Imported: its seed rule applies from here on.
+				c.setMusicGrabStatus(ctx, mediaMusicArtist, art.ID, it.Hash, it.Name, grabStatusImported)
 			case found:
 				c.log.Warn("music import: discography held albums but none matched the library — will retry",
 					"artist", art.Name, "release", it.Name)
@@ -739,9 +748,10 @@ func findAudioFiles(contentPath string) []music.AudioFile {
 }
 
 // recordMusicGrab records a grab so the pending guard, seed rules and stall fail-over can
-// see it. stall_minutes comes from the profile — writing a literal 0 is what made the book
+// see it: an album ("music", the album id) or a discography (mediaMusicArtist, the artist
+// id). stall_minutes comes from the profile — writing a literal 0 is what made the book
 // stall fail-over dead code for months.
-func (c *Coordinator) recordMusicGrab(ctx context.Context, albumID int64, title, indexerName, profile, infoHash string) {
+func (c *Coordinator) recordMusicGrab(ctx context.Context, mediaType string, id int64, title, indexerName, profile, infoHash string) {
 	defer c.grabsChanged()
 	notesFrom(ctx).grabbed(title) // the search attempt this grab came from, if any
 	// Same profile the album was chosen under (musicProfile), so the stall window matches.
@@ -749,15 +759,15 @@ func (c *Coordinator) recordMusicGrab(ctx context.Context, albumID int64, title,
 	transport, seedEnabled, seedRatio, seedHours := c.grabPolicy(ctx, indexerName, infoHash)
 	_, err := c.db.ExecContext(ctx,
 		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, transport)
-		 VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, 'music', ?, ?)`,
-		albumID, title, indexerName, profile, c.quality.StallMinutes(ctx, profile),
-		boolToInt(seedEnabled), seedRatio, seedHours, infoHash, transport)
+		 VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, title, indexerName, profile, c.quality.StallMinutes(ctx, profile),
+		boolToInt(seedEnabled), seedRatio, seedHours, mediaType, infoHash, transport)
 	if err != nil {
-		c.log.Warn("music: recording the grab failed", "album", albumID, "err", err)
+		c.log.Warn("music: recording the grab failed", "kind", mediaType, "id", id, "err", err)
 		return
 	}
-	c.noteHashless("music", title, infoHash)
-	c.noteHandoff(ctx, "music", albumID, title, infoHash)
+	c.noteHashless(mediaType, title, infoHash)
+	c.noteHandoff(ctx, mediaType, id, title, infoHash)
 }
 
 // pendingMusicGrabTitles returns releases already grabbed for this album and not yet
@@ -835,10 +845,19 @@ func (c *Coordinator) GrabDiscography(ctx context.Context, artistID int64) error
 	if len(cands) == 0 {
 		return fmt.Errorf("no discography release found for %q", a.Name)
 	}
-	cands, err = c.dropBlockedMusic(ctx, artistID, cands)
+	// Blocks and in-flight grabs of a discography are kept against the artist.
+	blocked, err := c.blockedSetMusicArtist(ctx, artistID)
+	var pending map[string]bool
+	if err == nil {
+		pending, err = c.pendingTitlesOf(ctx, artistID, mediaMusicArtist)
+	}
 	if err != nil {
 		c.skipUnreadable(a.Name+" discography", err)
 		return err
+	}
+	cands = dropPendingMusic(dropPendingMusic(cands, blocked), pending) // both are normalized-title sets
+	if len(cands) == 0 {
+		return fmt.Errorf("every discography release found for %q is blocklisted or already grabbed", a.Name)
 	}
 	best := pickBestAlbum(nets, sp, cands)
 	if best == nil {
@@ -853,7 +872,7 @@ func (c *Coordinator) GrabDiscography(ctx context.Context, artistID int64) error
 	}
 	// Recorded against the ARTIST id, not an album: the pack covers many, and the import
 	// resolves each folder to its own album.
-	c.recordMusicGrab(ctx, artistID, best.Title, best.Indexer, a.QualityProfile, hash)
+	c.recordMusicGrab(ctx, mediaMusicArtist, artistID, best.Title, best.Indexer, a.QualityProfile, hash)
 	c.music.AddEvent(ctx, artistID, "grabbed",
 		fmt.Sprintf("Grabbed a discography from %s: %s", best.Indexer, best.Title))
 	c.log.Info("music: grabbing discography", "artist", a.Name, "release", best.Title,

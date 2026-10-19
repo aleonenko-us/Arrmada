@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/tristenlammi/arrmada/internal/music"
 )
 
 // ErrBlockNotFound means the blocklist entry doesn't exist (already unblocked).
@@ -66,6 +65,7 @@ func (c *Coordinator) ListAllBlocks(ctx context.Context, f BlockFilter) ([]Block
 			WHEN 'series' THEN COALESCE(NULLIF(s.display_title, ''), s.title, '')
 			WHEN 'book' THEN COALESCE(bk.title, '')
 			WHEN 'music' THEN COALESCE(al.title, '')
+			WHEN '` + mediaMusicArtist + `' THEN COALESCE(ar.name, '')
 			ELSE '' END`
 	// A film's or show's own (TMDB English) title, which a search also finds it by when
 	// it's shown under another name.
@@ -78,9 +78,15 @@ func (c *Coordinator) ListAllBlocks(ctx context.Context, f BlockFilter) ([]Block
 		LEFT JOIN series s ON b.media_type = 'series' AND s.id = b.movie_id
 		LEFT JOIN books bk ON b.media_type = 'book' AND bk.id = b.movie_id
 		LEFT JOIN albums al ON b.media_type = 'music' AND al.id = b.movie_id
+		LEFT JOIN artists ar ON b.media_type = '` + mediaMusicArtist + `' AND ar.id = b.movie_id
 		WHERE 1 = 1`
 	where, args := "", []any{}
-	if f.Type != "" {
+	switch f.Type {
+	case "":
+	case "music":
+		// A discography's block is music too; it's kept against the artist (music_artist).
+		where += ` AND b.media_type IN ('music', '` + mediaMusicArtist + `')`
+	default:
 		where += ` AND b.media_type = ?`
 		args = append(args, f.Type)
 	}
@@ -119,17 +125,11 @@ func (c *Coordinator) ListAllBlocks(ctx context.Context, f BlockFilter) ([]Block
 		return nil, 0, err
 	}
 	c.markUsenetBlocks(ctx, len(out), func(i int) string { return out[i].Title }, func(i int, n string) { out[i].Network = n })
-	// A discography is blocked against its artist (see grabDiscography), so the album
-	// join above named whichever album happens to share the artist's id.
+	// A discography is blocked against its artist (media_type music_artist, see
+	// GrabDiscography). It reads as a music block naming the artist.
 	for i := range out {
-		if out[i].Type != "music" || !music.ParseRelease(out[i].Title).Discography {
-			continue
-		}
-		out[i].Discography, out[i].ItemTitle = true, ""
-		if c.music != nil {
-			if a, err := c.music.GetArtist(ctx, out[i].ItemID); err == nil {
-				out[i].ItemTitle = a.Name
-			}
+		if out[i].Type == mediaMusicArtist {
+			out[i].Type, out[i].Discography = "music", true
 		}
 	}
 	return out, total, nil
