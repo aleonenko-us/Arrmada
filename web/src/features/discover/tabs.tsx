@@ -11,11 +11,13 @@ import { browseLink, PosterRow } from "./PosterRow";
 const CollectionRows = lazyPage(() => import("./moreRows"), "CollectionRows");
 const StreamingRow = lazyPage(() => import("./moreRows"), "StreamingRow");
 const GenreExplorer = lazyPage(() => import("./moreRows"), "GenreExplorer");
+const BooksDiscover = lazyPage(() => import("../../pages/BooksDiscover"), "BooksDiscover");
+const MusicDiscover = lazyPage(() => import("./MusicDiscover"), "MusicDiscover");
 
 // The Discover tab and the Movies / Series tabs: rows in render order, each tab with its
 // own de-duplication registry.
 
-export function DiscoverTab({ ctx }: { ctx: RowCtx }) {
+export function DiscoverTab({ ctx, booksEnabled, musicEnabled }: { ctx: RowCtx; booksEnabled: boolean; musicEnabled: boolean }) {
   // One registry per mount of the tab — switching tabs or entering/clearing a search
   // unmounts this subtree, so the "already shown" set resets with it.
   const registry = useMemo(createRowRegistry, []);
@@ -39,6 +41,22 @@ export function DiscoverTab({ ctx }: { ctx: RowCtx }) {
         <PosterRow order={3} title="Trending this week" seeAll={browseLink("trending", "all")} load={() => api.discoverTrending("all")} ctx={ctx} />
         <PosterRow order={4} title="Popular movies" seeAll={browseLink("popular", "movie")} load={() => api.discoverPopular("movie")} ctx={ctx} />
         <PosterRow order={5} title="Popular series" seeAll={browseLink("popular", "series")} load={() => api.discoverPopular("series")} ctx={ctx} />
+        {booksEnabled && (
+          <section aria-label="Books and audiobooks" className="flex flex-col gap-7">
+            <h2 className="m-0 text-xl font-bold">Books &amp; audiobooks</h2>
+            <Suspense fallback={<div className="py-6 text-sm text-ink-dim">Loading books…</div>}>
+              <BooksDiscover flash={ctx.flash} canRequest={ctx.canRequest} embedded />
+            </Suspense>
+          </section>
+        )}
+        {musicEnabled && (
+          <section aria-label="Music" className="flex flex-col gap-7">
+            <h2 className="m-0 text-xl font-bold">Music</h2>
+            <Suspense fallback={<div className="py-6 text-sm text-ink-dim">Loading music…</div>}>
+              <MusicDiscover canRequest={ctx.canRequest} embedded />
+            </Suspense>
+          </section>
+        )}
         <PosterRow order={6} hideOnError title="In cinemas now" seeAll={browseLink("now_playing", "movie")} load={() => api.discoverRow("now_playing")} ctx={ctx} />
         <Suspense fallback={null}><StreamingRow media="movie" switchable ctx={ctx} /></Suspense>
         <Suspense fallback={null}><CollectionRows ctx={ctx} /></Suspense>

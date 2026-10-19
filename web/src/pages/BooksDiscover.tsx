@@ -29,12 +29,14 @@ function fmtCount(n: number): string {
 
 // initialWork: a book's key from the address (?work=, a notification's link); its sheet
 // opens over the tab, and onWorkClosed takes the key back out of the address.
-export function BooksDiscover({ flash, canRequest, initialQuery, initialWork, onWorkClosed }: {
+export function BooksDiscover({ flash, canRequest, initialQuery, initialWork, onWorkClosed, embedded = false }: {
   flash: (m: string) => void;
   canRequest: boolean;
   initialQuery?: string;
   initialWork?: string;
   onWorkClosed?: () => void;
+  /** Render the browse shelves inside the all-media Discover landing. */
+  embedded?: boolean;
 }) {
   const [input, setInput] = useState(initialQuery ?? "");
   const [query, setQuery] = useState("");
@@ -84,7 +86,7 @@ export function BooksDiscover({ flash, canRequest, initialQuery, initialWork, on
   return (
     <div>
       {/* Books' own search bar — separate from the movie/TV one. */}
-      <div className="mb-5 flex items-center gap-3">
+      {!embedded && <div className="mb-5 flex items-center gap-3">
         <div className="relative w-full sm:w-[320px]">
           <svg className="pointer-events-none absolute left-2.5 top-1/2 z-10 -translate-y-1/2" width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color: "var(--ink-faint)" }}>
             <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" /><path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -103,7 +105,7 @@ export function BooksDiscover({ flash, canRequest, initialQuery, initialWork, on
             <button onClick={() => setInput("")} aria-label="Clear search" className="absolute right-2 top-1/2 z-10 -translate-y-1/2 text-md text-ink-faint hover:text-[var(--ink)]">✕</button>
           )}
         </div>
-      </div>
+      </div>}
 
       {author ? (
         <AuthorView author={author} ctx={ctx} onBack={() => setAuthor(null)} />

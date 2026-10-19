@@ -7,7 +7,7 @@ import { RailArrows, RailStrip, useRail } from "./rail";
 
 const DEFAULT_GENRES = ["Rock", "Pop", "Hip-hop", "Electronic", "Jazz", "Classical", "Metal", "Folk", "R&B", "Country"];
 
-export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
+export function MusicDiscover({ canRequest, embedded = false }: { canRequest: boolean; embedded?: boolean }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [artists, setArtists] = useState<Artist[]>([]);
@@ -85,7 +85,7 @@ export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
           <h2 className="m-0 text-xl font-bold">Discover music</h2>
           <p className="mb-0 mt-1 text-sm text-ink-dim">Explore artists by genre or search MusicBrainz, then add artists to your library.</p>
         </div>
-        <form onSubmit={search} className="flex w-full gap-2 sm:w-auto">
+        {!embedded && <form onSubmit={search} className="flex w-full gap-2 sm:w-auto">
           <input
             aria-label="Search artists"
             value={query}
@@ -95,7 +95,7 @@ export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
             style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
           />
           <Button type="submit" variant="primary" busy={busy} busyLabel="Searching…" disabled={!query.trim()}>Search</Button>
-        </form>
+        </form>}
       </div>
 
       {error && <div role="alert" className="rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
@@ -119,11 +119,11 @@ export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
         </div>
       </section>
 
-      {results === null ? (
+      {results === null ? (embedded ? null : (
         <div className="rounded-xl p-6 text-base text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
           Choose a genre or search for an artist to explore MusicBrainz.
         </div>
-      ) : results.length === 0 ? (
+      )) : results.length === 0 ? (
         <div className="rounded-xl p-6 text-base text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>No artists found for this search.</div>
       ) : (
         <ArtistResults title={resultTitle} results={results} artists={artists} canRequest={canRequest} adding={adding} onAdd={add} onOpen={setSelected} />

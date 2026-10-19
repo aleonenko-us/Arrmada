@@ -169,7 +169,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
             <Suspense fallback={gridLoading}><SearchResults query={search} ctx={ctx} /></Suspense>
           ) : (
             <>
-              {tab === "discover" && <DiscoverTab ctx={ctx} />}
+              {tab === "discover" && <DiscoverTab ctx={ctx} booksEnabled={booksEnabled} musicEnabled={musicEnabled && canManageMusic} />}
               {tab === "movies" && <BrowseTab media="movie" ctx={ctx} />}
               {tab === "series" && <BrowseTab media="series" ctx={ctx} />}
             </>
