@@ -42,8 +42,10 @@ export interface LibraryToolbarProps {
   segments?: ToolbarSegment[];
   /** Dropdown pickers ("View: Books · grid"), for a choice too long for a segmented toggle. */
   pickers?: ToolbarSegment[];
-  /** A sort picker ("Sort: Recently added"), for views without sortable columns. */
+  /** A sort picker ("Sort: Recently added"). */
   sort?: ToolbarSegment;
+  /** A ↑/↓ button beside the sort picker that reverses the order. */
+  sortDir?: { dir: "asc" | "desc"; onToggle: () => void };
   select?: { active: boolean; onToggle: () => void };
   tools?: LibraryTool[];
   /** A small count on the tools button: something in the menu wants a look (possible duplicates). */
@@ -62,7 +64,7 @@ const PANEL = { background: "var(--panel-2)", border: "1px solid var(--line)" };
 // tools" menu for the occasional jobs (Scan library, sweeps) and the "+ Add …" buttons.
 // It wraps rather than squeezing: below sm the count takes its own line, and no button
 // ever shrinks into a narrow column.
-export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort, select, tools = [], toolsBadge = 0, actions = [], secondary, primary }: LibraryToolbarProps) {
+export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort, sortDir, select, tools = [], toolsBadge = 0, actions = [], secondary, primary }: LibraryToolbarProps) {
   const shown = tools.filter((t) => !t.hidden);
   const running = shown.filter((t) => t.progress);
   const items: MenuItem[] = shown.map((t) => ({
@@ -92,12 +94,26 @@ export function LibraryToolbar({ count, lead, segments = [], pickers = [], sort,
           </div>
         ))}
         {[...pickers, ...(sort ? [sort] : [])].map((p) => (
-          <label key={p.label} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg py-0.5 pl-2.5 pr-1" style={PANEL}>
-            <span className="font-mono text-2xs uppercase text-ink-faint">{p.label}</span>
-            <select value={p.value} onChange={(e) => p.onChange(e.target.value)} aria-label={p.label} className="rounded-md bg-transparent py-1 pr-1 text-sm font-semibold" style={{ color: "var(--ink)" }}>
-              {p.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </label>
+          <span key={p.label} className="inline-flex shrink-0 items-center rounded-lg py-0.5 pl-2.5 pr-1" style={PANEL}>
+            <label className="inline-flex items-center gap-1.5">
+              <span className="font-mono text-2xs uppercase text-ink-faint">{p.label}</span>
+              <select value={p.value} onChange={(e) => p.onChange(e.target.value)} aria-label={p.label} className="rounded-md bg-transparent py-1 pr-1 text-sm font-semibold" style={{ color: "var(--ink)" }}>
+                {p.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            {p === sort && sortDir && (
+              <button
+                type="button"
+                onClick={sortDir.onToggle}
+                aria-label={sortDir.dir === "asc" ? "Ascending: reverse the order" : "Descending: reverse the order"}
+                title="Reverse the order"
+                className="rounded-md px-1.5 py-1 text-sm font-semibold hover:bg-[var(--panel)]"
+                style={{ color: "var(--ink)" }}
+              >
+                {sortDir.dir === "asc" ? "↑" : "↓"}
+              </button>
+            )}
+          </span>
         ))}
         {select && (
           <button

@@ -19,7 +19,9 @@ export const AVAILABILITY: { value: MinAvailability; label: string; hint: string
 
 const field = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" };
 
-export function AddMovieModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+// folderId preselects a folder: the library page is showing that one folder, so what's
+// added there goes into it. Left out, the folder rules preselect as usual.
+export function AddMovieModal({ onClose, onAdded, folderId }: { onClose: () => void; onAdded: () => void; folderId?: number }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<MovieLookup[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,6 +66,7 @@ export function AddMovieModal({ onClose, onAdded }: { onClose: () => void; onAdd
           profile={profile}
           onProfile={setProfile}
           defaultSearch={defaultSearch}
+          folderId={folderId}
           onBack={() => setPicked(null)}
           onAdded={() => { onAdded(); onClose(); }}
         />
@@ -121,17 +124,18 @@ function ResultRow({ r, onPick, onOpen }: { r: MovieLookup; onPick: () => void; 
   );
 }
 
-function ConfirmAdd({ film, profiles, profile, onProfile, defaultSearch, onBack, onAdded }: {
+function ConfirmAdd({ film, profiles, profile, onProfile, defaultSearch, folderId, onBack, onAdded }: {
   film: MovieLookup;
   profiles: { key: string; name: string }[];
   profile: string;
   onProfile: (p: string) => void;
   defaultSearch: boolean;
+  folderId?: number;
   onBack: () => void;
   onAdded: () => void;
 }) {
   const [availability, setAvailability] = useState<MinAvailability>("released");
-  const [folder, setFolder] = useState<number | undefined>(undefined);
+  const [folder, setFolder] = useState<number | undefined>(folderId);
   const [searchNow, setSearchNow] = useState(defaultSearch);
   const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);

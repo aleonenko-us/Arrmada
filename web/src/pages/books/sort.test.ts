@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Book } from "../../lib/api";
-import { sortAuthors, sortBooks, sortFor } from "./sort";
+import { bookOrder, sortAuthors, sortBooks, sortFor } from "./sort";
 
 const book = (id: number, title: string, author: string, extra: Partial<Book> = {}): Book => ({
   id, ol_key: `OL${id}W`, title, author, year: 0, monitored: true, quality_profile: "",
@@ -24,6 +24,11 @@ describe("sortBooks", () => {
     expect(titles(sortBooks(LIST, "year"))).toEqual(["Anathem", "Dune", "Children of Dune"]);
     expect(titles(sortBooks(LIST, "release"))).toEqual(["Children of Dune", "Anathem", "Dune"]);
   });
+  it("runs the other way when asked, still with no year last", () => {
+    expect(titles(sortBooks(LIST, "year", "asc"))).toEqual(["Dune", "Anathem", "Children of Dune"]);
+    expect(titles(sortBooks(LIST, "title", "desc"))).toEqual(["Dune", "Children of Dune", "Anathem"]);
+    expect(titles(sortBooks(LIST, "author", "desc"))).toEqual(["Anathem", "Children of Dune", "Dune"]);
+  });
   it("doesn't reorder the list it was given", () => {
     const copy = [...LIST];
     sortBooks(LIST, "title");
@@ -40,6 +45,18 @@ describe("sortAuthors", () => {
     expect(sortAuthors(groups, "author").map((g) => g.name)).toEqual(["Herbert", "Stephenson"]);
     expect(sortAuthors(groups, "added").map((g) => g.name)).toEqual(["Stephenson", "Herbert"]);
     expect(sortAuthors(groups, "books").map((g) => g.name)).toEqual(["Herbert", "Stephenson"]);
+  });
+});
+
+describe("bookOrder", () => {
+  it("reverses on a second header click and starts another order its own way", () => {
+    expect(bookOrder({ key: "year", dir: "desc" }, "year", true)).toEqual({ key: "year", dir: "asc" });
+    expect(bookOrder({ key: "year", dir: "asc" }, "year", true)).toEqual({ key: "year", dir: "" });
+    expect(bookOrder({ key: "author", dir: "asc" }, "added", true)).toEqual({ key: "added", dir: "" });
+    expect(bookOrder({ key: "title", dir: "asc" }, "title", true)).toEqual({ key: "title", dir: "desc" });
+  });
+  it("a Sort menu pick is always the order's own direction", () => {
+    expect(bookOrder({ key: "year", dir: "asc" }, "year", false)).toEqual({ key: "year", dir: "" });
   });
 });
 

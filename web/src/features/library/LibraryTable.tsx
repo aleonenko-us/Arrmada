@@ -1,46 +1,31 @@
-import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { shownTitle } from "../../lib/displayTitle";
-import { usePersisted } from "../../lib/persist";
-import { compareValues, parseSortPref } from "./sort";
 import { useProgressive } from "./progressive";
+import type { SortState } from "./sort";
 import type { LibraryConfig, LibraryItem } from "./types";
 
 const TH = "px-2.5 py-2 text-left font-mono text-2xs font-bold uppercase tracking-[0.06em] text-ink-faint";
 const TD = "px-2.5 py-2 align-middle";
 
 // LibraryTable is the library's table view: the config's columns, each sortable by a
-// click on its header. The sort is remembered like the grid/table choice ("size:desc");
-// empty values always sort last, and ties fall back to the title.
-export function LibraryTable<T extends LibraryItem>({ items, config, selectable, selected, onToggle, listKey }: {
+// click on its header (again to reverse). The rows arrive already in the library's one
+// order — LibraryGrid's, shared with the grid's Sort menu — and the headers show which.
+export function LibraryTable<T extends LibraryItem>({ items, config, selectable, selected, onToggle, listKey, sort, onSort }: {
   items: T[];
   config: LibraryConfig<T>;
   selectable: boolean;
   selected: ReadonlySet<number>;
   onToggle: (id: number) => void;
-  /** The filter and search the rows are for: a new one starts the table from the top. */
+  /** The filter, search and sort the rows are for: a new one starts the table from the top. */
   listKey: string;
+  sort: SortState;
+  onSort: (key: string) => void;
 }) {
   const cols = config.columns;
-  const sortable = useMemo(() => ["title", ...cols.filter((c) => c.sort).map((c) => c.key)], [cols]);
-  const [pref, setPref] = usePersisted<string>(`${config.storageKey}.table.sort`, "title:asc");
-  const sort = parseSortPref(pref, sortable, "title");
-  const onSort = (key: string) => {
-    const col = cols.find((c) => c.key === key);
-    setPref(sort.key === key ? `${key}:${sort.dir === "asc" ? "desc" : "asc"}` : `${key}:${col?.descFirst ? "desc" : "asc"}`);
-  };
-
-  const sorted = useMemo(() => {
-    const by = cols.find((c) => c.key === sort.key)?.sort;
-    const arr = [...items];
-    // Title is the config's own order (sort titles, "The" ignored); every other column
-    // breaks its ties by title.
-    if (!by) arr.sort((a, b) => (sort.dir === "asc" ? 1 : -1) * config.compare(a, b));
-    else arr.sort((a, b) => compareValues(by(a), by(b), sort.dir) || config.compare(a, b));
-    return arr;
-  }, [items, cols, sort.key, sort.dir, config]);
+  // With a Year column of its own, the title cell leaves the year out.
+  const yearCol = cols.some((c) => c.key === "year");
   // Rows render a few screens at a time, like the grid's cards.
-  const rows = useProgressive(sorted, "table", `${listKey}|${sort.key}:${sort.dir}`);
+  const rows = useProgressive(items, "table", listKey);
 
   return (
     <>
@@ -59,7 +44,7 @@ export function LibraryTable<T extends LibraryItem>({ items, config, selectable,
           <tbody>
             {rows.shown.map((it) => {
               const on = selected.has(it.id);
-              const name = <>{shownTitle(it)} <span className="font-normal text-ink-faint">{it.year || ""}</span></>;
+              const name = yearCol ? shownTitle(it) : <>{shownTitle(it)} <span className="font-normal text-ink-faint">{it.year || ""}</span></>;
               return (
                 <tr key={it.id} className="transition-colors hover:bg-[var(--panel-2)]" style={{ background: on ? "var(--accent-soft)" : "var(--panel)", borderBottom: "1px solid var(--line-soft)" }}>
                   {selectable && <td className={TD}><input type="checkbox" aria-label={`Select ${shownTitle(it)}`} checked={on} onChange={() => onToggle(it.id)} /></td>}
@@ -83,7 +68,8 @@ export function LibraryTable<T extends LibraryItem>({ items, config, selectable,
   );
 }
 
-function SortTh({ label, k, align, title, sort, onSort }: { label: string; k: string; align?: "right"; title?: string; sort: { key: string; dir: "asc" | "desc" }; onSort: (k: string) => void }) {
+// SortTh is a sortable column header: a button with the arrow of the order in use.
+export function SortTh({ label, k, align, title, sort, onSort }: { label: string; k: string; align?: "right"; title?: string; sort: SortState; onSort: (k: string) => void }) {
   const active = sort.key === k;
   return (
     <th className={`${TH}${align === "right" ? " text-right" : ""}`} title={title} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>

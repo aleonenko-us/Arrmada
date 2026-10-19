@@ -137,6 +137,7 @@ type MovieSummary struct {
 	AddedAt         string  `json:"added_at,omitempty"`
 	VoteAverage     float64 `json:"vote_average,omitempty"`
 	SizeBytes       int64   `json:"size_bytes,omitempty"`
+	LibraryFolderID int64   `json:"library_folder_id,omitempty"` // its Movies folder (0: the default): the library filters by it
 	// Media is the default file's cached media facts (nil without a file or before it was
 	// read).
 	Media *SummaryMedia `json:"media,omitempty"`

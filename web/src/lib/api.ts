@@ -3920,6 +3920,8 @@ export interface MovieSummary {
   added_at?: string;
   vote_average?: number;
   size_bytes?: number;
+  /** The Movies folder it belongs to; absent: the default (0). */
+  library_folder_id?: number;
   media?: SummaryMedia;
   download?: MovieDownload;
 }

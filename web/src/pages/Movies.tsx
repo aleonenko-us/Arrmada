@@ -16,6 +16,7 @@ import { queueLine, queuedNote, useMovieSearchQueue } from "../lib/movieQueue";
 import { StatusChip, useToast } from "../ui";
 import { LibraryGrid, useLibraryView } from "../features/library/LibraryGrid";
 import { LibraryEmpty } from "../features/library/LibraryEmpty";
+import { useFolderScope } from "../features/library/folderScope";
 import { FitLegend, isMisfit, movieLibraryConfig } from "./movies/library";
 import { MovieBulkActions } from "./movies/MovieBulkActions";
 import { AddMovieModal } from "./movies/AddMovieModal";
@@ -45,6 +46,8 @@ export function Movies() {
   const refresh = list.refetch;
   const toast = useToast();
   const view = useLibraryView("movies");
+  // With several Movies folders: the Folder picker (?folder=), and Add goes into the one shown.
+  const folder = useFolderScope<MovieSummary>("movie");
   const [showAdd, setShowAdd] = useState(false);
   // /movies?add=1 (the command palette's Add movie) opens the Add dialog.
   useActionParam("add", () => setShowAdd(true));
@@ -135,7 +138,7 @@ export function Movies() {
 
   return (
     <>
-      <PageHeader title="Movies" />
+      <PageHeader title="Movies" tail={folder.scope?.name || undefined} />
       <LibraryGrid
         config={config}
         items={list.data ? shown : undefined}
@@ -158,6 +161,7 @@ export function Movies() {
         </>}
         tableNote={<FitLegend judged={judged} misfits={misfits} />}
         bulkActions={(sel) => <MovieBulkActions sel={sel} profiles={profiles} onDone={refresh} />}
+        scope={folder.scope}
         empty={<LibraryEmpty noun="movies" folder="movies folder" addLabel="Add movie" onScan={() => setShowScan(true)} scanning={scan.running} />}
       />
       {searchFor && (
@@ -172,7 +176,7 @@ export function Movies() {
       )}
       {showOrganize && <OrganizeModal onClose={() => setShowOrganize(false)} onDone={refresh} />}
       {showScan && <ScanDialog profiles={profiles} onScan={scanLibrary} onClose={() => setShowScan(false)} />}
-      {showAdd && <AddMovieModal onClose={() => setShowAdd(false)} onAdded={refresh} />}
+      {showAdd && <AddMovieModal folderId={folder.folderId} onClose={() => setShowAdd(false)} onAdded={refresh} />}
       {confirmDelete && <DeleteMovieDialog movie={confirmDelete} onClose={() => setConfirmDelete(null)} onDeleted={() => { setConfirmDelete(null); refresh(); }} />}
     </>
   );

@@ -47,6 +47,14 @@ describe("movie library config", () => {
   it("offers Title, Added, Year, Rating and Size", () => {
     expect(config.sorts.map((s) => s.label)).toEqual(["Title", "Added", "Year", "Rating", "Size"]);
   });
+
+  // GitHub #36: every Sort menu order is a table column too, so the menu and the headers
+  // are one sort.
+  it("has a sortable column for every Sort menu order but Title", () => {
+    const sortable = new Set(config.columns.filter((c) => c.sort).map((c) => c.key));
+    for (const s of config.sorts.filter((s) => s.key !== "title")) expect(sortable.has(s.key)).toBe(true);
+    expect(config.columns[0].key).toBe("year");
+  });
 });
 
 describe("quality badges", () => {

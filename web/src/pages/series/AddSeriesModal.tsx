@@ -6,8 +6,9 @@ import { Button, Modal } from "../../ui";
 import { DEFAULT_MONITOR_PRESET, MONITOR_PRESETS, isMonitorPreset, type MonitorPreset } from "./presets";
 
 // AddSeriesModal is the library's "+ Add series": search TMDB, pick a show, and add it on a
-// profile with a monitoring preset, searching for it at once or not.
-export function AddSeriesModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+// profile with a monitoring preset, searching for it at once or not. folderId preselects
+// the folder the library page is showing; left out, each show goes where the rules put it.
+export function AddSeriesModal({ onClose, onAdded, folderId }: { onClose: () => void; onAdded: () => void; folderId?: number }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SeriesLookup[]>([]);
   const [loading, setLoading] = useState(false);
@@ -18,7 +19,7 @@ export function AddSeriesModal({ onClose, onAdded }: { onClose: () => void; onAd
   const [monitor, setMonitor] = useState<MonitorPreset>(DEFAULT_MONITOR_PRESET);
   const [addingId, setAddingId] = useState<number | null>(null);
   // The TV folder (undefined: each show goes where the folder rules put it).
-  const [folder, setFolder] = useState<number | undefined>(undefined);
+  const [folder, setFolder] = useState<number | undefined>(folderId);
   const profileId = useId();
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
