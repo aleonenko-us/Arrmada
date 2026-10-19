@@ -604,6 +604,11 @@ func (m *MusicBrainz) lookup(ctx context.Context, k mbKind, path string, q url.V
 		}
 		tr.add(traceFetched)
 		m.keep(ctx, key, status, body)
+		if status == http.StatusNotFound && mbFreshNotFound(ctx) {
+			// The caller asked whether the thing still exists, and MusicBrainz just said
+			// no: that is the answer, though the cache keeps what it had for everyone else.
+			return errNotFound
+		}
 		// keep may have kept the old answer (an empty list or a 404 where we had content):
 		// read back whatever the cache now holds.
 		if now, ok := m.cache.get(ctx, key); ok {

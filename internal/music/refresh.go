@@ -528,7 +528,10 @@ func (s *Service) resolveGone(ctx context.Context, a Artist, gone []Album, inAns
 			}
 			continue
 		}
-		rg, err := rp.ReleaseGroup(ctx, al.MBID)
+		// A fresh 404 is the answer here even over a cached 200 from an earlier check: the
+		// album was deleted since. (A cached answer MusicBrainz couldn't refresh stays
+		// "still there".)
+		rg, err := rp.ReleaseGroup(metadata.WithMBFreshNotFound(ctx), al.MBID)
 		switch {
 		case metadata.IsNotFound(err):
 			s.flagGone(ctx, a, al, now, res)

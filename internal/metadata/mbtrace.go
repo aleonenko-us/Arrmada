@@ -77,6 +77,22 @@ func mbRevalidating(ctx context.Context) bool {
 	return v
 }
 
+type mbFreshNotFoundKey struct{}
+
+// WithMBFreshNotFound marks ctx's MusicBrainz questions as asking "does this still exist?":
+// when a stale cached answer is asked again (WithMBRevalidate) and MusicBrainz answers
+// 404 now, the lookup reports not found, though the cache still keeps its old answer for
+// every other caller. A cached answer MusicBrainz couldn't be asked about is still served:
+// that is "unknown", never "gone".
+func WithMBFreshNotFound(ctx context.Context) context.Context {
+	return context.WithValue(ctx, mbFreshNotFoundKey{}, true)
+}
+
+func mbFreshNotFound(ctx context.Context) bool {
+	v, _ := ctx.Value(mbFreshNotFoundKey{}).(bool)
+	return v
+}
+
 // IsNotFound reports whether a metadata error means the provider answered "no such thing"
 // (a 404), as opposed to not answering at all.
 func IsNotFound(err error) bool { return errors.Is(err, errNotFound) }
