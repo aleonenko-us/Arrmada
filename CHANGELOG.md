@@ -26,6 +26,11 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Before you update
 
+- **A show's "Monitored" switch is now called "Searching: On / Off".** Library scans add
+  shows with searching off (nothing is searched until you turn it on), and so does the Sonarr
+  import for shows Sonarr had unmonitored. Picking a "Monitor: …" option now also turns
+  searching on.
+
 - **"Stalled" now means half an hour without progress,** in the Queue, the Dashboard tile,
   the Homepage widget's `queue.stalled` and Needs you. A torrent that's only briefly waiting
   for peers counts as downloading. Time a download spends queued or paused in qBittorrent
@@ -148,6 +153,12 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   uses before trying another release) with a "Try another release" button, and the
   Dashboard, Homepage widget and Needs you now count stalled the same way. With more than one
   download client, each row says which client it's in, with a client filter.
+- **"Searching: On / Off" for shows** (#52, #53). The show-level switch that decides whether
+  Arrmada searches for a show now says so, and "Monitor" only means which episodes you want.
+  Wanted episodes of a show with searching off say "Searching off" instead of "Unmonitored",
+  with a banner to turn it on. Picking a Monitor option turns searching on and the menu
+  remembers it (or shows Custom). The Series list counts Searching on / off, and turning
+  searching on for many shows at once is searched a few at a time, like an import.
 - **SECURITY.md**: how to report a vulnerability privately, and which versions get fixes.
   The README now explains how Arrmada is built and tested.
 

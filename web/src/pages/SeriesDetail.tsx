@@ -15,7 +15,7 @@ import { api, type CastMember, type FitItem, type Series as SeriesT, type Episod
 import { seriesApi } from "../lib/seriesApi";
 import { qualityApi } from "../lib/qualityApi";
 import { Hero } from "./series/Hero";
-import { HeroActions } from "./series/HeroActions";
+import { HeroActions, SearchingOffBanner } from "./series/HeroActions";
 import { AliasPanel } from "./series/panels";
 import { FilesTab } from "./series/FilesTab";
 import { ActivityTab } from "./series/ActivityTab";
@@ -160,6 +160,7 @@ export function SeriesDetail() {
 
       <Hero series={s}>
         <HeroActions series={s} onChange={load} flash={say} />
+        <SearchingOffBanner series={s} onChange={load} flash={say} />
         <UpgradeHoldChip series={s} episodes={allEps} onChange={load} flash={say} />
       </Hero>
 
@@ -169,11 +170,6 @@ export function SeriesDetail() {
         {tab === "episodes" && (
           <TabPanel idPrefix="series" value="episodes">
             <NumberingBanner seriesId={s.id} refreshKey={numberingKey} onApplied={settleNumbering} />
-            {!s.monitored && (
-              <div className="mt-2 rounded-lg px-3 py-2 text-sm text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
-                Series paused — nothing is searched. Season and episode choices below are kept for when you resume.
-              </div>
-            )}
             <div className="mt-4">
               <SeasonRail seasons={seasons} selected={current?.season_number} onSelect={pickSeason} />
               {current && <SeasonPanel key={current.season_number} series={s} season={current} fits={fits} onChange={load} flash={say} />}

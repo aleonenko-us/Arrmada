@@ -20,9 +20,19 @@ describe("libraryStatus", () => {
     expect(label({ multi: true, hasFile: true, monitored: true, have: 10, total: 10 })).toBe("Complete");
     expect(label({ multi: true, hasFile: true, monitored: true, have: 4, total: 10 })).toBe("Partial");
     expect(label({ multi: true, hasFile: false, monitored: true, have: 0, total: 10 })).toBe("Wanted");
-    // A paused show isn't searched, so nothing more is wanted.
+    // A paused artist isn't searched, so nothing more is wanted.
     expect(label({ multi: true, hasFile: true, monitored: false, have: 4, total: 10 })).toBe("Unmonitored");
     expect(label({ multi: true, hasFile: true, monitored: false, have: 10, total: 10 })).toBe("Complete");
+    // Nor is a show whose searching is off — said in its own words.
+    expect(label({ multi: true, hasFile: true, monitored: true, searchingOff: true, have: 4, total: 10 })).toBe("Searching off");
+    expect(label({ multi: true, hasFile: true, monitored: true, searchingOff: true, have: 10, total: 10 })).toBe("Complete");
+  });
+
+  it("says Searching off only for something wanted (GH-52)", () => {
+    expect(label({ hasFile: false, monitored: true, searchingOff: true })).toBe("Searching off");
+    expect(libraryStatus({ hasFile: false, monitored: true, searchingOff: true }).tone).toBe("faint");
+    expect(label({ hasFile: false, monitored: false, searchingOff: true })).toBe("Unmonitored");
+    expect(label({ hasFile: true, monitored: true, searchingOff: true })).toBe("Downloaded");
   });
 
   it("filters Wanted to exactly the Wanted and Partial badges", () => {
@@ -34,6 +44,7 @@ describe("libraryStatus", () => {
       { multi: true, hasFile: true, monitored: true, have: 3, total: 9 },
       { multi: true, hasFile: true, monitored: false, have: 3, total: 9 },
       { multi: true, hasFile: true, monitored: true, have: 9, total: 9 },
+      { multi: true, hasFile: true, monitored: true, searchingOff: true, have: 3, total: 9 },
     ];
     for (const x of items) {
       const l = label(x);

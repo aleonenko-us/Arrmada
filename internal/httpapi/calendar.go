@@ -18,7 +18,9 @@ type CalendarItem struct {
 	PosterURL string `json:"poster_url,omitempty"`
 	RefID     int64  `json:"ref_id"` // series id or movie id (for linking)
 	HasFile   bool   `json:"has_file"`
-	Monitored bool   `json:"monitored"`
+	Monitored bool   `json:"monitored"` // searched for (an episode: it is wanted and its show's searching is on)
+	// SearchingOff: an episode that is wanted, of a show whose searching is off.
+	SearchingOff bool `json:"searching_off,omitempty"`
 	// TMDBID and MediaType open the title's Discover page, the only title page a
 	// requester can reach (staff link to ref_id instead).
 	TMDBID       int    `json:"tmdb_id"`
@@ -74,7 +76,7 @@ func (a *api) calendarItems(ctx context.Context, start, end string) []CalendarIt
 			items = append(items, CalendarItem{
 				Date: dateOnly(e.AirDate), Type: "episode", Title: e.SeriesTitle,
 				Subtitle:  episodeSubtitle(e.Season, e.Episode, e.EpisodeName),
-				PosterURL: e.PosterURL, RefID: e.SeriesID, HasFile: e.HasFile, Monitored: e.Monitored,
+				PosterURL: e.PosterURL, RefID: e.SeriesID, HasFile: e.HasFile, Monitored: e.Monitored, SearchingOff: e.SearchingOff,
 				TMDBID: e.TMDBID, MediaType: "series", Season: e.Season, Episode: e.Episode, EpisodeTitle: e.EpisodeName,
 				CanonicalTitle: e.CanonicalTitle,
 			})

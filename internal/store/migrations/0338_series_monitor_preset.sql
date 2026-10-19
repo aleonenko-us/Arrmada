@@ -1,0 +1,11 @@
+-- 0338_series_monitor_preset: a show remembers the monitoring preset last applied to it,
+-- so the series page's Monitor menu can tick it.
+--
+--   ''        not known: shows added before this was recorded. The menu ticks nothing.
+--   a preset  "all", "future", "missing", "existing", "first_season", "latest_season" or
+--             "none": the episode flags were last set by that preset's rule.
+--   'custom'  seasons or episodes were changed one by one since (by hand, a request for
+--             some seasons, or an import copying another app's choices).
+--
+-- Every existing show is '' — nothing already in the library changes what it searches.
+ALTER TABLE series ADD COLUMN monitor_preset TEXT NOT NULL DEFAULT '';

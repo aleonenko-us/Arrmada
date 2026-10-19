@@ -67,6 +67,39 @@ func TestAddSeriesSearchOnAddDoesNotWriteSetting(t *testing.T) {
 	}
 }
 
+// GH-53: the series page's Monitor menu sends a preset alone. On a show whose searching is
+// off it turns searching on in the same request, says so (resumed) and names the preset
+// the show now remembers.
+func TestPresetAloneTurnsSearchingOn(t *testing.T) {
+	s, mgr := seriesMonitorServer(t)
+	rec := s.doJSON("POST", "/api/v1/series", mgr, `{"tmdb_id": 7, "quality_profile": "hd", "search_on_add": false}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("HTTP %d: %s", rec.Code, rec.Body)
+	}
+	var sr series.Series
+	_ = json.Unmarshal(rec.Body.Bytes(), &sr)
+	path := fmt.Sprintf("/api/v1/series/%d/monitor", sr.ID)
+	var out struct {
+		Monitored     bool   `json:"monitored"`
+		Resumed       bool   `json:"resumed"`
+		MonitorPreset string `json:"monitor_preset"`
+	}
+	rec = s.doJSON("PUT", path, mgr, `{"preset": "missing"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HTTP %d: %s", rec.Code, rec.Body)
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if !out.Monitored || !out.Resumed || out.MonitorPreset != "missing" {
+		t.Errorf("preset on a show with searching off = %+v, want on, resumed, missing", out)
+	}
+	// Again, searching already on: not "resumed" a second time.
+	rec = s.doJSON("PUT", path, mgr, `{"preset": "future"}`)
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if !out.Monitored || out.Resumed || out.MonitorPreset != "future" {
+		t.Errorf("preset with searching on = %+v, want on, not resumed, future", out)
+	}
+}
+
 func TestUnknownPresetIs400(t *testing.T) {
 	s, mgr := seriesMonitorServer(t)
 	if rec := s.doJSON("POST", "/api/v1/series", mgr, `{"tmdb_id": 5, "quality_profile": "hd", "monitor": "everything"}`); rec.Code != http.StatusBadRequest {

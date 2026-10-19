@@ -30,6 +30,15 @@ export function arrResultLine(r: ArrResult): string {
   if (r.files_attached > 0) parts.push(`${count(r.files_attached, series ? "episode file" : "file", series ? "episode files" : "files")} recorded`);
   parts.push(`${n(r.existing)} already here`, `${n(r.skipped)} skipped`, `${n(r.failed)} failed`);
   if (r.paced > 0) parts.push(`${n(r.paced)} wanted, searched for a few at a time`);
+  // Unmonitored over there comes over that way: nothing is searched for them, which would
+  // read as the import having done nothing unless it's said.
+  const off = r.unmonitored ?? 0;
+  if (off > 0) {
+    const from = r.name || (series ? "Sonarr" : "Radarr");
+    parts.push(series
+      ? `${count(off, "show", "shows")} added with searching off (as they were in ${from}) — turn searching on from the Series list`
+      : `${count(off, "film", "films")} added unmonitored (as they were in ${from}) — monitor them from the Movies list`);
+  }
   return parts.join(" · ");
 }
 

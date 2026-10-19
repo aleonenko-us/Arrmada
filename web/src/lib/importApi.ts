@@ -116,6 +116,8 @@ export interface ArrResult {
   skipped: number;
   failed: number;
   paced: number;
+  /** Added unmonitored because they were unmonitored over there (a show: with its searching off). */
+  unmonitored?: number;
   notes: ArrNote[];
   more?: number;
 }

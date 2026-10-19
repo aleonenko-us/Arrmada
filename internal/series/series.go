@@ -26,8 +26,12 @@ type Series struct {
 	// episode choices.
 	Monitored bool `json:"monitored"`
 	// MonitorNewSeasons: a season new to the show is monitored when a refresh adds it.
-	MonitorNewSeasons bool   `json:"monitor_new_seasons"`
-	QualityProfile    string `json:"quality_profile"`
+	MonitorNewSeasons bool `json:"monitor_new_seasons"`
+	// MonitorPreset is the monitoring preset last applied (see the Preset constants),
+	// PresetCustom once seasons or episodes were changed one by one since, or "" when not
+	// known (shows added before it was recorded).
+	MonitorPreset  string `json:"monitor_preset"`
+	QualityProfile string `json:"quality_profile"`
 	// SeriesType drives episode numbering. "standard" matches releases by SxxExx;
 	// "anime" also matches by absolute episode number (and falls back positionally),
 	// because anime releases number episodes 1..N across the whole run. Auto-set on

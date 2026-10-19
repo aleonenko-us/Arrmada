@@ -82,10 +82,14 @@ export function itemHref(it: CalendarItem, staff: boolean): string | null {
   return `/discover/${it.media_type === "movie" ? "movie" : "series"}/${it.tmdb_id}`;
 }
 
-/** The library status a row shows, in the glossary's words (lib/status) plus Upcoming. */
-export function itemStatus(it: CalendarItem, today: string): "Downloaded" | "Unmonitored" | "Upcoming" | "Wanted" {
+/**
+ * The library status a row shows, in the glossary's words (lib/status) plus Upcoming. An
+ * episode that is wanted, of a show whose searching is off, says so rather than
+ * "Unmonitored" (GH-52) — the series page's episode cards use the same words.
+ */
+export function itemStatus(it: CalendarItem, today: string): "Downloaded" | "Unmonitored" | "Searching off" | "Upcoming" | "Wanted" {
   if (it.has_file) return "Downloaded";
-  if (!it.monitored) return "Unmonitored";
+  if (!it.monitored) return it.searching_off ? "Searching off" : "Unmonitored";
   return it.date >= today ? "Upcoming" : "Wanted";
 }
 

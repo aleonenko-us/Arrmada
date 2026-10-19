@@ -347,6 +347,11 @@ func rebuildEpisodesTx(ctx context.Context, tx *sql.Tx, seriesID int64, seasons 
 			return nil, err
 		}
 	}
+	if len(remaps) > 0 {
+		if err := markCustomIfRenumberedTx(ctx, tx, seriesID); err != nil {
+			return nil, err
+		}
+	}
 	return remaps, nil
 }
 

@@ -203,6 +203,9 @@ func TestArrImportAPI(t *testing.T) {
 	if s := arrSummary(res); !strings.Contains(s, "Imported 2 films · 1 file recorded") || !strings.Contains(s, "1 wanted") {
 		t.Errorf("summary = %q", s)
 	}
+	if s := arrSummary(arrimport.Result{Media: "series", Name: "Sonarr", Imported: 3, Unmonitored: 2}); !strings.Contains(s, "2 shows added with searching off (as they were in Sonarr) — turn searching on from the Series list") {
+		t.Errorf("series summary = %q", s)
+	}
 }
 
 // Without a TMDB key nothing can be added: the preview says so, the import refuses.

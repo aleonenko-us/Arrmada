@@ -447,7 +447,7 @@ func (s *Service) AddWith(ctx context.Context, tmdbID int, qualityProfile string
 		}
 		monErr = s.repo.MonitorOnlySeasons(ctx, created.ID, opts.Seasons, mns)
 	} else {
-		monErr = s.repo.ApplyMonitorPreset(ctx, created.ID, preset, opts.MonitorNewSeasons)
+		monErr = s.repo.ApplyMonitorPreset(ctx, created.ID, preset, opts.MonitorNewSeasons, nil)
 	}
 	if monErr != nil {
 		s.log.Warn("series: couldn't apply the monitoring choice", "series", created.Title, "preset", preset, "err", monErr)
@@ -1083,33 +1083,35 @@ func (s *Service) SetMonitorNewSeasons(ctx context.Context, id int64, on bool) e
 
 // MonitorChange is one edit to a show's monitoring; nil and "" fields are left alone.
 type MonitorChange struct {
-	Monitored  *bool  // the pause gate
+	Monitored  *bool  // the search gate ("Searching: On / Off" in the UI)
 	Preset     string // applied first, when set
 	NewSeasons *bool  // "monitor new seasons"
 }
 
-// SetMonitoring applies a monitoring edit. A preset decides every episode flag, so the
-// gate then changes alone; without one, turning on a show with nothing monitored still
-// monitors every regular episode (see Repo.SetMonitored). An unknown preset changes
-// nothing and returns ErrUnknownPreset.
+// SetMonitoring applies a monitoring edit. A preset decides every episode flag and turns
+// searching on with it, in one transaction, unless Monitored says otherwise: choosing
+// which episodes are wanted means they should be searched for (a preset that left the
+// show's searching off changed nothing anyone could see). Without a preset, turning
+// searching on for a show with nothing monitored still monitors every regular episode
+// (see Repo.SetMonitored). An unknown preset changes nothing and returns ErrUnknownPreset.
 func (s *Service) SetMonitoring(ctx context.Context, id int64, ch MonitorChange) error {
 	if ch.Preset != "" && !ValidPreset(ch.Preset) {
 		return fmt.Errorf("%w: %q", ErrUnknownPreset, ch.Preset)
 	}
 	if ch.Preset != "" {
-		if err := s.repo.ApplyMonitorPreset(ctx, id, ch.Preset, ch.NewSeasons); err != nil {
-			return err
+		on := true
+		if ch.Monitored == nil {
+			ch.Monitored = &on
 		}
-	} else if ch.NewSeasons != nil {
+		return s.repo.ApplyMonitorPreset(ctx, id, ch.Preset, ch.NewSeasons, ch.Monitored)
+	}
+	if ch.NewSeasons != nil {
 		if err := s.repo.SetMonitorNewSeasons(ctx, id, *ch.NewSeasons); err != nil {
 			return err
 		}
 	}
 	if ch.Monitored == nil {
 		return nil
-	}
-	if ch.Preset != "" {
-		return s.repo.SetMonitoredFlag(ctx, id, *ch.Monitored)
 	}
 	return s.repo.SetMonitored(ctx, id, *ch.Monitored)
 }

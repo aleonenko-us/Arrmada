@@ -28,7 +28,7 @@ func NewRepo(db *sql.DB) *Repo { return &Repo{db: db} }
 
 const seriesCols = `id, tmdb_id, imdb_id, title, year, overview, poster_url, status, network,
 	monitored, quality_profile, extra_json, series_type, tvdb_id, added_at, numbering_source,
-	last_refreshed_at, monitor_new_seasons, library_folder_id, title_override, display_title`
+	last_refreshed_at, monitor_new_seasons, library_folder_id, title_override, display_title, monitor_preset`
 
 func scanSeries(row interface{ Scan(...any) error }) (Series, error) {
 	var (
@@ -39,7 +39,7 @@ func scanSeries(row interface{ Scan(...any) error }) (Series, error) {
 	)
 	err := row.Scan(&s.ID, &s.TMDBID, &s.IMDBID, &s.Title, &s.Year, &s.Overview, &s.PosterURL,
 		&s.Status, &s.Network, &mon, &s.QualityProfile, &extraJSON, &s.SeriesType, &s.TVDBID, &s.AddedAt, &s.NumberingSource,
-		&s.LastRefreshedAt, &mns, &s.LibraryFolderID, &s.TitleOverride, &display)
+		&s.LastRefreshedAt, &mns, &s.LibraryFolderID, &s.TitleOverride, &display, &s.MonitorPreset)
 	if err != nil {
 		return Series{}, err
 	}
@@ -519,9 +519,16 @@ func (r *Repo) SeasonsFor(ctx context.Context, seriesID int64) ([]Season, error)
 // One case still cascades: turning on a show with no monitored regular episode — a
 // library-scanned show, added unmonitored — monitors every regular season and episode
 // and new seasons, or it would read "Monitored" and never grab anything. Specials stay
-// out of it.
+// out of it. That is the "All episodes" preset, so the show then remembers it.
+//
+// Turning searching on also gives the show the paced-search mark (see markPacedTx).
 func (r *Repo) SetMonitored(ctx context.Context, id int64, monitored bool) error {
 	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		if monitored {
+			if err := markPacedTx(ctx, tx, id); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE series SET monitored = ? WHERE id = ?`, b2i(monitored), id); err != nil {
 			return err
 		}
@@ -543,7 +550,7 @@ func (r *Repo) SetMonitored(ctx context.Context, id int64, monitored bool) error
 		if _, err := tx.ExecContext(ctx, `UPDATE episodes SET monitored = 1 WHERE series_id = ? AND season_number > 0`, id); err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE series SET monitor_new_seasons = 1 WHERE id = ?`, id)
+		_, err = tx.ExecContext(ctx, `UPDATE series SET monitor_new_seasons = 1, monitor_preset = ? WHERE id = ?`, PresetAll, id)
 		return err
 	})
 }
@@ -895,6 +902,19 @@ func (r *Repo) SetSearchPaced(ctx context.Context, seriesID int64, on bool) erro
 	return err
 }
 
+// markPacedTx gives a show whose searching is off the paced-search mark, in the
+// transaction that turns its searching on. Searching is turned on in bulk too — a library
+// scan adds hundreds of shows with it off, and the Series list's Select all → Searching on
+// (or a bulk preset) turns them all on at once — and without the mark the next missing
+// sweep would search, and grab for, every one of them in a single run, as a Sonarr import
+// once did (automation/paced.go). One show turned on alone loses nothing: the sweep lets
+// up to PacedSearchesPerSweep marked shows through each run. A show whose searching is
+// already on is left as it is.
+func markPacedTx(ctx context.Context, tx *sql.Tx, id int64) error {
+	_, err := tx.ExecContext(ctx, `UPDATE series SET search_paced = 1 WHERE id = ? AND monitored = 0`, id)
+	return err
+}
+
 // PacedSearchIDs is every show still marked as added in bulk, in one query.
 func (r *Repo) PacedSearchIDs(ctx context.Context) (map[int64]bool, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT id FROM series WHERE search_paced = 1`)
@@ -1124,18 +1144,32 @@ func (r *Repo) NthEpisodeOfSeason(ctx context.Context, seriesID int64, season, n
 	return episode, true
 }
 
-// SetSeasonMonitored toggles a whole season (and its episodes).
+// SetSeasonMonitored toggles a whole season (and its episodes). A change makes the show's
+// monitoring Custom: no preset's rule describes it any more.
 func (r *Repo) SetSeasonMonitored(ctx context.Context, seriesID, seasonNumber int64, monitored bool) error {
-	if _, err := r.db.ExecContext(ctx, `UPDATE seasons SET monitored = ? WHERE series_id = ? AND season_number = ?`, b2i(monitored), seriesID, seasonNumber); err != nil {
-		return err
-	}
-	_, err := r.db.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE series_id = ? AND season_number = ?`, b2i(monitored), seriesID, seasonNumber)
-	return err
+	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		// Either write counts as a change: a season announced but with no episodes yet
+		// changes only its own flag, which decides whether its episodes are wanted when a
+		// refresh adds them.
+		sn, err := tx.ExecContext(ctx, `UPDATE seasons SET monitored = ? WHERE series_id = ? AND season_number = ? AND monitored <> ?`, b2i(monitored), seriesID, seasonNumber, b2i(monitored))
+		if err != nil {
+			return err
+		}
+		eps, err := tx.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE series_id = ? AND season_number = ? AND monitored <> ?`, b2i(monitored), seriesID, seasonNumber, b2i(monitored))
+		if err != nil {
+			return err
+		}
+		if changed(sn) || changed(eps) {
+			return markCustomTx(ctx, tx, seriesID)
+		}
+		return nil
+	})
 }
 
 // SetEpisodeMonitored toggles a single episode, and re-derives its season's flag: a season
 // is monitored when any of its episodes is. The sweep needs both flags, so monitoring one
-// episode in an unmonitored season used to do nothing.
+// episode in an unmonitored season used to do nothing. A change makes the show's
+// monitoring Custom.
 func (r *Repo) SetEpisodeMonitored(ctx context.Context, episodeID int64, monitored bool) error {
 	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
 		var seriesID int64
@@ -1147,8 +1181,14 @@ func (r *Repo) SetEpisodeMonitored(ctx context.Context, episodeID int64, monitor
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE id = ?`, b2i(monitored), episodeID); err != nil {
+		res, err := tx.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE id = ? AND monitored <> ?`, b2i(monitored), episodeID, b2i(monitored))
+		if err != nil {
 			return err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			if err := markCustomTx(ctx, tx, seriesID); err != nil {
+				return err
+			}
 		}
 		return syncSeasonsTx(ctx, tx, seriesID, season, false)
 	})
@@ -1205,8 +1245,14 @@ func (r *Repo) SetEpisodesMonitored(ctx context.Context, seriesID int64, ids []i
 			return err
 		}
 		upd := append([]any{b2i(monitored)}, args...)
-		if _, err := tx.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE series_id = ? AND id IN (`+marks+`)`, upd...); err != nil {
+		res, err := tx.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE series_id = ? AND id IN (`+marks+`) AND monitored <> ?`, append(upd, b2i(monitored))...)
+		if err != nil {
 			return err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			if err := markCustomTx(ctx, tx, seriesID); err != nil {
+				return err
+			}
 		}
 		for _, sn := range seasons {
 			if err := syncSeasonsTx(ctx, tx, seriesID, sn, false); err != nil {
@@ -1219,13 +1265,6 @@ func (r *Repo) SetEpisodesMonitored(ctx context.Context, seriesID int64, ids []i
 		return 0, err
 	}
 	return len(uniq), nil
-}
-
-// SetMonitoredFlag sets only the series gate, for a caller that has just applied a preset
-// and so has already decided every episode's flag.
-func (r *Repo) SetMonitoredFlag(ctx context.Context, id int64, monitored bool) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE series SET monitored = ? WHERE id = ?`, b2i(monitored), id)
-	return err
 }
 
 // SetEpisodeFile records that an episode now has a file on disk.

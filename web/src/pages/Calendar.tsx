@@ -39,7 +39,7 @@ const CalendarFeedSheet = lazy(() => import("../components/CalendarFeed"));
 const SCOPES = ["mine", "all"] as const;
 type Scope = (typeof SCOPES)[number];
 
-const STATUS_TONE: Record<ReturnType<typeof itemStatus>, Tone> = { Downloaded: "good", Upcoming: "accent", Wanted: "avoid", Unmonitored: "faint" };
+const STATUS_TONE: Record<ReturnType<typeof itemStatus>, Tone> = { Downloaded: "good", Upcoming: "accent", Wanted: "avoid", Unmonitored: "faint", "Searching off": "faint" };
 
 interface Loaded { key: string; start: string; end: string; items: CalendarItem[] }
 
@@ -352,9 +352,9 @@ function AgendaList({ items, today, end, staff, stickyTop, loadingMore, onMore, 
 function AgendaRow({ it, staff, todayStr, markMine, replace }: { it: CalendarItem; staff: boolean; todayStr: string; markMine?: boolean; replace?: boolean }) {
   const status = itemStatus(it, todayStr);
   const href = itemHref(it, staff);
-  // An unmonitored title steps back with a faded poster and a dimmer title; fading the
-  // whole row took its words below a readable contrast.
-  const quiet = status === "Unmonitored";
+  // A title nothing is searched for steps back with a faded poster and a dimmer title;
+  // fading the whole row took its words below a readable contrast.
+  const quiet = status === "Unmonitored" || status === "Searching off";
   const body = (
     <>
       <div className="h-10 w-[27px] flex-none overflow-hidden rounded" style={{ background: "var(--panel-2)", opacity: quiet ? 0.6 : 1 }}>
@@ -365,7 +365,7 @@ function AgendaRow({ it, staff, todayStr, markMine, replace }: { it: CalendarIte
         <div className="truncate text-sm text-ink-dim">{itemLine(it)}</div>
         {markMine && it.requested_by_me && <StatusChip tone="accent" size="xs" className="mt-0.5 inline-block">You asked for this</StatusChip>}
       </div>
-      <StatusChip tone={STATUS_TONE[status]} className="flex-none">{status === "Downloaded" ? "✓ Downloaded" : status}</StatusChip>
+      <StatusChip tone={STATUS_TONE[status]} className="flex-none" title={status === "Searching off" ? "Searching is off for this show — nothing is searched until it's turned back on." : undefined}>{status === "Downloaded" ? "✓ Downloaded" : status}</StatusChip>
     </>
   );
   const className = "flex min-h-[44px] items-center gap-3 rounded-lg px-2 py-1.5";

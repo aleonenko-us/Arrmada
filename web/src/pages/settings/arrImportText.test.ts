@@ -29,6 +29,12 @@ describe("arrResultLine", () => {
     expect(arrResultLine(result())).toBe("Imported 3 films · 2 files recorded · 1 already here · 0 skipped · 0 failed · 1 wanted, searched for a few at a time");
     expect(arrResultLine(result({ media: "series", imported: 1, files_attached: 1, paced: 0 }))).toBe("Imported 1 show · 1 episode file recorded · 1 already here · 0 skipped · 0 failed");
   });
+  it("says which titles came over unmonitored, and where to turn them on (GH-53)", () => {
+    expect(arrResultLine(result({ media: "series", name: "Sonarr", imported: 3, files_attached: 0, paced: 0, unmonitored: 2 }))).toBe(
+      "Imported 3 shows · 1 already here · 0 skipped · 0 failed · 2 shows added with searching off (as they were in Sonarr) — turn searching on from the Series list",
+    );
+    expect(arrResultLine(result({ unmonitored: 1 }))).toContain("1 film added unmonitored (as they were in Radarr) — monitor them from the Movies list");
+  });
 });
 
 describe("notesByOutcome", () => {

@@ -113,12 +113,12 @@ func TestShowAttachFailureLeavesItUnmonitored(t *testing.T) {
 	}
 	found := false
 	for _, n := range res.Notes {
-		if n.Title == "Breaking Bad" && strings.Contains(n.Reason, "left unmonitored") && strings.Contains(n.Reason, "disk said no") {
+		if n.Title == "Breaking Bad" && strings.Contains(n.Reason, "left with searching off") && strings.Contains(n.Reason, "disk said no") {
 			found = true
 		}
 	}
 	if !found || res.Paced != 1 {
-		t.Errorf("notes = %+v, paced = %d; want Breaking Bad named as left unmonitored, only Frieren paced", res.Notes, res.Paced)
+		t.Errorf("notes = %+v, paced = %d; want Breaking Bad named as left with searching off, only Frieren paced", res.Notes, res.Paced)
 	}
 }
 

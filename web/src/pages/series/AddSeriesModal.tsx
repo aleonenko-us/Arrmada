@@ -58,11 +58,11 @@ export function AddSeriesModal({ onClose, onAdded, folderId }: { onClose: () => 
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 id={titleId} className="m-0 text-lg font-bold">Add a series</h2>
           <div className="flex flex-wrap items-center gap-4">
-            <button type="button" onClick={toggleSearchOnAdd} title="On: search right away. Off: add it paused — nothing is searched until you resume it. For this add only." className="flex items-center gap-2">
+            <button type="button" onClick={toggleSearchOnAdd} title="On: search right away. Off: add it with searching off — nothing is searched until you turn it on from the show's page. For this add only." className="flex items-center gap-2">
               <span className="relative inline-block h-[20px] w-[34px] rounded-full transition-colors" style={{ background: searchOnAdd ? "var(--accent)" : "var(--line)" }}>
                 <span className="absolute top-[3px] h-[14px] w-[14px] rounded-full bg-white transition-all" style={{ left: searchOnAdd ? "17px" : "3px" }} />
               </span>
-              <span className="text-sm font-medium" style={{ color: searchOnAdd ? "var(--ink)" : "var(--ink-dim)" }}>{searchOnAdd ? "Search on add" : "Add paused"}</span>
+              <span className="text-sm font-medium" style={{ color: searchOnAdd ? "var(--ink)" : "var(--ink-dim)" }}>{searchOnAdd ? "Search on add" : "Add with searching off"}</span>
             </button>
             <div className="flex items-center gap-2">
               <span className="font-mono text-2xs uppercase text-ink-faint">Monitor</span>
