@@ -130,7 +130,7 @@ func (s *Service) KnownAs(ctx context.Context, sr Series, p parser.Release) (boo
 	if s.titles == nil || sr.TMDBID <= 0 {
 		return false, ErrNoTitles
 	}
-	t, err := s.titles.Titles(ctx, metadata.TitlesSeries, sr.TMDBID)
+	t, err := s.titleSource().Titles(ctx, metadata.TitlesSeries, sr.TMDBID)
 	if err != nil {
 		return false, err
 	}
@@ -189,7 +189,7 @@ func (s *Service) refreshLocalTitles(ctx context.Context, id int64, tmdbID int, 
 	if len(langs) == 0 || s.titles == nil || tmdbID <= 0 {
 		return
 	}
-	got, err := metadata.ReadLocalTitles(ctx, s.titles, metadata.TitlesSeries, tmdbID, title, langs)
+	got, err := metadata.ReadLocalTitles(ctx, s.titleSource(), metadata.TitlesSeries, tmdbID, title, langs)
 	if err != nil {
 		s.log.Debug("series: couldn't read translated titles; the titles backfill tries again", "series", title, "err", err)
 		return
@@ -262,7 +262,7 @@ func (s *Service) backfillLocalOnce(ctx context.Context, every time.Duration) (i
 			return filled, ctx.Err()
 		case <-t.C:
 		}
-		got, err := metadata.ReadLocalTitles(ctx, s.titles, metadata.TitlesSeries, sr.TMDBID, sr.Title, langs)
+		got, err := metadata.ReadLocalTitles(ctx, s.titleSource(), metadata.TitlesSeries, sr.TMDBID, sr.Title, langs)
 		switch {
 		case errors.Is(err, metadata.ErrNotConfigured):
 			return filled, nil

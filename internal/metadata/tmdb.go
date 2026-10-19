@@ -438,6 +438,8 @@ type tmdbSeries struct {
 	} `json:"credits"`
 	Videos          tmdbVideos          `json:"videos"`
 	Recommendations tmdbRecommendations `json:"recommendations"`
+	// Translations is the detail sheet's "translations" append, read for its overviews.
+	Translations tmdbOverviewTranslations `json:"translations"`
 }
 
 // tmdbVideo is one entry from TMDB's /videos append (trailers, teasers, clips).
@@ -568,6 +570,8 @@ type tmdbMovie struct {
 	} `json:"external_ids"`
 	Videos          tmdbVideos          `json:"videos"`
 	Recommendations tmdbRecommendations `json:"recommendations"`
+	// Translations is the detail sheet's "translations" append, read for its overviews.
+	Translations tmdbOverviewTranslations `json:"translations"`
 }
 
 type tmdbCrew struct {

@@ -34,6 +34,26 @@ func (s *Service) policy() displaytitle.Policy {
 	return s.displayPolicy()
 }
 
+// titleSource is where every name of a film is read from, with its overviews in the
+// language the display setting describes titles in, so the import gate, the backfills and
+// the display names share one cached TMDB request per film.
+func (s *Service) titleSource() metadata.TitlesSource {
+	return metadata.WithOverviews(s.titles, s.policy().OverviewLang())
+}
+
+// withDisplayOverview sets m's DisplayOverview: its overview in the setting's language
+// when one is stored, left empty when that is the English overview it already carries.
+// Worked out on read from the stored names; never asks TMDB.
+func (s *Service) withDisplayOverview(m *Movie) {
+	var names *displaytitle.Names
+	if m.Extra != nil {
+		names = m.Extra.DisplayNames
+	}
+	if o := s.policy().ShownOverview(m.Overview, names); o != m.Overview {
+		m.DisplayOverview = o
+	}
+}
+
 // shownTitle is the stored display_title, or the canonical title when it's empty
 // (the default, and rows not worked out yet).
 func shownTitle(display, title string) string {
@@ -242,7 +262,7 @@ func (s *Service) TitleChoices(ctx context.Context, id int64) ([]displaytitle.Ch
 	}
 	var all *metadata.Titles
 	if s.titles != nil && m.TMDBID > 0 {
-		if t, err := s.titles.Titles(ctx, metadata.TitlesMovie, m.TMDBID); err == nil {
+		if t, err := s.titleSource().Titles(ctx, metadata.TitlesMovie, m.TMDBID); err == nil {
 			all = t
 		} else {
 			s.log.Debug("movies: couldn't read every title for the picker; offering the stored ones", "movie", m.Title, "err", err)
@@ -265,11 +285,11 @@ func (s *Service) readDisplayNames(ctx context.Context, tmdbID int, p displaytit
 	if s.titles == nil || tmdbID <= 0 {
 		return nil, ErrNoTitles
 	}
-	t, err := s.titles.Titles(ctx, metadata.TitlesMovie, tmdbID)
+	t, err := s.titleSource().Titles(ctx, metadata.TitlesMovie, tmdbID)
 	if err != nil {
 		return nil, err
 	}
-	return displaytitle.FromTitles(t, p.TranslationLangs()), nil
+	return p.NamesFrom(t), nil
 }
 
 // withDisplayNames fills a fresh extra blob's display names on add and refresh, keeping

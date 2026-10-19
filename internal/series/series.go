@@ -50,6 +50,12 @@ type Series struct {
 	// presentation only. Title stays the canonical name matching, naming and scripts use.
 	DisplayTitle  string `json:"display_title"`
 	TitleOverride string `json:"title_override,omitempty"`
+	// DisplayOverview is the overview in the language titles are shown in (display.go,
+	// filled by Service.Get); empty when it is Overview, TMDB's English one, which stays.
+	// Seasons and episodes keep their English overviews: TMDB has their translations only
+	// per season and language, and the stored episodes follow TVDB's or TVmaze's
+	// numbering, so a translated episode could be pinned to the wrong one.
+	DisplayOverview string `json:"display_overview,omitempty"`
 
 	Extra *SeriesExtra `json:"extra,omitempty"`
 	// Aliases are the other titles this show is released under. Populated on read so

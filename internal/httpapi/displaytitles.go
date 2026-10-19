@@ -20,6 +20,9 @@ import (
 
 // displayPolicy is the "Show titles as" setting in effect now.
 func (a *api) displayPolicy(ctx context.Context) displaytitle.Policy {
+	if a.deps.Settings == nil {
+		return displaytitle.ParsePolicy("", "", "")
+	}
 	return settings.DisplayTitlePolicy(func(key string) string { return a.deps.Settings.Get(ctx, key, "") })
 }
 

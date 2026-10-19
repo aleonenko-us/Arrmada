@@ -36,6 +36,10 @@ type discoverCard struct {
 	// titles as"), for a title in the library under another name than TMDB's. Title stays
 	// TMDB's.
 	DisplayTitle string `json:"display_title,omitempty"`
+	// DisplayOverview is the overview in the language Settings → Library → "Show titles
+	// as" describes titles in, when TMDB has one (discover_overviews.go); Overview stays
+	// TMDB's English one, which is also what a request made from the card keeps.
+	DisplayOverview string `json:"display_overview,omitempty"`
 }
 
 // discoverEnrichSnap holds the precomputed lookup maps enrichDiscover needs: library
@@ -225,7 +229,10 @@ func (a *api) handleDiscoverTrending(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	a.enrichDiscover(w, r, items)
+	// The hero shows these cards' overviews, so they come in the household's language.
+	cards := a.enrichCards(r.Context(), items)
+	a.localizeTrendingOverviews(r.Context(), media, cards)
+	a.writeJSON(w, http.StatusOK, map[string]any{"items": cards})
 }
 
 func (a *api) handleDiscoverPopular(w http.ResponseWriter, r *http.Request) {
@@ -311,6 +318,9 @@ type mediaDetailResponse struct {
 	// WatchLinks is a Watch link per media server that has the title, the viewer's own
 	// server first.
 	WatchLinks []mediaserver.WatchLink `json:"watch_links,omitempty"`
+	// DisplayOverview is the overview in the household's language (discover_overviews.go);
+	// empty when it is the English overview.
+	DisplayOverview string `json:"display_overview,omitempty"`
 }
 
 // itemFromDetail is a detail record as the browse card it would be in a row.
@@ -354,13 +364,23 @@ func (a *api) handleMediaDetail(w http.ResponseWriter, r *http.Request) {
 			d.Ratings.Metacritic = rt.Metacritic
 		}
 	}
+	// The record carries every language's overview for the cache; the sheet gets the one
+	// it shows.
+	shownOverview := a.displayPolicy(r.Context()).Overview(d.Overview, d.Overviews)
+	d.Overviews = nil
 	card := a.enrichCards(r.Context(), []metadata.DiscoverItem{itemFromDetail(d)})[0]
+	if shownOverview != d.Overview {
+		card.DisplayOverview = shownOverview
+	} else {
+		shownOverview = ""
+	}
 	// Watch buttons, one per media server that has it (from memory; never waits on a
 	// server). The detail's IMDb id finds it in a legacy-agent Plex library too.
 	links := a.watchLinks(r.Context(), d.MediaType, insights.ExternalIDs{TMDB: id, IMDB: d.IMDBID})
 	viewer, _ := userFrom(r)
 	a.writeJSON(w, http.StatusOK, mediaDetailResponse{MediaDetail: d, Card: card,
-		PlexURL: linkFor(links, mediaserver.Plex), WatchLinks: a.leadWith(r.Context(), links, viewer)})
+		PlexURL: linkFor(links, mediaserver.Plex), WatchLinks: a.leadWith(r.Context(), links, viewer),
+		DisplayOverview: shownOverview})
 }
 
 // ratingsWait is how long a detail sheet waits for OMDb, and ratingsBudget how long the

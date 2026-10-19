@@ -396,7 +396,13 @@ func (s *Service) ByTMDBIDs(ctx context.Context, tmdbIDs []int) ([]Movie, error)
 }
 
 // Get returns one movie.
-func (s *Service) Get(ctx context.Context, id int64) (Movie, error) { return s.repo.Get(ctx, id) }
+func (s *Service) Get(ctx context.Context, id int64) (Movie, error) {
+	m, err := s.repo.Get(ctx, id)
+	if err == nil {
+		s.withDisplayOverview(&m)
+	}
+	return m, err
+}
 
 // SearchTargets returns the movies with a monitored track that has no file — the
 // search-missing and RSS sweeps' work list, chosen in SQL so a complete library costs

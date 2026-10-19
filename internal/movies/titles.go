@@ -207,7 +207,7 @@ func (s *Service) backfillTitlesOnce(ctx context.Context, every time.Duration) (
 			case errors.Is(err, metadata.ErrNotConfigured):
 				return filled, nil
 			case errors.Is(err, metadata.ErrNotFound):
-				got = displaytitle.FromTitles(nil, display.TranslationLangs()) // read, nothing to show
+				got = display.NamesFrom(nil) // read, nothing to show
 			case err != nil:
 				if ctx.Err() != nil {
 					return filled, ctx.Err()

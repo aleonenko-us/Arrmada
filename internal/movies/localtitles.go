@@ -71,7 +71,7 @@ func (s *Service) KnownAs(ctx context.Context, m Movie, title string, year int) 
 	if s.titles == nil || m.TMDBID <= 0 {
 		return false, ErrNoTitles
 	}
-	t, err := s.titles.Titles(ctx, metadata.TitlesMovie, m.TMDBID)
+	t, err := s.titleSource().Titles(ctx, metadata.TitlesMovie, m.TMDBID)
 	if err != nil {
 		return false, err
 	}
@@ -103,7 +103,7 @@ func (s *Service) readLocalTitles(ctx context.Context, tmdbID int, title string,
 	if s.titles == nil || tmdbID <= 0 {
 		return nil, ErrNoTitles
 	}
-	return metadata.ReadLocalTitles(ctx, s.titles, metadata.TitlesMovie, tmdbID, title, langs)
+	return metadata.ReadLocalTitles(ctx, s.titleSource(), metadata.TitlesMovie, tmdbID, title, langs)
 }
 
 // withLocalTitles fills a fresh extra blob's translated titles for the languages set now,

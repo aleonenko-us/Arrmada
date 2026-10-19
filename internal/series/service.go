@@ -357,6 +357,7 @@ func (s *Service) Get(ctx context.Context, id int64) (Series, error) {
 	if st, err := s.repo.StatsFor(ctx, id); err == nil {
 		sr.Stats = st
 	}
+	s.withDisplayOverview(&sr)
 	return sr, nil
 }
 

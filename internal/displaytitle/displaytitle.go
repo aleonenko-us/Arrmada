@@ -108,6 +108,98 @@ func (p Policy) TranslationLangs() []string {
 	return nil
 }
 
+// Overviews (descriptions, GitHub #35) follow the setting with one rule: in the language
+// mode a title is described in that language when TMDB has its overview translated, and
+// in English (TMDB's own overview) otherwise. The English and original modes keep English
+// descriptions, and "Original titles for these languages" changes titles only: an
+// original-language overview (Japanese for an anime) would be unreadable to most of the
+// people who like seeing the original title. Per-title overrides change the title only.
+
+// OverviewLang is the ISO 639-1 language p describes titles in, or "" for TMDB's English
+// overview: the chosen language in the language mode (unless it is English), nothing in
+// the others.
+func (p Policy) OverviewLang() string {
+	if p.Mode != ModeLanguage {
+		return ""
+	}
+	if b := langs.ISO1(p.Language); b != "en" {
+		return b
+	}
+	return ""
+}
+
+// TMDBLanguage is p's overview language as TMDB's language parameter ("fr", or "pt-BR"
+// for a regional choice), or "" when p shows English overviews.
+func (p Policy) TMDBLanguage() string {
+	base := p.OverviewLang()
+	if base == "" {
+		return ""
+	}
+	if i := strings.IndexByte(p.Language, '-'); i > 0 && len(p.Language) == i+3 {
+		return base + "-" + strings.ToUpper(p.Language[i+1:])
+	}
+	return base
+}
+
+// Overview is the overview to show under p: the one in p's language from list when TMDB
+// has it (the language's own region first, as with titles), else canonical — TMDB's
+// English overview.
+func (p Policy) Overview(canonical string, list []metadata.TranslatedOverview) string {
+	base := p.OverviewLang()
+	if base == "" {
+		return canonical
+	}
+	region := ""
+	if i := strings.IndexByte(p.Language, '-'); i > 0 {
+		region = strings.ToUpper(p.Language[i+1:])
+	}
+	first := ""
+	for _, o := range list {
+		text := strings.TrimSpace(o.Overview)
+		if text == "" || !strings.EqualFold(o.Lang, base) {
+			continue
+		}
+		if region == "" || strings.EqualFold(o.Country, region) {
+			return text
+		}
+		if first == "" {
+			first = text
+		}
+	}
+	if first != "" {
+		return first
+	}
+	return canonical
+}
+
+// ShownOverview is the overview to show under p for a library title with stored names n.
+func (p Policy) ShownOverview(canonical string, n *Names) string {
+	if n == nil {
+		return canonical
+	}
+	return p.Overview(canonical, n.Overviews)
+}
+
+// NamesFrom keeps what p needs from every name TMDB has for a title (FromTitles), plus
+// its overviews in p's overview language. t may be nil: TMDB no longer has the title, so
+// it is read and has nothing to show.
+func (p Policy) NamesFrom(t *metadata.Titles) *Names {
+	n := FromTitles(t, p.TranslationLangs())
+	ol := p.OverviewLang()
+	if ol == "" {
+		return n
+	}
+	n.OverviewLang = ol
+	if t != nil {
+		for _, o := range t.Overviews {
+			if o.Lang == ol && strings.TrimSpace(o.Overview) != "" {
+				n.Overviews = append(n.Overviews, o)
+			}
+		}
+	}
+	return n
+}
+
 // Names are the names of one title kept for display, read from TMDB (metadata.Titles) by
 // add, refresh and the display-names backfill. Stored in the title's extra metadata as
 // "display_names".
@@ -123,6 +215,12 @@ type Names struct {
 	// the names were read at all (an empty Langs then means "none asked for").
 	Langs []string `json:"langs,omitempty"`
 	Read  bool     `json:"read,omitempty"`
+	// Overviews are the title's overviews in OverviewLang, read with the names when the
+	// setting describes titles in a language (Policy.OverviewLang). OverviewLang is the
+	// language they were read for: set even when TMDB had none, so the backfill doesn't
+	// ask again. Only that one language is ever stored.
+	Overviews    []metadata.TranslatedOverview `json:"overviews,omitempty"`
+	OverviewLang string                        `json:"overview_lang,omitempty"`
 }
 
 // FromTitles keeps what display needs from every name TMDB has for a title: the original
@@ -143,6 +241,9 @@ func FromTitles(t *metadata.Titles, langsISO1 []string) *Names {
 func (n *Names) Covers(p Policy) bool {
 	if n == nil || !n.Read {
 		return false
+	}
+	if ol := p.OverviewLang(); ol != "" && n.OverviewLang != ol {
+		return false // names read before overviews were kept, or for another language
 	}
 	return metadata.CoversLangs(n.Langs, p.TranslationLangs())
 }
