@@ -906,6 +906,19 @@ func main() {
 		}
 		return err
 	}, scheduler.Label("Refresh MusicBrainz answers"), scheduler.Description("Rechecks cached MusicBrainz answers that are past their freshness, at most 300 a run at MusicBrainz's pace. Nothing cached is ever removed; when MusicBrainz is down, Music keeps working from the cache."))
+	// Keep followed artists current: new releases, merged entries, missing listings and
+	// the upgrade's legacy editions, within a MusicBrainz call budget a run.
+	sched.Register("refresh-music-artists", 6*time.Hour, false, func(ctx context.Context) error {
+		rep, err := coordinator.RefreshMusicArtists(ctx)
+		if rep.Artists+rep.Listings+rep.SinglesSettled+rep.EditionsTried > 0 {
+			log.Info("music: refreshed followed artists", "artists", rep.Artists, "unanswered", rep.Unanswered,
+				"added", rep.Added, "wanted", rep.Wanted, "searched", rep.Searched, "no_longer_listed", rep.Stale,
+				"merged", rep.Merged, "singles_checked", rep.SinglesSettled, "listings", rep.Listings,
+				"editions_tried", rep.EditionsTried, "editions_rekeyed", rep.EditionsRekeyed,
+				"musicbrainz_calls", rep.Calls, "stopped", rep.Stopped)
+		}
+		return err
+	}, scheduler.Label("Refresh followed artists"), scheduler.Description("Rereads each followed artist's albums from MusicBrainz about once a day (through the cache, at most 200 requests a run) and adds new releases: wanted when the artist's New releases setting says so, older music only listed. Searches new releases that are out, fills missing track listings, and moves a few upgraded albums a run onto their real MusicBrainz edition. Nothing is removed when MusicBrainz is down."))
 	// Import finished album downloads (arrmada-music category).
 	sched.Register("import-music", 30*time.Second, false, func(ctx context.Context) error {
 		coordinator.ImportMusicDownloads(ctx)

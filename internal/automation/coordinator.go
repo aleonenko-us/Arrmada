@@ -103,6 +103,9 @@ type Coordinator struct {
 	musicSearchFn func(ctx context.Context, q indexer.SearchQuery) (indexer.SearchResult, error)
 	musicQueueFn  func(ctx context.Context) ([]download.Item, error)
 	musicGrabFn   func(ctx context.Context, indexerName, url, title, category string) (string, error)
+	// musicRefreshBudget overrides refresh-music-artists' MusicBrainz call budget (0: the
+	// default). See RefreshMusicArtists.
+	musicRefreshBudget int64
 	// probeAudioFn measures an audio file (nil: ffprobe through mediainfo). See probeAudio.
 	probeAudioFn func(ctx context.Context, path string) (mediainfo.AudioInfo, error)
 	// musicTagsFn reads an audio file's tags and length for the matcher (nil: audiotag).
