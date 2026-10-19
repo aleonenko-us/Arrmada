@@ -50,6 +50,35 @@ func seekFLAC(f *os.File) (int64, error) {
 	return off, err
 }
 
+// FLACStreamBlocks returns a FLAC file's STREAMINFO and SEEKTABLE blocks (type byte, then
+// data, for each), which describe the audio (sample count, the decoded MD5, seek points)
+// and which a tag write must carry over unchanged. ErrUnsupported for anything not FLAC.
+func FLACStreamBlocks(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if ft, err := sniff(f); err != nil || ft != formatFLAC {
+		return nil, fmt.Errorf("%w: not FLAC", ErrUnsupported)
+	}
+	if _, err := seekFLAC(f); err != nil {
+		return nil, err
+	}
+	meta, err := flac.ParseMetadata(f)
+	if err != nil {
+		return nil, fmt.Errorf("flac: %w", err)
+	}
+	var out []byte
+	for _, b := range meta.Meta {
+		if b.Type == flac.StreamInfo || b.Type == flac.SeekTable {
+			out = append(out, byte(b.Type))
+			out = append(out, b.Data...)
+		}
+	}
+	return out, nil
+}
+
 // AudioRange is where a file's encoded audio lies: the FLAC frames after the metadata
 // blocks, or the MPEG frames between the ID3v2 tag and any trailing tags. The tag writer
 // copies exactly these bytes, so comparing them proves a tag write left the audio alone

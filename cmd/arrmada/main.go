@@ -1131,6 +1131,9 @@ func main() {
 	// plus the old shared bin while it still holds files, so what's in it stays listed,
 	// restorable, aged and capped until it drains.
 	recycleSvc := recyclebin.NewBins(bins.All, settingsSvc, log)
+	// A music staging job a crash left unsettled may need a replaced file back out of the
+	// bin: the bin never purges, empties or deletes those (MUS-33).
+	recycleSvc.SetHeld(func() map[string]bool { return stage.HeldInBin(bookImporter.MusicDir()) })
 	grp.Loop("convert: runner", convertSvc.Run)
 	// Originals whose undo window has ended leave the hold — the only deletes it makes on
 	// its own, and only by the retention you set.

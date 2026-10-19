@@ -61,12 +61,14 @@ func itJPEG(w, h int) []byte {
 func itAPE(t *testing.T, path string, big int) {
 	t.Helper()
 	var items bytes.Buffer
+	count := 0
 	item := func(key string, val []byte, flags uint32) {
 		_ = binary.Write(&items, binary.LittleEndian, uint32(len(val)))
 		_ = binary.Write(&items, binary.LittleEndian, flags)
 		items.WriteString(key)
 		items.WriteByte(0)
 		items.Write(val)
+		count++
 	}
 	item("Title", []byte("ape title"), 0)
 	if big > 0 {
@@ -77,7 +79,7 @@ func itAPE(t *testing.T, path string, big int) {
 		b.WriteString("APETAGEX")
 		_ = binary.Write(&b, binary.LittleEndian, uint32(2000))
 		_ = binary.Write(&b, binary.LittleEndian, uint32(items.Len()+32))
-		_ = binary.Write(&b, binary.LittleEndian, uint32(2))
+		_ = binary.Write(&b, binary.LittleEndian, uint32(count))
 		flags := uint32(1 << 31)
 		if isHeader {
 			flags |= 1 << 29

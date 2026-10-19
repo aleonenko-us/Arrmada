@@ -57,6 +57,9 @@ const (
 	Staged State = "staged"
 	// Verified: the copy is tagged and checked (tags read back, audio unchanged).
 	Verified State = "verified"
+	// Placing: the copy is moving to a free final path (nothing to replace there). Where
+	// the file is afterwards says whether the move happened.
+	Placing State = "placing"
 	// Arriving: the copy is being linked into the album folder under a temporary name
 	// (Item.Temp), beside the file it replaces, which is still in place.
 	Arriving State = "arriving"

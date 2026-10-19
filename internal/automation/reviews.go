@@ -817,7 +817,8 @@ func (c *Coordinator) importContentInto(ctx context.Context, r Review, dest int6
 			return fmt.Errorf("no track could be placed into %q", al.Title)
 		}
 		if left, ok := ctx.Value(importLeftoversKey{}).(*importLeftovers); ok {
-			left.files += res.unmatched
+			// A track that failed to place left its file in the download too.
+			left.files += res.unmatched + res.failed
 		}
 		c.afterAlbumImport(ctx, art, al)
 	case "book":

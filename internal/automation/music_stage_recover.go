@@ -31,6 +31,13 @@ func (c *Coordinator) RecoverMusicStaging(ctx context.Context) (stage.RecoverRep
 	if rep.Finished > 0 || rep.RolledBak > 0 {
 		c.log.Warn("music: settled interrupted staging jobs", "finished", rep.Finished, "rolled_back", rep.RolledBak, "kept", rep.Kept)
 	}
+	if rep.Kept > 0 {
+		// Only the music folder in use now is looked at: a job left under a folder used
+		// before is settled once that folder is the music folder again. Kept jobs delete
+		// nothing, and the bin keeps the files they may need back.
+		c.log.Error("music: interrupted staging jobs kept — they need a look (nothing in them was deleted)",
+			"kept", rep.Kept, "folder", stage.Root(root))
+	}
 	return rep, err
 }
 

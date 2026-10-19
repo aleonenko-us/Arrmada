@@ -779,6 +779,7 @@ func (c *Coordinator) importAlbumContent(ctx context.Context, a music.Artist, al
 	quality := music.DetectQuality(release)
 	res = c.placeAlbumTracks(ctx, a, al, tracks, matched, quality, release, contentPath)
 	res.found, res.unmatched = true, len(unmatched)
+	c.switchBack(ctx, al, res)
 	if res.placed > 0 {
 		c.log.Info("music: imported tracks", "artist", a.Name, "album", al.Title,
 			"placed", res.placed, "kept", res.kept, "of", len(tracks), "quality", quality)
@@ -1199,6 +1200,7 @@ func (c *Coordinator) importAlbumFolder(ctx context.Context, a music.Artist, al 
 	}
 	res := c.placeAlbumTracks(ctx, a, al, tracks, matched, q, release, f.path)
 	res.found, res.unmatched = true, len(unmatched)
+	c.switchBack(ctx, al, res)
 	if res.placed > 0 {
 		c.log.Info("music: imported album from discography", "artist", a.Name, "album", al.Title,
 			"placed", res.placed, "kept", res.kept, "of", len(tracks), "quality", q)

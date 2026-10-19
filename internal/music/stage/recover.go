@@ -101,8 +101,13 @@ func (j *Job) recover(ctx context.Context, record Recorder, rep *RecoverReport) 
 		// A copy onto another drive goes through ".<name>.arrmada-part" beside its target;
 		// one a crash left there is ours, and never the only copy of anything.
 		if it.Final != "" {
-			if p := tempName(it.Final, "part"); isTempName(filepath.Base(p)) {
-				_ = os.Remove(p)
+			// Also the copy's own temporary file inside such a temporary name (copyNew writes
+			// "<name>.arrmada-part" beside whatever it fills, ours included).
+			part, newTmp := tempName(it.Final, "part"), tempName(it.Final, "new")
+			for _, p := range []string{part, tempName(part, "part"), tempName(newTmp, "part")} {
+				if isTempName(filepath.Base(p)) {
+					_ = os.Remove(p)
+				}
 			}
 		}
 		if j.m.Kind == KindRename {
@@ -138,6 +143,13 @@ func (j *Job) recoverItem(i int, rep *RecoverReport) error {
 	case Recorded, Discarded:
 		return nil
 	case Planned, Staged:
+		j.discard(i, "interrupted before it reached the library")
+		rep.RolledBak++
+		return nil
+	case Placing:
+		if movedIn(it) {
+			return j.placed(i)
+		}
 		j.discard(i, "interrupted before it reached the library")
 		rep.RolledBak++
 		return nil
@@ -247,6 +259,32 @@ func (j *Job) recoverRename(ctx context.Context, i int, record Recorder, rep *Re
 	}
 	rep.Finished++
 	return j.Recorded(i)
+}
+
+// HeldInBin lists the recycle-bin paths that jobs still in libraryRoot's staging folder
+// may need to put back (a replaced file whose new copy hasn't settled). The bin keeps
+// them however old they get, until the job is settled.
+func HeldInBin(libraryRoot string) map[string]bool {
+	out := map[string]bool{}
+	entries, err := os.ReadDir(Root(libraryRoot))
+	if err != nil {
+		return out
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !reJobID.MatchString(e.Name()) {
+			continue
+		}
+		m, err := readManifest(filepath.Join(Root(libraryRoot), e.Name()))
+		if err != nil {
+			continue
+		}
+		for _, it := range m.Items {
+			if it.Binned != "" && !it.State.terminal() {
+				out[it.Binned] = true
+			}
+		}
+	}
+	return out
 }
 
 func exists(p string) bool {

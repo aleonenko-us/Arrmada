@@ -477,6 +477,16 @@ func (s *Service) SwitchEdition(ctx context.Context, albumID, releaseID int64, w
 	return s.switchTo(ctx, albumID, ed, false, why)
 }
 
+// RestoreEdition puts an album back on the edition it had (and its pin) after a match
+// switched it but then placed nothing: a switch only stands with files to show for it.
+func (s *Service) RestoreEdition(ctx context.Context, albumID, releaseID int64, pinned bool) (SwitchResult, error) {
+	ed, err := s.repo.Edition(ctx, releaseID)
+	if err != nil {
+		return SwitchResult{}, err
+	}
+	return s.switchTo(ctx, albumID, ed, pinned, "back: nothing from the download could be placed")
+}
+
 func (s *Service) switchTo(ctx context.Context, albumID int64, ed Edition, pinned bool, why string) (SwitchResult, error) {
 	al, err := s.repo.GetAlbum(ctx, albumID)
 	if err != nil {

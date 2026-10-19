@@ -251,6 +251,51 @@ func TestMP3TrailerStart(t *testing.T) {
 	}
 }
 
+// A trailer that doesn't hold together is never believed: a bogus size would have the
+// writer cut audio off the file, so the file is refused (left untagged) instead.
+func TestMP3TrailerStartRefusesBogusTrailers(t *testing.T) {
+	audio := bytes.Repeat([]byte{0xFF, 0xFB, 0x90, 0x00}, 4096)
+	apeFooter := func(size int, count byte, header bool) []byte {
+		footer := make([]byte, 32)
+		copy(footer, "APETAGEX")
+		footer[8], footer[9] = 0xD0, 0x07
+		footer[12], footer[13], footer[14] = byte(size), byte(size>>8), byte(size>>16)
+		footer[16] = count
+		if header {
+			footer[23] = 0x80
+		}
+		return footer
+	}
+	item := []byte("\x05\x00\x00\x00\x00\x00\x00\x00Title\x00hello")
+	for name, tail := range map[string][]byte{
+		// The size claims most of the file, no header, no items to walk.
+		"ape size 60%":        apeFooter(len(audio)*6/10, 0, false),
+		"ape header missing":  append(append([]byte{}, item...), apeFooter(len(item)+32, 1, true)...),
+		"ape items too short": append(append([]byte{}, item...), apeFooter(len(item)+32+40, 1, false)...),
+		"ape wrong count":     append(append([]byte{}, item...), apeFooter(len(item)+32, 3, false)...),
+		"lyrics size 999999":  []byte("999999LYRICS200"),
+		"lyrics no begin":     append([]byte("XXXXXXXXXXXhi"), []byte("000013LYRICS200")...),
+	} {
+		p := filepath.Join(t.TempDir(), "x.mp3")
+		if err := os.WriteFile(p, append(append([]byte{}, audio...), tail...), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		f, _ := os.Open(p)
+		_, err := mp3TrailerStart(f)
+		f.Close()
+		if !errors.Is(err, ErrUnsupported) {
+			t.Errorf("%s: %v, want ErrUnsupported", name, err)
+		}
+		before, _ := os.ReadFile(p)
+		if werr := Write(p, Tags{KeyTitle: {"x"}}, WriteOptions{}); !errors.Is(werr, ErrUnsupported) {
+			t.Errorf("%s: Write %v, want ErrUnsupported", name, werr)
+		}
+		if after, _ := os.ReadFile(p); !bytes.Equal(before, after) {
+			t.Errorf("%s: a refused write changed the file", name)
+		}
+	}
+}
+
 func TestUnknownFormat(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "notes.flac")
 	if err := os.WriteFile(p, []byte("just some text, not audio"), 0o644); err != nil {

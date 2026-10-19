@@ -252,26 +252,84 @@ func mp3TrailerStart(f *os.File) (int64, error) {
 		case string(read(end-128, 3)) == "TAG":
 			end -= 128
 		case string(read(end-9, 9)) == "LYRICS200":
+			// A Lyrics3v2 tag: its size (6 digits) counts from "LYRICSBEGIN" to just before
+			// the size field. Believed only when "LYRICSBEGIN" is really there: a size we
+			// trusted blindly would have the writer cut audio off the file.
 			sz := read(end-15, 6)
 			n := parseLeadingInt(string(sz))
-			if len(sz) != 6 || n <= 0 {
-				return end, nil
+			start := end - 15 - int64(n)
+			if len(sz) != 6 || n < 11 || start < 0 || string(read(start, 11)) != "LYRICSBEGIN" {
+				return 0, fmt.Errorf("%w: a Lyrics3 tag that doesn't hold together", ErrUnsupported)
 			}
-			end -= int64(n) + 15
+			end = start
 		case string(read(end-32, 8)) == "APETAGEX":
-			footer := read(end-32, 32)
-			n := int64(binary.LittleEndian.Uint32(footer[12:16])) // items + footer
-			if binary.LittleEndian.Uint32(footer[20:24])&(1<<31) != 0 {
-				n += 32 // header present
+			start, err := apeTagStart(read, end)
+			if err != nil {
+				return 0, err
 			}
-			if n < 32 || n > end {
-				return 0, fmt.Errorf("%w: bad APE tag size", ErrUnsupported)
-			}
-			end -= n
+			end = start
 		default:
 			return end, nil
 		}
 	}
+}
+
+// apeTagStart checks the APEv2 tag whose footer ends at end and returns where the tag
+// begins. Its size is believed only when the tag holds together: with a header, the header
+// is at the start the size gives; without one, the items the footer counts run exactly up
+// to the footer. Anything else (a truncated or corrupt tag, a stray "APETAGEX" in the
+// audio) is ErrUnsupported: the file is left as it is rather than cut where a bad size says.
+func apeTagStart(read func(off int64, n int) []byte, end int64) (int64, error) {
+	bad := func(why string) (int64, error) {
+		return 0, fmt.Errorf("%w: an APE tag that doesn't hold together (%s)", ErrUnsupported, why)
+	}
+	footer := read(end-32, 32)
+	if len(footer) != 32 {
+		return bad("no footer")
+	}
+	size := int64(binary.LittleEndian.Uint32(footer[12:16])) // items + footer
+	count := binary.LittleEndian.Uint32(footer[16:20])
+	hasHeader := binary.LittleEndian.Uint32(footer[20:24])&(1<<31) != 0
+	if size < 32 || size > end {
+		return bad("size")
+	}
+	itemsStart := end - size
+	start := itemsStart
+	if hasHeader {
+		start -= 32
+		if start < 0 || string(read(start, 8)) != "APETAGEX" {
+			return bad("no header where the size points")
+		}
+	}
+	// Walk the items: each is a 4-byte value size, 4-byte flags, a NUL-ended key and the
+	// value; together they must end exactly at the footer.
+	pos, itemsEnd := itemsStart, end-32
+	for i := uint32(0); i < count; i++ {
+		hdr := read(pos, 8)
+		if len(hdr) != 8 {
+			return bad("item header")
+		}
+		vlen := int64(binary.LittleEndian.Uint32(hdr[0:4]))
+		pos += 8
+		keyEnd := int64(-1)
+		for k := pos; k < itemsEnd && k < pos+256; k++ {
+			if b := read(k, 1); len(b) == 1 && b[0] == 0 {
+				keyEnd = k
+				break
+			}
+		}
+		if keyEnd < 0 {
+			return bad("item key")
+		}
+		pos = keyEnd + 1 + vlen
+		if pos > itemsEnd {
+			return bad("item size")
+		}
+	}
+	if pos != itemsEnd {
+		return bad("items don't end at the footer")
+	}
+	return start, nil
 }
 
 // stripMP3Trailers truncates trailing ID3v1/Lyrics3/APE tags from f.

@@ -287,6 +287,14 @@ func (j *Job) verify(ctx context.Context, it Item, tags audiotag.Tags, cover *au
 		if !same {
 			return fmt.Errorf("%w: the audio data changed", ErrVerify)
 		}
+		// A FLAC's STREAMINFO (sample count, the decoded MD5) and SEEKTABLE describe its
+		// frames and must come through the write unchanged too.
+		if a, aerr := audiotag.FLACStreamBlocks(it.Source); aerr == nil {
+			b, berr := audiotag.FLACStreamBlocks(it.Staged)
+			if berr != nil || !bytes.Equal(a, b) {
+				return fmt.Errorf("%w: the FLAC stream information changed", ErrVerify)
+			}
+		}
 		return nil
 	}
 	if j.d.AudioHash == nil {
@@ -390,17 +398,19 @@ func (j *Job) Place(i int) error {
 		return err
 	}
 	if _, err := os.Lstat(it.Final); errors.Is(err, fs.ErrNotExist) {
+		// Saved first, so a crash after the move (the copy's name gone, the file at its
+		// final path) reads as placed, not as a copy never made.
+		if err := j.set(i, func(it *Item) { it.State = Placing }); err != nil {
+			return err
+		}
 		if err := hook(); err != nil {
 			return err
 		}
 		if err := moveNoClobber(it.Staged, it.Final); err != nil {
+			_ = j.set(i, func(it *Item) { it.State = Verified })
 			return err
 		}
-		if err := j.set(i, func(it *Item) { it.State = Placed }); err != nil {
-			return err
-		}
-		j.retire(j.Items()[i])
-		return nil
+		return j.placed(i)
 	} else if err != nil {
 		return err
 	}
@@ -560,6 +570,10 @@ func (j *Job) Settle(i int) error {
 			return j.placed(i)
 		}
 		return j.restore(i)
+	case Placing:
+		if movedIn(it) {
+			return j.placed(i)
+		}
 	}
 	if j.m.Kind != KindRename {
 		j.dropTemp(it)
@@ -571,20 +585,50 @@ func (j *Job) Settle(i int) error {
 // landed reports whether item it's new file is at its final path: the same file as its
 // temporary name or staged copy, or — both of ours gone — whatever is there now, which the
 // final move put there (nothing else writes a track's path in between).
+//
+// "The same file" is the same inode, or — where the staging folder and the album folder
+// can't share a hard link (mergerfs, a separately mounted album folder), so the new file
+// arrived as a copy — the same bytes.
 func landed(it Item) bool {
-	fi, err := os.Lstat(it.Final)
-	if err != nil {
+	if !exists(it.Final) {
 		return false
 	}
 	for _, p := range []string{it.Temp, it.Staged} {
-		if p == "" {
+		if p == "" || !exists(p) {
 			continue
 		}
-		if pi, err := os.Lstat(p); err == nil {
-			return os.SameFile(fi, pi)
-		}
+		return sameFile(it.Final, p) || sameContent(it.Final, p)
 	}
 	return true
+}
+
+// movedIn reports whether a plain move (Placing) happened: the file is at its final path
+// and the staged copy is gone, or still there as the same file or the same bytes (a copy
+// across drives whose old name wasn't removed yet).
+func movedIn(it Item) bool {
+	if !exists(it.Final) {
+		return false
+	}
+	if !exists(it.Staged) {
+		return true
+	}
+	return sameFile(it.Final, it.Staged) || sameContent(it.Final, it.Staged)
+}
+
+// sameContent reports whether two files hold the same bytes (sizes first, then a hash of
+// each). Recovery and Settle only: it reads both files whole.
+func sameContent(a, b string) bool {
+	ai, aerr := os.Stat(a)
+	bi, berr := os.Stat(b)
+	if aerr != nil || berr != nil || ai.Size() != bi.Size() {
+		return false
+	}
+	ha, err := hashRange(a, 0, ai.Size())
+	if err != nil {
+		return false
+	}
+	hb, err := hashRange(b, 0, bi.Size())
+	return err == nil && ha == hb
 }
 
 // restore brings a binned file back to where it was, then drops our copies.

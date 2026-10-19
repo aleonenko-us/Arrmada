@@ -49,7 +49,28 @@ type Service struct {
 	now  func() time.Time
 	free func(path string) (diskspace.Usage, bool)
 	same func(a, b string) (same, ok bool)
+	// held lists bin paths something still needs (a music staging job kept for recovery
+	// holds the file it replaced, to put back): never purged, emptied or deleted.
+	held func() map[string]bool
 }
+
+// SetHeld wires the paths that must stay in the bins (see Service.held).
+func (s *Service) SetHeld(fn func() map[string]bool) { s.held = fn }
+
+// heldNow is the held paths, cleaned for comparison.
+func (s *Service) heldNow() map[string]bool {
+	if s.held == nil {
+		return nil
+	}
+	out := map[string]bool{}
+	for p := range s.held() {
+		out[filepath.Clean(p)] = true
+	}
+	return out
+}
+
+// ErrHeld refuses deleting a bin item a pending job still needs.
+var ErrHeld = errors.New("that file is held for an interrupted music import that will put it back — it can't be deleted yet")
 
 // New builds the manager over one bin. dir is the resolved recycle directory ("" when
 // recycling is disabled).
@@ -213,6 +234,11 @@ func (s *Service) walk(bins []bin) (items []entry, staleTemps []string) {
 				mod := fi.ModTime()
 				if m := library.ReadRecycleMeta(p); m.Deleted > 0 {
 					mod = time.Unix(m.Deleted, 0)
+				} else if ct := changeTime(fi); ct.After(mod) {
+					// No sidecar: a file with other names (a seeding torrent's) keeps its old
+					// mtime when binned, but moving it into the bin set its change time —
+					// the later of the two is the nearest to when it was deleted.
+					mod = ct
 				}
 				items = append(items, entry{path: p, size: fi.Size(), mod: mod, bin: i})
 			}
@@ -329,6 +355,9 @@ func (s *Service) DeleteItem(ctx context.Context, id string) error {
 	full, b, err := s.resolve(id)
 	if err != nil {
 		return err
+	}
+	if s.heldNow()[filepath.Clean(full)] {
+		return ErrHeld
 	}
 	if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
 		return err
@@ -604,6 +633,24 @@ func (s *Service) Empty(ctx context.Context, binKey string) (int64, error) {
 	}
 	var freed int64
 	items, _ := s.walk(bins)
+	held := s.heldNow()
+	if len(held) > 0 {
+		// Item by item, leaving what an interrupted music import still needs.
+		for _, e := range items {
+			if held[filepath.Clean(e.path)] {
+				s.log.Warn("recyclebin: kept a file an interrupted music import needs back", "file", e.path)
+				continue
+			}
+			if removeItem(e.path) == nil {
+				freed += e.size
+			}
+		}
+		for _, b := range bins {
+			pruneEmptyDirs(b.Dir)
+		}
+		s.log.Info("recyclebin: freed", "freed_mb", freed>>20)
+		return freed, nil
+	}
 	for _, e := range items {
 		freed += e.size
 	}
@@ -638,6 +685,16 @@ func (s *Service) Enforce(ctx context.Context) {
 		return
 	}
 	items, stale := s.walk(bins)
+	if held := s.heldNow(); len(held) > 0 {
+		// What an interrupted music import still needs back is neither aged out nor capped.
+		keep := items[:0]
+		for _, e := range items {
+			if !held[filepath.Clean(e.path)] {
+				keep = append(keep, e)
+			}
+		}
+		items = keep
+	}
 	for _, p := range stale {
 		if err := os.Remove(p); err == nil {
 			s.log.Info("recyclebin: cleared an unfinished copy left by an interrupted delete", "file", p)
