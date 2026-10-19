@@ -262,7 +262,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   folder, such as `<TV folder>/S13/Season 12/`, instead of the show's own folder. This
   release stops that. To put files back by hand:
   1. Look directly inside each TV folder for folders named like a season (`S01`, `S13`,
-     `Stagione 2`…). The files in them are named after their show.
+     `Stagione 2`…). The files in them are named after their show. Also check for any
+     other folder there that doesn't belong to a show: season folders with less common
+     names (`Book 1`, `Part 2`) could be misread the same way.
   2. Move each file into its show's own season folder. If that episode is already there,
      keep the copy you want and delete the other.
   3. On the show's page, use **Refresh & rescan**. Delete the season-named folders once
@@ -272,6 +274,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
   The next release adds **Put misplaced files back** to the show's page, which does this for
   you with a preview, and a health check listing the shows affected.
+- **A show whose own folder is named like a season** (`Specials`, `S1`, `Series 7`) can't
+  take new episodes: they wait in Needs you. Rename its folder (adding the year is enough),
+  then rescan the show.
 
 ### Fixed
 
