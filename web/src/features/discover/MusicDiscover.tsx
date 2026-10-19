@@ -5,7 +5,7 @@ import { Button, Modal } from "../../ui";
 import { PosterCard } from "./PosterCard";
 import { RailArrows, RailStrip, useRail } from "./rail";
 
-const GENRES = ["Rock", "Pop", "Hip-hop", "Electronic", "Jazz", "Classical", "Metal", "Folk", "R&B", "Country"];
+const DEFAULT_GENRES = ["Rock", "Pop", "Hip-hop", "Electronic", "Jazz", "Classical", "Metal", "Folk", "R&B", "Country"];
 
 export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
   const navigate = useNavigate();
@@ -22,6 +22,16 @@ export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
   useEffect(() => {
     api.artists().then(setArtists).catch(() => setArtists([]));
   }, []);
+
+  // Put styles already represented in this household first, so the browse controls
+  // reflect the actual library instead of starting from a generic genre directory.
+  const genreCounts = artists.flatMap((artist) => artist.genres ?? []).reduce<Record<string, number>>((counts, genre) => {
+    const label = genre.trim().replace(/\b\w/g, (letter) => letter.toUpperCase());
+    if (label) counts[label] = (counts[label] ?? 0) + 1;
+    return counts;
+  }, {});
+  const libraryGenres = Object.entries(genreCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 8);
+  const genres = libraryGenres.length > 0 ? libraryGenres.map(([genre]) => genre) : DEFAULT_GENRES;
 
   const runSearch = async (q: string, title: string) => {
     setBusy(true);
@@ -93,13 +103,16 @@ export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
       {artists.length > 0 && <LibraryArtists artists={artists} onOpen={(id) => navigate(`/music/${id}`)} />}
 
       <section aria-label="Browse artists by genre">
-        <h2 className="m-0 mb-2.5 text-lg font-bold">Browse by genre</h2>
+        <div className="mb-2.5">
+          <h2 className="m-0 text-lg font-bold">Explore by style</h2>
+          <p className="mb-0 mt-1 text-sm text-ink-dim">{libraryGenres.length ? "Genres from your artists, with more popular styles first." : "Choose a genre to browse artists."}</p>
+        </div>
         <div className="flex flex-wrap gap-2">
-          {GENRES.map((genre) => {
+          {genres.map((genre) => {
             const active = activeGenre === genre;
             return (
               <button key={genre} type="button" aria-pressed={active} disabled={busy} onClick={() => browseGenre(genre)} className="rounded-full px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-60" style={{ background: active ? "var(--accent-soft)" : "var(--panel-2)", border: `1px solid ${active ? "var(--accent-line, var(--line))" : "var(--line)"}`, color: active ? "var(--accent-text)" : "var(--ink-dim)" }}>
-                {genre}
+                {genre}{genreCounts[genre] ? <span className="ml-1.5 opacity-70">{genreCounts[genre]}</span> : null}
               </button>
             );
           })}
@@ -147,7 +160,7 @@ function LibraryArtists({ artists, onOpen }: { artists: Artist[]; onOpen: (id: n
       </div>
       <RailStrip rail={rail}>
         {artists.map((artist) => (
-          <PosterCard key={artist.id} title={artist.name} onOpen={() => onOpen(artist.id)} badge={{ label: "In library", tone: "good" }} art={<ArtistArt name={artist.name} image={artist.image_url} />}>
+          <PosterCard key={artist.id} aspectRatio="1/1" title={artist.name} onOpen={() => onOpen(artist.id)} badge={{ label: "In library", tone: "good" }} art={<ArtistArt name={artist.name} image={artist.image_url} />}>
             <div className="mt-0.5 truncate text-xs text-ink-faint">{artist.genres?.slice(0, 2).join(" · ") || artist.type || "Artist"}</div>
           </PosterCard>
         ))}
@@ -168,10 +181,10 @@ function ArtistResults({ title, results, artists, canRequest, adding, onAdd, onO
         <RailArrows rail={rail} />
       </div>
       <RailStrip rail={rail}>
-        {results.map((artist) => {
+        {results.filter((artist) => artist.name.trim() && !/^(various artists|unknown)$/i.test(artist.name) && artist.type !== "Other").map((artist) => {
           const inLibrary = artists.some((a) => a.mbid === artist.mbid);
           return (
-            <PosterCard key={artist.mbid} title={artist.name} onOpen={() => onOpen(artist)} badge={inLibrary ? { label: "In library", tone: "good" } : null} art={<ArtistArt name={artist.name} />} quick={!inLibrary && canRequest ? { label: "＋ Add artist", busy: adding === artist.mbid, onClick: () => void onAdd(artist) } : null}>
+            <PosterCard key={artist.mbid} aspectRatio="1/1" title={artist.name} onOpen={() => onOpen(artist)} badge={inLibrary ? { label: "In library", tone: "good" } : null} art={<ArtistArt name={artist.name} />} quick={!inLibrary && canRequest ? { label: "＋ Add artist", busy: adding === artist.mbid, onClick: () => void onAdd(artist) } : null}>
               <div className="mt-0.5 truncate text-xs text-ink-faint" title={[artist.disambiguation, artist.type, artist.country].filter(Boolean).join(" · ")}>
                 {[artist.disambiguation, artist.type, artist.country].filter(Boolean).join(" · ") || "Artist"}
               </div>
