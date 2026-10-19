@@ -14,6 +14,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/config"
 	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/libroots"
+	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
 
@@ -312,6 +313,35 @@ func TestMisplacedShows(t *testing.T) {
 		if !strings.Contains(m.Why, "named like a season folder") {
 			t.Errorf("why = %q", m.Why)
 		}
+	}
+}
+
+// The library scan doesn't take a folder named like a season, right in the TV folder, for
+// a show: those hold files misplaced before #56 was fixed.
+func TestScanSkipsSeasonNamedFolders(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	tv := t.TempDir()
+	meta := shelfMeta{shows: map[int]metadata.SeriesDetails{
+		1: {SeriesResult: metadata.SeriesResult{TMDBID: 1, Title: "Bluey", Year: 2020}, Seasons: listing(2)},
+		2: {SeriesResult: metadata.SeriesResult{TMDBID: 2, Title: "Stagione", Year: 2020}, Seasons: listing(2)},
+	}}
+	svc := NewService(st.DB(), meta, tv, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	touchEpisode(t, filepath.Join(tv, "Bluey (2020)", "S01", "Bluey - S01E01.mkv"))
+	touchEpisode(t, filepath.Join(tv, "Stagione 2", "Season 2", "Bluey - S02E01.mkv"))
+	touchEpisode(t, filepath.Join(tv, "S13", "Season 12", "Bluey - S12E01.mkv"))
+	res, err := svc.ScanLibrary(context.Background(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Imported != 1 || len(res.Unmatched) != 0 {
+		t.Fatalf("scan = %+v, want only Bluey", res)
+	}
+	if _, err := svc.repo.GetByTMDB(context.Background(), 2); err == nil {
+		t.Error(`the "Stagione 2" folder was added as the show "Stagione"`)
 	}
 }
 

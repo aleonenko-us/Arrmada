@@ -1831,6 +1831,13 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 			if !e.IsDir() || e.Name() == "" || library.SkipScanDir(e.Name()) {
 				continue // series live in per-show folders; skip the recycle bins and other hidden ones
 			}
+			if s.seasonLike(e.Name()) {
+				// A folder named like a season ("S13", "Stagione 2") right in the TV folder
+				// isn't a show: it's where imports were misplaced before #56 was fixed, and
+				// matching it by name would add its files to whatever show is called that.
+				s.log.Info("series scan: skipped a folder named like a season — not a show", "folder", filepath.Join(root, e.Name()))
+				continue
+			}
 			shows = append(shows, showDir{root, e})
 		}
 	}
