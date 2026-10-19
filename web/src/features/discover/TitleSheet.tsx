@@ -432,7 +432,9 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
               <h3 className="m-0 mb-2.5 text-sm font-bold uppercase tracking-wide text-ink-faint">More like this</h3>
               <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">
                 {similar.map((s) => {
-                  const sBadge = badgeFor(s, ctx.isRequested(s));
+                  const sBadge = s.in_library
+                    ? { label: "In library", tone: "good" as const }
+                    : badgeFor(s, ctx.isRequested(s));
                   return (
                     <button
                       key={`${s.media_type}:${s.tmdb_id}`}
