@@ -101,6 +101,13 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### New
 
+- **Put misplaced files back** (#56). Episode files that v0.3.0 and v0.3.1 imported into a
+  folder named like a season right inside the TV folder (`<TV folder>/S13/Season 12/…`) are
+  listed on their show's page, with a preview of where each goes. Nothing is ever replaced:
+  where the show's folder already has the episode, the misplaced copy goes to the recycle
+  bin only when it's identical or lower quality, and otherwise both are left for you.
+  Emptied folders are removed, and the show's History records what moved. Settings →
+  Status lists every show affected.
 - **KEPUB for Kobo.** EPUBs can be downloaded as KEPUB from My shelf and the book page
   ("Download for Kobo (KEPUB)"), and the OPDS catalogue offers a KEPUB link beside each
   EPUB. The KEPUB is made on download from a copy (the library file is never changed) and
@@ -244,6 +251,43 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 - `.env` is `0600` on new installs, and edits keep its mode.
 - The release workflow's third-party action is pinned to a commit, and CI's token is
   read-only.
+
+## [0.3.2] - 2026-10-20
+
+### Before you update
+
+- **Check your TV folders for episodes in the wrong place (#56).** v0.3.0 and v0.3.1 could
+  put new episodes and upgrades of a show whose season folders aren't named "Season N"
+  (`S01`, `Stagione 1`, `Saison 1`…) into a folder named like a season right inside the TV
+  folder, such as `<TV folder>/S13/Season 12/`, instead of the show's own folder. This
+  release stops that. To put files back by hand:
+  1. Look directly inside each TV folder for folders named like a season (`S01`, `S13`,
+     `Stagione 2`…). The files in them are named after their show.
+  2. Move each file into its show's own season folder. If that episode is already there,
+     keep the copy you want and delete the other.
+  3. On the show's page, use **Refresh & rescan**. Delete the season-named folders once
+     they're empty.
+  4. If every file of a show was moved, delete the show in Arrmada **keeping its files**,
+     put the files back, and add it again with a library scan.
+
+  The next release adds **Put misplaced files back** to the show's page, which does this for
+  you with a preview, and a health check listing the shows affected.
+
+### Fixed
+
+- **TV episodes no longer import into the wrong folder when season folders aren't named
+  "Season N"** (#56). A show's folder is now found from the TV folder it's in, so `S01`,
+  `Stagione 1`, `Saison 1`, `Staffel 1`, `Temporada 1`, `Series 1`, `Season.01` and your own
+  season folder template all work, and shows named like a number ("1992", "24") stay
+  themselves. New episodes join the season folder the show already has (`S13`) rather than
+  a new `Season 13` beside it.
+- **An upgrade no longer makes a second folder for a show** whose season folders are named
+  `S01` (for example by an `S{season00}` season folder template). This was the other half of
+  #56, seen with The Pitt.
+- **Arrmada never imports into a folder other shows' files are in, or one named like a
+  season.** It used to warn in the log and import anyway. Now the download waits in
+  Activity → Needs you saying "Can't tell which folder <show> lives in". Rescan, Rename and
+  the duplicate check refuse such a folder too.
 
 ## [0.3.1] - 2026-10-18
 
@@ -453,6 +497,7 @@ The first tagged release (early development).
   `update.sh` with automatic rollback.
 
 [Unreleased]: https://github.com/tristenlammi/Arrmada/compare/v0.3.1...HEAD
+[0.3.2]: https://github.com/tristenlammi/Arrmada/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/tristenlammi/Arrmada/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/tristenlammi/Arrmada/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/tristenlammi/Arrmada/compare/v0.1.0...v0.2.0
