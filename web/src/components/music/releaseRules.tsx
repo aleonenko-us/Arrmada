@@ -17,7 +17,7 @@ const FOUND_WORDS: Record<string, string> = {
 
 export function foundWords(foundAs: string | undefined, monitored: boolean): string {
   if (!foundAs) return "";
-  if (foundAs === "new") return monitored ? "New release, wanted" : "New release; this artist's new releases are listed only";
+  if (foundAs === "new") return monitored ? "New release, wanted" : "New release, not wanted";
   return FOUND_WORDS[foundAs] ?? "";
 }
 
