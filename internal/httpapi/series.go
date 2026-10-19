@@ -1069,6 +1069,10 @@ func (a *api) handleSeriesManualImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.deps.Automation.ManualImportSeries(r.Context(), id, src); err != nil {
+		if errors.Is(err, series.ErrNoShowFolder) {
+			a.writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}

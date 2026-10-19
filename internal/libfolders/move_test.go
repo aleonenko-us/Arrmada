@@ -44,8 +44,9 @@ func (f *fixture) mover(t *testing.T, bin string) (*Mover, *scans) {
 	t.Helper()
 	sc := &scans{}
 	return &Mover{
-		DB: f.st.DB(), Folders: f.svc, Bin: library.SingleBin(bin), Scan: sc.add, ShowFolder: showFolder,
-		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		DB: f.st.DB(), Folders: f.svc, Bin: library.SingleBin(bin), Scan: sc.add,
+		ShowFolders: func(context.Context, int64) func(string) string { return showFolder },
+		Log:         slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}, sc
 }
 
@@ -291,6 +292,42 @@ func TestMoveRefusesASeasonNamedShowFolder(t *testing.T) {
 	}
 	readFile(t, own)
 	readFile(t, lost)
+}
+
+// A folder holding other shows' folders — a category folder like /tv/Kids, with a show
+// Arrmada doesn't track beside this one — is never moved whole.
+func TestMoveRefusesAFolderOfShows(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	anime := f.add(t, MediaSeries, "anime", RuleAnime)
+	kids := filepath.Join(f.tv, "Kids")
+	ep := writeFile(t, filepath.Join(kids, "Bluey", "Bluey - S01E01.mkv"), "e1")
+	untracked := writeFile(t, filepath.Join(kids, "Peppa", "Season 1", "Peppa - S01E01.mkv"), "p1")
+	db := f.st.DB()
+	if _, err := db.Exec(`INSERT INTO series (id, tmdb_id, title) VALUES (1, 82728, 'Bluey')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO episodes (series_id, season_number, episode_number, has_file, file_path) VALUES (1, 1, 1, 1, ?)`, ep); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := f.mover(t, filepath.Join(f.base, "bin"))
+	// Whatever reads the show's folder as the category folder, the move is refused.
+	m.ShowFolders = func(context.Context, int64) func(string) string { return func(string) string { return kids } }
+	if _, err := m.Move(ctx, MediaSeries, 1, anime.ID, nil); !errors.Is(err, ErrBadPath) || !strings.Contains(err.Error(), "more than one show") {
+		t.Fatalf("move = %v, want refused", err)
+	}
+	readFile(t, ep)
+	readFile(t, untracked)
+
+	// Two flat show folders side by side count the same.
+	if err := os.RemoveAll(filepath.Join(kids, "Peppa")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(kids, "Paw Patrol", "Paw Patrol - S01E01.mkv"), "pp")
+	if _, err := m.Move(ctx, MediaSeries, 1, anime.ID, nil); !errors.Is(err, ErrBadPath) {
+		t.Fatalf("move with two flat show folders = %v, want refused", err)
+	}
+	readFile(t, ep)
 }
 
 func TestMoveRefusals(t *testing.T) {

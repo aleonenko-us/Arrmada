@@ -139,6 +139,25 @@ func TestImportIntoSharedFolderGoesToReview(t *testing.T) {
 	}
 }
 
+// A show kept inside a category folder (<TV>/Anime/Show) gets its next episode in its own
+// season folder, not a "Season 1" made in the category folder.
+func TestImportIntoAShowInsideACategoryFolder(t *testing.T) {
+	h := newLifecycleHarness(t)
+	tv := h.c.imp.TVRoot()
+	own := filepath.Join(tv, "Anime", "Show")
+	setEpisodeFile(t, h.c, h.seriesID, 1, 1, libFile(t, filepath.Join(own, "Season 1", "Show - S01E01.mkv")), "Show.S01E01")
+	const name = "Show.S01E02.1080p.WEB-DL-GRP"
+	dl := h.download(t, name, name+".mkv")
+	s, _ := h.c.series.Get(h.ctx, h.seriesID)
+	if placed, _, _, failed := h.c.importSeriesInto(h.ctx, s, dl, forceAll); failed != 0 || len(placed) != 1 {
+		t.Fatalf("placed %v failed %d", placed, failed)
+	}
+	if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 2); filepath.Dir(cur.Path) != filepath.Join(own, "Season 1") {
+		t.Errorf("S01E02 at %s, want in %s", cur.Path, filepath.Join(own, "Season 1"))
+	}
+	noDir(t, filepath.Join(tv, "Anime", "Season 1"), "the import went into the category folder")
+}
+
 // Moving a misplaced file back by hand and rescanning is enough: the rescan finds it in
 // the show's folder, and the next import goes there.
 func TestRescanAfterMovingMisplacedFileBackByHand(t *testing.T) {
