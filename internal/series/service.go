@@ -2103,11 +2103,25 @@ func (s *Service) SupersedeEpisodeFile(ctx context.Context, seriesID int64, seas
 	return nil
 }
 
-// AdoptFoundEpisodeFile records the file a rescan found for an episode. A different file
-// (another path and size) drops the release and pre-conversion baseline recorded for the
-// one it replaces; the same file, even renamed outside Arrmada, keeps them.
+// AdoptFoundEpisodeFile records the file a rescan found for an episode. The release and
+// pre-conversion baseline recorded for the episode's file stay only for that same file: the
+// same path, or — renamed outside Arrmada — a new name with the same size whose old name is
+// gone from disk and which states the release's own resolution or group without
+// contradicting it. Episode rows keep no modification time, so that name check stands in
+// for one: a same-size file whose name says nothing loses the release. Anything else is
+// another file, and they're cleared; clearing is the safe direction.
 func (s *Service) AdoptFoundEpisodeFile(ctx context.Context, seriesID int64, season, episode int, path string, size int64) error {
-	return s.repo.AdoptFoundEpisodeFile(ctx, seriesID, season, episode, path, size)
+	keepFrom := ""
+	if cur := s.repo.CurrentEpisodeFile(ctx, seriesID, season, episode); cur.Path != "" && cur.Path != path &&
+		cur.SizeBytes > 0 && cur.SizeBytes == size {
+		_, err := os.Lstat(cur.Path)
+		fits := cur.SourceRelease == "" ||
+			library.RenameSource{FileName: filepath.Base(path), SourceRelease: cur.SourceRelease}.ReleaseConfirmed()
+		if errors.Is(err, os.ErrNotExist) && fits {
+			keepFrom = cur.Path
+		}
+	}
+	return s.repo.AdoptFoundEpisodeFile(ctx, seriesID, season, episode, path, size, keepFrom)
 }
 
 // EpisodeExists reports whether the series' metadata actually has this episode.

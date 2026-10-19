@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/tristenlammi/arrmada/internal/library"
@@ -168,7 +169,7 @@ func TestSeriesRescanAdoptingRenamedFileKeepsItsRelease(t *testing.T) {
 	if err := f.c.series.SetEpisodeSourceRelease(f.ctx, f.id, 1, 1, rel); err != nil {
 		t.Fatal(err)
 	}
-	renamed := filepath.Join(dir, "Show S01E01 renamed by hand.mkv")
+	renamed := filepath.Join(dir, "Show S01E01 renamed by hand 1080p.mkv")
 	if err := os.Rename(old, renamed); err != nil {
 		t.Fatal(err)
 	}
@@ -177,6 +178,137 @@ func TestSeriesRescanAdoptingRenamedFileKeepsItsRelease(t *testing.T) {
 	}
 	if p, got := episodeRow(t, f, 1, 1); p != renamed || got != rel {
 		t.Fatalf("after rescan: %q / release %q, want the renamed file keeping %q", p, got, rel)
+	}
+}
+
+// A different file that happens to be the same size, under a name that says nothing, isn't
+// taken for the old file renamed: episode rows keep no modification time, so a name must
+// confirm the release (its resolution or group) for it to stay.
+func TestSeriesRescanSameSizeOtherFileDropsItsRelease(t *testing.T) {
+	f := newRenameFixture(t, [2]int{1, 1})
+	withTokenScheme(f)
+	dir := filepath.Join(f.root, f.folder, "Season 1")
+	old := filepath.Join(dir, "Show - S01E01 [1080p WEB-DL][x264]-OLDGRP.mkv")
+	f.place(t, 1, 1, old, "old")
+	episodeSized(t, old)
+	if err := f.c.series.MarkEpisodeImported(f.ctx, f.id, 1, 1, old, 200<<20); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.c.series.SetEpisodeSourceRelease(f.ctx, f.id, 1, 1, "Show.S01E01.1080p.WEB-DL.x264-OLDGRP"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(old); err != nil {
+		t.Fatal(err)
+	}
+	newf := filepath.Join(dir, "Show S01E01.mkv")
+	if err := os.WriteFile(newf, []byte("different content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	episodeSized(t, newf)
+	if err := f.c.RescanSeries(f.ctx, f.id); err != nil {
+		t.Fatal(err)
+	}
+	if p, rel := episodeRow(t, f, 1, 1); p != newf || rel != "" {
+		t.Fatalf("after rescan: %q / release %q, want the new file with no release", p, rel)
+	}
+	items, err := f.c.SeriesRenamePreview(f.ctx, f.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if strings.Contains(it.To, "OLDGRP") || strings.Contains(it.To, "WEB-DL") {
+			t.Fatalf("preview wrote the old file's facts: %s", filepath.Base(it.To))
+		}
+	}
+}
+
+// The default scheme's own WEB-DL output ("... - 1080p WEB-DL") must not read as group
+// "DL": the release supplies the group.
+func TestSeriesRenameDefaultWebDLName(t *testing.T) {
+	f := newRenameFixture(t, [2]int{1, 2})
+	withTokenScheme(f)
+	dir := filepath.Join(f.root, f.folder, "Season 1")
+	f.place(t, 1, 2, filepath.Join(dir, "Show - S01E02 - The Title - 1080p WEB-DL.mkv"), "x")
+	if err := f.c.series.SetEpisodeSourceRelease(f.ctx, f.id, 1, 2, "Show.S01E02.1080p.WEB-DL.DDP5.1.H.264-NTb"); err != nil {
+		t.Fatal(err)
+	}
+	items, err := f.c.SeriesRenamePreview(f.ctx, f.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "Show - S01E02 [1080p WEB-DL][x264]-NTb.mkv"; len(items) != 1 || filepath.Base(items[0].To) != want {
+		t.Fatalf("preview = %+v, want %q", items, want)
+	}
+}
+
+// Preview, apply, preview again: nothing left to rename, under every scheme. Files with a
+// recorded release only: a file with none, under a {group} with no dash before it, can't
+// read its group back from the name it was given (as on main), so it isn't asserted here.
+func TestSeriesRenameSettlesAfterApply(t *testing.T) {
+	schemes := map[string]string{
+		"default": library.DefaultEpisodeFile,
+		"tokens":  "{title} - {episode} [{quality}][{codec}]-{group}",
+		"sonarr":  "{title} - {episode} - {episodetitle} {quality} {codec}-{group}",
+		"q-only":  "{title} - {episode} - {quality}",
+		"no dash": "{title} - {episode} - {resolution} {source} {codec} {group}",
+	}
+	files := []struct {
+		e             int
+		name, release string
+		double        bool
+	}{
+		{1, "Show - S01E01-E02 - Pilot - 1080p WEB-DL.mkv", "Show.S01E01E02.1080p.WEB-DL.DDP5.1.H.264-NTb", true},
+		{3, "Show - S01E03.mkv", "Show.2020.S01.1080p.WEB-DL.DDP5.1.H.264-NTb", false},
+		{5, "Show - S01E05 - Bluray-1080p.mkv", "Show.S01E05.1080p.BluRay.x265-x0r", false},
+		{6, "Show - S01E06 [2160p WEB-DL][x265]-FLUX.mkv", "Show.S01E06.2160p.WEB-DL.DDP5.1.HDR.H.265-FLUX", false},
+		{7, "Show - S01E07 - 1080p-3L.mkv", "Show.S01E07.1080p.HDTV.x264-3L", false},
+		{8, "Show - S01E08-E09.mkv", "Show.S01.1080p.BluRay.x264-SPARKS", true},
+	}
+	for label, scheme := range schemes {
+		t.Run(label, func(t *testing.T) {
+			f := newRenameFixture(t, [2]int{1, 1}, [2]int{1, 2}, [2]int{1, 3}, [2]int{1, 5}, [2]int{1, 6}, [2]int{1, 7}, [2]int{1, 8}, [2]int{1, 9})
+			f.c.imp.SetSeriesNaming(renameSeriesNaming{library.SeriesNaming{
+				Folder: "{title} ({year})", SeasonFolder: "Season {season}", EpisodeFile: scheme,
+			}})
+			dir := filepath.Join(f.root, f.folder, "Season 1")
+			for i, x := range files {
+				p := filepath.Join(dir, x.name)
+				body := strings.Repeat("x", 10+i) // distinct sizes
+				f.place(t, 1, x.e, p, body)
+				eps := []int{x.e}
+				if x.double {
+					if err := f.c.series.MarkEpisodeImported(f.ctx, f.id, 1, x.e+1, p, int64(len(body))); err != nil {
+						t.Fatal(err)
+					}
+					eps = append(eps, x.e+1)
+				}
+				for _, ep := range eps {
+					if err := f.c.series.SetEpisodeSourceRelease(f.ctx, f.id, 1, ep, x.release); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			items, err := f.c.SeriesRenamePreview(f.ctx, f.id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, it := range items {
+				b := strings.TrimSuffix(filepath.Base(it.To), ".mkv")
+				if strings.HasSuffix(b, "]-DL") || strings.HasSuffix(b, " -DL") || strings.HasSuffix(b, " DL") {
+					t.Errorf("a WEB-DL tail became a group: %s", filepath.Base(it.To))
+				}
+			}
+			if _, err := f.c.SeriesRename(f.ctx, f.id, items); err != nil {
+				t.Fatal(err)
+			}
+			again, err := f.c.SeriesRenamePreview(f.ctx, f.id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, it := range again {
+				t.Errorf("second preview: %s → %s %s", filepath.Base(it.From), filepath.Base(it.To), it.Conflict)
+			}
+		})
 	}
 }
 

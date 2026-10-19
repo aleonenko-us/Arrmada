@@ -1,6 +1,7 @@
 package library
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -43,7 +44,7 @@ type RenameSource struct {
 //     names no episode), and the title from the library's metadata.
 func (s RenameSource) Release() parser.Release {
 	file := parser.Parse(s.FileName)
-	file.Group = nameGroup(file.Group)
+	file.Group = nameGroup(s.FileName, file)
 	rel := file
 	if src := strings.TrimSpace(s.SourceRelease); src != "" {
 		if r := parser.Parse(src); s.describes(r, file) {
@@ -54,6 +55,34 @@ func (s RenameSource) Release() parser.Release {
 		rel.Codec = c
 	}
 	return rel
+}
+
+// ReleaseFits reports whether the recorded release can be about the file: there is one, and
+// nothing the file's name (or probed resolution) states contradicts it. A rescan that finds
+// a file under a new name asks this before letting it keep the old record's release.
+func (s RenameSource) ReleaseFits() bool {
+	src := strings.TrimSpace(s.SourceRelease)
+	if src == "" {
+		return false
+	}
+	file := parser.Parse(s.FileName)
+	file.Group = nameGroup(s.FileName, file)
+	return s.describes(parser.Parse(src), file)
+}
+
+// ReleaseConfirmed is ReleaseFits where the file's name also states the release's own
+// resolution or group: positive evidence, for a caller with no other way to tell the file
+// is the one the release was recorded for.
+func (s RenameSource) ReleaseConfirmed() bool {
+	if !s.ReleaseFits() {
+		return false
+	}
+	file, r := parser.Parse(s.FileName), parser.Parse(strings.TrimSpace(s.SourceRelease))
+	if g := nameGroup(s.FileName, file); g != "" && strings.EqualFold(g, r.Group) {
+		return true
+	}
+	res := file.StatedResolution()
+	return res != parser.ResUnknown && res == r.StatedResolution()
 }
 
 // describes reports whether release r can be about this file: nothing the file's name
@@ -84,17 +113,41 @@ func (s RenameSource) describes(r, file parser.Release) bool {
 // reNumbering is a "group" that is really an episode or part number.
 var reNumbering = regexp.MustCompile(`(?i)^(s\d+)?e\d+$|^\d+$`)
 
-// nameGroup is the release group a library file's name states, or "" when what the parser
-// read as one is part of the name's other tokens: library names put a dash before the
-// quality ("Bluray-1080p", Radarr's style) or a second episode ("S01E01-E02"), which reads
-// as "-GROUP". Trusted, such a group would both reject a true release and be written back
-// into the new name.
-func nameGroup(g string) string {
-	if g == "" || reNumbering.MatchString(g) {
+// tagWords are release tags that end a name after a dash without being a group: the tail
+// of "WEB-DL" (the default scheme's own output, "Tenet (2020) - 1080p WEB-DL"), and picture,
+// audio and scene tags the parser reads elsewhere in a name.
+var tagWords = map[string]bool{
+	"dl": true, "rip": true, "ray": true, "10bit": true, "8bit": true, "12bit": true, "sdr": true,
+	"hdr": true, "hdr10": true, "hdr10plus": true, "dv": true, "dovi": true, "hlg": true, "hd": true,
+	"uhd": true, "remux": true, "proper": true, "repack": true, "real": true, "internal": true,
+	"limited": true, "multi": true, "dual": true, "dubbed": true, "subbed": true, "complete": true,
+	"extended": true, "uncut": true, "unrated": true, "imax": true, "remastered": true,
+}
+
+// nameGroup is the release group library file name (parsed as file) states, or "" when
+// what the parser read as one is really part of the name's other tokens. Library names end
+// in a dash before the quality ("Bluray-1080p", Radarr's style), a second episode
+// ("S01E01-E02"), or a tag ("1080p WEB-DL"), and each reads as "-GROUP". Trusted, such a
+// group would both reject a true release and be written back into the new name.
+func nameGroup(name string, file parser.Release) string {
+	g := file.Group
+	if g == "" || reNumbering.MatchString(g) || tagWords[strings.ToLower(g)] {
 		return ""
 	}
-	if p := parser.Parse("x " + g); p.Resolution != parser.ResUnknown || p.Source != parser.SourceUnknown || p.Codec != parser.CodecUnknown {
+	p := parser.Parse("x " + g)
+	if p.Resolution != parser.ResUnknown || p.Source != parser.SourceUnknown || p.Codec != parser.CodecUnknown ||
+		len(p.HDR) > 0 || len(p.Audio) > 0 || p.Streaming != "" || p.Edition != "" || p.Proper || p.Repack {
 		return ""
+	}
+	// A "group" whose removal changes what else the name says was part of those words.
+	base := strings.TrimSuffix(name, filepath.Ext(name))
+	lower := strings.ToLower(base) // compared by byte offset, so only when lowering kept the length
+	if i := strings.LastIndex(lower, "-"+strings.ToLower(g)); i >= 0 && len(lower) == len(base) && i+1+len(g) <= len(base) {
+		without := parser.Parse(base[:i] + base[i+1+len(g):])
+		if without.Source != file.Source || without.Resolution != file.Resolution ||
+			without.Codec != file.Codec || len(without.Episodes) != len(file.Episodes) {
+			return ""
+		}
 	}
 	return g
 }

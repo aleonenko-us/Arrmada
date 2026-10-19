@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/tristenlammi/arrmada/internal/library"
@@ -193,7 +194,7 @@ func TestRescanAdoptingRenamedFileKeepsItsRelease(t *testing.T) {
 	if err := f.svc.repo.SetSourceRelease(ctx, f.id, rel); err != nil {
 		t.Fatal(err)
 	}
-	media, _ := json.Marshal(MovieFile{Path: f.main, SizeBytes: fi.Size(), Probed: true, MediaVersion: MediaVersion})
+	media, _ := json.Marshal(MovieFile{Path: f.main, SizeBytes: fi.Size(), MtimeUnix: fi.ModTime().Unix(), Probed: true, MediaVersion: MediaVersion})
 	if err := f.svc.repo.SetMediaInfo(ctx, f.id, string(media)); err != nil {
 		t.Fatal(err)
 	}
@@ -214,6 +215,143 @@ func TestRescanAdoptingRenamedFileKeepsItsRelease(t *testing.T) {
 	m, _ = f.svc.repo.Get(ctx, f.id)
 	if m.MovieFilePath != renamed || m.SourceRelease != rel {
 		t.Fatalf("after rescan: %q / release %q, want the renamed file keeping %q", m.MovieFilePath, m.SourceRelease, rel)
+	}
+}
+
+// A different file that happens to be the same size isn't the same file: without the old
+// file's modification time matching too it's treated as another file, and the release goes.
+func TestRescanAdoptingSameSizeOtherFileDropsItsRelease(t *testing.T) {
+	f := newDeleteFixture(t, filepath.Join(t.TempDir(), "bin"))
+	ctx := context.Background()
+	f.svc.imp.SetNaming(schemeNaming{issue48Scheme})
+	m, _ := f.svc.repo.Create(ctx, Movie{TMDBID: 9, Title: "Aliens", Year: 1986, Monitored: true})
+	dir := filepath.Join(f.root, "Aliens (1986)")
+	old := writeBody(t, filepath.Join(dir, "Aliens (1986) [1080p WEB-DL][x264]-OLDGRP.mkv"), "old")
+	feature(t, old)
+	if err := f.svc.repo.SetFile(ctx, m.ID, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.repo.SetSourceRelease(ctx, m.ID, "Aliens.1986.1080p.WEB-DL.x264-OLDGRP"); err != nil {
+		t.Fatal(err)
+	}
+	fi, _ := os.Stat(old)
+	media, _ := json.Marshal(MovieFile{Path: old, SizeBytes: 200 << 20, MtimeUnix: fi.ModTime().Unix() - 3600, Probed: true, MediaVersion: MediaVersion})
+	if err := f.svc.repo.SetMediaInfo(ctx, m.ID, string(media)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(old); err != nil {
+		t.Fatal(err)
+	}
+	newf := writeBody(t, filepath.Join(dir, "Aliens.mkv"), "a different film")
+	feature(t, newf)
+	m, _ = f.svc.repo.Get(ctx, m.ID)
+	if !f.svc.rescan(ctx, &m) {
+		t.Fatal("the rescan didn't adopt the new file")
+	}
+	m, _ = f.svc.repo.Get(ctx, m.ID)
+	if m.SourceRelease != "" {
+		t.Fatalf("a same-size other file kept release %q", m.SourceRelease)
+	}
+	items, err := f.svc.RenamePlan(ctx, []int64{m.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || filepath.Base(items[0].Proposed) != "Aliens (1986).mkv" {
+		t.Fatalf("plan = %+v, want the file named from its own (empty) name", items)
+	}
+}
+
+// An import with no known release onto a new path keeps none of the old file's; the same
+// path attached again keeps it.
+func TestMarkImportedWithoutReleaseClearsTheOldOne(t *testing.T) {
+	f := newDeleteFixture(t, filepath.Join(t.TempDir(), "bin"))
+	ctx := context.Background()
+	const rel = "Heat.1995.1080p.BluRay.x264-GRP"
+	if err := f.svc.repo.SetSourceRelease(ctx, f.id, rel); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.MarkImportedTo(ctx, f.id, 0, f.main, "", true); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := f.svc.repo.Get(ctx, f.id); m.SourceRelease != rel {
+		t.Fatalf("the same file attached again lost its release: %q", m.SourceRelease)
+	}
+	other := writeBody(t, filepath.Join(f.root, "Heat (1995)", "heat other.mkv"), "other film")
+	if err := f.svc.MarkImportedTo(ctx, f.id, 0, other, "", true); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := f.svc.repo.Get(ctx, f.id); m.MovieFilePath != other || m.SourceRelease != "" {
+		t.Fatalf("after importing another file: %q / release %q, want no release", m.MovieFilePath, m.SourceRelease)
+	}
+}
+
+// Preview, apply, preview again: the second plan has nothing left to rename, whatever the
+// scheme. (A {plexedition} folder scheme isn't here: its folder flip is older than this.)
+func TestRenamePlanSettlesAfterApply(t *testing.T) {
+	schemes := map[string]library.Naming{
+		"default": {Folder: library.DefaultMovieFolder, File: library.DefaultMovieFile},
+		"issue48": issue48Scheme,
+		"radarr":  {Folder: "{title} ({year})", File: "{title} ({year}) {edition} {quality} {codec}-{group}"},
+		"no dash": {Folder: "{title} ({year})", File: "{title} ({year}) - {quality} {codec} {group}"},
+	}
+	films := []struct {
+		title, name, release string
+		year                 int
+	}{
+		{"Aliens", "Aliens (1986).mkv", "Aliens.1986.EXTENDED.1080p.BluRay.x264-AMIABLE", 1986},
+		{"Heat", "Heat (1995) - Bluray-1080p.mkv", "Heat.1995.1080p.BluRay.x265-x0r", 1995},
+		{"Dune", "Dune (2021) {edition-IMAX} [2160p WEB-DL][x265]-FLUX.mkv", "Dune.2021.IMAX.2160p.WEB-DL.DDP5.1.Atmos.HDR.H.265-FLUX", 2021},
+		{"Up", "Up (2009) - 720p HDTV-3L.mkv", "Up.2009.720p.HDTV.x264-3L", 2009},
+		{"Tenet", "Tenet (2020) - 1080p WEB-DL.mkv", "Tenet.2020.1080p.WEB-DL.DDP5.1.H.264-playWEB", 2020},
+		{"Alien", "Alien (1979).mkv", "Alien.1979.Directors.Cut.2160p.UHD.BluRay.REMUX.HDR.HEVC.DTS-HD.MA.5.1-FraMeSToR", 1979},
+	}
+	for label, scheme := range schemes {
+		t.Run(label, func(t *testing.T) {
+			f := newDeleteFixture(t, filepath.Join(t.TempDir(), "bin"))
+			ctx := context.Background()
+			f.svc.imp.SetNaming(schemeNaming{scheme})
+			var ids []int64
+			for i, fl := range films {
+				m, err := f.svc.repo.Create(ctx, Movie{TMDBID: 100 + i, Title: fl.title, Year: fl.year, Monitored: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				p := writeBody(t, filepath.Join(f.root, fmt.Sprintf("%s (%d)", fl.title, fl.year), fl.name), fl.title)
+				if err := f.svc.repo.SetFile(ctx, m.ID, p); err != nil {
+					t.Fatal(err)
+				}
+				if err := f.svc.repo.SetSourceRelease(ctx, m.ID, fl.release); err != nil {
+					t.Fatal(err)
+				}
+				ids = append(ids, m.ID)
+			}
+			items, err := f.svc.RenamePlan(ctx, ids)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var ok []RenameItem
+			for _, it := range items {
+				b := strings.TrimSuffix(filepath.Base(it.Proposed), ".mkv")
+				if strings.HasSuffix(b, "]-DL") || strings.HasSuffix(b, " -DL") || strings.HasSuffix(b, " DL") || strings.HasSuffix(b, "DL-DL") {
+					t.Errorf("a WEB-DL tail became a group: %s", filepath.Base(it.Proposed))
+				}
+				if it.Status == RenameOK {
+					ok = append(ok, it)
+				}
+			}
+			if _, err := f.svc.ApplyRename(ctx, ok); err != nil {
+				t.Fatal(err)
+			}
+			again, err := f.svc.RenamePlan(ctx, ids)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, it := range again {
+				if it.Status != RenameSame {
+					t.Errorf("second plan: %s → %s (%s %s)", filepath.Base(it.Current), filepath.Base(it.Proposed), it.Status, it.Reason)
+				}
+			}
+		})
 	}
 }
 

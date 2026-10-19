@@ -1253,19 +1253,21 @@ func (r *Repo) SetEpisodeFileIfEmpty(ctx context.Context, seriesID int64, season
 	return n > 0, err
 }
 
-// AdoptFoundEpisodeFile records the file a rescan found for an episode. Another path with
-// another size is another file, and the release and pre-conversion baseline recorded for
-// the old one are cleared with it, in the same statement; the same path, or the same size
-// under a new name (renamed outside Arrmada), keeps them.
-func (r *Repo) AdoptFoundEpisodeFile(ctx context.Context, seriesID int64, season, episode int, path string, size int64) error {
+// AdoptFoundEpisodeFile records the file a rescan found for an episode, in one statement.
+// The release and pre-conversion baseline recorded for the row stay only when its file was
+// at path already, or at keepFrom (a non-empty old path the caller judged to be this same
+// file renamed); otherwise they're cleared with the change.
+func (r *Repo) AdoptFoundEpisodeFile(ctx context.Context, seriesID int64, season, episode int, path string, size int64, keepFrom string) error {
+	const same = `(file_path = ? OR (? != '' AND file_path = ?))`
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE episodes SET
-		        source_release = CASE WHEN file_path = ? OR (size_bytes > 0 AND size_bytes = ?) THEN source_release ELSE '' END,
-		        converted_from_release = CASE WHEN file_path = ? OR (size_bytes > 0 AND size_bytes = ?) THEN converted_from_release ELSE '' END,
-		        converted_from_size = CASE WHEN file_path = ? OR (size_bytes > 0 AND size_bytes = ?) THEN converted_from_size ELSE 0 END,
+		        source_release = CASE WHEN `+same+` THEN source_release ELSE '' END,
+		        converted_from_release = CASE WHEN `+same+` THEN converted_from_release ELSE '' END,
+		        converted_from_size = CASE WHEN `+same+` THEN converted_from_size ELSE 0 END,
 		        has_file = 1, file_path = ?, size_bytes = ?
 		  WHERE series_id = ? AND season_number = ? AND episode_number = ?`,
-		path, size, path, size, path, size, path, size, seriesID, season, episode)
+		path, keepFrom, keepFrom, path, keepFrom, keepFrom, path, keepFrom, keepFrom,
+		path, size, seriesID, season, episode)
 	return err
 }
 
