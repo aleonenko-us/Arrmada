@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-var backends = []Backend{Permissive, TagLib}
+var backends = []Backend{Permissive, TagLib, Auto}
 
 // houseFixture fills every house field, with two or more values in every
 // multi-value field and non-ASCII and slash-containing values throughout.

@@ -26,18 +26,37 @@ const (
 	// TagLib is TagLib 2 compiled to WebAssembly and run by wazero
 	// (go.senan.xyz/taglib, LGPL-2.1). Also covers Ogg Vorbis and Opus.
 	TagLib
+	// Auto is Permissive for FLAC, MP3 and MP4, and TagLib only for Ogg Vorbis and
+	// Opus, which no permissive library covers.
+	Auto
 )
 
-// DefaultBackend is what the package-level functions use. It stays Permissive
-// until the owner decides on shipping LGPL code; switching is this one line,
-// and nothing outside this package imports either library.
-const DefaultBackend = Permissive
+// DefaultBackend is what the package-level functions use: the owner's decision
+// (2026-10-19) is the permissive libraries everywhere they reach, and TagLib only
+// for Ogg. Nothing outside this package imports either library, and nothing
+// imports this package yet, so the shipped binary holds no LGPL code until the
+// import path starts tagging (see THIRD_PARTY_NOTICES.md).
+const DefaultBackend = Auto
 
 func (b Backend) String() string {
-	if b == TagLib {
+	switch b {
+	case TagLib:
 		return "taglib"
+	case Auto:
+		return "auto"
 	}
 	return "permissive"
+}
+
+// backendFor is the library that handles a container under this Tagger.
+func (tg *Tagger) backendFor(f format) Backend {
+	if tg.backend == Auto {
+		if f == formatOgg {
+			return TagLib
+		}
+		return Permissive
+	}
+	return tg.backend
 }
 
 // WriteOptions tunes how tags are rendered.
@@ -78,7 +97,7 @@ const (
 )
 
 func (tg *Tagger) supports(f format) bool {
-	return f != formatUnknown && (tg.backend == TagLib || f != formatOgg)
+	return f != formatUnknown && (tg.backendFor(f) == TagLib || f != formatOgg)
 }
 
 // open opens path and identifies its container.
@@ -109,7 +128,7 @@ func (tg *Tagger) Read(path string) (Tags, error) {
 
 	var raw map[string][]string
 	switch {
-	case tg.backend == TagLib:
+	case tg.backendFor(ft) == TagLib:
 		raw, err = readTagLib(path)
 	case ft == formatFLAC:
 		raw, err = readFLAC(f)
@@ -140,7 +159,7 @@ func (tg *Tagger) Write(path string, t Tags, opts WriteOptions) error {
 	defer src.Close()
 
 	err = replaceFile(path, func(dst *os.File) error {
-		if tg.backend == TagLib {
+		if tg.backendFor(ft) == TagLib {
 			return writeTagLib(src, dst, ft, clean, opts)
 		}
 		var rewrite func(*os.File, io.Writer, Tags, WriteOptions) error
@@ -174,7 +193,7 @@ func (tg *Tagger) Properties(path string) (AudioProperties, error) {
 
 	var p AudioProperties
 	switch {
-	case tg.backend == TagLib:
+	case tg.backendFor(ft) == TagLib:
 		p, err = propertiesTagLib(path)
 	case ft == formatFLAC:
 		p, err = flacProperties(f)

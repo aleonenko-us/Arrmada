@@ -62,9 +62,9 @@ var proofCases = []proofCase{
 }
 
 // supportsFile reports whether backend b handles case c (the permissive
-// backend has no Ogg).
+// backend has no Ogg; Auto hands Ogg to TagLib).
 func supportsFile(b Backend, c proofCase) bool {
-	return b == TagLib || c.format != "ogg"
+	return b != Permissive || c.format != "ogg"
 }
 
 func TestProofMatrix(t *testing.T) {

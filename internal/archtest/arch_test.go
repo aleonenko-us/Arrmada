@@ -269,6 +269,46 @@ func TestNoBackgroundContextInHandlers(t *testing.T) {
 	}
 }
 
+// TestAudiotagNotLinkedYet: nothing imports internal/audiotag until the music import's
+// tagging step (Phase 2) does, deliberately. Until then the binary links neither its
+// LGPL-2.1 TagLib backend nor anything else from it, and stays MIT/Apache, as
+// THIRD_PARTY_NOTICES.md says. Wiring it in means updating that file and this test.
+func TestAudiotagNotLinkedYet(t *testing.T) {
+	root := repoRoot(t)
+	const pkg = `"github.com/tristenlammi/arrmada/internal/audiotag"`
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if name := d.Name(); p != root && (name == "node_modules" || name == "web" || strings.HasPrefix(name, ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		rel := filepath.ToSlash(strings.TrimPrefix(p, root+string(filepath.Separator)))
+		if strings.HasPrefix(rel, "internal/audiotag/") {
+			return nil
+		}
+		f, perr := parser.ParseFile(token.NewFileSet(), p, nil, parser.ImportsOnly)
+		if perr != nil {
+			return nil
+		}
+		for _, imp := range f.Imports {
+			if imp.Path.Value == pkg {
+				t.Errorf("%s imports internal/audiotag — it would link LGPL code into the binary; update THIRD_PARTY_NOTICES.md (and ship it) first", rel)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestOneMusicBrainzClient: only main builds a MusicBrainz client. Every client shares the
 // one rate limiter, but a client built elsewhere would carry its own config and logger and
 // invite a way round the shared cache. Tests may build their own.

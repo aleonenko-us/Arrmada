@@ -7,16 +7,19 @@
 // Two interchangeable backends sit behind that API, both pure Go to build (no
 // cgo, no external tools), so they cross-compile to linux/amd64 and linux/arm64:
 //
-//   - Permissive (the default): MIT/Apache-2.0 libraries only. FLAC via
-//     go-flac + flacvorbis, MP3 via bogem/id3v2, MP4/M4A via abema/go-mp4 with
-//     the iTunes ilst items built here. No Ogg Vorbis/Opus.
+//   - Permissive: MIT/Apache-2.0 libraries only. FLAC via go-flac + flacvorbis,
+//     MP3 via bogem/id3v2, MP4/M4A via abema/go-mp4 with the iTunes ilst items
+//     built here. No Ogg Vorbis/Opus.
 //   - TagLib: TagLib 2 compiled to WebAssembly, run by wazero
 //     (go.senan.xyz/taglib, LGPL-2.1). Adds Ogg Vorbis and Opus.
+//   - Auto (the default, the owner's decision of 2026-10-19): Permissive for
+//     FLAC, MP3 and MP4; TagLib only for Ogg Vorbis and Opus.
 //
 // DefaultBackend picks the one the package-level functions use. Note that it
 // only picks behaviour: while taglib.go exists, the LGPL module is linked into
-// any binary that imports this package. Shipping MIT/Apache-only means deleting
-// taglib.go and the TagLib constant; nothing outside this package imports it.
+// any binary that imports this package (THIRD_PARTY_NOTICES.md says how to
+// replace it). Nothing outside this package imports either library, and nothing
+// imports this package yet.
 //
 // ffmpeg was evaluated and rejected as a writer: "-metadata KEY=a -metadata
 // KEY=b" keeps only the last value in every format, and its MP4 muxer cannot
