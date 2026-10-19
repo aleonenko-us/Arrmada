@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,6 +26,10 @@ type overviewDiscovery struct {
 	metadata.DiscoveryProvider
 	mu    sync.Mutex
 	asked []string
+	// byLang answers TrendingOverviews per language; nil answers French for Amélie.
+	byLang map[string]map[string]string
+	// hang makes TrendingOverviews wait for its context, as a stuck TMDB would.
+	hang bool
 }
 
 func (*overviewDiscovery) Available() bool { return true }
@@ -44,11 +50,80 @@ func (*overviewDiscovery) Trending(context.Context, string) ([]metadata.Discover
 	}, nil
 }
 
-func (o *overviewDiscovery) TrendingOverviews(_ context.Context, _, lang string) (map[string]string, error) {
+func (o *overviewDiscovery) TrendingOverviews(ctx context.Context, _, lang string) (map[string]string, error) {
 	o.mu.Lock()
 	o.asked = append(o.asked, lang)
 	o.mu.Unlock()
+	if o.hang {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	if o.byLang != nil {
+		return o.byLang[lang], nil
+	}
 	return map[string]string{"movie:194": "Amélie, une serveuse, change des vies."}, nil
+}
+
+// trendingCards is the trending handler's cards and how long it took.
+func trendingCards(t *testing.T, a *api) ([]discoverCard, time.Duration) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	start := time.Now()
+	a.handleDiscoverTrending(rec, httptest.NewRequest("GET", "/api/v1/discover/trending?media=all", nil))
+	took := time.Since(start)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("trending: HTTP %d %s", rec.Code, rec.Body)
+	}
+	var body struct {
+		Items []discoverCard `json:"items"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	return body.Items, took
+}
+
+// A stuck TMDB never holds the hero: after a short wait the cards come with their
+// English overviews.
+func TestTrendingOverviewsDontHoldTheHero(t *testing.T) {
+	a, disc := overviewAPI(t)
+	disc.hang = true
+	setDisplay(t, a, "language", "fr")
+	cards, took := trendingCards(t, a)
+	if took > trendingOverviewWait+time.Second {
+		t.Errorf("the hero waited %v for overviews, want about %v", took, trendingOverviewWait)
+	}
+	if len(cards) != 2 || cards[0].DisplayOverview != "" || cards[0].Overview != "A shy waitress changes lives." {
+		t.Errorf("cards = %+v, want the English overviews", cards)
+	}
+}
+
+// A regional choice (fr-CA) takes its own list's overviews and fills the cards it leaves
+// without one from the base language's (fr), as the detail sheet does; a plain choice
+// (fr) reads once.
+func TestTrendingOverviewsRegionalFallback(t *testing.T) {
+	a, disc := overviewAPI(t)
+	disc.byLang = map[string]map[string]string{
+		"fr-CA": {"movie:194": "Amélie, au Québec."},
+		"fr":    {"movie:194": "Amélie, en France.", "series:61068": "Naples, en France."},
+	}
+	setDisplay(t, a, "language", "fr-ca")
+	cards, _ := trendingCards(t, a)
+	got := map[int]string{}
+	for _, c := range cards {
+		got[c.TMDBID] = c.DisplayOverview
+	}
+	if got[194] != "Amélie, au Québec." || got[61068] != "Naples, en France." {
+		t.Errorf("fr-CA cards = %v, want Canada's first and France's for the rest", got)
+	}
+	if len(disc.asked) != 2 || disc.asked[0] != "fr-CA" || disc.asked[1] != "fr" {
+		t.Errorf("asked %v, want [fr-CA fr]", disc.asked)
+	}
+
+	disc.asked = nil
+	setDisplay(t, a, "language", "fr")
+	trendingCards(t, a)
+	if len(disc.asked) != 1 || disc.asked[0] != "fr" {
+		t.Errorf("plain French asked %v, want one read", disc.asked)
+	}
 }
 
 // overviewAPI is an api with stored settings, the Discovery above and an empty library.
@@ -60,7 +135,7 @@ func overviewAPI(t *testing.T) (*api, *overviewDiscovery) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	disc := &overviewDiscovery{}
-	a := &api{deps: Deps{Settings: settings.NewService(st.DB()), Discovery: disc}}
+	a := &api{deps: Deps{Settings: settings.NewService(st.DB()), Discovery: disc, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}}
 	enrichSnaps.Store(a, &enrichSnapEntry{at: time.Now().Add(time.Hour), snap: emptySnap()})
 	t.Cleanup(func() { enrichSnaps.Delete(a) })
 	return a, disc
@@ -188,6 +263,9 @@ func TestLibraryDisplayOverviewAPI(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("movie %s: HTTP %d %s", id, rec.Code, rec.Body)
 		}
+		if strings.Contains(rec.Body.String(), "display_names") {
+			t.Errorf("movie %s answers the raw display names beside display_overview: %s", id, rec.Body)
+		}
 		return decodeDisplay[movies.Movie](t, rec.Body.Bytes())
 	}
 	show := func() series.Series {
@@ -195,6 +273,9 @@ func TestLibraryDisplayOverviewAPI(t *testing.T) {
 		rec := s.do("GET", "/api/v1/series/11", admin)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("series: HTTP %d %s", rec.Code, rec.Body)
+		}
+		if strings.Contains(rec.Body.String(), "display_names") {
+			t.Errorf("the show answers the raw display names beside display_overview: %s", rec.Body)
 		}
 		return decodeDisplay[series.Series](t, rec.Body.Bytes())
 	}

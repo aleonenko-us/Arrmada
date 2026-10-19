@@ -141,6 +141,30 @@ func (a *api) displayPolicyChanged() {
 	safego.Go(a.deps.Log, "titles: display titles", func() { run(a.runCtx()) })
 }
 
+// The stored display names (and with them the overviews in the setting's language) are
+// what display_title and display_overview are worked out from. Pages read those two, so
+// the detail answers leave the raw names out; the stored row keeps them.
+
+// apiMovieExtra is ex without its display names, as a copy.
+func apiMovieExtra(ex *movies.MovieExtra) *movies.MovieExtra {
+	if ex == nil || ex.DisplayNames == nil {
+		return ex
+	}
+	cp := *ex
+	cp.DisplayNames = nil
+	return &cp
+}
+
+// apiSeriesExtra is apiMovieExtra for a show.
+func apiSeriesExtra(ex *series.SeriesExtra) *series.SeriesExtra {
+	if ex == nil || ex.DisplayNames == nil {
+		return ex
+	}
+	cp := *ex
+	cp.DisplayNames = nil
+	return &cp
+}
+
 // titleOverrideBody is PUT /movies/{id}/display-title and /series/{id}/display-title: the
 // title to show, or "" to follow the setting again.
 type titleOverrideBody struct {

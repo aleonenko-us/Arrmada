@@ -2,6 +2,7 @@ package series
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -104,5 +105,69 @@ func TestSeriesDisplayOverview(t *testing.T) {
 	p = displaytitle.ParsePolicy("original", "", "")
 	if _, shown := overview(); shown != "" {
 		t.Errorf("original mode: shown %q, want the English overview", shown)
+	}
+}
+
+// A pass captures the setting (French) and the setting changes to German before it reads
+// a show: what it reads carries German overviews, and storing that under French must not
+// mark the show read for French, or the French overview would never be read once French
+// is back. The next French pass reads it again.
+func TestSeriesOverviewSettingChangedMidPass(t *testing.T) {
+	ctx := context.Background()
+	meta := &fakeMeta{d: metadata.SeriesDetails{
+		SeriesResult: metadata.SeriesResult{TMDBID: 61068, Title: "Gomorrah", Year: 2014, Overview: "Ciro and Genny fight for Naples."},
+		OriginalName: "Gomorra - La serie", OriginalLang: "it",
+		OriginCountry: []string{"IT"}, Seasons: listing(1),
+	}}
+	var langs []string
+	s := localSeriesService(t, meta, t.TempDir(), &langs)
+	src := &overviewTitles{
+		fakeTitles: &fakeTitles{titles: map[int]*metadata.Titles{61068: {
+			Title: "Gomorrah", OriginalTitle: "Gomorra - La serie", OriginalLanguage: "it",
+		}}},
+		overviews: []metadata.TranslatedOverview{
+			{Lang: "fr", Country: "FR", Overview: "Ciro et Genny se battent pour Naples."},
+			{Lang: "de", Country: "DE", Overview: "Ciro und Genny kämpfen um Neapel."},
+		},
+	}
+	s.SetTitlesSource(src)
+	fr := displaytitle.ParsePolicy("language", "fr", "")
+	de := displaytitle.ParsePolicy("language", "de", "")
+	var mode atomic.Int32 // 0 default, 1 French, 2 German
+	s.SetDisplayPolicy(func() displaytitle.Policy {
+		switch mode.Load() {
+		case 1:
+			return fr
+		case 2:
+			return de
+		}
+		return displaytitle.ParsePolicy("", "", "")
+	})
+	sr, err := s.AddWith(ctx, 61068, "hd", AddOptions{Monitored: true, Preset: PresetAll})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What backfillDisplayOnce does, with the setting changing between its two reads.
+	mode.Store(1)
+	p := s.policy()
+	mode.Store(2)
+	read, err := s.titleSource().Titles(ctx, metadata.TitlesSeries, 61068)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.repo.SetDisplayNames(ctx, sr.ID, p.NamesFrom(read)); err != nil {
+		t.Fatal(err)
+	}
+
+	mode.Store(1)
+	if n, err := s.BackfillLocalTitles(ctx, time.Millisecond); err != nil || n != 1 {
+		t.Errorf("the French pass read %d shows (%v), want the one stored under German", n, err)
+	}
+	got, err := s.Get(ctx, sr.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DisplayOverview != "Ciro et Genny se battent pour Naples." {
+		t.Errorf("display overview %q, want the French one (stored names %+v)", got.DisplayOverview, got.Extra.DisplayNames)
 	}
 }

@@ -288,6 +288,7 @@ func (a *api) handleGetSeries(w http.ResponseWriter, r *http.Request) {
 	// What the History, Duplicates and Blocklist panels key their reloads on: it moves
 	// whenever something is recorded against the show (an import, a grab, a search).
 	s.LastEventID = a.deps.Series.LastEventID(r.Context(), id)
+	s.Extra = apiSeriesExtra(s.Extra) // display_title and display_overview carry what pages need
 	a.writeJSON(w, http.StatusOK, s)
 }
 

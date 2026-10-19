@@ -73,16 +73,28 @@ func TestTitlesInKeepsOneLanguagesOverviews(t *testing.T) {
 	}
 }
 
-// WithOverviews routes every Titles read through TitlesIn in the language, and leaves a
-// source that can't read overviews (or no language) as it is.
+// plainTitles is a TitlesSource that can't read overviews, answering one shared record.
+type plainTitles struct{ t *Titles }
+
+func (p plainTitles) Titles(context.Context, string, int) (*Titles, error) { return p.t, nil }
+func (p plainTitles) SearchLocalized(context.Context, string, string, string) ([]LocalizedHit, error) {
+	return nil, nil
+}
+
+// WithOverviews routes every Titles read through TitlesIn in the language, marks a plain
+// source's answers as read for it, and leaves the source as it is with no language.
 func TestWithOverviews(t *testing.T) {
 	tm := NewTMDB("k")
 	if got := WithOverviews(tm, ""); got != TitlesSource(tm) {
 		t.Error("no language must leave the source as it is")
 	}
-	plain := &fakeLocalized{}
-	if got := WithOverviews(plain, "fr"); got != TitlesSource(plain) {
-		t.Error("a source without TitlesIn must be left as it is")
+	// A source that can't read overviews answers as read for the language, with none, on a
+	// copy of its own record.
+	shared := &Titles{Title: "Amélie"}
+	plain := plainTitles{t: shared}
+	got0, err := WithOverviews(plain, "fr").Titles(context.Background(), TitlesMovie, 194)
+	if err != nil || got0.OverviewLang != "fr" || len(got0.Overviews) != 0 || got0.Title != "Amélie" || shared.OverviewLang != "" {
+		t.Errorf("plain source = %+v, %v (its own record now %+v)", got0, err, shared)
 	}
 	if WithOverviews(nil, "fr") != nil {
 		t.Error("no source stays no source")

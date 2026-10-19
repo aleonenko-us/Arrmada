@@ -182,19 +182,27 @@ func (p Policy) ShownOverview(canonical string, n *Names) string {
 
 // NamesFrom keeps what p needs from every name TMDB has for a title (FromTitles), plus
 // its overviews in p's overview language. t may be nil: TMDB no longer has the title, so
-// it is read and has nothing to show.
+// it is read and has nothing to show. The names count as read for p's overview language
+// only when t was read for it: a pass that captured p before the setting changed may get
+// a title read for another language, and stamping that as read would leave the title
+// without its overview for good. Left unstamped, the next pass reads it again.
 func (p Policy) NamesFrom(t *metadata.Titles) *Names {
 	n := FromTitles(t, p.TranslationLangs())
 	ol := p.OverviewLang()
 	if ol == "" {
 		return n
 	}
+	if t == nil {
+		n.OverviewLang = ol
+		return n
+	}
+	if t.OverviewLang != ol {
+		return n
+	}
 	n.OverviewLang = ol
-	if t != nil {
-		for _, o := range t.Overviews {
-			if o.Lang == ol && strings.TrimSpace(o.Overview) != "" {
-				n.Overviews = append(n.Overviews, o)
-			}
+	for _, o := range t.Overviews {
+		if o.Lang == ol && strings.TrimSpace(o.Overview) != "" {
+			n.Overviews = append(n.Overviews, o)
 		}
 	}
 	return n

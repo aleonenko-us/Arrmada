@@ -63,17 +63,27 @@ type withOverviews struct {
 }
 
 func (w withOverviews) Titles(ctx context.Context, media string, tmdbID int) (*Titles, error) {
-	return w.TitlesSource.(OverviewTitlesSource).TitlesIn(ctx, media, tmdbID, w.lang)
+	if src, ok := w.TitlesSource.(OverviewTitlesSource); ok {
+		return src.TitlesIn(ctx, media, tmdbID, w.lang)
+	}
+	// A source that can't read overviews has none in any language: its answer counts as
+	// read for lang (with nothing to show), so the backfill doesn't ask it again. A copy,
+	// never the source's own (possibly shared) record.
+	t, err := w.TitlesSource.Titles(ctx, media, tmdbID)
+	if err != nil || t == nil {
+		return t, err
+	}
+	cp := *t
+	cp.OverviewLang, cp.Overviews = w.lang, nil
+	return &cp, nil
 }
 
 // WithOverviews is src reading every title with its overviews in lang (ISO 639-1), so the
 // import gate, the translated-titles backfill and the display names all share one cached
-// request per title. src itself when lang is "" or src can't read overviews.
+// request per title. Every answer says which language its overviews were read for
+// (Titles.OverviewLang). src itself when lang is "".
 func WithOverviews(src TitlesSource, lang string) TitlesSource {
 	if src == nil || strings.TrimSpace(lang) == "" {
-		return src
-	}
-	if _, ok := src.(OverviewTitlesSource); !ok {
 		return src
 	}
 	return withOverviews{TitlesSource: src, lang: strings.ToLower(strings.TrimSpace(lang))}

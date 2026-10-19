@@ -73,6 +73,15 @@ func TestNamesFromOverviews(t *testing.T) {
 	if n.Covers(ParsePolicy("language", "it", "")) {
 		t.Error("names read for French cover Italian")
 	}
+	// Read for German while a pass that started under French stores it (the setting
+	// changed mid-pass): not read for French, so the next pass reads it again rather than
+	// leaving the title without its French overview for good.
+	deTitles := *titles
+	deTitles.OverviewLang = "de"
+	deTitles.Overviews = []metadata.TranslatedOverview{{Lang: "de", Overview: "Chihiro verirrt sich."}}
+	if stale := fr.NamesFrom(&deTitles); stale.OverviewLang != "" || len(stale.Overviews) != 0 || stale.Covers(fr) {
+		t.Errorf("names read for German stored under French = %+v, want unread for French", stale)
+	}
 	if missing := fr.NamesFrom(nil); missing.OverviewLang != "fr" || !missing.Covers(fr) {
 		t.Errorf("a title TMDB no longer has: %+v, want read for French", missing)
 	}

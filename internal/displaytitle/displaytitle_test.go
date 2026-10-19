@@ -154,7 +154,7 @@ func TestNamesCover(t *testing.T) {
 		t.Error("nil names cover nothing")
 	}
 	// Read for the Italian setting (its titles and, since #35, its overviews).
-	n := ParsePolicy("language", "it", "").NamesFrom(&metadata.Titles{OriginalTitle: "Ο Θίασος", OriginalLanguage: "EL",
+	n := ParsePolicy("language", "it", "").NamesFrom(&metadata.Titles{OriginalTitle: "Ο Θίασος", OriginalLanguage: "EL", OverviewLang: "it",
 		Translations: []metadata.TranslatedTitle{{Lang: "it", Title: "La recita"}, {Lang: "de", Title: "Die Wanderschauspieler"}}})
 	if n.Original != "Ο Θίασος" || n.OriginalLanguage != "el" || len(n.Translations) != 1 || n.Translations[0].Title != "La recita" {
 		t.Fatalf("FromTitles kept %+v", n)
