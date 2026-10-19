@@ -115,7 +115,7 @@ function DisplayTitles() {
         </span>
       </Field>
       {mode === "language" && (
-        <span className="text-sm text-ink-faint">A title made in that language shows its original title. One TMDB has no translation for shows its original title.</span>
+        <span className="text-sm text-ink-faint">A title made in that language shows its original title. One TMDB has no translation for shows its original title. Descriptions are in that language too where TMDB has one, else in English.</span>
       )}
       {mode !== "original" && (
         <div className="flex flex-col gap-2">

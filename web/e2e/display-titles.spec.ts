@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect, type MockedApi } from "./mockApi";
 import * as media from "./fixtures/media";
+import * as discover from "./fixtures/discover";
 import { settings } from "./fixtures/system";
 import type { MockRoute } from "./fixtures/routes";
 
@@ -81,6 +82,43 @@ test.describe("display titles", () => {
     await dialog.getByRole("button", { name: "Show this title" }).click();
     await expect.poll(() => api.callsTo("PUT", "/api/v1/movies/4/display-title").map((c) => c.body)).toEqual([{ title: "Les Lanternes de la mer du Nord" }]);
     await expect(page.getByRole("heading", { name: "Les Lanternes de la mer du Nord" }).first()).toBeVisible();
+  });
+});
+
+// GitHub #35: with titles shown in a language ("My language: French"), descriptions come
+// in it too where TMDB has one — the server sends display_overview beside the English
+// overview, which stays.
+const FRENCH = "Les Lanternes de la mer du Nord suit trois gardiens de phare pendant un hiver.";
+
+test.describe("overviews in the display language: staff", () => {
+  test.use({ persona: "manager" });
+
+  test("the movie page reads the French overview", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "GET", path: "/api/v1/movies/4", respond: () => ({ ...media.movieDetail(4), display_title: GREEK, overview: "Three lighthouse keepers, one winter.", display_overview: FRENCH }) },
+    ]);
+    await page.goto("/movies/4");
+    await expect(page.getByText(FRENCH)).toBeVisible();
+    await expect(page.getByText("Three lighthouse keepers, one winter.")).toHaveCount(0);
+  });
+});
+
+test.describe("overviews in the display language: Discover", () => {
+  test.use({ persona: "requester" });
+
+  test("a French-language person reads French overviews on the title sheet and in the hero", async ({ page, api }) => {
+    const c = discover.requestableCard;
+    await installExtra(page, api, [
+      { method: "GET", path: `/api/v1/media/movie/${c.tmdb_id}`, respond: () => ({ ...discover.mediaDetail("movie", c.tmdb_id), display_overview: FRENCH }) },
+      { method: "GET", path: "/api/v1/discover/trending", body: { items: discover.items.items.map((x) => ({ ...x, display_overview: `En français : ${x.title}.` })) } },
+    ]);
+    await page.goto(`/discover/movie/${c.tmdb_id}`);
+    const sheet = page.getByRole("dialog", { name: c.title });
+    await expect(sheet.getByText(FRENCH)).toBeVisible();
+    await expect(sheet.getByText(c.overview!)).toHaveCount(0);
+
+    await page.goto("/discover");
+    await expect(page.getByText(`En français : ${c.title}.`)).toBeVisible();
   });
 });
 

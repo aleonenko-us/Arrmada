@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shownTitle } from "./displayTitle";
+import { shownOverview, shownTitle } from "./displayTitle";
 import { seriesLibraryConfig } from "../pages/series/library";
 import type { Series } from "./api";
 
@@ -8,6 +8,15 @@ describe("shownTitle", () => {
     expect(shownTitle({ title: "The Travelling Players", display_title: "Ο Θίασος" })).toBe("Ο Θίασος");
     expect(shownTitle({ title: "Dune" })).toBe("Dune");
     expect(shownTitle({ title: "Dune", display_title: "" })).toBe("Dune");
+  });
+});
+
+describe("shownOverview", () => {
+  it("shows the overview in the display language when the API sends one, else the English one", () => {
+    expect(shownOverview({ overview: "A shy waitress.", display_overview: "Une serveuse timide." })).toBe("Une serveuse timide.");
+    expect(shownOverview({ overview: "A shy waitress." })).toBe("A shy waitress.");
+    expect(shownOverview({ overview: "A shy waitress.", display_overview: "" })).toBe("A shy waitress.");
+    expect(shownOverview(null)).toBeUndefined();
   });
 });
 

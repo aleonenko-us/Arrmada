@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
-import { shownTitle } from "../lib/displayTitle";
+import { shownOverview, shownTitle } from "../lib/displayTitle";
 import { AudioLangChips } from "../components/AudioLangChips";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
 import { UploadTorrentModal } from "../components/UploadTorrentModal";
@@ -207,7 +207,7 @@ export function MovieDetail() {
               </div>
               <WatchedBy kind="movies" id={movie.id} />
 
-              <p className="mt-3 text-md leading-relaxed text-ink-dim">{movie.overview || "No overview available."}</p>
+              <p className="mt-3 text-md leading-relaxed text-ink-dim">{shownOverview(movie) || "No overview available."}</p>
 
               <FactRow movie={movie} />
 
