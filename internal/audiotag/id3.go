@@ -61,7 +61,7 @@ func readMP3(f *os.File) (map[string][]string, error) {
 // writeMP3 rebuilds the ID3v2 tag as v2.4 and copies the MPEG audio after it
 // unchanged. Trailing ID3v1, Lyrics3 and APE tags are dropped: the ID3v2.4 tag
 // is the only tag the file keeps, so stale copies can't contradict it.
-func writeMP3(src *os.File, dst io.Writer, t Tags, _ WriteOptions) error {
+func writeMP3(src *os.File, dst io.Writer, t Tags, opts WriteOptions) error {
 	tag, tagEnd, err := parseID3(src)
 	if err != nil {
 		return err
@@ -115,6 +115,11 @@ func writeMP3(src *os.File, dst io.Writer, t Tags, _ WriteOptions) error {
 	}
 	if id := t.first(KeyMBRecordingID); id != "" {
 		tag.AddUFIDFrame(id3v2.UFIDFrame{OwnerIdentifier: mbUFIDOwner, Identifier: []byte(id)})
+	}
+	if opts.FrontCover != nil {
+		if err := setMP3Cover(tag, opts.FrontCover); err != nil {
+			return err
+		}
 	}
 
 	audioEnd, err := mp3TrailerStart(src)

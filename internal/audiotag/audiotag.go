@@ -33,9 +33,9 @@ const (
 
 // DefaultBackend is what the package-level functions use: the owner's decision
 // (2026-10-19) is the permissive libraries everywhere they reach, and TagLib only
-// for Ogg. Nothing outside this package imports either library, and nothing
-// imports this package yet, so the shipped binary holds no LGPL code until the
-// import path starts tagging (see THIRD_PARTY_NOTICES.md).
+// for Ogg. Nothing outside this package imports either library; the music
+// import's staging step (internal/music/stage) is the only writer, and the image
+// ships THIRD_PARTY_NOTICES.md for the LGPL part.
 const DefaultBackend = Auto
 
 func (b Backend) String() string {
@@ -65,6 +65,9 @@ type WriteOptions struct {
 	// (e.g. "; "), for players that show only the first of several. Empty
 	// writes one value per genre, as Picard does. Other formats ignore it.
 	MP4GenreSeparator string
+	// FrontCover, when set, replaces the file's embedded front cover (other
+	// pictures are kept). Nil leaves every picture as it is.
+	FrontCover *Picture
 }
 
 // Tagger reads and writes tags through one backend. The zero value uses
@@ -151,6 +154,12 @@ func (tg *Tagger) Write(path string, t Tags, opts WriteOptions) error {
 	clean, err := prepareWrite(t)
 	if err != nil {
 		return err
+	}
+	if opts.FrontCover != nil {
+		// Checked before anything is touched, so a bad image fails the write whole.
+		if _, err := pictureMIME(opts.FrontCover); err != nil {
+			return err
+		}
 	}
 	src, ft, err := tg.open(path)
 	if err != nil {

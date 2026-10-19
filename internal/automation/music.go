@@ -548,6 +548,8 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 			switch {
 			case res.taken > 0:
 				c.musicTakenReview(ctx, it, res, 0, art.Name+" (discography)")
+			case res.tagFailed > 0:
+				c.musicTagReview(ctx, it, res, 0, art.Name+" (discography)")
 			case res.refused > 0 || res.failed > 0:
 				c.musicImportRetry(ctx, it, res, 0, art.Name+" (discography)")
 			case res.placed > 0 || res.kept > 0:
@@ -599,6 +601,8 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 		switch {
 		case res.taken > 0:
 			c.musicTakenReview(ctx, it, res, album.ID, album.Title)
+		case res.tagFailed > 0:
+			c.musicTagReview(ctx, it, res, album.ID, album.Title)
 		case res.refused > 0 || res.failed > 0:
 			// A better copy couldn't replace what's held (the recycle bin can't take the
 			// old file), or a track couldn't be placed. Nothing was lost; the download
@@ -865,6 +869,10 @@ type albumImport struct {
 	// matched no album): left in the download for a person, so its files must be kept.
 	unmatched int
 	found     bool // the download held any audio at all
+	// tagFailed counts files whose house tags couldn't be written or didn't check out
+	// (MUS-33): the download is untouched and goes to Review with tagWhy.
+	tagFailed int
+	tagWhy    string
 }
 
 func (r *albumImport) add(o albumImport) {
@@ -874,68 +882,16 @@ func (r *albumImport) add(o albumImport) {
 	r.failed += o.failed
 	r.taken += o.taken
 	r.unmatched += o.unmatched
+	r.tagFailed += o.tagFailed
+	if r.tagWhy == "" {
+		r.tagWhy = o.tagWhy
+	}
 }
 
-// placeAlbumTracks places a download's matched files onto an album's tracks.
-//
-// A track that already has a file only takes the new one when it is a better tier
-// (music.BetterTier): a re-grab never downgrades a held FLAC to an MP3, and lossless never
-// churns against lossless. When the better copy has a different extension the old file
-// would otherwise sit next to it ("05 - X.mp3" beside "05 - X.flac"); it goes to the
-// recycle bin instead, and with no bin to take it the track is left alone. Nothing here
-// ever deletes a file outright.
+// placeAlbumTracks places a download's matched files onto an album's tracks: today's
+// filename matching, handed to placement as a match result (music_placement.go).
 func (c *Coordinator) placeAlbumTracks(ctx context.Context, a music.Artist, al music.Album, tracks []music.Track, matched map[int64]music.AudioFile, releaseTier music.Quality, release string) albumImport {
-	var res albumImport
-	for _, t := range tracks {
-		f, ok := matched[t.ID]
-		if !ok {
-			continue
-		}
-		tier, bitrate, probe := c.trackTier(ctx, f.Path, releaseTier)
-		if t.HasFile && !music.BetterTier(music.HeldTier(string(tier), bitrate), c.heldTier(ctx, t)) {
-			res.kept++
-			continue
-		}
-		target := c.imp.AlbumTrackTarget(a.Name, al.Title, al.Year, t.DiscNumber, t.TrackNumber, t.Title, filepath.Ext(f.Path))
-		// One file is never two tracks. When the name this track's file would get is
-		// already another track's file (an old scan's mix-up the upgrade kept apart), placing
-		// it would replace that track's file; leave both alone and let a person look.
-		if owner, err := c.music.FileOwner(ctx, target); err != nil {
-			res.failed++
-			c.log.Warn("music import: checking who holds a track's path failed", "track", t.Title, "err", err)
-			continue
-		} else if owner != 0 && owner != t.ID {
-			res.taken++
-			c.log.Warn("music import: the file this track would be placed at is another track's — left alone",
-				"album", al.Title, "track", t.Title, "path", target)
-			continue
-		}
-		old := ""
-		if t.HasFile {
-			old = t.FilePath
-		}
-		if err := c.imp.Using(ctx).PlaceAlbumTrack(f.Path, target, old); err != nil {
-			if errors.Is(err, library.ErrReplacementRefused) {
-				res.refused++
-			} else {
-				res.failed++
-			}
-			c.log.Warn("music import: placing a track failed", "track", t.Title, "err", err)
-			continue
-		}
-		rec := music.FileRecord{Path: target, SizeBytes: f.SizeBytes, Quality: tier, BitrateKbps: bitrate,
-			SourceRelease: release, Probe: probe}
-		if fi, serr := os.Stat(target); serr == nil {
-			rec.SizeBytes, rec.MtimeUnix = fi.Size(), fi.ModTime().Unix()
-		}
-		if err := c.music.RecordTrackFile(ctx, t.ID, rec); err != nil {
-			res.failed++
-			c.log.Warn("music import: recording a track failed", "track", t.Title, "err", err)
-			continue
-		}
-		res.placed++
-	}
-	return res
+	return c.placeMatch(ctx, a, al, tracks, music.MatchFromTracks(al, matched, nil), releaseTier, release)
 }
 
 // trackTier is the tier and bitrate recorded for an audio file: measured by ffprobe when it

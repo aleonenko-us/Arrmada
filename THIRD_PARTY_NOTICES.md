@@ -3,13 +3,12 @@
 Arrmada is MIT-licensed. This file lists third-party code whose licence asks for a notice
 beyond the ordinary attribution in `go.mod` and `web/package.json`.
 
-## Audio tags (`internal/audiotag`) — not in the shipped binary yet
+## Audio tags (`internal/audiotag`)
 
-`internal/audiotag` reads and writes music tags. **Nothing in Arrmada imports it yet**, so
-the Go toolchain doesn't link it, or the libraries below, into the `arrmada` binary or the
-Docker image: what ships stays MIT/Apache-licensed. That changes when the music import
-starts tagging files (the music rebuild's Phase 2); this file then ships with the image,
-and the entries below apply to it.
+`internal/audiotag` reads and writes music tags. The music import writes its house tag
+style through it (the music rebuild's Phase 2), so the `arrmada` binary and the Docker
+image link it and the libraries below. This file ships in the image at
+`/usr/share/doc/arrmada/THIRD_PARTY_NOTICES.md`, beside Arrmada's own `LICENSE`.
 
 By the owner's decision of 2026-10-19 the package writes FLAC, MP3 and MP4/M4A with
 permissively licensed libraries, and uses TagLib only for Ogg Vorbis and Opus, which none

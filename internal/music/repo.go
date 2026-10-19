@@ -684,6 +684,11 @@ type FileRecord struct {
 	// Probe is what ffprobe measured, nil when it couldn't: the scan's measuring pass
 	// picks the file up later (probed_at stays NULL).
 	Probe *mediainfo.AudioInfo
+	// TagState is TagStateHouse for a file written in the house style (MUS-33); "" is
+	// TagStateAsFound. TagsFound is the tags it arrived with, as JSON: the audit trail,
+	// and what a retag replaced.
+	TagState  string
+	TagsFound string
 }
 
 // ErrPathTaken is returned when a file is recorded for one track while another track
@@ -751,13 +756,15 @@ func (r *Repo) RecordTrackFile(ctx context.Context, trackID int64, rec FileRecor
 			  probed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END,
 			  source_release = CASE WHEN ? != '' THEN ? ELSE source_release END,
 			  download_hash = CASE WHEN ? != '' THEN ? ELSE download_hash END,
-			  tags_json = '', tag_state = ?, tagged_at = NULL, missing_since = NULL,
+			  tags_json = ?, tag_state = ?,
+			  tagged_at = CASE WHEN ? = 'house' THEN CURRENT_TIMESTAMP ELSE NULL END, missing_since = NULL,
 			  added_at = CURRENT_TIMESTAMP
 			 WHERE id = ?`,
 			albumID, trackID, rec.Path, rec.SizeBytes, rec.MtimeUnix, containerOf(rec.Path),
 			b2i(lossless), string(rec.Quality), rec.BitrateKbps, p.Codec, p.SampleRateHz, p.BitsPerSample,
 			p.Channels, int(p.DurationSec*1000), b2i(probed),
-			rec.SourceRelease, rec.SourceRelease, rec.DownloadHash, rec.DownloadHash, TagStateAsFound, rowID.Int64)
+			rec.SourceRelease, rec.SourceRelease, rec.DownloadHash, rec.DownloadHash,
+			rec.TagsFound, tagState(rec.TagState), tagState(rec.TagState), rowID.Int64)
 		return err
 	})
 }

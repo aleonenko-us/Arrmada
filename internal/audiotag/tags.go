@@ -21,13 +21,16 @@ const (
 	KeyTitle            = "TITLE"
 	KeyArtist           = "ARTIST"  // display string, e.g. "Simon & Garfunkel"
 	KeyArtists          = "ARTISTS" // multi: each credited artist
+	KeyArtistSort       = "ARTISTSORT"
 	KeyAlbum            = "ALBUM"
 	KeyAlbumArtist      = "ALBUMARTIST"
 	KeyAlbumArtists     = "ALBUMARTISTS" // multi
+	KeyAlbumArtistSort  = "ALBUMARTISTSORT"
 	KeyTrackNumber      = "TRACKNUMBER"
 	KeyTrackTotal       = "TRACKTOTAL"
 	KeyDiscNumber       = "DISCNUMBER"
 	KeyDiscTotal        = "DISCTOTAL"
+	KeyDiscSubtitle     = "DISCSUBTITLE"
 	KeyDate             = "DATE"
 	KeyOriginalDate     = "ORIGINALDATE"
 	KeyGenre            = "GENRE" // multi
@@ -38,7 +41,8 @@ const (
 	KeyMBReleaseGroupID = "MUSICBRAINZ_RELEASEGROUPID"
 	KeyMBArtistID       = "MUSICBRAINZ_ARTISTID"      // multi
 	KeyMBAlbumArtistID  = "MUSICBRAINZ_ALBUMARTISTID" // multi
-	KeyReleaseType      = "RELEASETYPE"               // multi: primary type, then secondary types
+	KeyAcoustID         = "ACOUSTID_ID"
+	KeyReleaseType      = "RELEASETYPE" // multi: primary type, then secondary types
 	KeyReleaseStatus    = "RELEASESTATUS"
 	KeyReleaseCountry   = "RELEASECOUNTRY"
 	KeyLabel            = "LABEL"
@@ -54,11 +58,11 @@ const (
 
 // houseKeys lists every house key in write order, so output is deterministic.
 var houseKeys = []string{
-	KeyTitle, KeyArtist, KeyArtists, KeyAlbum, KeyAlbumArtist, KeyAlbumArtists,
-	KeyTrackNumber, KeyTrackTotal, KeyDiscNumber, KeyDiscTotal,
+	KeyTitle, KeyArtist, KeyArtists, KeyArtistSort, KeyAlbum, KeyAlbumArtist, KeyAlbumArtists,
+	KeyAlbumArtistSort, KeyTrackNumber, KeyTrackTotal, KeyDiscNumber, KeyDiscTotal, KeyDiscSubtitle,
 	KeyDate, KeyOriginalDate, KeyGenre, KeyCompilation,
 	KeyMBRecordingID, KeyMBReleaseTrackID, KeyMBReleaseID, KeyMBReleaseGroupID,
-	KeyMBArtistID, KeyMBAlbumArtistID,
+	KeyMBArtistID, KeyMBAlbumArtistID, KeyAcoustID,
 	KeyReleaseType, KeyReleaseStatus, KeyReleaseCountry, KeyLabel, KeyCatalogNumber,
 	KeyBarcode, KeyISRC, KeyMedia,
 	KeyRGTrackGain, KeyRGTrackPeak, KeyRGAlbumGain, KeyRGAlbumPeak,
@@ -70,10 +74,38 @@ var multiKeys = map[string]bool{
 }
 
 // readAliases are other spellings taggers use for house keys. They are read as
-// the house key and removed on write, so a file never carries two totals.
+// the house key (the house spelling wins when a file has both) and rewritten on
+// every write: Vorbis comments get them again as mirrors of the house value
+// (vorbisMirrors), other formats lose them, so a file never carries two
+// different totals.
 var readAliases = map[string]string{
-	"TOTALTRACKS": KeyTrackTotal,
-	"TOTALDISCS":  KeyDiscTotal,
+	"TOTALTRACKS":  KeyTrackTotal,
+	"TOTALDISCS":   KeyDiscTotal,
+	"ORIGINALYEAR": KeyOriginalDate,
+	// TagLib has no MP4 mapping for the AcoustID: it reads Picard's freeform
+	// "Acoustid Id" as this name (see toTagLib).
+	"ACOUSTID ID": KeyAcoustID,
+}
+
+// vorbisMirrorKeys are the second spellings the house style writes into Vorbis
+// comments (FLAC, Ogg, Opus) beside the house keys, as Picard does: some players
+// read only TOTALTRACKS/TOTALDISCS, some only ORIGINALYEAR. In write order.
+var vorbisMirrorKeys = []string{"TOTALTRACKS", "TOTALDISCS", "ORIGINALYEAR"}
+
+// vorbisMirrors derives the mirror values from the house values; they are never
+// set on their own.
+func vorbisMirrors(t Tags) map[string][]string {
+	m := map[string][]string{}
+	if v := t.Get(KeyTrackTotal); v != "" {
+		m["TOTALTRACKS"] = []string{v}
+	}
+	if v := t.Get(KeyDiscTotal); v != "" {
+		m["TOTALDISCS"] = []string{v}
+	}
+	if v := t.Get(KeyOriginalDate); len(v) >= 4 && parseLeadingInt(v[:4]) > 0 {
+		m["ORIGINALYEAR"] = []string{v[:4]}
+	}
+	return m
 }
 
 // HouseKeys returns the keys Read reports and Write manages, in write order.

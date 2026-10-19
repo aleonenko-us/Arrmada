@@ -184,6 +184,31 @@ func proveOne(t *testing.T, b Backend, c proofCase) {
 	checkAudioSame(t, p, c, pcm0, pkt0, si0)
 	checkKept(t, before, probeTags(t, p))
 	assertOnlyFile(t, dir, c.file)
+
+	// 5. The front cover: embedded with the tags, read back by this backend, kept by a
+	// tags-only write, and the audio untouched. (Last, since ffprobe lists an embedded
+	// picture as a stream with tags of its own.)
+	cover := testPNG(t, 77)
+	if err := tg.Write(p, want, WriteOptions{FrontCover: &Picture{Data: cover}}); err != nil {
+		t.Fatalf("cover Write: %v", err)
+	}
+	if got, err := tg.ReadFrontCover(p); err != nil || !bytes.Equal(got, cover) {
+		t.Errorf("cover read back: %d bytes, %v", len(got), err)
+	}
+	if err := tg.Write(p, want, WriteOptions{}); err != nil {
+		t.Fatalf("tags-only Write: %v", err)
+	}
+	if got, err := tg.ReadFrontCover(p); err != nil || !bytes.Equal(got, cover) {
+		t.Errorf("cover after a tags-only write: %d bytes, %v", len(got), err)
+	}
+	if got, err := tg.Read(p); err != nil {
+		t.Errorf("read after cover: %v", err)
+	} else {
+		diffTags(t, got, want)
+	}
+	checkAudioSame(t, p, c, pcm0, pkt0, si0)
+	checkMP3Header(t, p, c)
+	assertOnlyFile(t, dir, c.file)
 }
 
 // ffprobeKey is the key ffprobe reports a house key under.

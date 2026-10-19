@@ -29,9 +29,12 @@ var id3Fields = []id3Field{
 	{KeyTitle, "TIT2", ""},
 	{KeyArtist, "TPE1", ""},
 	{KeyArtists, "TXXX", "ARTISTS"},
+	{KeyArtistSort, "TSOP", ""},
 	{KeyAlbum, "TALB", ""},
 	{KeyAlbumArtist, "TPE2", ""},
 	{KeyAlbumArtists, "TXXX", "ALBUMARTISTS"},
+	{KeyAlbumArtistSort, "TSO2", ""},
+	{KeyDiscSubtitle, "TSST", ""},
 	{KeyDate, "TDRC", ""},
 	{KeyOriginalDate, "TDOR", ""},
 	{KeyGenre, "TCON", ""},
@@ -41,6 +44,7 @@ var id3Fields = []id3Field{
 	{KeyMBReleaseGroupID, "TXXX", "MusicBrainz Release Group Id"},
 	{KeyMBArtistID, "TXXX", "MusicBrainz Artist Id"},
 	{KeyMBAlbumArtistID, "TXXX", "MusicBrainz Album Artist Id"},
+	{KeyAcoustID, "TXXX", "Acoustid Id"},
 	{KeyReleaseType, "TXXX", "MusicBrainz Album Type"},
 	{KeyReleaseStatus, "TXXX", "MusicBrainz Album Status"},
 	{KeyReleaseCountry, "TXXX", "MusicBrainz Album Release Country"},
@@ -71,9 +75,12 @@ var mp4Fields = []mp4Field{
 	{KeyTitle, "\xa9nam", ""},
 	{KeyArtist, "\xa9ART", ""},
 	{KeyArtists, "----", "ARTISTS"},
+	{KeyArtistSort, "soar", ""},
 	{KeyAlbum, "\xa9alb", ""},
 	{KeyAlbumArtist, "aART", ""},
 	{KeyAlbumArtists, "----", "ALBUMARTISTS"},
+	{KeyAlbumArtistSort, "soaa", ""},
+	{KeyDiscSubtitle, "----", "DISCSUBTITLE"},
 	{KeyDate, "\xa9day", ""},
 	{KeyOriginalDate, "----", "ORIGINALDATE"},
 	{KeyGenre, "\xa9gen", ""},
@@ -83,6 +90,7 @@ var mp4Fields = []mp4Field{
 	{KeyMBReleaseGroupID, "----", "MusicBrainz Release Group Id"},
 	{KeyMBArtistID, "----", "MusicBrainz Artist Id"},
 	{KeyMBAlbumArtistID, "----", "MusicBrainz Album Artist Id"},
+	{KeyAcoustID, "----", "Acoustid Id"},
 	{KeyReleaseType, "----", "MusicBrainz Album Type"},
 	{KeyReleaseStatus, "----", "MusicBrainz Album Status"},
 	{KeyReleaseCountry, "----", "MusicBrainz Album Release Country"},
@@ -134,6 +142,12 @@ func toTagLib(f format, t Tags) map[string][]string {
 	for alias := range readAliases {
 		props[alias] = nil
 	}
+	if f == formatFLAC || f == formatOgg {
+		// Vorbis comments carry the mirror spellings too (TOTALTRACKS, ORIGINALYEAR).
+		for k, v := range vorbisMirrors(t) {
+			props[k] = v
+		}
+	}
 	if f == formatMP3 || f == formatMP4 {
 		// TagLib's ID3v2 and MP4 property maps take "n/total" in TRACKNUMBER and
 		// DISCNUMBER; a separate TRACKTOTAL would become a stray TXXX/freeform.
@@ -141,6 +155,14 @@ func toTagLib(f format, t Tags) map[string][]string {
 		props[KeyDiscNumber] = nonEmpty(joinPair(t, KeyDiscNumber, KeyDiscTotal))
 		props[KeyTrackTotal] = nil
 		props[KeyDiscTotal] = nil
+	}
+	if f == formatMP4 {
+		// TagLib knows no MP4 atom for ACOUSTID_ID and would store a freeform atom by
+		// that literal name. Under "ACOUSTID ID" it writes a freeform name that
+		// matches Picard's "Acoustid Id" (names compare without case), and reads
+		// Picard's atom back under it.
+		props["ACOUSTID ID"] = t[KeyAcoustID]
+		props[KeyAcoustID] = nil
 	}
 	return props
 }

@@ -12,9 +12,13 @@ var picardMapping = map[string]struct{ id3, mp4 string }{
 	KeyTitle:            {"TIT2", "\xa9nam"},
 	KeyArtist:           {"TPE1", "\xa9ART"},
 	KeyArtists:          {"TXXX:ARTISTS", "----:ARTISTS"},
+	KeyArtistSort:       {"TSOP", "soar"},
 	KeyAlbum:            {"TALB", "\xa9alb"},
 	KeyAlbumArtist:      {"TPE2", "aART"},
 	KeyAlbumArtists:     {"TXXX:ALBUMARTISTS", "----:ALBUMARTISTS"}, // not in Picard's table; follows ARTISTS
+	KeyAlbumArtistSort:  {"TSO2", "soaa"},
+	KeyDiscSubtitle:     {"TSST", "----:DISCSUBTITLE"},
+	KeyAcoustID:         {"TXXX:Acoustid Id", "----:Acoustid Id"},
 	KeyTrackNumber:      {"TRCK", "trkn"},
 	KeyTrackTotal:       {"TRCK", "trkn"},
 	KeyDiscNumber:       {"TPOS", "disk"},
@@ -123,13 +127,42 @@ func TestToTagLib(t *testing.T) {
 	}
 	// Every house key and alias is present, so absent ones are erased.
 	p := toTagLib(formatFLAC, in)
-	for _, k := range append(HouseKeys(), "TOTALTRACKS", "TOTALDISCS") {
+	for _, k := range append(HouseKeys(), "TOTALTRACKS", "TOTALDISCS", "ORIGINALYEAR") {
 		if _, ok := p[k]; !ok {
 			t.Errorf("%s missing from the TagLib map", k)
 		}
 	}
 	if p[KeyArtist] != nil {
 		t.Error("absent key should map to nil (erase)")
+	}
+	// Vorbis gets the mirror spellings of the house values; ID3/MP4 erase them.
+	in[KeyOriginalDate] = []string{"1997-09-22"}
+	for _, ft := range []format{formatFLAC, formatOgg} {
+		p := toTagLib(ft, in)
+		if !reflect.DeepEqual(p["TOTALTRACKS"], []string{"12"}) || !reflect.DeepEqual(p["ORIGINALYEAR"], []string{"1997"}) || p["TOTALDISCS"] != nil {
+			t.Errorf("format %d: mirrors %q %q %q", ft, p["TOTALTRACKS"], p["TOTALDISCS"], p["ORIGINALYEAR"])
+		}
+	}
+	if p := toTagLib(formatMP3, in); p["TOTALTRACKS"] != nil || p["ORIGINALYEAR"] != nil {
+		t.Error("ID3 should not carry the Vorbis mirrors")
+	}
+}
+
+func TestVorbisMirrors(t *testing.T) {
+	got := vorbisMirrors(Tags{KeyTrackTotal: {"9"}, KeyDiscTotal: {"2"}, KeyOriginalDate: {"1975"}})
+	want := map[string][]string{"TOTALTRACKS": {"9"}, "TOTALDISCS": {"2"}, "ORIGINALYEAR": {"1975"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("mirrors = %v, want %v", got, want)
+	}
+	if got := vorbisMirrors(Tags{KeyOriginalDate: {"unknown"}}); len(got) != 0 {
+		t.Errorf("a date with no year gave %v", got)
+	}
+	// Reading: the house spelling wins, the mirror fills in when it's alone.
+	if r := normalizeRead(map[string][]string{"ORIGINALYEAR": {"1975"}}); r.Get(KeyOriginalDate) != "1975" {
+		t.Errorf("ORIGINALYEAR alone read as %v", r)
+	}
+	if r := normalizeRead(map[string][]string{"ORIGINALYEAR": {"1975"}, "ORIGINALDATE": {"1975-11-21"}}); r.Get(KeyOriginalDate) != "1975-11-21" {
+		t.Errorf("ORIGINALDATE should win: %v", r)
 	}
 }
 

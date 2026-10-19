@@ -45,7 +45,7 @@ func readFLAC(f *os.File) (map[string][]string, error) {
 
 // writeFLAC rewrites the metadata blocks and then copies the audio frames
 // byte for byte from the original.
-func writeFLAC(src *os.File, dst io.Writer, t Tags, _ WriteOptions) error {
+func writeFLAC(src *os.File, dst io.Writer, t Tags, opts WriteOptions) error {
 	meta, err := flac.ParseMetadata(src)
 	if err != nil {
 		return fmt.Errorf("flac: %w", err)
@@ -91,6 +91,14 @@ func writeFLAC(src *os.File, dst io.Writer, t Tags, _ WriteOptions) error {
 			}
 		}
 	}
+	mirrors := vorbisMirrors(t)
+	for _, key := range vorbisMirrorKeys {
+		for _, v := range mirrors[key] {
+			if err := cmts.Add(key, v); err != nil {
+				return fmt.Errorf("flac: %s: %w", key, err)
+			}
+		}
+	}
 	block := cmts.Marshal()
 	if len(block.Data) > maxFLACBlock {
 		return errors.New("flac: tags too large for a metadata block")
@@ -101,6 +109,11 @@ func writeFLAC(src *os.File, dst io.Writer, t Tags, _ WriteOptions) error {
 		// No comment block yet: put it straight after STREAMINFO, where
 		// readers look first.
 		meta.Meta = append(meta.Meta[:1], append([]*flac.MetaDataBlock{&block}, meta.Meta[1:]...)...)
+	}
+	if opts.FrontCover != nil {
+		if err := setFLACCover(meta, opts.FrontCover); err != nil {
+			return err
+		}
 	}
 
 	// Marshal writes "fLaC", the blocks (fixing the last-block flag) and Frames,

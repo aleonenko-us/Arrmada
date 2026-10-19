@@ -108,6 +108,14 @@ func (p libPrefs) EbookNaming() library.BookNaming {
 		File:   p.s.Get(ctx, "naming_ebook_file", library.DefaultEbookFile),
 	}
 }
+func (p libPrefs) MusicNaming() library.MusicNaming {
+	ctx := context.Background()
+	return library.MusicNaming{
+		Folder:      p.s.Get(ctx, settings.KeyNamingMusicFolder, library.DefaultMusicFolder),
+		Track:       p.s.Get(ctx, settings.KeyNamingMusicTrack, library.DefaultMusicTrack),
+		Compilation: p.s.Get(ctx, settings.KeyNamingMusicCompilation, library.DefaultMusicCompilationTrack),
+	}
+}
 func (p libPrefs) WriteNFO() bool { return p.s.GetBool(context.Background(), "write_nfo", false) }
 func (p libPrefs) DownloadArtwork() bool {
 	return p.s.GetBool(context.Background(), "download_artwork", false)
@@ -664,6 +672,20 @@ func main() {
 	}
 	// Music shares the same importer; albums land in their own category.
 	coordinator.SetMusic(musicSvc)
+	// Music placement (MUS-33, MUS-34, MUS-36): the naming templates, house tags written in
+	// a staging copy (a seeding download is never written), covers from the Cover Art
+	// Archive, extras brought along — each read from Settings on every import.
+	bookImporter.SetMusicNaming(prefs)
+	coordinator.SetMusicPlacement(func(ctx context.Context) automation.MusicPlacementPrefs {
+		return automation.MusicPlacementPrefs{
+			WriteTags: settingsSvc.GetBool(ctx, settings.KeyMusicWriteTags, settings.MusicWriteTagsDefault),
+		}
+	}, music.NewCAA(), automation.MusicAudioHash)
+	// A music import, retag or rename a crash stopped part way is finished or rolled back
+	// now, before anything stages music again.
+	if rep, err := coordinator.RecoverMusicStaging(runCtx); err != nil {
+		log.Error("music: some interrupted staging jobs couldn't be settled — they're kept, nothing was deleted", "err", err, "kept", rep.Kept)
+	}
 	// Switching Music off in Settings stops its searches, imports and manual actions on the
 	// next cycle; Books keeps its old behaviour (the toggle only hides it) for now.
 	coordinator.SetModuleGate(func(ctx context.Context, module string) bool {

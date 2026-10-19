@@ -31,3 +31,5 @@ internal/webui/dist/*
 .idea/
 .vscode/
 *.md
+# ...except the third-party notices, which ship in the image (/usr/share/doc/arrmada).
+!THIRD_PARTY_NOTICES.md
