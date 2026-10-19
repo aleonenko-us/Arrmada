@@ -27,14 +27,16 @@ import (
 //
 // The result is space-separated words; matching on whole words is what stops "Kid A"
 // matching inside "Kid Amnesiae".
-func foldMusic(s string) string { return foldMusicWith(s, true) }
+func foldMusic(s string) string { return foldMusicWith(s, true, false) }
 
 // foldMusicSplit is foldMusic with a slash read as a word break instead of a join. A
 // release can write AC/DC as "ACDC" or as "AC.DC", and an album called Either/Or as
 // "Either Or"; the matcher tries both readings rather than picking one.
-func foldMusicSplit(s string) string { return foldMusicWith(s, false) }
+func foldMusicSplit(s string) string { return foldMusicWith(s, false, false) }
 
-func foldMusicWith(s string, joinSlash bool) string {
+// foldMusicWith folds s; keepAnd keeps the word "and" ("&" and "+" still read as it)
+// instead of dropping it, for the artist check's strict reading (see artistNamed).
+func foldMusicWith(s string, joinSlash, keepAnd bool) string {
 	s = parser.FoldTitle(s)
 	// An apostrophe joins its neighbours: "what's" → "whats", which is how a filename
 	// that can't carry the apostrophe spells it. FoldTitle has already turned the
@@ -44,6 +46,9 @@ func foldMusicWith(s string, joinSlash bool) string {
 	s = joinAcronyms(s)
 	if joinSlash {
 		s = reLetterSlash.ReplaceAllString(s, "$1$2")
+	}
+	if keepAnd {
+		return strings.Join(strings.FieldsFunc(s, func(r rune) bool { return !isWordRune(r) }), " ")
 	}
 	return strings.Join(parser.TitleWords(s), " ")
 }
@@ -143,27 +148,54 @@ func containsWords(hay, needle string) bool {
 	return false
 }
 
-// artistNamed reports whether a release names this artist as whole words. An artist that
-// folds to nothing never matches: there's nothing to check the release against, and
-// waving it through would let any release with the right album title in.
+// artistNamed reports whether a release names this artist. An artist that folds to nothing
+// never matches: there's nothing to check the release against, and waving it through
+// would let any release with the right album title in.
 //
-// A leading "The" may be missing from the release ("Beatles - Abbey Road") as long as
-// something is left after it, and that something isn't just another "the": "The The"
-// still has to say "The The".
+// Anywhere in the release, the artist must appear in full: every word of the name as
+// whole words, "and" and a leading "the" included ("&" and "+" still read as "and"). A
+// shorter spelling — "Beatles" for The Beatles, "Simon Garfunkel" for Simon & Garfunkel,
+// "One" for And One — only counts when it is the release's whole artist part (what comes
+// before " - "). As free words it would let "Fall Out Boy - Live in Phoenix" match The
+// Fall, or "Who Is Fancy - Live" match The Who. "The The" still has to say "The The".
 func artistNamed(hay, artist string) bool {
 	if foldMusic(artist) == "" {
 		return false
 	}
-	if containsWords(hay, artist) {
-		return true
+	for _, join := range []bool{true, false} {
+		n := foldMusicWith(artist, join, true)
+		if n != "" && strings.Contains(" "+foldMusicWith(hay, join, true)+" ", " "+n+" ") {
+			return true
+		}
 	}
-	words := strings.Fields(foldMusic(artist))
-	if len(words) < 2 || words[0] != "the" {
+	seg, _, ok := strings.Cut(hay, " - ")
+	if !ok {
 		return false
 	}
-	rest := words[1:]
-	if len(rest) == 1 && rest[0] == "the" {
-		return false
+	for _, join := range []bool{true, false} {
+		part := foldMusicWith(seg, join, false)
+		if part == "" {
+			continue
+		}
+		for _, short := range shortArtistForms(foldMusicWith(artist, join, false)) {
+			if part == short {
+				return true
+			}
+		}
 	}
-	return containsWords(hay, strings.Join(rest, " "))
+	return false
+}
+
+// shortArtistForms are the shorter spellings a release's artist part may use for a folded
+// artist name: the name without "and" (which the fold already drops), and without a
+// leading "the" when something other than another "the" is left.
+func shortArtistForms(folded string) []string {
+	out := []string{folded}
+	words := strings.Fields(folded)
+	if len(words) >= 2 && words[0] == "the" {
+		if rest := words[1:]; !(len(rest) == 1 && rest[0] == "the") {
+			out = append(out, strings.Join(rest, " "))
+		}
+	}
+	return out
 }

@@ -87,6 +87,24 @@ func TestReleaseIsForAlbumFolds(t *testing.T) {
 			t.Errorf("ReleaseIsForAlbum(%q, %q, %q) = true, want false (%s)", c.release, c.artist, c.album, c.why)
 		}
 	}
+	// A shorter spelling of the artist only counts as the release's whole artist part,
+	// never as free words somewhere in it.
+	for _, c := range []struct{ release, artist, album string }{
+		{"Fall Out Boy - Live in Phoenix [FLAC]", "The Fall", "Live in Phoenix"},
+		{"Who Is Fancy - Live [MP3 320]", "The Who", "Live"},
+		{"One Direction - Up All Night [FLAC]", "And One", "Up All Night"},
+	} {
+		if ReleaseIsForAlbum(c.release, c.artist, c.album) {
+			t.Errorf("ReleaseIsForAlbum(%q, %q, %q) = true, want false", c.release, c.artist, c.album)
+		}
+	}
+	if !ReleaseIsForAlbum("And One - Bodypop [FLAC]", "And One", "Bodypop") ||
+		!ReleaseIsForAlbum("Simon Garfunkel - Bookends [FLAC]", "Simon & Garfunkel", "Bookends") {
+		t.Error("the full name, or a shorter spelling as the whole artist part, still matches")
+	}
+	if ReleaseIsDiscographyFor("Fall Out Boy - Discography [FLAC]", "The Fall") {
+		t.Error("the discography gate uses the same artist rule")
+	}
 	if !ReleaseIsForAlbum("The The - Soul Mining [FLAC]", "The The", "Soul Mining") {
 		t.Error("'The The' must still match its own release")
 	}
