@@ -357,6 +357,20 @@ func acqPhase(it download.Item) string {
 	return it.Phase()
 }
 
+// heldStallPhase reports whether a download is somewhere it can't progress by design —
+// paused (by anyone), queued for a slot, checking, moving or allocating — so its stall
+// clock is held rather than run down. The same states stalledInQueue holds the clock for.
+func heldStallPhase(it download.Item) bool {
+	if it.State == "paused" || it.State == "checking" {
+		return true
+	}
+	switch it.Phase() {
+	case "paused", "queued", "checking", "moving", "allocating":
+		return true
+	}
+	return false
+}
+
 // reconcileRow is the part of a grab row the reconciler compares against the client.
 type reconcileRow struct {
 	id                                     int64
@@ -375,8 +389,12 @@ const reconcileRewriteAfter = 5 * time.Minute
 // complete read of the client no longer lists it; completed_at when it finishes. Legacy
 // hashless grabs get their hash adopted first (AdoptTorrentHashes).
 //
+// It also keeps the stall clock (progress_at) and, for every download in the read, when it
+// started trying to download (noteTrying) — the queue's stall rule reads both.
+//
 // It writes only rows that changed — a new phase, progress moved by a percent or more, a
-// new client, or last_seen_at older than five minutes — in one short transaction, so the
+// new client, or last_seen_at (or a stall clock due a restart or hold) older than five
+// minutes — in one short transaction, so the
 // 30-second tick doesn't contend with the import sweeps for SQLite's write lock.
 // Returns how many rows it wrote. A client that can't be read is not this task's failure:
 // it skips the tick, and the Downloads page and health check say the client is down.
@@ -388,6 +406,7 @@ func (c *Coordinator) ReconcileAcquisitions(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, nil
 	}
+	c.noteTrying(snap.Items, snap.Complete)
 	c.noteUsenetQueue(snap.Items)
 	if snap.Complete {
 		c.rekeyRetriedUsenetJobs(ctx, snap.Items)
@@ -440,6 +459,21 @@ func (c *Coordinator) ReconcileAcquisitions(ctx context.Context) (int, error) {
 			next.progress = it.Progress
 			if it.Progress > r.progress {
 				next.progressAt = now // forward progress restarts the stall clock
+			}
+		}
+		// Between whole percents the clock still follows the download, at the pace the row
+		// is rewritten anyway: forward progress of any size restarts it, and time spent
+		// where it can't progress (paused, queued, checking, moving, allocating) holds it,
+		// as the fail-over's own check does once a grab is old enough to judge
+		// (stalledInQueue). Otherwise a slow pack read as stuck for as long as a percent took,
+		// and a torrent that sat queued for hours read as hours without progress the moment
+		// it started.
+		if !moved && time.Duration(now-r.progressAt)*time.Millisecond >= reconcileRewriteAfter {
+			switch {
+			case it.Progress > r.progress:
+				next.progress, next.progressAt = it.Progress, now
+			case !it.Complete() && heldStallPhase(it):
+				next.progressAt = now
 			}
 		}
 		if r.progressAt == 0 {

@@ -95,6 +95,10 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 		clientName[c.ID] = c.Name
 	}
 
+	// Stalled is the one rule this page, the Dashboard, the widget, Needs you and a
+	// requester's card share (automation.QueueStall), built on the stall fail-over's clock.
+	stallOf := a.stallJudge(links, guardHeld, now)
+
 	downloads := make([]map[string]any, 0, len(queue))
 	var totalDown, totalUp int64
 	active, stalled := 0, 0
@@ -121,15 +125,7 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 		phase := it.Phase()
 		h := strings.ToLower(it.Hash)
 		_, isHeld := guardHeld[h]
-		// Stalled is the one rule this page and a requester's card share, built on the stall
-		// fail-over's own clock (automation.QueueStall): an Arrmada grab by the clock the
-		// fail-over counts, anything else by the client's own stalled state — each held for
-		// the fail-over's grace. qBittorrent's "stalledDL" alone flickers on and off.
-		var clock time.Time
-		if managed {
-			clock = acq.ProgressAt
-		}
-		stallSince, isStalled := automation.QueueStall(it, clock, isHeld, now)
+		stallSince, isStalled := stallOf(it)
 		if isStalled {
 			stalled++
 		}
@@ -263,6 +259,39 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.writeJSON(w, http.StatusOK, out)
+}
+
+// stallJudge is the queue's stall rule (automation.QueueStall) with what it reads gathered
+// once for a whole read of the queue: each grab's stall clock (by hash, or by name for a
+// legacy grab without one), when each download started trying, and what the disk guard
+// is holding.
+func (a *api) stallJudge(links automation.QueueLinks, held map[string]download.GuardVolume, now time.Time) func(download.Item) (time.Time, bool) {
+	trying := a.deps.Automation.TryingSince()
+	return func(it download.Item) (time.Time, bool) {
+		h := strings.ToLower(it.Hash)
+		var clocks automation.StallClocks
+		acq, ok := links.ByHash[h]
+		if !ok {
+			acq, ok = automation.LegacyMatchByName(links.Legacy, it)
+		}
+		if ok {
+			clocks.Grab = acq.ProgressAt
+		}
+		clocks.Trying = trying[h]
+		_, guard := held[h]
+		return automation.QueueStall(it, clocks, guard, now)
+	}
+}
+
+// queueStallJudge is stallJudge with its inputs read now, for a caller that has only the
+// queue (the Dashboard tile, the homepage widget).
+func (a *api) queueStallJudge(ctx context.Context) func(download.Item) (time.Time, bool) {
+	var links automation.QueueLinks
+	if a.deps.Automation != nil {
+		links, _ = a.deps.Automation.QueueLinks(ctx)
+	}
+	held, _ := a.guardHolding(ctx)
+	return a.stallJudge(links, held, time.Now())
 }
 
 // finishing is what the feed needs to tell where a finished torrent stands, each keyed by

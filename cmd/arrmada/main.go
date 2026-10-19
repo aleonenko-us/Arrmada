@@ -1304,7 +1304,7 @@ func main() {
 	// The Needs-you feed: one snapshot of everything waiting on a person, refreshed every
 	// 30 seconds and a second after anything it reports on changes. The sidebar badges and
 	// the Dashboard card read it from memory, however many tabs are open.
-	needsYou := attention.New(attention.QueueFrame(downloads.Snapshot, coordinator.LiveByHash), bus, log,
+	needsYou := attention.New(attention.QueueFrame(downloads.Snapshot, coordinator.LiveByHash, coordinator.TryingSince), bus, log,
 		attention.Requests(requestsSvc),
 		attention.Reviews(coordinator),
 		attention.Downloads(),

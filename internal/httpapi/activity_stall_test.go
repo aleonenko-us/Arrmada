@@ -55,7 +55,7 @@ func TestDownloadsFeedStalledAndClient(t *testing.T) {
 			hash, name, state, dlspeed, lastActivity, addedOn)
 	}
 	one := stallQbit(t,
-		torrent(grabStalled, "Arrival.2016.1080p", "stalledDL", 0, unix(time.Hour), unix(3*time.Hour)), // the grab clock is the earlier
+		torrent(grabStalled, "Arrival.2016.1080p", "stalledDL", 0, unix(time.Hour), unix(3*time.Hour)), // last data an hour ago, after the grab clock
 		torrent(blip, "Some.Show.S01E01.1080p", "stalledDL", 0, unix(time.Minute), unix(3*time.Hour)),
 		torrent(paused, "Up.2009.1080p", "pausedDL", 0, 0, unix(5*time.Hour)),
 	)
@@ -125,7 +125,7 @@ func TestDownloadsFeedStalledAndClient(t *testing.T) {
 		name    string
 	}
 	want := map[string]row{
-		grabStalled: {"stalled", true, clock.Unix(), first.ID, "qBittorrent"},
+		grabStalled: {"stalled", true, unix(time.Hour), first.ID, "qBittorrent"}, // the later sign of life
 		blip:        {"downloading", false, 0, first.ID, "qBittorrent"},
 		paused:      {"paused", false, 0, first.ID, "qBittorrent"},
 		noFileList:  {"stalled", true, unix(3 * time.Hour), second.ID, "qBittorrent 2"},

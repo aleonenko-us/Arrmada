@@ -5,7 +5,7 @@ import { useUnsavedGuard } from "../lib/useUnsavedGuard";
 import { useSearchParamState } from "../lib/useSearchState";
 import { LINKS } from "../lib/links";
 import { RemoveDownloadDialog, removedMessage } from "../components/RemoveDownloadDialog";
-import { api, type ActivityDownload, type ClientSettings, type DiskGuardHold, type DownloadClientsState, type WantedLists, type WantedRow } from "../lib/api";
+import { api, type ActivityDownload, type ClientSettings, type DiskGuardHold, type DownloadClientsState, type Job, type WantedLists, type WantedRow } from "../lib/api";
 import { downloadClientApi } from "../lib/downloadClientApi";
 import { useMe } from "../lib/me";
 import { useLiveEvent } from "../lib/live";
@@ -287,6 +287,20 @@ export function QueuePanel() {
     const held = r.held_by_guard ?? 0;
     note(`Resumed ${r.resumed ?? 0}${held > 0 ? ` · ${held} held by the disk guard` : ""}.`);
   });
+  // Try another release: the search runs as a job, followed here rather than in the row, so
+  // "Grabbed X instead" (or why not) still shows after the row has left the list — which
+  // is what a successful replacement does to it. By hash, one search per download.
+  const [failovers, setFailovers] = useState<Record<string, number>>({});
+  const tryAnother = (hash: string) => act(hash, async () => {
+    const id = (await api.failOverDownload(hash)).job_id;
+    if (id) setFailovers((f) => ({ ...f, [hash]: id }));
+    else note("Looking for another release…");
+  });
+  const failoverDone = (hash: string, j: Job) => {
+    setFailovers((f) => { const next = { ...f }; delete next[hash]; return next; });
+    toast(jobToast(j), { tone: jobFailed(j) ? "error" : undefined, ms: 8000 });
+    refreshQueue();
+  };
 
   // Which client each download is in, named on the rows and offered as a filter only when
   // more than one is switched on. A ?client= no row is in any more shows everything.
@@ -335,6 +349,7 @@ export function QueuePanel() {
 
   return (
     <>
+      {Object.entries(failovers).map(([hash, id]) => <FailoverJob key={hash} id={id} onDone={(j) => failoverDone(hash, j)} />)}
       {/* Header: live totals + free disk + controls */}
       <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-4 py-2.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
         {!noClient && (
@@ -428,13 +443,13 @@ export function QueuePanel() {
       ) : view === "downloading" ? (
         shownDownloads.length === 0 ? <Empty>{problemsOnly ? "No download needs a look right now." : "Nothing downloading. Grab a release and it'll appear here."}</Empty> : (
           <div className="flex flex-col gap-2">
-            {shownDownloads.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} onNote={note} showClient={showClients} />)}
+            {shownDownloads.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} onNote={note} showClient={showClients} searching={it.hash in failovers} onTryAnother={tryAnother} />)}
           </div>
         )
       ) : view === "stalled" ? (
         shownStalled.length === 0 ? <Empty>Nothing has stalled. A download counts as stalled after half an hour with no progress.</Empty> : (
           <div className="flex flex-col gap-2">
-            {shownStalled.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} onNote={note} showClient={showClients} />)}
+            {shownStalled.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} onNote={note} showClient={showClients} searching={it.hash in failovers} onTryAnother={tryAnother} />)}
           </div>
         )
       ) : view === "finishing" ? (
@@ -559,6 +574,12 @@ function Empty({ children }: { children: React.ReactNode }) {
 // wantedMatches is the page's search box over a Wanted row: its title, author or artist.
 const wantedMatches = (s: WantedRow, q: string) => s.title.toLowerCase().includes(q) || (s.byline ?? "").toLowerCase().includes(q);
 
+// FailoverJob follows one Try another release search to its end; it draws nothing.
+function FailoverJob({ id, onDone }: { id: number; onDone: (j: Job) => void }) {
+  useJob(id, { onDone });
+  return null;
+}
+
 // ClientChip names the download client a transfer is in, as its card in Settings →
 // Connections does. Shown only when more than one client is switched on.
 function ClientChip({ it }: { it: ActivityDownload }) {
@@ -576,20 +597,20 @@ function TypeChip({ mediaType }: { mediaType?: string }) {
 //
 // A usenet job has no peers, seeds or trackers: it shows what's left to fetch, no Reannounce
 // or Recheck, and when SABnzbd failed it, its reason and Retry.
-function DownloadCard({ it, guard, busy, act, onRemoved, onNote, showClient }: { it: ActivityDownload; guard: DiskGuardHold | null; busy: boolean; act: (hash: string, fn: () => Promise<unknown>) => Promise<void>; onRemoved: (m: string) => void; onNote: (m: string) => void; showClient: boolean }) {
+function DownloadCard({ it, guard, busy, act, onRemoved, onNote, showClient, searching, onTryAnother }: { it: ActivityDownload; guard: DiskGuardHold | null; busy: boolean; act: (hash: string, fn: () => Promise<unknown>) => Promise<void>; onRemoved: (m: string) => void; onNote: (m: string) => void; showClient: boolean; searching: boolean; onTryAnother: (hash: string) => void }) {
   const paused = it.state === "paused";
   const [removing, setRemoving] = useState(false);
   const usenet = isUsenetDownload(it);
   const failed = usenet && usenetFailed(it);
   const stalled = isStalled(it);
   const chip = phaseLabel(it);
-  // A stalled download Arrmada grabbed can try another release now, as Needs you's does:
-  // this one is removed only once something else has been grabbed in its place.
-  const [failJob, setFailJob] = useState<number | null>(null);
-  const failover = useJob(failJob, { onDone: (j) => { setFailJob(null); onNote(jobToast(j)); } });
+  // A stalled download a pending grab recorded by hash (it carries a stall state: what the
+  // fail-over endpoint accepts) can try another release now, as Needs you's does: this one
+  // is removed only once something else has been grabbed in its place. The search is
+  // followed by the panel, so its result shows even once the row has gone.
   const tryAnother = {
-    label: failover.running ? "Searching…" : "Try another release", title: "Search for a different release; this one is removed only once another is grabbed", disabled: busy || failover.running,
-    onSelect: () => act(it.hash, async () => { const r = await api.failOverDownload(it.hash); if (r.job_id) setFailJob(r.job_id); else onNote("Looking for another release…"); }),
+    label: searching ? "Searching…" : "Try another release", title: "Search for a different release; this one is removed only once another is grabbed", disabled: busy || searching,
+    onSelect: () => onTryAnother(it.hash),
   };
   const stall = stallLine(it);
   const failLine = failed ? usenetFailLine(it) : null;
@@ -619,7 +640,7 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote, showClient }: {
           name={it.item?.title ?? it.name}
           primary={failed ? retry : <ResumeBtn it={it} guard={guard} busy={busy} act={act} />}
           secondary={[
-            ...(stalled && it.managed && !usenet ? [tryAnother] : []),
+            ...(stalled && it.stall && !usenet ? [tryAnother] : []),
             { label: "Block", tone: "var(--avoid-text)", title: "Blocklist this release and grab a different one", disabled: busy, onSelect: () => act(it.hash, async () => { const r = await api.blockDownload(it.hash, it.name); onRemoved(`Blocked for ${r.blocked_for.title} — searching for another release.`); }) },
             { label: "Delete", danger: true, title: "Remove from the client — asks what to do with the files", disabled: busy, onSelect: () => setRemoving(true) },
           ]}

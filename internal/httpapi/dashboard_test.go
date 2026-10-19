@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/tristenlammi/arrmada/internal/automation"
 	"github.com/tristenlammi/arrmada/internal/config"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/insights"
@@ -157,10 +159,16 @@ func TestStorageVolumesFoldSharedFilesystems(t *testing.T) {
 }
 
 // A torrent nobody is seeding used to count as downloading, so a queue of dead torrents
-// looked busy on the Dashboard. It counts as stalled now, and a queued seed stays a seed.
+// looked busy on the Dashboard. It counts as stalled now — by the Activity queue's own rule,
+// so a moment with no peer sending is still downloading — and a queued seed stays a seed.
 func TestSummarizeQueueSeparatesStalled(t *testing.T) {
+	now := time.Now()
+	judge := func(it download.Item) (time.Time, bool) {
+		return automation.QueueStall(it, automation.StallClocks{}, false, now)
+	}
 	q := summarizeQueue([]download.Item{
-		{RawState: "stalledDL", State: "downloading", Progress: 0.1, RemainingBytes: 1},
+		{RawState: "stalledDL", State: "downloading", Progress: 0.1, RemainingBytes: 1, LastActivity: now.Add(-2 * time.Hour).Unix()},
+		{RawState: "stalledDL", State: "downloading", Progress: 0.1, RemainingBytes: 1, LastActivity: now.Add(-time.Minute).Unix()},
 		{RawState: "downloading", State: "downloading", Progress: 0.5, RemainingBytes: 1, DownSpeed: 100},
 		{RawState: "metaDL", State: "downloading"},
 		{RawState: "queuedDL", State: "downloading", Progress: 0.2, RemainingBytes: 1},
@@ -168,8 +176,8 @@ func TestSummarizeQueueSeparatesStalled(t *testing.T) {
 		{RawState: "stalledUP", State: "seeding", Progress: 1, UpSpeed: 7},
 		{RawState: "stoppedDL", State: "paused", Progress: 0.3, RemainingBytes: 1},
 		{RawState: "missingFiles", State: "error"},
-	})
-	want := queueSummary{Downloading: 3, Stalled: 1, Seeding: 2, Paused: 1, Errored: 1, DownSpeed: 100, UpSpeed: 7}
+	}, judge)
+	want := queueSummary{Downloading: 4, Stalled: 1, Seeding: 2, Paused: 1, Errored: 1, DownSpeed: 100, UpSpeed: 7}
 	if q != want {
 		t.Errorf("summary = %+v\nwant      %+v", q, want)
 	}

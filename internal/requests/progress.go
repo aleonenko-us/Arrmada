@@ -328,7 +328,7 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 				usenetActive++
 			}
 			// The guard's hold reads as paused above, so it's never stalled here.
-			if _, ok := automation.QueueStall(*it, a.ProgressAt, false, now); ok {
+			if _, ok := automation.QueueStall(*it, automation.StallClocks{Grab: a.ProgressAt}, false, now); ok {
 				stalled++
 			}
 			size, got, speed = size+it.SizeBytes, got+it.DownloadedBytes, speed+it.DownSpeed

@@ -162,9 +162,9 @@ Use dots for nested fields (`queue.downloading`).
 | `movies`, `shows`, `episodes`, `books` | How many are in the library. | `number` |
 | `wanted.movies`, `wanted.episodes`, `wanted.books` | Monitored and still without a file — what Arrmada is searching for. Episodes count only aired ones of shows that aren't paused. | `number` |
 | `wanted.total` | The three added up. | `number` |
-| `queue.downloading` | Downloads moving right now. | `number` |
+| `queue.downloading` | Unfinished downloads that aren't stalled, paused or errored (including ones waiting a moment for peers). | `number` |
 | `queue.seeding` | Finished torrents still seeding. | `number` |
-| `queue.stalled` | Unfinished downloads nobody is sending. | `number` |
+| `queue.stalled` | Unfinished downloads that have made no progress for half an hour — the same count as the Stalled pill in Activity → Queue. | `number` |
 | `queue.paused`, `queue.errored` | Paused, and stopped by an error. | `number` |
 | `queue.total` | Everything in the download client(s). | `number` |
 | `queue.down_speed`, `queue.up_speed` | Bytes per second, all downloads together. | `bytes` with `suffix: /s` |

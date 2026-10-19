@@ -85,7 +85,7 @@ type storageVolume struct {
 
 type queueSummary struct {
 	Downloading int   `json:"downloading"`
-	Stalled     int   `json:"stalled"` // incomplete with no peer sending — not counted in Downloading
+	Stalled     int   `json:"stalled"` // stalled by the queue's rule (automation.QueueStall) — not counted in Downloading
 	Seeding     int   `json:"seeding"`
 	Paused      int   `json:"paused"`
 	Errored     int   `json:"errored"`
@@ -94,25 +94,29 @@ type queueSummary struct {
 }
 
 // summarizeQueue counts the client's torrents for the Dashboard tile by phase. A stalled
-// torrent used to count as downloading, so a queue of dead torrents looked busy.
+// torrent used to count as downloading, so a queue of dead torrents looked busy. Stalled is
+// the Activity queue's own rule (stalled, from queueStallJudge), so the tile and the
+// queue's Stalled pill agree; a moment with no peer sending is still downloading.
 //
 // Phases that aren't a verdict on their own (queued, checking, moving, …) go by whether the
 // torrent is finished: a queued seed is still a seed.
-func summarizeQueue(items []download.Item) queueSummary {
+func summarizeQueue(items []download.Item, stalled func(download.Item) (time.Time, bool)) queueSummary {
 	var q queueSummary
 	for _, it := range items {
 		q.DownSpeed += it.DownSpeed
 		q.UpSpeed += it.UpSpeed
+		if _, ok := stalled(it); ok {
+			q.Stalled++
+			continue
+		}
 		switch it.Phase() {
 		case "error":
 			q.Errored++
 		case "paused":
 			q.Paused++
-		case "stalled":
-			q.Stalled++
 		case "seeding":
 			q.Seeding++
-		case "downloading", "metadata", "queued", "checking", "moving", "allocating":
+		case "downloading", "stalled", "metadata", "queued", "checking", "moving", "allocating":
 			if it.Complete() {
 				q.Seeding++
 			} else {
@@ -172,7 +176,7 @@ func (a *api) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		if items, err := a.deps.Downloads.Queue(ctx); err != nil {
 			out.QueueNote = err.Error()
 		} else {
-			out.Queue = summarizeQueue(items)
+			out.Queue = summarizeQueue(items, a.queueStallJudge(ctx))
 		}
 	}
 

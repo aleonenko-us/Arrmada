@@ -45,9 +45,16 @@ test.describe("manager", () => {
     // The row's own actions apply: another release now (kept until one is grabbed), Block, Delete.
     await expect(stalled.getByRole("button", { name: "Block" })).toBeVisible();
     await expect(stalled.getByRole("button", { name: "Delete" })).toBeVisible();
+    // Replaced, the stalled download leaves the queue — and with it the row; what happened
+    // is still said.
+    await page.route("**/api/v1/downloads", (route) => route.fulfill({
+      json: { ...activity, downloads: activity.downloads.filter((d) => d.hash !== STALLED_QUEUE_HASH) },
+    }));
     await stalled.getByRole("button", { name: "Try another release" }).click();
+    await expect(page.getByTestId("transfer-card")).toHaveCount(0);
     await expect(page.getByText(/Grabbed Old\.Film\.1080p\.WEB-DL-NEW instead/)).toBeVisible();
     expect(api.callsTo("POST", `/api/v1/queue/${STALLED_QUEUE_HASH}/failover`)).toHaveLength(1);
+    await page.unroute("**/api/v1/downloads");
 
     // Linked straight to, the view opens on its own.
     await page.goto("/activity/queue?show=stalled");
@@ -59,6 +66,19 @@ test.describe("manager", () => {
     await expect(card(page, "Quiet.Bay").getByRole("button", { name: "Block" })).toBeVisible();
     await expect(card(page, "Quiet.Bay").getByRole("button", { name: "Try another release" })).toHaveCount(0);
     await expect(card(page, "Driftwood").getByRole("button", { name: "Try another release" })).toHaveCount(0);
+  });
+
+  // Only a download a pending grab recorded by hash (it carries a stall state) can be failed
+  // over; a stalled torrent nothing grabbed keeps Block and Delete.
+  test("a stalled download no grab recorded isn't offered Try another release", async ({ page }) => {
+    await page.route("**/api/v1/downloads", (route) => route.fulfill({
+      json: { ...activity, downloads: activity.downloads.map((d) => (d.hash === STALLED_QUEUE_HASH ? { ...d, stall: undefined, managed: false, item: undefined } : d)) },
+    }));
+    await page.goto("/activity/queue?show=stalled");
+    const row = card(page, "Old.Film.2019");
+    await expect(row.getByTestId("stalled-chip")).toBeVisible();
+    await expect(row.getByRole("button", { name: "Block" })).toBeVisible();
+    await expect(row.getByRole("button", { name: "Try another release" })).toHaveCount(0);
   });
 
   test("the Stalled count follows the queue live", async ({ page, api }) => {

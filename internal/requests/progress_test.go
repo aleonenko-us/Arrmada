@@ -196,20 +196,21 @@ func TestTrackStalled(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	item := func(hash, raw string, speed int64) download.Item {
+	item := func(hash, raw string, speed int64, idle time.Duration) download.Item {
 		return download.Item{Hash: hash, State: "downloading", RawState: raw, Progress: 0.3, SizeBytes: 1000, DownloadedBytes: 300,
-			RemainingBytes: 700, DownSpeed: speed, ETASeconds: 8640000, LastActivity: time.Now().Unix()}
+			RemainingBytes: 700, DownSpeed: speed, ETASeconds: 8640000, LastActivity: time.Now().Add(-idle).Unix()}
 	}
 	queue := []download.Item{
-		item("dead", "stalledDL", 0),
-		item("pack-dead", "stalledDL", 0),
-		item("pack-live", "downloading", 900),
+		item("dead", "stalledDL", 0, 2*time.Hour),
+		item("pack-dead", "stalledDL", 0, 2*time.Hour),
+		item("pack-live", "downloading", 900, 0),
 	}
-	// "blip" has no grab clock past the grace: its clock is the stalledDL moment only.
+	// "blip" has a fresh grab clock (held while it sat paused, just resumed) though the
+	// client last moved data two hours ago: the latest sign of life wins.
 	if _, err := s.repo.db.Exec(`UPDATE grabs SET progress_at = ? WHERE info_hash = 'blip'`, time.Now().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
-	queue = append(queue, item("blip", "stalledDL", 0))
+	queue = append(queue, item("blip", "stalledDL", 0, 2*time.Hour))
 	reqs := []Request{
 		{Title: "dead", Status: StatusApproved, MediaType: "movie", libID: 1, released: true},
 		{Title: "blip", Status: StatusApproved, MediaType: "movie", libID: 2, released: true},

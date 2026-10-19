@@ -43,9 +43,13 @@ func linkTo(it *Item, f *health.Fix) {
 func QueueFrame(
 	snapshot func(ctx context.Context) (download.Snapshot, error),
 	live func(ctx context.Context) (map[string]automation.Acquisition, []automation.Acquisition, error),
+	trying func() map[string]time.Time,
 ) FrameFunc {
 	return func(ctx context.Context) *Frame {
 		f := &Frame{}
+		if trying != nil {
+			f.Trying = trying()
+		}
 		if snapshot != nil {
 			if snap, err := snapshot(ctx); err == nil {
 				f.OK, f.Whole, f.Queue = true, snap.Complete, snap.Items
@@ -170,9 +174,9 @@ const StalledAfter = time.Hour
 
 type downloadsProvider struct {
 	mu sync.Mutex
-	// stalledSince is when each torrent was first seen stalled in this run, by lowercased
-	// hash. The acquisition record's stall clock (progress_at) can push it earlier, so a
-	// restart doesn't reset an Arrmada grab's hour.
+	// stalledSince is when each torrent was first seen stuck (stalled, or waiting for its
+	// file list) in this run, by lowercased hash: the clock for a torrent no grab knows. An
+	// Arrmada grab goes by its stall clock (progress_at), so a restart doesn't reset its hour.
 	stalledSince map[string]time.Time
 }
 
@@ -207,17 +211,30 @@ func (p *downloadsProvider) Collect(_ context.Context, f *Frame) ([]Item, error)
 				Title: name + " errored in the download client", Detail: clientStateWords(it.RawState), Hash: h, Grabbed: f.grabbed(h)}
 			linkTo(&x, health.FixDownloadProblems)
 			out = append(out, x)
-		case (phase == "stalled" || phase == "metadata") && !it.Complete():
-			stalledNow[h] = true
-			since, ok := p.stalledSince[h]
-			if !ok {
-				since = f.Now
-				p.stalledSince[h] = since
+		case !it.Complete():
+			// The Activity queue's stall rule (automation.QueueStall), so every download
+			// listed here is also under the queue's Stalled pill; only the threshold
+			// differs (an hour, not half an hour). A torrent no grab knows is watched from
+			// the first time this run saw it stuck, or the coordinator saw it trying,
+			// whichever is later.
+			var clocks automation.StallClocks
+			if a, ok := f.Acq[h]; ok {
+				clocks.Grab = a.ProgressAt
 			}
-			if a, ok := f.Acq[h]; ok && !a.ProgressAt.IsZero() && a.ProgressAt.Before(since) {
-				since = a.ProgressAt // the record has watched it longer than this run has
+			if phase == "stalled" || phase == "metadata" {
+				stalledNow[h] = true
+				first, ok := p.stalledSince[h]
+				if !ok {
+					first = f.Now
+					p.stalledSince[h] = first
+				}
+				clocks.Trying = first
 			}
-			if f.Now.Sub(since) < StalledAfter {
+			if at := f.Trying[h]; at.After(clocks.Trying) {
+				clocks.Trying = at
+			}
+			since, stalled := automation.QueueStall(it, clocks, false, f.Now)
+			if !stalled || f.Now.Sub(since) < StalledAfter {
 				continue
 			}
 			detail := "Nobody has sent it any data for " + roughDuration(f.Now.Sub(since))
