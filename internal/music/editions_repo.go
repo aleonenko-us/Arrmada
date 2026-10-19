@@ -287,6 +287,22 @@ type SwitchResult struct {
 // that fits no track of the new edition keeps its old track. The monitoring of the old
 // target's tracks carries over to the tracks they map to. pinned sets (or clears) the pin.
 func (r *Repo) SwitchEdition(ctx context.Context, albumID, releaseID int64, pinned bool) (SwitchResult, error) {
+	return r.switchEdition(ctx, albumID, releaseID, pinned, false)
+}
+
+// ErrWouldStrand is RekeyEdition refusing an edition some of the target's files fit no
+// track of.
+var ErrWouldStrand = errors.New("some of the album's files fit no track of that edition")
+
+// RekeyEdition is SwitchEdition for the migration's legacy edition: it only switches when
+// every file on the current target finds its track on the new edition, so a re-key never
+// leaves the album reading as missing tracks it has (which the sweep would then search
+// for). Otherwise it changes nothing and returns ErrWouldStrand.
+func (r *Repo) RekeyEdition(ctx context.Context, albumID, releaseID int64) (SwitchResult, error) {
+	return r.switchEdition(ctx, albumID, releaseID, false, true)
+}
+
+func (r *Repo) switchEdition(ctx context.Context, albumID, releaseID int64, pinned, allOrNothing bool) (SwitchResult, error) {
 	res := SwitchResult{To: releaseID}
 	err := store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
 		var owner int64
@@ -369,6 +385,13 @@ func (r *Repo) SwitchEdition(ctx context.Context, albumID, releaseID int64, pinn
 			}
 		}
 		moved := mapTracks(from, free)
+		if allOrNothing {
+			for _, h := range files {
+				if _, ok := moved[h.track.ID]; h.onCur && !ok {
+					return ErrWouldStrand
+				}
+			}
+		}
 		for fromTrack, toTrack := range moved {
 			if _, err := tx.ExecContext(ctx, `UPDATE music_track_files SET release_track_id = ? WHERE id = ?`,
 				toTrack, fileOf[fromTrack]); err != nil {

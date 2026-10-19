@@ -160,12 +160,17 @@ func mbRelease(mbid, date, country, format string, titles []string, recPrefix st
 	return sum, det
 }
 
-// MUS-30: a migrated album's legacy edition is re-keyed to a real MusicBrainz edition on
-// its first look: every file row moves to the matching track, one that fits nothing stays
-// on the legacy edition (still listed), and no file on disk is touched.
-func TestRekeyLegacyEditionKeepsFiles(t *testing.T) {
-	r, ctx := testRepo(t)
-	dir := t.TempDir()
+type onDisk struct {
+	path string
+	data []byte
+}
+
+// legacyAlbum builds a migrated album as the migration leaves it: a legacy edition with no
+// MBID (its tracks carrying the release-track MBIDs of the release it was read from, no
+// recording MBIDs, the second track unmonitored), each track with a real file in dir.
+func legacyAlbum(t *testing.T, r *Repo, dir string, tracks []EditionTrack) (int64, []onDisk) {
+	t.Helper()
+	ctx := context.Background()
 	a, err := r.CreateArtist(ctx, Artist{MBID: "mb-rh", Name: "Radiohead", Monitored: true})
 	if err != nil {
 		t.Fatal(err)
@@ -174,17 +179,7 @@ func TestRekeyLegacyEditionKeepsFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The legacy edition, as the migration builds it: no MBID, the release-track MBIDs of
-	// the release it was read from, no recording MBIDs, one unmonitored track.
-	legacyID, err := r.AddEdition(ctx, albumID, EditionInput{
-		Edition: Edition{Legacy: true, TracksFetched: true},
-		Tracks: []EditionTrack{
-			{Disc: 1, Position: 1, Title: "Airbag", MBID: "rt-std-1"},
-			{Disc: 1, Position: 2, Title: "Paranoid Android", MBID: "rt-std-2", Unmonitored: true},
-			{Disc: 1, Position: 3, Title: "Subterranean Homesick Alien"}, // no MBID: by position and title
-			{Disc: 1, Position: 4, Title: "A Track MusicBrainz Lost"},    // fits nothing
-		},
-	})
+	legacyID, err := r.AddEdition(ctx, albumID, EditionInput{Edition: Edition{Legacy: true, TracksFetched: true}, Tracks: tracks})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,10 +189,6 @@ func TestRekeyLegacyEditionKeepsFiles(t *testing.T) {
 	legacy, err := r.Edition(ctx, legacyID)
 	if err != nil {
 		t.Fatal(err)
-	}
-	type onDisk struct {
-		path string
-		data []byte
 	}
 	var files []onDisk
 	for i, tk := range legacy.Media[0].Tracks {
@@ -211,15 +202,48 @@ func TestRekeyLegacyEditionKeepsFiles(t *testing.T) {
 		}
 		files = append(files, onDisk{p, data})
 	}
+	return albumID, files
+}
 
+// okcEditions is a GB CD (the original) and a later vinyl of three tracks.
+func okcEditions() *fakeEditions {
 	std, stdDet := mbRelease("rel-std", "1997-05-21", "GB", "CD",
 		[]string{"Airbag", "Paranoid Android", "Subterranean Homesick Alien"}, "rec", "rt-std")
 	vinyl, vinylDet := mbRelease("rel-vinyl", "1997-06-16", "GB", "12\" Vinyl",
 		[]string{"Airbag", "Paranoid Android", "Subterranean Homesick Alien"}, "rec", "rt-vinyl")
-	fake := &fakeEditions{
+	return &fakeEditions{
 		releases: map[string][]metadata.ReleaseSummary{"rg-okc": {vinyl, std}},
 		details:  map[string]metadata.ReleaseDetail{"rel-std": stdDet, "rel-vinyl": vinylDet},
 	}
+}
+
+func filesUntouched(t *testing.T, dir string, files []onDisk) {
+	t.Helper()
+	for _, f := range files {
+		got, err := os.ReadFile(f.path)
+		if err != nil || string(got) != string(f.data) {
+			t.Errorf("%s changed on disk: %q, %v", f.path, got, err)
+		}
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != len(files) {
+		t.Errorf("the folder holds %d entries, want exactly the %d files", len(entries), len(files))
+	}
+}
+
+// MUS-30: a migrated album's legacy edition is re-keyed to a real MusicBrainz edition on
+// its first look: every file row moves to the matching track (by the release-track id,
+// else position and title), the unmonitored choice carries over, and no file on disk is
+// touched. Switching by hand afterwards loses nothing either.
+func TestRekeyLegacyEditionKeepsFiles(t *testing.T) {
+	r, ctx := testRepo(t)
+	dir := t.TempDir()
+	albumID, files := legacyAlbum(t, r, dir, []EditionTrack{
+		{Disc: 1, Position: 1, Title: "Airbag", MBID: "rt-std-1"},
+		{Disc: 1, Position: 2, Title: "Paranoid Android", MBID: "rt-std-2", Unmonitored: true},
+		{Disc: 1, Position: 3, Title: "Subterranean Homesick Alien"}, // no MBID: by position and title
+	})
+	fake := okcEditions()
 	svc := &Service{repo: r, meta: fake, log: slog.Default()}
 	al, err := r.GetAlbum(ctx, albumID)
 	if err != nil {
@@ -249,33 +273,19 @@ func TestRekeyLegacyEditionKeepsFiles(t *testing.T) {
 	if tracks[1].Monitored {
 		t.Error("the unmonitored track's choice was lost in the re-key")
 	}
-	all, _ := r.AlbumFiles(ctx, albumID)
-	if len(all) != 4 {
-		t.Fatalf("file rows = %d, want all 4 kept", len(all))
+	if all, _ := r.AlbumFiles(ctx, albumID); len(all) != 3 {
+		t.Fatalf("file rows = %d, want all 3 kept", len(all))
 	}
 	views, _, err := svc.AlbumEditions(ctx, albumID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sawLegacy := false
 	for _, v := range views {
 		if v.Legacy {
-			sawLegacy = v.Files == 1
+			t.Errorf("the emptied legacy edition is still listed: %+v", v)
 		}
 	}
-	if !sawLegacy {
-		t.Errorf("the legacy edition still holding a file must stay listed: %+v", views)
-	}
-	for _, f := range files {
-		got, err := os.ReadFile(f.path)
-		if err != nil || string(got) != string(f.data) {
-			t.Errorf("%s changed on disk: %q, %v", f.path, got, err)
-		}
-	}
-	entries, _ := os.ReadDir(dir)
-	if len(entries) != len(files) {
-		t.Errorf("the folder holds %d entries, want exactly the %d files", len(entries), len(files))
-	}
+	filesUntouched(t, dir, files)
 
 	// Switching by hand to the vinyl and back loses no file row.
 	if _, err := svc.SetEdition(ctx, albumID, mustEditionByMBID(t, r, albumID, "rel-vinyl"), true); err != nil {
@@ -290,8 +300,8 @@ func TestRekeyLegacyEditionKeepsFiles(t *testing.T) {
 	if _, err := svc.SetEdition(ctx, albumID, target.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if all, _ := r.AlbumFiles(ctx, albumID); len(all) != 4 {
-		t.Errorf("after switching back: %d file rows, want 4", len(all))
+	if all, _ := r.AlbumFiles(ctx, albumID); len(all) != 3 {
+		t.Errorf("after switching back: %d file rows, want 3", len(all))
 	}
 	tracks, _ = r.TracksFor(ctx, albumID)
 	for i, tk := range tracks {
@@ -299,12 +309,43 @@ func TestRekeyLegacyEditionKeepsFiles(t *testing.T) {
 			t.Errorf("after switching back, %q is at %q", tk.Title, tk.FilePath)
 		}
 	}
+	filesUntouched(t, dir, files)
 	// Listed once: a second look makes no MusicBrainz call.
 	calls := fake.calls
 	al, _ = r.GetAlbum(ctx, albumID)
 	if err := svc.EnsureTracks(ctx, al); err != nil || fake.calls != calls {
 		t.Errorf("a second look made %d calls (%v), want none", fake.calls-calls, err)
 	}
+}
+
+// A legacy album with a file that fits no MusicBrainz edition keeps its old listing: a
+// re-key would leave that track reading as missing, and the sweep would grab the album
+// again for a file the library has.
+func TestRekeyLegacyEditionNeverStrandsAFile(t *testing.T) {
+	r, ctx := testRepo(t)
+	dir := t.TempDir()
+	albumID, files := legacyAlbum(t, r, dir, []EditionTrack{
+		{Disc: 1, Position: 1, Title: "Airbag", MBID: "rt-std-1"},
+		{Disc: 1, Position: 2, Title: "Paranoid Android", MBID: "rt-std-2"},
+		{Disc: 1, Position: 3, Title: "Subterranean Homesick Alien"},
+		{Disc: 1, Position: 4, Title: "A Track MusicBrainz Lost"}, // fits nothing
+	})
+	before, _ := r.GetAlbum(ctx, albumID)
+	svc := &Service{repo: r, meta: okcEditions(), log: slog.Default()}
+	if err := svc.EnsureTracks(ctx, before); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := r.GetAlbum(ctx, albumID)
+	if after.TargetEditionID != before.TargetEditionID {
+		t.Fatalf("the target moved off the legacy edition (to %d) though a file fits nothing there", after.TargetEditionID)
+	}
+	if !after.Complete() || after.HaveTracks != 4 {
+		t.Errorf("the album reads %d/%d, want still complete", after.HaveTracks, after.TrackCount)
+	}
+	if eds, _ := r.Editions(ctx, albumID); len(eds) != 3 {
+		t.Errorf("editions = %d, want the legacy one and the two listed", len(eds))
+	}
+	filesUntouched(t, dir, files)
 }
 
 func mustEditionByMBID(t *testing.T, r *Repo, albumID int64, mbid string) int64 {

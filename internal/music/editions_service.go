@@ -148,6 +148,7 @@ func (s *Service) ensureEditions(ctx context.Context, ep metadata.EditionProvide
 	switch {
 	case target == nil:
 	case target.Legacy:
+		return s.rekeyLegacy(ctx, ep, fresh, eds)
 	case target.ID != pick.ID:
 		counts, err := s.repo.EditionFileCounts(ctx, al.ID)
 		if err != nil {
@@ -172,14 +173,55 @@ func (s *Service) ensureEditions(ctx context.Context, ep metadata.EditionProvide
 	}
 	if target != nil {
 		label := EditionLabel(pick)
-		if target.Legacy {
-			s.repo.AddEvent(ctx, fresh.ArtistID, "edition", fmt.Sprintf("%q is now the %s edition from MusicBrainz (%s)",
-				fresh.Title, label, movedWords(res)))
-		} else {
-			s.repo.AddEvent(ctx, fresh.ArtistID, "edition", fmt.Sprintf("%q follows the edition policy: the %s edition", fresh.Title, label))
-		}
+		s.repo.AddEvent(ctx, fresh.ArtistID, "edition", fmt.Sprintf("%q follows the edition policy: the %s edition", fresh.Title, label))
 		s.log.Info("music: target edition set", "album", fresh.Title, "edition", label, "moved", res.Moved, "kept", res.Kept)
 	}
+	return nil
+}
+
+// rekeyTries bounds how many editions a legacy album tries before keeping its old
+// listing: each untried one costs a MusicBrainz call.
+const rekeyTries = 3
+
+// rekeyLegacy moves an album off the migration's legacy edition onto a real MusicBrainz
+// edition: the policy's pick, or the next acceptable ones in policy order, the first that
+// every one of the album's files finds its track on (RekeyEdition). An album whose files
+// fit none of them keeps its old listing as it was, so it never starts reading as missing
+// tracks it has (and the sweep never grabs it again for that).
+func (s *Service) rekeyLegacy(ctx context.Context, ep metadata.EditionProvider, al Album, eds []Edition) error {
+	pol := s.EditionPolicy()
+	left := append([]Edition(nil), eds...)
+	for try := 0; try < rekeyTries; try++ {
+		pick, ok := PickEdition(left, pol)
+		if !ok {
+			break
+		}
+		for i := range left {
+			if left[i].ID == pick.ID {
+				left = append(left[:i], left[i+1:]...)
+				break
+			}
+		}
+		if !pick.TracksFetched {
+			if err := s.fetchEditionTracks(ctx, ep, pick); err != nil {
+				s.log.Warn("music: couldn't read an edition's tracks", "album", al.Title, "edition", pick.MBID, "err", err)
+				continue
+			}
+		}
+		res, err := s.repo.RekeyEdition(ctx, al.ID, pick.ID)
+		if errors.Is(err, ErrWouldStrand) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		label := EditionLabel(pick)
+		s.repo.AddEvent(ctx, al.ArtistID, "edition", fmt.Sprintf("%q is now the %s edition from MusicBrainz (%s)",
+			al.Title, label, movedWords(res)))
+		s.log.Info("music: re-keyed the upgrade's listing", "album", al.Title, "edition", label, "moved", res.Moved)
+		return nil
+	}
+	s.log.Info("music: kept the upgrade's listing: its files don't all fit a MusicBrainz edition", "album", al.Title)
 	return nil
 }
 
