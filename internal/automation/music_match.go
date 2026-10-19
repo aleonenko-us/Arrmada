@@ -242,9 +242,8 @@ func (c *Coordinator) fingerprintPass(ctx context.Context, in music.MatchInput, 
 		learned++
 		files[i].Fingerprint = got
 		recs = append(recs, got...)
-		if files[i].Tags.RecordingMBID == "" {
-			files[i].Tags.RecordingMBID = got[0]
-		}
+		// Kept apart from the tags: the matcher weighs what AcoustID heard on its own, so
+		// a fingerprint never reads as a tag naming another album's recording.
 	}
 	if learned == 0 {
 		return music.MatchResult{}, false
@@ -558,6 +557,21 @@ func (c *Coordinator) matchInto(ctx context.Context, al music.Album, files []mus
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	// The edition a person chose is weighed whatever the candidate list held: it may not
+	// be among the closest, or not otherwise acceptable (a bootleg they know is right).
+	if fe := musicEditionFrom(ctx); fe != 0 && !targetOnly {
+		found := false
+		for _, cd := range cands {
+			found = found || cd.Edition.ID == fe
+		}
+		if !found {
+			cd, err := c.music.EditionCandidate(ctx, al.ID, fe)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("the edition chosen for %q: %w", al.Title, err)
+			}
+			cands = append(cands, cd)
+		}
+	}
 	if len(cands) == 0 {
 		return nil, nil, nil, nil
 	}
@@ -566,7 +580,8 @@ func (c *Coordinator) matchInto(ctx context.Context, al music.Album, files []mus
 		ForceEditionID: musicEditionFrom(ctx), Settings: c.music.MatchSettings(), Policy: c.music.EditionPolicy(),
 	}
 	res := music.Match(in)
-	if res.Switch && !targetOnly {
+	// Nothing placed, nothing switched: a review that can't import keeps the album's edition.
+	if res.Switch && !targetOnly && res.Decision != music.MatchReview && len(res.Assignments) > 0 {
 		var err error
 		if in.ForceEditionID != 0 && in.ForceEditionID == res.EditionID {
 			// Chosen by a person: a pin stays a pin, now on their choice.

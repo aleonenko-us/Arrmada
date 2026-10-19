@@ -72,9 +72,12 @@ func newMatchRig(t *testing.T, grabbed bool, files []string) *matchRig {
 	}
 	std, stdD := release("rel-std", "1997-05-21", "GB", okcTitles)
 	dlx, dlxD := release("rel-dlx", "2009-03-24", "XE", append(append([]string(nil), okcTitles...), okcBonus...))
+	// A bootleg of the deluxe: never weighed unless a person picks it.
+	boot, bootD := release("rel-boot", "2010-01-01", "US", append(append([]string(nil), okcTitles...), okcBonus...))
+	boot.Status, bootD.Status = "Bootleg", "Bootleg"
 	prov := &editionsProvider{fakeMusicProvider: base,
-		releases: map[string][]metadata.ReleaseSummary{"rg1": {dlx, std}},
-		details:  map[string]metadata.ReleaseDetail{"rel-std": stdD, "rel-dlx": dlxD}}
+		releases: map[string][]metadata.ReleaseSummary{"rg1": {dlx, std, boot}},
+		details:  map[string]metadata.ReleaseDetail{"rel-std": stdD, "rel-dlx": dlxD, "rel-boot": bootD}}
 	svc := music.NewService(h.c.db, prov, h.c.log)
 	h.c.music = svc
 	h.c.imp = library.NewImporter(t.TempDir(), h.c.log)
@@ -288,7 +291,9 @@ func TestMatcherFingerprintSecondPass(t *testing.T) {
 	order := []int{5, 0, 3, 1, 4, 2}
 	for i, f := range files {
 		title := okcTitles[order[i]]
-		fp.recs[f] = []string{"rec-" + strings.ToLower(strings.ReplaceAll(title, " ", "-"))}
+		// AcoustID names a compilation's recording first: it must neither read as a tag
+		// naming another album nor stop the album's own from counting.
+		fp.recs[f] = []string{"rec-compilation-" + f, "rec-" + strings.ToLower(strings.ReplaceAll(title, " ", "-"))}
 		r.lens[f] = (200 + order[i]*17) * 1000
 	}
 	r.h.c.SetMusicFingerprinter(fp)

@@ -420,8 +420,10 @@ func Match(in MatchInput) MatchResult {
 		res.place(best, in, files, s)
 		res.Decision = MatchImport
 		if len(res.Assignments) == 0 {
+			// Nothing to place: the album stays on the edition it has.
 			res.Decision = MatchReview
 			res.Reason = MatchReasonLowConfidence
+			res.Switch = false
 		}
 		res.Summary = res.placedSummary()
 		res.Report = res.report(files, in, s)
@@ -429,10 +431,11 @@ func Match(in MatchInput) MatchResult {
 	}
 
 	// A close runner-up that isn't the same edition under another name: two pressings
-	// the files fit almost equally. When exactly one of the two is its album's target
-	// edition, that one wins; otherwise a person picks.
+	// the files fit almost equally. When both are editions of one album and exactly one is
+	// its target, that one wins; otherwise (two albums, or neither the target) a person
+	// picks.
 	if second := runnerUp(ranked, best); second != nil && second.Distance-best.Distance <= s.Gap {
-		if best.Cand.Target == second.Cand.Target {
+		if best.Cand.AlbumID != second.Cand.AlbumID || best.Cand.Target == second.Cand.Target {
 			res.Best = best
 			res.review(MatchReasonCloseEditions, fmt.Sprintf("Two editions fit almost equally: %s and %s.",
 				editionWords(best.Cand), editionWords(second.Cand)), files, s)
@@ -469,7 +472,7 @@ func Match(in MatchInput) MatchResult {
 	}
 	nameOnly := true
 	for _, f := range files {
-		if f.Tags.tagged() {
+		if f.Tags.tagged() || len(f.Fingerprint) > 0 { // identified by sound counts too
 			nameOnly = false
 			break
 		}
@@ -697,7 +700,19 @@ func tagConflicts(files []*MatchFile, best *Scored, cands []MatchCandidate) (int
 	}
 	n := 0
 	for _, f := range files {
-		if m := strings.ToLower(f.Tags.RecordingMBID); m != "" && !recs[m] {
+		m := strings.ToLower(f.Tags.RecordingMBID)
+		if m == "" || recs[m] {
+			continue
+		}
+		// AcoustID placing the sound on this album outweighs a stale tag.
+		onAlbum := false
+		for _, fp := range f.Fingerprint {
+			if recs[strings.ToLower(fp)] {
+				onAlbum = true
+				break
+			}
+		}
+		if !onAlbum {
 			n++
 		}
 	}

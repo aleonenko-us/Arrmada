@@ -240,6 +240,41 @@ func (s *Service) TargetCandidates(ctx context.Context, albumID int64) ([]MatchC
 	return []MatchCandidate{c}, nil
 }
 
+// EditionCandidate is one edition of an album as a match candidate, whatever its status:
+// the edition a person chose in Reviews. Its tracks are fetched first when they aren't
+// stored. ErrNotFound when it isn't the album's; ErrEditionNotListed when its tracks
+// can't be had.
+func (s *Service) EditionCandidate(ctx context.Context, albumID, releaseID int64) (MatchCandidate, error) {
+	al, err := s.repo.GetAlbum(ctx, albumID)
+	if err != nil {
+		return MatchCandidate{}, err
+	}
+	ed, err := s.repo.Edition(ctx, releaseID)
+	if err != nil {
+		return MatchCandidate{}, err
+	}
+	if ed.AlbumID != albumID {
+		return MatchCandidate{}, ErrNotFound
+	}
+	if !ed.TracksFetched {
+		ep, ok := s.meta.(metadata.EditionProvider)
+		if !ok {
+			return MatchCandidate{}, ErrEditionNotListed
+		}
+		if err := s.fetchEditionTracks(ctx, ep, ed); err != nil {
+			return MatchCandidate{}, err
+		}
+	}
+	c, err := s.candidate(ctx, al, releaseID)
+	if err != nil {
+		return MatchCandidate{}, err
+	}
+	if len(c.trackList()) == 0 {
+		return MatchCandidate{}, ErrEditionNotListed
+	}
+	return c, nil
+}
+
 // AlbumsWithRecordings lists the library albums any of whose stored editions carry one
 // of the recordings (by MBID): where an AcoustID answer points.
 func (s *Service) AlbumsWithRecordings(ctx context.Context, mbids []string) ([]int64, error) {

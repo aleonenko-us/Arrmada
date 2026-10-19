@@ -238,7 +238,8 @@ func trackDistance(f *MatchFile, t *candTrack, va bool) (float64, *distance, []s
 			notes = append(notes, fmt.Sprintf("numbered %s but it is track %s", numLabel(disc, num), numLabel(t.Disc, t.Position)))
 		}
 	}
-	if f.Tags.RecordingMBID != "" && t.RecordingMBID != "" {
+	switch {
+	case f.Tags.RecordingMBID != "" && t.RecordingMBID != "":
 		// AcoustID often names several recordings for one sound (the same take on an
 		// album and a compilation): any of them will do.
 		bad := !strings.EqualFold(f.Tags.RecordingMBID, t.RecordingMBID) && !t.hasAlias(f.Tags.RecordingMBID) &&
@@ -246,6 +247,13 @@ func trackDistance(f *MatchFile, t *candTrack, va bool) (float64, *distance, []s
 		d.addBool(CompTrackID, bad)
 		if bad {
 			notes = append(notes, "its MusicBrainz recording id is a different recording")
+		}
+	case len(f.Fingerprint) > 0 && t.RecordingMBID != "":
+		// No id in the tags: what AcoustID heard stands in for one.
+		bad := !containsFold(f.Fingerprint, t.RecordingMBID) && !anyAlias(f.Fingerprint, t.aliases)
+		d.addBool(CompTrackID, bad)
+		if bad {
+			notes = append(notes, "AcoustID hears a different recording")
 		}
 	}
 	if f.Tags.ISRC != "" && len(t.ISRCs) > 0 {

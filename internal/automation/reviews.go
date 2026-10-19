@@ -796,6 +796,13 @@ func (c *Coordinator) importContentInto(ctx context.Context, r Review, dest int6
 		if err != nil {
 			return err
 		}
+		if fe := musicEditionFrom(ctx); fe != 0 {
+			// The edition a person picked must be usable, or the import says why rather
+			// than quietly using another.
+			if _, err := c.music.EditionCandidate(ctx, al.ID, fe); err != nil {
+				return fmt.Errorf("the chosen edition of %q can't be used: %w", al.Title, err)
+			}
+		}
 		res := c.importAlbumContent(ctx, art, al, r.ContentPath, r.Name)
 		switch {
 		case !res.found:
