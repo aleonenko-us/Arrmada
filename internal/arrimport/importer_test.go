@@ -307,7 +307,7 @@ func TestImportMoviesIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Imported != 4 || res.FilesAttached != 2 || res.Paced != 1 || res.Skipped != 0 || res.Failed != 0 {
+	if res.Imported != 4 || res.FilesAttached != 2 || res.Paced != 1 || res.Unmonitored != 1 || res.Skipped != 0 || res.Failed != 0 {
 		t.Fatalf("result = %+v", res)
 	}
 	h := movieByTMDB(t, w, 949)

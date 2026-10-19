@@ -292,5 +292,21 @@ func arrSummary(res arrimport.Result) string {
 	if res.Paced > 0 {
 		parts = append(parts, fmt.Sprintf("%d wanted, searched a few at a time", res.Paced))
 	}
+	// Titles that were unmonitored over there come over that way: nothing is searched for
+	// them, which reads as "the import did nothing" unless the summary says it.
+	if res.Unmonitored > 0 {
+		from := res.Name
+		if from == "" {
+			from = "Radarr"
+			if res.Media == "series" {
+				from = "Sonarr"
+			}
+		}
+		if res.Media == "series" {
+			parts = append(parts, fmt.Sprintf("%s added with searching off (as they were in %s) — turn searching on from the Series list", count(res.Unmonitored, "show", "shows"), from))
+		} else {
+			parts = append(parts, fmt.Sprintf("%s added unmonitored (as they were in %s) — monitor them from the Movies list", count(res.Unmonitored, "film", "films"), from))
+		}
+	}
 	return strings.Join(parts, " · ")
 }

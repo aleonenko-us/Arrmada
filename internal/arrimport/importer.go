@@ -504,6 +504,10 @@ type Result struct {
 	// Paced is how many titles were added monitored without (all) their files: the missing
 	// sweeps take them a few per run.
 	Paced int `json:"paced"`
+	// Unmonitored is how many titles were added unmonitored because they were unmonitored
+	// in Radarr or Sonarr (a show with its searching off): nothing is searched for them
+	// until they're turned on, so the summary says so.
+	Unmonitored int `json:"unmonitored"`
 	// Notes say what happened to the titles worth a word: skipped and failed ones, and files
 	// that couldn't be matched (the first maxNotes).
 	Notes []Note `json:"notes"`
@@ -662,6 +666,9 @@ func (imp *Importer) oneMovie(ctx context.Context, m Movie, opts Options, source
 	}
 	idx.byTMDB[m.TMDBID] = created
 	res.Imported++
+	if !m.Monitored {
+		res.Unmonitored++
+	}
 	if file != "" {
 		idx.owned[filepath.Clean(file)] = true
 		res.FilesAttached++
@@ -972,6 +979,7 @@ func (imp *Importer) oneSeries(ctx context.Context, c *Client, s Series, opts Op
 		res.note(s.Title, s.Year, "imported", fmt.Sprintf("added without %d episode files (%s)", len(problems), problems[0]))
 	}
 	if !s.Monitored {
+		res.Unmonitored++ // added with searching off, as it was in Sonarr
 		return nil
 	}
 	if unsafe == "" {
@@ -985,7 +993,7 @@ func (imp *Importer) oneSeries(ctx context.Context, c *Client, s Series, opts Op
 		}
 	}
 	if unsafe != "" {
-		res.note(s.Title, s.Year, "imported", unsafe+" — left unmonitored, so nothing is downloaded for it; check it and monitor it by hand")
+		res.note(s.Title, s.Year, "imported", unsafe+" — left with searching off, so nothing is downloaded for it; check it, then turn searching on from its page")
 		return nil
 	}
 	res.Paced++

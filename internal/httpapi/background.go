@@ -303,6 +303,11 @@ func scanMessage(noun string, added, unmatched int) string {
 	msg := "Nothing new found"
 	if added > 0 {
 		msg = "Added " + countOf(added, noun)
+		if noun == "series" {
+			// A scanned-in show only catalogues what's on disk: nothing is monitored and its
+			// searching is off. Say so, or it reads as a scan that will fetch the gaps.
+			msg += " with searching off — pick what to monitor, or select them in the Series list and turn searching on"
+		}
 	}
 	if unmatched > 0 {
 		msg += "; " + countOf(unmatched, "folder") + " not recognised"
