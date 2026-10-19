@@ -62,10 +62,9 @@ func (r *Repo) ListArtists(ctx context.Context) ([]Artist, error) {
 	return out, nil
 }
 
-// LibraryArtists returns the library's artists, newest first, without their stats: one
-// cheap read for callers that only need names, profiles and monitoring (the sweep,
-// Wanted, matching a download to an album), where the stats would cost a pass over every
-// album's tracks.
+// LibraryArtists returns the library's artists, newest first, without their stats. It also
+// fills missing artist portraits from the newest album cover for browse cards. Callers that
+// only need names, profiles and monitoring avoid the more expensive track-stat pass.
 func (r *Repo) LibraryArtists(ctx context.Context) ([]Artist, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT `+artistCols+` FROM artists WHERE in_library = 1 ORDER BY added_at DESC, id DESC`)
 	if err != nil {
@@ -80,7 +79,50 @@ func (r *Repo) LibraryArtists(ctx context.Context) ([]Artist, error) {
 		}
 		out = append(out, a)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Artist portraits are optional. Use each artist's newest album cover as the browse
+	// image when no portrait has been supplied, so Music Discover still has real artwork.
+	needCoverFallback := false
+	for _, a := range out {
+		if a.ImageURL == "" {
+			needCoverFallback = true
+			break
+		}
+	}
+	if needCoverFallback {
+		coverRows, err := r.db.QueryContext(ctx, `SELECT ar.id,
+			(SELECT al.cover_url FROM albums al WHERE al.artist_id = ar.id AND al.cover_url <> ''
+			 ORDER BY al.year DESC, al.id DESC LIMIT 1)
+			FROM artists ar WHERE ar.in_library = 1`)
+		if err != nil {
+			return nil, err
+		}
+		covers := make(map[int64]string, len(out))
+		for coverRows.Next() {
+			var id int64
+			var cover sql.NullString
+			if err := coverRows.Scan(&id, &cover); err != nil {
+				coverRows.Close()
+				return nil, err
+			}
+			if cover.Valid && cover.String != "" {
+				covers[id] = cover.String
+			}
+		}
+		if err := coverRows.Err(); err != nil {
+			coverRows.Close()
+			return nil, err
+		}
+		coverRows.Close()
+		for i := range out {
+			if out[i].ImageURL == "" {
+				out[i].ImageURL = covers[out[i].ID]
+			}
+		}
+	}
+	return out, nil
 }
 
 // wantedTrack says whether a release track ("rt") of an album ("al") counts towards the
