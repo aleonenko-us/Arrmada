@@ -5,6 +5,7 @@ import { lazyPage } from "../../lib/lazyPage";
 import { posterThumb } from "../../lib/img";
 import { titlePath } from "../../lib/refLink";
 import { useTitle } from "../../lib/title";
+import { isStaff, useMe } from "../../lib/me";
 import { Button, IconButton, Sheet, StatusChip, POSTER_CHIP_BG, POSTER_TONE, type ToastFn } from "../../ui";
 import { WatchButton } from "../../components/brand/WatchPills";
 import { watchLinksOf } from "../../components/brand/servers";
@@ -16,6 +17,9 @@ const SeasonPicker = lazyPage(() => import("../../components/SeasonPicker"), "Se
 const QuotaHint = lazyPage(() => import("../../components/QuotaHint"), "QuotaHint");
 // "Report a problem" and its API calls load only when someone taps it.
 const IssueReportSheet = lazyPage(() => import("../../components/IssueReportSheet"), "IssueReportSheet");
+// Staff's Request with a quality-profile picker, and the profiles call behind it: only
+// ever fetched for staff, so a requester's sheet stays as it was.
+const StaffRequestButton = lazyPage(() => import("./StaffRequestButton"), "StaffRequestButton");
 
 // TitleSheet is the sheet for the title in the address. Opened from a poster it starts
 // from that card; opened cold (a shared link, a notification, a reload) it starts from a
@@ -88,6 +92,10 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
   const [noteOpen, setNoteOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Staff pick the quality profile a request goes with (issue #50); "" until they choose
+  // one, and then nothing is sent (the server's default, which the button shows).
+  const staff = isStaff(useMe().user);
+  const [profile, setProfile] = useState("");
   // The requester has no movie requests left (QuotaHint says when the next frees up).
   const [quotaOut, setQuotaOut] = useState(false);
   const [d, setD] = useState<MediaDetail | null>(null);
@@ -111,12 +119,15 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
   const isShow = c.media_type === "series";
   // A show partly here or partly asked for still offers the seasons nobody has asked for.
   const moreSeasons = isShow && ctx.canRequest && Array.isArray(seasons) && seasons.some((s) => s.requestable);
+  // A profile only says how a title is added, so there's nothing to pick for one already
+  // in the library (more seasons of it keep the show's own profile).
+  const staffPick = staff && !c.in_library;
 
   // Fetch detail whenever the shown card changes; reset per-card request state.
   useEffect(() => {
     let alive = true;
     setD(null); setDetailLoading(true); setDetailError(null); setError(null);
-    setDone(ctxRef.current.isRequested(current)); setSubscribed(false); setNote(""); setNoteOpen(false); setReporting(false);
+    setDone(ctxRef.current.isRequested(current)); setSubscribed(false); setNote(""); setNoteOpen(false); setReporting(false); setProfile("");
     setSeasons(null); setPicking(!!pick);
     scrollRef.current?.scrollTo({ top: 0 });
     api.mediaDetail(current.media_type, current.tmdb_id)
@@ -139,7 +150,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
   const request = async (picked?: number[] | null) => {
     setBusy(true); setError(null);
     try {
-      const r = await ctx.doRequest(c, note, picked);
+      const r = await ctx.doRequest(c, note, picked, false, staffPick ? profile || undefined : undefined);
       setSubscribed(r.subscribed);
       setDone(r.status);
       if (isShow) {
@@ -164,6 +175,17 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
   // A show's Request opens the season picker; without a season list it asks for the
   // whole show, as before seasons could be picked.
   const ask = () => (isShow && seasons !== "error" ? setPicking(true) : request());
+  // A Request that files the ask itself: for staff, the split button that also picks the
+  // quality profile; for everyone else the plain button, exactly as before.
+  const requestButton = (label: string, onClick: () => void, disabled = false, className?: string) => {
+    const plain = <Button variant="primary" className={className} onClick={onClick} busy={busy} busyLabel="Requesting…" disabled={disabled}>{label}</Button>;
+    if (!staffPick) return plain;
+    return (
+      <Suspense fallback={plain}>
+        <StaffRequestButton media={c.media_type} label={label} value={profile} onChange={setProfile} onRequest={onClick} busy={busy} disabled={disabled} className={className} />
+      </Suspense>
+    );
+  };
 
   const overview = d?.overview || c.overview;
   const runtime = d?.runtime ? `${Math.floor(d.runtime / 60)}h ${d.runtime % 60}m` : "";
@@ -276,11 +298,12 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
                   {declined && badge && (
                     <span className="inline-block rounded-lg px-3.5 py-2 text-base font-semibold" style={{ background: POSTER_CHIP_BG, color: POSTER_TONE[badge.tone], border: `1px solid ${POSTER_TONE[badge.tone]}` }}>Declined</span>
                   )}
-                  {!picking && (
-                    <Button variant="primary" onClick={ask} busy={busy} busyLabel="Requesting…" disabled={quotaOut && !isShow}>
+                  {/* A show's Request opens the season picker, which carries the profile pick. */}
+                  {!picking && (isShow && seasons !== "error" ? (
+                    <Button variant="primary" onClick={ask} busy={busy} busyLabel="Requesting…">
                       {declined ? "Request again" : "＋ Request"}
                     </Button>
-                  )}
+                  ) : requestButton(declined ? "Request again" : "＋ Request", ask, quotaOut && !isShow))}
                 </>
               )}
               {/* Already here, coming or asked for, but some seasons aren't: ask for those. */}
@@ -335,12 +358,13 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
           <div className="px-5 pt-4 sm:px-6">
             {Array.isArray(seasons) ? (
               <Suspense fallback={<div className="py-3 text-sm text-ink-faint">Loading seasons…</div>}>
-                <SeasonPicker seasons={seasons} busy={busy} onSubmit={(p) => { void request(p); }} onCancel={() => setPicking(false)} />
+                <SeasonPicker seasons={seasons} busy={busy} onSubmit={(p) => { void request(p); }} onCancel={() => setPicking(false)}
+                  submit={staffPick ? (label, onClick, disabled) => requestButton(label, onClick, disabled, "min-h-[40px]") : undefined} />
               </Suspense>
             ) : seasons === "error" ? (
               <div className="flex flex-wrap items-center gap-2 text-sm text-ink-dim">
                 Couldn’t load the seasons.
-                <Button variant="primary" onClick={() => { void request(); }} busy={busy} busyLabel="Requesting…">Request the whole show</Button>
+                {requestButton("Request the whole show", () => { void request(); })}
               </div>
             ) : (
               <div className="py-3 text-sm text-ink-faint">Loading seasons…</div>

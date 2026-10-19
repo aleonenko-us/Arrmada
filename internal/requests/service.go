@@ -302,6 +302,24 @@ func (r Request) InLibrary() int64 { return r.libID }
 // ErrUnknownProfile is returned when a supplied quality profile doesn't resolve.
 var ErrUnknownProfile = errors.New("unknown quality profile")
 
+// ErrProfileMedia is returned when a supplied quality profile is for another kind of media
+// (a series profile for a movie).
+var ErrProfileMedia = errors.New("that quality profile is for another kind of media")
+
+// profileFits reports whether a known profile ref may be used for media: a movie on a movie
+// profile, a show on a series one. Books pick theirs from the formats and aren't checked,
+// and "n/a" (no profile) fits anything.
+func (s *Service) profileFits(ctx context.Context, ref, media string) bool {
+	if s.quality == nil || media == "book" || ref == "n/a" {
+		return true
+	}
+	sp, err := s.quality.GetStored(ctx, ref)
+	if err != nil {
+		return true // Known already said it exists; a read that failed isn't a mismatch
+	}
+	return sp.MediaType == media
+}
+
 // Get returns one request by id.
 func (s *Service) Get(ctx context.Context, id int64) (Request, error) {
 	return s.repo.Get(ctx, id)
@@ -359,6 +377,9 @@ func (s *Service) Create(ctx context.Context, in Request, opts CreateOptions) (c
 	}
 	if in.QualityProfile != "" && s.quality != nil && !s.quality.Known(ctx, in.QualityProfile) {
 		return Request{}, false, ErrUnknownProfile
+	}
+	if in.QualityProfile != "" && !s.profileFits(ctx, in.QualityProfile, in.MediaType) {
+		return Request{}, false, ErrProfileMedia
 	}
 	if in.MediaType == "series" {
 		// A show can have several requests, one per ask for more seasons.
@@ -588,12 +609,34 @@ func (s *Service) attachToExisting(ctx context.Context, existing, in Request) (R
 		}
 		s.log.Info("request subscribed", "media", existing.MediaType, "title", existing.Title, "by", in.RequestedByName)
 	}
+	existing = s.adoptProfile(ctx, existing, in)
 	if existing.MediaType == "book" && in.Formats != "" {
 		if req, ok := s.widenRequest(ctx, existing, in); ok {
 			existing = req
 		}
 	}
 	return existing, true, nil
+}
+
+// adoptProfile gives a request still waiting for approval the quality profile a later
+// ask for the same title named. Only staff can name one (the API drops a requester's), so
+// this is staff deciding how the title is to be added, and the approve sheet starts on
+// their pick instead of losing it. An approved request was added on its own profile and
+// keeps it; a book's profile follows its formats, never a pick.
+func (s *Service) adoptProfile(ctx context.Context, existing, in Request) Request {
+	if in.QualityProfile == "" || existing.MediaType == "book" || existing.Status != StatusPending || existing.QualityProfile == in.QualityProfile {
+		return existing
+	}
+	ok, err := s.repo.SetProfile(ctx, existing.ID, in.QualityProfile)
+	if err != nil {
+		s.log.Warn("request: could not set the quality profile", "id", existing.ID, "err", err)
+		return existing
+	}
+	if ok {
+		s.log.Info("request profile set", "media", existing.MediaType, "title", existing.Title, "profile", in.QualityProfile, "by", in.RequestedByName)
+		existing.QualityProfile = in.QualityProfile
+	}
+	return existing
 }
 
 // widenRequest folds a second book request's format choice into the existing one:
@@ -757,6 +800,9 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 	if profile != "" && s.quality != nil && !s.quality.Known(ctx, profile) {
 		return Request{}, ErrUnknownProfile
 	}
+	if profile != "" && !s.profileFits(ctx, profile, req.MediaType) {
+		return Request{}, ErrProfileMedia
+	}
 	explicit := profile != ""
 	trimmed := false
 	if req.MediaType == "series" && len(o.Seasons) > 0 {
@@ -773,7 +819,8 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 		// The profile stored on the request may have been deleted since it was made. The
 		// approver didn't pick it, so fall to the default rather than adding the title
 		// on a ref that no longer exists (an explicit unknown pick is still refused above).
-		if profile != "" && s.quality != nil && !s.quality.Known(ctx, profile) {
+		// Nor one for another kind of media, from before that was checked.
+		if profile != "" && s.quality != nil && (!s.quality.Known(ctx, profile) || !s.profileFits(ctx, profile, req.MediaType)) {
 			profile = ""
 		}
 	}

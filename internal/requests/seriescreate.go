@@ -132,6 +132,8 @@ func (s *Service) createSeriesLocked(ctx context.Context, in Request, opts Creat
 			}
 			s.log.Info("request subscribed", "media", r.MediaType, "title", r.Title, "by", in.RequestedByName)
 		}
+		// Staff naming a profile for seasons still waiting for approval decide how they're added.
+		s.adoptProfile(ctx, byID[id], in)
 	}
 	if !plan.insert {
 		out, err = s.repo.Get(ctx, plan.follow[0])

@@ -95,10 +95,11 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
   // Rethrows on failure so callers (modal, quick-request) only flip to their success
   // state on an actual success. subscribed=true → you joined an existing request.
   // seasons (a show): the season numbers asked for; absent or null is the whole show.
-  const doRequest = useCallback(async (c: DiscoverCard, note?: string, seasons?: number[] | null, quiet = false): Promise<{ subscribed: boolean; status: ReqStatus }> => {
+  // profile: staff's quality-profile pick (the title sheet's picker); absent for everyone else.
+  const doRequest = useCallback(async (c: DiscoverCard, note?: string, seasons?: number[] | null, quiet = false, profile?: string): Promise<{ subscribed: boolean; status: ReqStatus }> => {
     const key = `${c.media_type}:${c.tmdb_id}`;
     try {
-      const res = await api.createRequest({ media_type: c.media_type, tmdb_id: c.tmdb_id, title: c.title, year: c.year, poster_url: c.poster_url, overview: c.overview, note: note?.trim() || undefined, seasons: seasons?.length ? seasons : undefined });
+      const res = await api.createRequest({ media_type: c.media_type, tmdb_id: c.tmdb_id, title: c.title, year: c.year, poster_url: c.poster_url, overview: c.overview, note: note?.trim() || undefined, seasons: seasons?.length ? seasons : undefined, quality_profile: profile });
       const status = res.request.status;
       setRequested((m) => new Map(m).set(key, status));
       if (!quiet) toast(res.subscribed ? FOLLOWING : requestedMessage(c.title, status, res.request.seasons));
