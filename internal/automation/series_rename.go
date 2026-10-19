@@ -242,8 +242,7 @@ func (c *Coordinator) restoreRenameTemps(s series.Series) {
 // rename after a renumber always has: that runs unattended, so it only carries a file to
 // its new episode and never rewrites the tokens the name carries. A preview and the apply
 // it confirms must use the same setting, or every confirmed move reads as changed.
-func (c *Coordinator) seriesRenameRows(ctx context.Context, s series.Series, folder string, fromRelease bool) []renameRow {
-	imp := c.tvImp(ctx, s)
+func (c *Coordinator) seriesRenameRows(ctx context.Context, s series.Series, imp *library.Importer, folder string, fromRelease bool) []renameRow {
 	var rows []renameRow
 	for _, sn := range s.Seasons {
 		for _, e := range sn.Episodes {
@@ -299,7 +298,11 @@ func (c *Coordinator) seriesRenamePreview(ctx context.Context, seriesID int64, f
 	if err != nil {
 		return nil, err
 	}
-	steps, conflicts := planSeriesRename(c.seriesRenameRows(ctx, s, c.series.ExistingFolderName(ctx, seriesID), fromRelease), renameOccupied)
+	imp, folder, ferr := c.seriesPlacement(ctx, s)
+	if ferr != nil {
+		return nil, ferr
+	}
+	steps, conflicts := planSeriesRename(c.seriesRenameRows(ctx, s, imp, folder, fromRelease), renameOccupied)
 	items := make([]SeriesRenameItem, 0, len(steps)+len(conflicts))
 	for _, st := range steps {
 		items = append(items, SeriesRenameItem{From: st.From, To: st.To, Season: st.Rows[0].Season, Episode: st.Rows[0].Episode})
@@ -338,7 +341,11 @@ func (c *Coordinator) seriesRename(ctx context.Context, seriesID int64, only []S
 		return res, err
 	}
 	c.restoreRenameTemps(s)
-	rows := c.seriesRenameRows(ctx, s, c.series.ExistingFolderName(ctx, seriesID), fromRelease)
+	imp, folder, ferr := c.seriesPlacement(ctx, s)
+	if ferr != nil {
+		return res, ferr
+	}
+	rows := c.seriesRenameRows(ctx, s, imp, folder, fromRelease)
 
 	if only != nil {
 		rows, res.Skipped = holdUnpreviewed(rows, only)
@@ -346,6 +353,28 @@ func (c *Coordinator) seriesRename(ctx context.Context, seriesID int64, only []S
 	steps, conflicts := planSeriesRename(rows, renameOccupied)
 	res.Skipped = append(res.Skipped, conflicts...)
 
+	moved, skipped, oldDirs := c.runRenameSteps(ctx, seriesID, steps)
+	res.Moved = len(moved)
+	res.Skipped = append(res.Skipped, skipped...)
+	for od := range oldDirs {
+		c.imp.RemoveDirIfEmpty(od) // drop the now-empty legacy season folder
+	}
+	if res.Moved > 0 {
+		c.series.AddEvent(ctx, seriesID, "renamed", fmt.Sprintf("Renamed %d episode file%s", res.Moved, plural(res.Moved)))
+		c.bus.Publish("series.renamed", map[string]any{"id": seriesID, "count": res.Moved})
+	}
+	if len(res.Skipped) > 0 {
+		c.series.AddEvent(ctx, seriesID, "rename.skipped", renameSkippedEvent(res.Skipped))
+	}
+	return res, nil
+}
+
+// runRenameSteps carries out planned moves (planSeriesRename) without ever replacing a
+// file: chained sources are first moved aside to temporary names, then everything moves
+// to its target, and a move that fails puts its file back. Subtitles go with their video,
+// the database follows only files that actually moved, and Plex hears about every show
+// folder touched. oldDirs are the folders files left, for the caller to tidy.
+func (c *Coordinator) runRenameSteps(ctx context.Context, seriesID int64, steps []renameStep) (moved []renameStep, skipped []RenameSkip, oldDirs map[string]bool) {
 	// Phase 1: move every chained source out of the way, subtitles with it.
 	temps := make(map[int]string)
 	failed := make(map[int]bool)
@@ -356,7 +385,7 @@ func (c *Coordinator) seriesRename(ctx context.Context, seriesID int64, only []S
 		tmp := freeRenameTempPath(st.From)
 		if err := c.imp.Move(st.From, tmp); err != nil {
 			c.log.Warn("series: rename — couldn't move a file aside", "from", st.From, "err", err)
-			res.Skipped = append(res.Skipped, st.skip(err.Error()))
+			skipped = append(skipped, st.skip(err.Error()))
 			failed[i] = true
 			continue
 		}
@@ -378,7 +407,7 @@ func (c *Coordinator) seriesRename(ctx context.Context, seriesID int64, only []S
 			order = append(order, i)
 		}
 	}
-	oldDirs := map[string]bool{}  // season folders emptied by the moves, to prune after
+	oldDirs = map[string]bool{}   // season folders emptied by the moves, to prune after
 	showDirs := map[string]bool{} // show folders whose files moved, for Plex to rescan
 	for _, i := range order {
 		if failed[i] {
@@ -406,34 +435,24 @@ func (c *Coordinator) seriesRename(ctx context.Context, seriesID int64, only []S
 					c.imp.MoveEpisodeSubs(src, st.From)
 				}
 			}
-			res.Skipped = append(res.Skipped, skip)
+			skipped = append(skipped, skip)
 			continue
 		}
 		c.imp.MoveEpisodeSubs(src, st.To) // keep paired subtitles alongside
-		showDirs[series.ShowFolder(st.From)] = true
-		showDirs[series.ShowFolder(st.To)] = true
+		showDirs[c.series.ShowFolderFor(st.From)] = true
+		showDirs[c.series.ShowFolderFor(st.To)] = true
 		if od := filepath.Dir(st.From); od != filepath.Dir(st.To) {
 			oldDirs[od] = true // a season folder that changed name (e.g. "Season 04" → "Season 4")
 		}
 		for _, r := range st.Rows {
 			_ = c.series.MarkEpisodeImported(ctx, seriesID, r.Season, r.Episode, st.To, r.Size)
 		}
-		res.Moved++
-	}
-	for od := range oldDirs {
-		c.imp.RemoveDirIfEmpty(od) // drop the now-empty legacy season folder
+		moved = append(moved, st)
 	}
 	for d := range showDirs {
 		c.libraryChanged("show", d)
 	}
-	if res.Moved > 0 {
-		c.series.AddEvent(ctx, seriesID, "renamed", fmt.Sprintf("Renamed %d episode file%s", res.Moved, plural(res.Moved)))
-		c.bus.Publish("series.renamed", map[string]any{"id": seriesID, "count": res.Moved})
-	}
-	if len(res.Skipped) > 0 {
-		c.series.AddEvent(ctx, seriesID, "rename.skipped", renameSkippedEvent(res.Skipped))
-	}
-	return res, nil
+	return moved, skipped, oldDirs
 }
 
 // holdUnpreviewed keeps every file the user didn't confirm exactly where it is: its rows

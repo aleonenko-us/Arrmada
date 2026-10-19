@@ -741,6 +741,9 @@ func (c *Coordinator) importContentInto(ctx context.Context, r Review, dest int6
 		if err != nil {
 			return err
 		}
+		if _, _, ferr := c.seriesPlacement(ctx, s); ferr != nil {
+			return fmt.Errorf("%w: %w", ErrNothingToImport, ferr)
+		}
 		placed, matched, unresolved, failed := c.importSeriesInto(ctx, s, r.ContentPath, forceAll)
 		n := len(placed)
 		if matched == 0 {
@@ -913,26 +916,18 @@ func (c *Coordinator) importSeriesInto(ctx context.Context, s series.Series, con
 	// Route episodes into the show's existing on-disk folder when it has one, so a
 	// show already stored as "Below Deck" doesn't spawn a duplicate "Below Deck
 	// (2013)" folder on the next grab.
-	folder := c.series.ExistingFolderName(ctx, s.ID)
-	// Following the existing folder is right when it's this show's own. It is NOT right
-	// when another series already stores episodes there: two shows in one directory merge
-	// their season folders, and any episode number they share overwrites. Observed with
-	// "Teen Titans Go!" writing into a folder named "Teen Titans".
 	//
-	// Reported rather than repaired — moving a library's files unprompted is far more
-	// dangerous than the collision itself, and which show should own the folder is the
-	// user's call.
-	if folder != "" {
-		if others := c.series.FolderSharedWith(ctx, s.ID, folder); len(others) > 0 {
-			names := make([]string, 0, len(others))
-			for _, id := range others {
-				if o, err := c.series.Get(ctx, id); err == nil {
-					names = append(names, o.Title)
-				}
-			}
-			c.log.Warn("series import: two shows share one library folder — episodes may overwrite each other",
-				"folder", folder, "importing", s.Title, "also_stored_here", strings.Join(names, ", "))
-		}
+	// Never into a folder another show's files are in, or one named like a season folder:
+	// two shows in one directory merge their season folders, and any episode number they
+	// share overwrites ("Teen Titans Go!" writing into "Teen Titans"; every show with an
+	// "S01" folder importing into <TV folder>/S01, #56). That used to be a warning and the
+	// import went ahead; now nothing is placed. Callers check seriesPlacement first and
+	// hold the download for review with its reason; this is the backstop.
+	imp, folder, ferr := c.seriesPlacement(ctx, s)
+	if ferr != nil {
+		c.log.Warn("series import: not importing — no safe folder for the show",
+			"series", s.Title, "content_path", contentPath, "err", ferr)
+		return nil, 0, 0, len(videos)
 	}
 	// Quality lives on the RELEASE, not always on each file. Packs routinely name files
 	// "Show - 1x01 - Title.mkv" and put "1080p BDRip x265" only on the folder, so every
@@ -1074,7 +1069,7 @@ func (c *Coordinator) importSeriesInto(ctx context.Context, s series.Series, con
 		if c.refsAgreeWithFile(ctx, s.ID, rel, refs) {
 			// The filename's own numbering is correct — the standard path, which also
 			// handles multi-episode naming.
-			ei, ok, ierr := c.tvImp(ctx, s).ImportEpisodeIntoWith(folder, s.Title, s.Year, v.Path, release)
+			ei, ok, ierr := imp.ImportEpisodeIntoWith(folder, s.Title, s.Year, v.Path, release)
 			if ierr != nil {
 				failed++
 				c.log.Warn("series import: couldn't place file",
@@ -1084,7 +1079,7 @@ func (c *Coordinator) importSeriesInto(ctx context.Context, s series.Series, con
 			if !ok {
 				// No SxxExx — for anime this is an absolute-numbered file ("Show - 137"):
 				// resolve the absolute number and place it under that season/episode.
-				placed = append(placed, c.importAbsoluteEpisode(ctx, s, folder, v.Path)...)
+				placed = append(placed, c.importAbsoluteEpisode(ctx, s, imp, folder, v.Path)...)
 				continue
 			}
 			if ei.Method == "already" {
@@ -1119,7 +1114,7 @@ func (c *Coordinator) importSeriesInto(ctx context.Context, s series.Series, con
 		// the file landed and was recorded as E03, and E03's legitimate file could be
 		// recycled by a supersede the gate never sanctioned.
 		ref := wanted[0]
-		ei, ok, ierr := c.tvImp(ctx, s).ImportEpisodeAs(folder, s.Title, s.Year, ref.Season, ref.Episode, v.Path)
+		ei, ok, ierr := imp.ImportEpisodeAs(folder, s.Title, s.Year, ref.Season, ref.Episode, v.Path)
 		if ierr != nil || !ok {
 			failed++
 			c.log.Warn("series import: couldn't place file under its resolved episode",
@@ -1182,14 +1177,14 @@ func (c *Coordinator) refsAgreeWithFile(ctx context.Context, seriesID int64, rel
 // importAbsoluteEpisode places an anime file that carries only an absolute episode
 // number (no SxxExx). It resolves the number to a (season, episode) via the series'
 // metadata, then places + marks it. Returns how many episodes it imported.
-func (c *Coordinator) importAbsoluteEpisode(ctx context.Context, s series.Series, folder, path string) []series.EpisodeRef {
+func (c *Coordinator) importAbsoluteEpisode(ctx context.Context, s series.Series, imp *library.Importer, folder, path string) []series.EpisodeRef {
 	if !s.IsAnime() {
 		return nil
 	}
 	refs := c.series.ResolveEpisodes(ctx, s.ID, parser.Parse(filepath.Base(path)))
 	var placed []series.EpisodeRef
 	for _, ref := range refs {
-		ei, ok, err := c.tvImp(ctx, s).ImportEpisodeAs(folder, s.Title, s.Year, ref.Season, ref.Episode, path)
+		ei, ok, err := imp.ImportEpisodeAs(folder, s.Title, s.Year, ref.Season, ref.Episode, path)
 		if err != nil || !ok || ei.Method == "already" {
 			continue
 		}

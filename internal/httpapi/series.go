@@ -1083,6 +1083,10 @@ func (a *api) handleSeriesRenamePreview(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	items, err := a.deps.Automation.SeriesRenamePreview(r.Context(), id)
+	if errors.Is(err, series.ErrNoShowFolder) {
+		a.writeError(w, http.StatusConflict, err.Error())
+		return
+	}
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not build rename preview")
 		return
@@ -1112,6 +1116,10 @@ func (a *api) handleSeriesRename(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	res, err := a.deps.Automation.SeriesRename(r.Context(), id, req.Items)
+	if errors.Is(err, series.ErrNoShowFolder) {
+		a.writeError(w, http.StatusConflict, err.Error())
+		return
+	}
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not rename")
 		return
@@ -1234,6 +1242,10 @@ func (a *api) handleSeriesDuplicates(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, series.ErrNotFound) {
 			a.writeError(w, http.StatusNotFound, "series not found")
+			return
+		}
+		if errors.Is(err, series.ErrNoShowFolder) {
+			a.writeError(w, http.StatusConflict, err.Error())
 			return
 		}
 		a.writeError(w, http.StatusInternalServerError, "could not scan for duplicates")

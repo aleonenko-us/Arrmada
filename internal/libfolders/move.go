@@ -105,7 +105,8 @@ type Mover struct {
 	// them go again), so nothing is grabbed into the old folder half-way. ok is false
 	// while a search of it is already running. nil = no hold.
 	Hold func(media string, id int64) (release func(), ok bool)
-	// ShowFolder is the show folder an episode file lives in (series.ShowFolder).
+	// ShowFolder is the show folder an episode file lives in (series.Service.ShowFolderFor;
+	// "" for a file loose in a library folder).
 	ShowFolder func(episodePath string) string
 	Log        *slog.Logger
 
@@ -347,7 +348,9 @@ func (m *Mover) plan(ctx context.Context, t title, dest Folder) ([]movePlan, err
 	for _, f := range t.files {
 		dir := filepath.Dir(f)
 		if t.media == MediaSeries && m.ShowFolder != nil {
-			dir = m.ShowFolder(f)
+			if show := m.ShowFolder(f); show != "" {
+				dir = show
+			}
 		}
 		dirs[filepath.Clean(dir)]++
 	}

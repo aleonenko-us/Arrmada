@@ -1249,6 +1249,20 @@ func (c *Coordinator) ImportSeriesDownloads(ctx context.Context) {
 			}
 			continue // not something we grabbed and not a library title — leave alone
 		}
+		// No sound folder for the show — its files are all in a folder named like a season,
+		// or one other shows use — means nothing is placed, and a human sees it at once:
+		// retrying every sweep can't fix it (#56).
+		if _, _, ferr := c.seriesPlacement(ctx, s); ferr != nil {
+			c.log.Warn("series import: no safe folder for the show — holding for review",
+				"series", s.Title, "release", it.Name, "err", ferr)
+			c.addReview(ctx, Review{
+				Hash: it.Hash, Name: it.Name, ContentPath: it.ContentPath, MediaType: "series", ReasonCode: ReasonImportFailed,
+				ExpectedID: s.ID, ExpectedTitle: s.Title, ParsedTitle: parsed.Title,
+				SizeBytes: it.SizeBytes, Indexer: c.grabIndexer(ctx, it.Name, "series"),
+				Reason: ferr.Error(),
+			})
+			continue
+		}
 		// A release the user picked by hand imports regardless of what it scores against
 		// the current file — but only for the season or episode it was picked for. See
 		// importSeriesInto.

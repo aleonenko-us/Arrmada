@@ -334,7 +334,10 @@ func (c *Coordinator) tvImp(ctx context.Context, s series.Series) *library.Impor
 	if c.series == nil {
 		return c.imp.Using(ctx)
 	}
-	return c.imp.InTV(c.series.RootFor(ctx, s)).Using(ctx)
+	// The folder the show's own folder is in (normally its TV folder), so the folder name
+	// from ExistingFolderName lands back on the show's folder. seriesPlacement is this plus
+	// the safety checks; anything that writes episode files uses that.
+	return c.imp.InTV(c.series.ImportDir(ctx, s)).Using(ctx)
 }
 
 // SetBooks wires the books module (shares the importer set by SetSeries).

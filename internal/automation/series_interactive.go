@@ -524,7 +524,12 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 	// Before anything reads as missing: a file an interrupted rename left under its
 	// temporary name would otherwise be cleared below and downloaded again.
 	c.restoreRenameTemps(s)
-	folder := c.series.ExistingFolderName(ctx, seriesID) // "" → importer derives the name
+	// Never walk a folder other shows' files are in: every file there that parses to one
+	// of this show's episode numbers would be claimed as its own.
+	imp, folder, ferr := c.seriesPlacement(ctx, s) // folder "" → importer derives the name
+	if ferr != nil {
+		return &RescanRefusedError{Reason: ferr.Error()}
+	}
 
 	// Group by resolved episode first, rather than marking as we walk. Several files on
 	// disk can claim the same episode — three copies of every Solo Leveling season 2
@@ -533,7 +538,7 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 	// others' paths, and reported nothing: the extra copies became invisible to Arrmada
 	// while still filling the disk and showing up as duplicates in Plex.
 	byEpisode := map[[2]int][]library.FoundVideo{}
-	for _, v := range c.tvImp(ctx, s).SeriesLibraryVideos(folder, s.Title, s.Year) {
+	for _, v := range imp.SeriesLibraryVideos(folder, s.Title, s.Year) {
 		// Run each file through the full resolver: SxxExx, multi-episode, and — for anime
 		// — absolute ("S2 29") and per-cour numbering all map onto the metadata's episodes.
 		for _, ref := range c.series.ResolveEpisodes(ctx, seriesID, parser.Parse(filepath.Base(v.Path))) {
@@ -562,7 +567,7 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 		}
 	}
 	if len(gone) > 0 {
-		if reason := rescanRefusal(c.tvImp(ctx, s).TVRoot(), s.Title, gone, recorded); reason != "" {
+		if reason := rescanRefusal(imp.TVRoot(), s.Title, gone, recorded, c.series.ShowFolderFor); reason != "" {
 			c.log.Warn("series rescan: the files' folders don't look mounted — nothing was changed",
 				"series", s.Title, "would_clear", len(gone), "reason", reason)
 			return &RescanRefusedError{Reason: reason}
@@ -614,7 +619,7 @@ func (e *RescanRefusedError) Error() string { return e.Reason }
 // a show vanishing at once is refused too: that's what a missing disk looks like far
 // more often than a deliberate deletion, and clearing them all would download the whole
 // show again.
-func rescanRefusal(root, title string, gone []series.Episode, recorded int) string {
+func rescanRefusal(root, title string, gone []series.Episode, recorded int, showFolder func(string) string) string {
 	root = strings.TrimSpace(root)
 	inRoot := false
 	var shows []string
@@ -627,7 +632,7 @@ func rescanRefusal(root, title string, gone []series.Episode, recorded int) stri
 		if root != "" && pathguard.Under(p, root) {
 			inRoot = true
 		}
-		if dir := series.ShowFolder(p); !seen[dir] {
+		if dir := showFolder(p); dir != "" && !seen[dir] {
 			seen[dir] = true
 			shows = append(shows, dir)
 		}
@@ -708,6 +713,9 @@ func (c *Coordinator) ManualImportSeries(ctx context.Context, seriesID int64, pa
 	// still has gaps, so when a fix changes what WOULD have imported, pointing manual
 	// import at the folder is what applies it.
 	if fi, statErr := os.Stat(path); statErr == nil && fi.IsDir() {
+		if _, _, ferr := c.seriesPlacement(ctx, s); ferr != nil {
+			return ferr
+		}
 		placedRefs, matched, unresolved, importFailed := c.importSeriesInto(ctx, s, path, forceAll)
 		placed := len(placedRefs)
 		if matched == 0 {
@@ -729,14 +737,17 @@ func (c *Coordinator) ManualImportSeries(ctx context.Context, seriesID int64, pa
 		return nil
 	}
 
-	folder := c.series.ExistingFolderName(ctx, seriesID)
-	ei, ok, err := c.tvImp(ctx, s).ImportEpisodeInto(folder, s.Title, s.Year, path)
+	imp, folder, ferr := c.seriesPlacement(ctx, s)
+	if ferr != nil {
+		return ferr
+	}
+	ei, ok, err := imp.ImportEpisodeInto(folder, s.Title, s.Year, path)
 	if err != nil {
 		return err
 	}
 	if !ok {
 		// Anime file numbered absolutely (no SxxExx) — resolve + place by absolute number.
-		if s.IsAnime() && len(c.importAbsoluteEpisode(ctx, s, folder, path)) > 0 {
+		if s.IsAnime() && len(c.importAbsoluteEpisode(ctx, s, imp, folder, path)) > 0 {
 			return nil
 		}
 		return fmt.Errorf("couldn't detect a season/episode from that filename")
@@ -832,10 +843,13 @@ func (c *Coordinator) SeriesDuplicates(ctx context.Context, seriesID int64) ([]D
 	if err != nil {
 		return nil, err
 	}
-	folder := c.series.ExistingFolderName(ctx, seriesID)
+	imp, folder, ferr := c.seriesPlacement(ctx, s)
+	if ferr != nil {
+		return nil, ferr
+	}
 
 	byEpisode := map[[2]int][]library.FoundVideo{}
-	for _, v := range c.tvImp(ctx, s).SeriesLibraryVideos(folder, s.Title, s.Year) {
+	for _, v := range imp.SeriesLibraryVideos(folder, s.Title, s.Year) {
 		for _, ref := range c.series.ResolveEpisodes(ctx, seriesID, parser.Parse(filepath.Base(v.Path))) {
 			key := [2]int{ref.Season, ref.Episode}
 			byEpisode[key] = append(byEpisode[key], v)
