@@ -4184,6 +4184,9 @@ export interface ImportReview {
   import_job?: Job;
   /** The music matcher's explanation of why it held the download (MUS-31). */
   match?: MusicMatchReport;
+  /** "library_scan": a folder already in the music library that the scan couldn't place
+   *  (MUS-37). It is matched where it is and can never be rejected. */
+  source?: "library_scan";
 }
 
 /** One field's part of a music match distance. */

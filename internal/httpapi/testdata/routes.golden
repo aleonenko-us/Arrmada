@@ -235,6 +235,7 @@ GET /api/v1/music/naming/preview staff -
 GET /api/v1/music/new-releases staff -
 GET /api/v1/music/organize staff -
 GET /api/v1/music/release-defaults staff -
+GET /api/v1/music/scan staff -
 GET /api/v1/notifications staff -
 GET /api/v1/notifications/catalog staff -
 GET /api/v1/notifications/presets staff -

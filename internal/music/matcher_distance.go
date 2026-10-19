@@ -195,6 +195,14 @@ func contains(list []string, s string) bool {
 // variousArtistsMBID is MusicBrainz's "Various Artists".
 const variousArtistsMBID = "89ad4ac3-39f7-470e-963a-56509c546377"
 
+// IsVariousArtistsName reports whether a name is a "Various Artists" placeholder.
+func IsVariousArtistsName(s string) bool { return isVariousArtists(s) }
+
+// IsVariousArtistsMBID reports whether an artist MBID is MusicBrainz's "Various Artists".
+func IsVariousArtistsMBID(mbid string) bool {
+	return strings.EqualFold(strings.TrimSpace(mbid), variousArtistsMBID)
+}
+
 // isVariousArtists reports whether a name is a "Various Artists" placeholder.
 func isVariousArtists(s string) bool {
 	switch compactFold(s) {

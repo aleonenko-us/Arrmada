@@ -1,4 +1,4 @@
-import { req, type ReviewImportStarted } from "./api";
+import { req, type JobRef, type ReviewImportStarted } from "./api";
 
 // Music calls that only the staff music pages make. Their own module, not part of
 // lib/api.ts, so none of it lands in a requester's first load.
@@ -39,6 +39,30 @@ export interface MusicMatching {
   edition_policy: "original" | "most_complete" | "preferred";
   edition_countries: string[];
   edition_media: string[];
+  /** How many album folders the library scan reads at once (1–16). */
+  scan_workers: number;
+}
+
+/** What one library scan did (MUS-37). */
+export interface MusicScanSummary {
+  folders: number;
+  skipped: number;
+  artists: number;
+  albums: number;
+  tracks: number;
+  moved: number;
+  unmatched: string[];
+  reviews: number;
+  failed: number;
+  waiting: number;
+  remaining: number;
+  opened: number;
+  measured: number;
+  workers: number;
+  full?: boolean;
+  walk_ms: number;
+  read_ms: number;
+  total_ms: number;
 }
 
 /** Which release groups an artist lists (MUS-14): the primary type must be allowed AND
@@ -129,6 +153,12 @@ export const musicApi = {
       method: "PUT",
       body: JSON.stringify({ release_id: releaseId, pinned }),
     }),
+
+  /** The last library scan's summary (null before the first). */
+  lastScan: () => req<{ last: MusicScanSummary | null; started_at?: string; finished_at?: string }>("/api/v1/music/scan"),
+  /** Scan the music folder; full looks at every folder again, ignoring the scan's memory. */
+  scanLibrary: (full = false) =>
+    req<{ status: string } & JobRef>("/api/v1/music/scan", { method: "POST", body: JSON.stringify({ full }) }),
 
   matching: () => req<{ settings: MusicMatching; defaults: MusicMatching }>("/api/v1/music/matching"),
   setMatching: (patch: Partial<MusicMatching>) =>

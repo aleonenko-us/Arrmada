@@ -32,6 +32,9 @@ type FileTags struct {
 	ISRC, Barcode, Label               string
 	CatalogNumber, Country, Media      string
 	Compilation                        bool
+	// AlbumArtistMBID is the first album-artist MBID the file carries: the library scan
+	// finds (or adds) the artist by it without a name search.
+	AlbumArtistMBID string
 }
 
 // tagged reports whether the tags say anything that identifies the file.

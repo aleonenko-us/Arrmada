@@ -113,9 +113,15 @@ type Review struct {
 	// Match is the music matcher's explanation (music.MatchReport as JSON): the
 	// candidates it weighed and each one's per-field breakdown. Absent otherwise.
 	Match json.RawMessage `json:"match,omitempty"`
+	// Source is "library_scan" for a folder the music library scan couldn't place (MUS-37):
+	// already in the library, so it is matched where it is and never rejected.
+	Source string `json:"source,omitempty"`
 
 	status string // pending | resolved; read by getReview only
 }
+
+// ReviewSourceLibraryScan marks a review the library scan wrote.
+const ReviewSourceLibraryScan = "library_scan"
 
 // Why a download was held for review.
 const (
@@ -144,6 +150,9 @@ func scanReview(row interface{ Scan(...any) error }) (Review, error) {
 	}
 	if r.ReasonCode == "" { // a row written by a build without codes, after 0133 ran
 		r.ReasonCode = defaultReasonCode(r)
+	}
+	if IsLibraryScanReview(r) {
+		r.Source = ReviewSourceLibraryScan
 	}
 	return r, err
 }
@@ -511,6 +520,11 @@ func (c *Coordinator) RejectReview(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
+	if IsLibraryScanReview(r) {
+		// The "download" is a folder already in the music library: rejecting would delete
+		// library files. Dismiss leaves it as it is; Match… records it.
+		return fmt.Errorf("%w: this folder is already in your music folder, so it can't be rejected (that would delete it) — dismiss it, or match it to an album", ErrWrongReason)
+	}
 	if r.Hash != "" && c.downloads != nil {
 		if err := c.downloads.Remove(ctx, r.Hash, true); err != nil {
 			c.log.Warn("review: remove download failed", "hash", r.Hash, "err", err)
@@ -571,6 +585,11 @@ func (c *Coordinator) DismissReview(ctx context.Context, id int64) error {
 	r, err := c.pendingReview(ctx, id)
 	if err != nil {
 		return err
+	}
+	if IsLibraryScanReview(r) {
+		// A library folder the scan couldn't place: nothing to settle in the client. The
+		// scan remembers the folder and leaves it alone until it changes.
+		return c.resolveReview(ctx, id, ResolutionDismissed)
 	}
 	c.recordImportedHash(ctx, r.Hash, r.Name, r.SizeBytes)
 	c.setGrabStatusByHash(ctx, r.Hash, r.Name, r.MediaType, grabStatusDismissed)
@@ -701,6 +720,14 @@ func (c *Coordinator) ImportReview(ctx context.Context, id, targetID int64, targ
 		return err
 	}
 	r, dest := t.Review, t.Dest
+	if IsLibraryScanReview(r) {
+		// Match…: the folder is already in the library; its files are recorded where
+		// they are, never staged, moved or retagged.
+		if err := c.matchScanFolder(ctx, r, dest); err != nil {
+			return err
+		}
+		return c.resolveReview(ctx, id, ResolutionImported)
+	}
 	left := &importLeftovers{}
 	ctx = context.WithValue(ctx, importLeftoversKey{}, left)
 	if err := c.importContentInto(withCopyAccounting(ctx, r), r, dest, "review"); err != nil {

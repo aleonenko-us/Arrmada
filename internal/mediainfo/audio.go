@@ -63,6 +63,23 @@ func ProbeAudio(ctx context.Context, path string) (AudioInfo, error) {
 	return info, err
 }
 
+// ProbeAudioIdle is ProbeAudio at idle CPU and I/O priority, for background passes over a
+// whole library (music's measuring and verify passes), which must never compete with
+// playback or an import someone is waiting on.
+func ProbeAudioIdle(ctx context.Context, path string) (AudioInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, audioProbeTimeout)
+	defer cancel()
+	out, err := toolrun.Command(ctx, toolrun.Idle, "ffprobe", audioProbeArgs(path)...).Output()
+	if err != nil {
+		return AudioInfo{}, err
+	}
+	info, err := ParseAudio(out)
+	if err == nil && info.Codec == "" {
+		return info, ErrNoAudio
+	}
+	return info, err
+}
+
 // ProbeAudioWith is ProbeAudio with a given ffprobe binary (the audiobook server's is
 // configurable). It runs through the tool runner at normal priority, since someone is
 // usually waiting on the answer, and a file with no audio stream is not an error here:

@@ -43,6 +43,20 @@ function ThresholdField({ k, label, help, cfg, onSaved }: { k: Threshold; label:
   );
 }
 
+// ScanWorkersField is how many album folders the library scan reads at once (MUS-37).
+function ScanWorkersField({ cfg, onSaved }: { cfg: MusicMatching; onSaved: (m: MusicMatching) => void }) {
+  const save = useAutoSave(String(cfg.scan_workers), (v) => musicApi.setMatching({ scan_workers: Number(v) }).then((res) => onSaved(res.settings)), {
+    validate: (v) => (/^\d+$/.test(v.trim()) && Number(v) >= 1 && Number(v) <= 16 ? null : "Enter a whole number from 1 to 16."),
+  });
+  return (
+    <AutoText label="Library scan reads at once" save={save} mono={false} inputMode="numeric" className="w-full max-w-[120px] rounded-lg px-3 py-2 text-base">
+      <p className="m-0 text-xs text-ink-faint">
+        How many album folders Scan library reads at the same time. 4 suits most setups; more can help a library on a network share, fewer a small box.
+      </p>
+    </AutoText>
+  );
+}
+
 function ListField({ k, label, help, cfg, onSaved }: { k: "edition_countries" | "edition_media"; label: string; help: string; cfg: MusicMatching; onSaved: (m: MusicMatching) => void }) {
   const toList = (v: string) => v.split(",").map((s) => s.trim()).filter(Boolean);
   const save = useAutoSave(cfg[k].join(", "), (v) => musicApi.setMatching({ [k]: toList(v) } as Partial<MusicMatching>).then((res) => onSaved(res.settings)));
@@ -120,6 +134,7 @@ export function MusicMatchingSettings() {
         {THRESHOLDS.map((t) => (
           <ThresholdField key={t.key} k={t.key} label={t.label} help={t.help} cfg={cfg} onSaved={setCfg} />
         ))}
+        <ScanWorkersField cfg={cfg} onSaved={setCfg} />
       </div>
       <div className="flex items-center gap-3">
         <Button size="sm" onClick={() => void reset()} busy={resetting} busyLabel="Resetting…" disabled={isDefault}>

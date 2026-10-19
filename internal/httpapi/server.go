@@ -897,6 +897,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/music/artists", a.requireRole(auth.RoleManager, a.musicRoute(a.handleListArtists)))
 	mux.HandleFunc("GET /api/v1/music/lookup", a.requireRole(auth.RoleManager, a.musicRoute(a.handleLookupArtists)))
 	mux.HandleFunc("POST /api/v1/music/scan", a.requireRole(auth.RoleManager, a.musicRoute(a.handleScanMusicLibrary)))
+	mux.HandleFunc("GET /api/v1/music/scan", a.requireRole(auth.RoleManager, a.musicRoute(a.handleMusicScanStatus)))
 	mux.HandleFunc("POST /api/v1/music/artists", a.requireRole(auth.RoleManager, a.musicRoute(a.handleAddArtist)))
 	mux.HandleFunc("GET /api/v1/music/artists/{id}", a.requireRole(auth.RoleManager, a.musicRoute(a.handleGetArtist)))
 	mux.HandleFunc("POST /api/v1/music/artists/{id}/refresh", a.requireRole(auth.RoleManager, a.musicRoute(a.handleRefreshArtist)))
