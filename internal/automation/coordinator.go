@@ -26,6 +26,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/eventbus"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/mediainfo"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/music"
 	"github.com/tristenlammi/arrmada/internal/outbox"
@@ -102,6 +103,8 @@ type Coordinator struct {
 	musicSearchFn func(ctx context.Context, q indexer.SearchQuery) (indexer.SearchResult, error)
 	musicQueueFn  func(ctx context.Context) ([]download.Item, error)
 	musicGrabFn   func(ctx context.Context, indexerName, url, title, category string) (string, error)
+	// probeAudioFn measures an audio file (nil: ffprobe through mediainfo). See probeAudio.
+	probeAudioFn func(ctx context.Context, path string) (mediainfo.AudioInfo, error)
 
 	// unmatched counts how many import sweeps have failed to match a download to a
 	// series, keyed by torrent hash. Without it the 30-second sweep logs the same failure
@@ -118,6 +121,13 @@ type Coordinator struct {
 	// under one of its names in another language (seriesKnownAs), so a seeding download
 	// isn't re-checked every sweep. Also guarded by unmatchedMu, and pruned the same way.
 	knownNames map[string]int64
+	// musicRetry holds back a music download whose import failed for a reason of ours (the
+	// recycle bin refusing, a placement error), keyed by torrent hash: how many times in a
+	// row, and when to try again. Guarded by unmatchedMu.
+	musicRetry map[string]musicRetryState
+	// measureCursor is the last track id the music scan's measuring pass reached, so a file
+	// that can't be measured doesn't hold every later one back (see measureUnmeasuredTracks).
+	measureCursor atomic.Int64
 
 	// The stall clock — when each pending grab's download last moved forward — and when a
 	// stalled one last found no replacement are kept on its grab row (acquisitions.go), so
@@ -2061,7 +2071,12 @@ func (c *Coordinator) ResolveBlock(ctx context.Context, hash, name string) (Bloc
 		}
 	case "music":
 		if c.music != nil {
-			if al, _, ok := c.albumForRelease(ctx, name); ok {
+			if music.ParseRelease(name).Discography {
+				// A discography names an artist, not an album; it's blocked for the artist.
+				if a, ok := c.artistForRelease(ctx, name); ok {
+					kind, id = mediaMusicArtist, a.ID
+				}
+			} else if al, _, ok := c.albumForRelease(ctx, name); ok {
 				id = al.ID
 			}
 		}
@@ -2115,21 +2130,23 @@ func (c *Coordinator) blockTargetFor(ctx context.Context, kind string, id int64,
 		if c.music == nil {
 			return t, false
 		}
-		// A discography is grabbed against the artist (see grabDiscography), and its
-		// blocklist rows are read against the artist id too.
-		if music.ParseRelease(release).Discography {
-			a, err := c.music.GetArtist(ctx, id)
-			if err != nil {
-				return t, false
-			}
-			t.Title, t.discography = a.Name+" (discography)", true
-			return t, true
-		}
 		al, err := c.music.GetAlbum(ctx, id)
 		if err != nil {
 			return t, false
 		}
 		t.Title = al.Title
+	case mediaMusicArtist:
+		// A discography is grabbed against the artist (see GrabDiscography), and its
+		// blocklist rows are kept against the artist id too. It answers as music, so the
+		// page that asked needn't know the difference.
+		if c.music == nil {
+			return t, false
+		}
+		a, err := c.music.GetArtist(ctx, id)
+		if err != nil {
+			return t, false
+		}
+		t.Kind, t.Title, t.discography = "music", a.Name+" (discography)", true
 	default:
 		return t, false
 	}
@@ -2156,7 +2173,11 @@ func (c *Coordinator) BlockResolved(ctx context.Context, hash string, t BlockTar
 		case "book":
 			c.addBlockBook(ctx, t.ID, title, t.indexer, reason)
 		case "music":
-			c.addBlockMusic(ctx, t.ID, title, t.indexer, reason)
+			if t.discography {
+				c.addBlockMusicArtist(ctx, t.ID, title, t.indexer, reason)
+			} else {
+				c.addBlockMusic(ctx, t.ID, title, t.indexer, reason)
+			}
 		default:
 			return ErrNothingToBlock
 		}
@@ -2166,7 +2187,11 @@ func (c *Coordinator) BlockResolved(ctx context.Context, hash string, t BlockTar
 	}
 	// Whatever it was, its grab row must not stay in flight — that would hold the
 	// pending-grab guard and hide the block from stall detection.
-	c.setGrabStatusByHash(ctx, hash, t.release, t.Kind, grabStatusFailed)
+	grabKind := t.Kind
+	if t.discography {
+		grabKind = mediaMusicArtist
+	}
+	c.setGrabStatusByHash(ctx, hash, t.release, grabKind, grabStatusFailed)
 	if _, err := c.db.ExecContext(ctx,
 		`UPDATE import_reviews SET status = 'resolved', resolution = ?, resolved_at = CURRENT_TIMESTAMP
 		  WHERE lower(hash) = lower(?) AND status = 'pending'`, ResolutionRejected, hash); err != nil {
@@ -2354,6 +2379,10 @@ func (c *Coordinator) DetectStalled(ctx context.Context) {
 			c.detectStalledSeries(ctx, g, queue, tick)
 		case "music":
 			c.detectStalledMusic(ctx, g, queue, tick)
+		case mediaMusicArtist:
+			// A discography: judged on its own download, never through the movie branch
+			// below or as whichever album shares the artist's id.
+			c.detectStalledDiscography(ctx, g, queue, tick)
 		case "book":
 			c.detectStalledBook(ctx, g, queue, tick)
 		default:

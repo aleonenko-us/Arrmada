@@ -102,6 +102,10 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 		if a.deps.Settings != nil {
 			reg.Register(health.ProwlarrCheck(a.prowlarrState))
 		}
+		// MusicBrainz refusing background lookups (Music serves its cache meanwhile).
+		if a.deps.Settings != nil {
+			reg.Register(health.MusicBrainzCheck(a.musicEnabled, metadata.MusicBrainzPaused))
+		}
 		// FlareSolverr, only while a tracker that needs it is enabled. Pinging the local
 		// container is the one live call these checks make; it's capped at 3 seconds.
 		reg.Register(health.FlareSolverrCheck(a.flareSolverrDependents,

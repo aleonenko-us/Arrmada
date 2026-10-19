@@ -25,7 +25,8 @@ type UsenetReleases struct {
 // UsenetReleases reads every usenet grab's release.
 func (c *Coordinator) UsenetReleases(ctx context.Context) (UsenetReleases, error) {
 	u := UsenetReleases{byItem: map[string][]string{}, titles: map[string]bool{}}
-	rows, err := c.db.QueryContext(ctx, `SELECT g.media_type,
+	// A discography (music_artist) already holds the artist's id: it files with music.
+	rows, err := c.db.QueryContext(ctx, `SELECT CASE WHEN g.media_type = '`+mediaMusicArtist+`' THEN 'music' ELSE g.media_type END,
 			CASE WHEN g.media_type = 'music' THEN COALESCE(al.artist_id, 0) ELSE g.movie_id END, g.title
 		  FROM grabs g LEFT JOIN albums al ON g.media_type = 'music' AND al.id = g.movie_id
 		 WHERE g.transport = ?`, string(download.TransportUsenet))

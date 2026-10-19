@@ -27,6 +27,12 @@ const Homepage = "https://github.com/tristenlammi/Arrmada"
 // ("0.0.0-dev") adds its commit when it was stamped with one, so a log line on the other
 // side still says which build asked.
 func UserAgent() string {
+	return "Arrmada/" + Version() + " (+" + Homepage + ")"
+}
+
+// Version is the build's version as the User-Agent states it, for a service that wants
+// its own User-Agent shape (MusicBrainz: "Name/version ( contact )").
+func Version() string {
 	v := strings.TrimSpace(buildinfo.Version)
 	if v == "" {
 		v = "0.0.0-dev"
@@ -34,7 +40,7 @@ func UserAgent() string {
 	if c := strings.TrimSpace(buildinfo.Commit); strings.HasSuffix(v, "-dev") && c != "" && c != "unknown" {
 		v += "+" + c
 	}
-	return "Arrmada/" + v + " (+" + Homepage + ")"
+	return v
 }
 
 // Set puts the User-Agent on req unless it already carries one.

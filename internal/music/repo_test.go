@@ -100,3 +100,43 @@ func TestWantedAlbums(t *testing.T) {
 		t.Errorf("Kid A = %+v, want no tracks", al)
 	}
 }
+
+// An album read on its own carries its have count and size (they used to be dropped, so
+// no album read one at a time was ever complete), and HeldTiers is the lowest held tier.
+func TestAlbumCountsAndHeldTiers(t *testing.T) {
+	r, ctx := testRepo(t)
+	a, err := r.CreateArtist(ctx, Artist{MBID: "a-1", Name: "Radiohead", Monitored: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := r.UpsertAlbum(ctx, Album{ArtistID: a.ID, MBID: "rg-1", Title: "OK Computer", Monitored: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.UpsertTracks(ctx, id, []Track{
+		{DiscNumber: 1, TrackNumber: 1, Title: "Airbag"}, {DiscNumber: 1, TrackNumber: 2, Title: "Paranoid Android"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := r.HeldTiers(ctx, id); err != nil || ok {
+		t.Fatalf("nothing held: ok=%v err=%v", ok, err)
+	}
+	tracks, _ := r.TracksFor(ctx, id)
+	if err := r.SetTrackFile(ctx, tracks[0].ID, "/m/01.flac", "FLAC", 0, 1000, "rel"); err != nil {
+		t.Fatal(err)
+	}
+	al, err := r.GetAlbum(ctx, id)
+	if err != nil || al.TrackCount != 2 || al.HaveTracks != 1 || al.SizeBytes != 1000 || al.Complete() {
+		t.Fatalf("GetAlbum = %+v (err %v), want 1 of 2 held, 1000 bytes", al, err)
+	}
+	if err := r.SetTrackFile(ctx, tracks[1].ID, "/m/02.mp3", "MP3-320", 320, 500, "rel"); err != nil {
+		t.Fatal(err)
+	}
+	albums, _ := r.AlbumsFor(ctx, a.ID)
+	if len(albums) != 1 || !albums[0].Complete() {
+		t.Errorf("AlbumsFor = %+v, want the album complete", albums)
+	}
+	if q, ok, err := r.HeldTiers(ctx, id); err != nil || !ok || q != QualityMP3320 {
+		t.Errorf("HeldTiers = %q %v %v, want the lowest, MP3-320", q, ok, err)
+	}
+}

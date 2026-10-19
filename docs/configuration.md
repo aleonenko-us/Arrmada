@@ -457,6 +457,36 @@ worse release, and it never hides the other network's.
 After an import Arrmada archives the job in SABnzbd's history and deletes what's left of
 its folder. Usenet downloads never seed.
 
+## MusicBrainz (Music)
+
+Music (a preview, off by default) gets artists, albums and track listings from
+MusicBrainz. Arrmada asks MusicBrainz directly; it never runs or relies on a central
+metadata server of its own. MusicBrainz allows one request a second from an address, so
+Arrmada sends at most that (every part of the app shares the one limit), says who it is
+in its User-Agent, and keeps every answer in its database for good. Pages open from that
+cache, a background task rechecks old answers every six hours, and when MusicBrainz is
+down or refusing requests Music keeps working from what it already has. A failed or
+empty answer never removes, unmonitors or relists anything.
+
+The **MusicBrainz** card in Settings → Connections (admin only) sets:
+
+- **Server** — leave empty for `https://musicbrainz.org`, or enter your own mirror's
+  address (a LAN address is fine).
+- **Mirror requests a second** — how fast a mirror may be asked (1 to 50). The public
+  server always gets one a second, whatever this says.
+- **Contact email** — optional; it's added to the User-Agent so MusicBrainz can reach you
+  instead of blocking the address. It stays out of the logs and the support bundle.
+
+**Test** looks up a well-known artist on the address in the box.
+
+### Self-hosted MusicBrainz
+
+A mirror ([musicbrainz-docker](https://github.com/metabrainz/musicbrainz-docker)) lifts the
+one-a-second limit. It needs about 100 GB of disk and 4 GB of RAM without its search
+indexes, or about 350 GB and 16 GB with them, plus a MetaBrainz access token for the daily
+updates. Its Solr search service must never be reachable from the internet. Arrmada's
+cache is kept whichever server you use, so switching to or from a mirror loses nothing.
+
 ## Connecting Jellyfin
 
 Jellyfin is connected in the app, on its card in Settings → Connections (next to Plex's):

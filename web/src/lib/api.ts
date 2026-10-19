@@ -388,7 +388,8 @@ export interface ActivityDownload {
 
 /** The library title a transfer was grabbed for, from the acquisition record. */
 export interface TransferItem {
-  kind: "movie" | "series" | "book" | "music";
+  /** music_artist: a discography, grabbed for the artist (id is the artist's). */
+  kind: "movie" | "series" | "book" | "music" | "music_artist";
   id: number;
   title: string;
   year?: number;
@@ -3700,7 +3701,9 @@ export interface MusicTrack {
   monitored: boolean;
   has_file: boolean;
   file_path?: string;
+  /** The measured tier ("FLAC-24", "MP3-320"), or an extension tag ("MP3") when unmeasured. */
   format?: string;
+  bitrate_kbps?: number;
   size_bytes?: number;
 }
 export interface MusicAlbum {
@@ -3717,6 +3720,8 @@ export interface MusicAlbum {
   track_count: number;
   have_tracks: number;
   size_bytes: number;
+  /** The lowest tier among the tracks on disk (album detail only). */
+  held_tier?: string;
 }
 export interface Artist {
   id: number;

@@ -13,13 +13,15 @@ func mbStub(t *testing.T, h http.HandlerFunc) *MusicBrainz {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	m := NewMusicBrainz()
+	m := NewMusicBrainz(nil, nil)
 	m.http = srv.Client()
 	m.base = srv.URL
 	m.art = "https://art.example"
 	// The real 1.1s pacing would make the suite crawl; the pacing itself is not what these
-	// tests are checking.
+	// tests are checking (mblimit_test.go is). A gate of its own, so no other test's
+	// pacing leaks in.
 	m.minInterval = 0
+	m.gate = newMBLimiter()
 	return m
 }
 

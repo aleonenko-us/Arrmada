@@ -172,6 +172,15 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Fixed
 
+- **Music (Preview) is safer while it's rebuilt.** Artist and album names fold properly
+  (Björk, AC/DC, R.E.M., "The The") without matching the wrong band ("Fall Out Boy" is no
+  longer The Fall); words like "Escape" no longer read as lossless; quality is measured from
+  the files; track and disc numbers are read safely; an upgrade never lowers quality and old
+  files only ever go to the recycle bin; files that match no track are left in the download
+  instead of being cleaned up; albums show as complete again. MusicBrainz lookups share one
+  polite limit and a permanent local cache, so music keeps working when MusicBrainz is down, and
+  Settings → Connections → Metadata can point at your own MusicBrainz copy.
+
 - Library folders: a show, artist or album whose name is only dots can no longer reach
   outside its library folder. Names like "..." are still allowed.
 - Archive extraction: a refused archive no longer stops the rest of the download. Zips of RAR

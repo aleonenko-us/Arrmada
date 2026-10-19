@@ -80,13 +80,16 @@ type Deps struct {
 	Ratings    metadata.RatingProvider
 	Books      *books.Service
 	Music      *music.Service
-	Subtitles  *subtitles.Service
-	Convert    *convert.Service
-	Insights   *insights.Service
-	Push       *push.Service
-	Recycle    *recyclebin.Service
-	Logs       *applog.Ring
-	APIKeys    *apikeys.Store
+	// MusicBrainz is the process's one MusicBrainz client, for its Settings card (address,
+	// Test, cache size). nil: the card reports it isn't available.
+	MusicBrainz *metadata.MusicBrainz
+	Subtitles   *subtitles.Service
+	Convert     *convert.Service
+	Insights    *insights.Service
+	Push        *push.Service
+	Recycle     *recyclebin.Service
+	Logs        *applog.Ring
+	APIKeys     *apikeys.Store
 	// LogLevel is the level every log line is checked against; the Logs page raises it
 	// for a while (GET/PUT /logs/level). nil = the level can't be changed from the app.
 	LogLevel *applog.LevelSwitch
@@ -271,6 +274,11 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("PUT /api/v1/settings/smtp", a.requireRole(auth.RoleAdmin, a.handleSetSMTP))
 	mux.HandleFunc("DELETE /api/v1/settings/smtp", a.requireRole(auth.RoleAdmin, a.handleClearSMTP))
 	mux.HandleFunc("POST /api/v1/settings/smtp/test", a.requireRole(auth.RoleAdmin, a.handleTestSMTP))
+	// MusicBrainz: the server (public or a self-hosted mirror on the LAN), a mirror's rate
+	// and the User-Agent contact. An address Arrmada will call is the owner's call.
+	mux.HandleFunc("GET /api/v1/settings/musicbrainz", a.requireRole(auth.RoleAdmin, a.handleGetMusicBrainz))
+	mux.HandleFunc("PUT /api/v1/settings/musicbrainz", a.requireRole(auth.RoleAdmin, a.handleSetMusicBrainz))
+	mux.HandleFunc("POST /api/v1/settings/musicbrainz/test", a.requireRole(auth.RoleAdmin, a.handleTestMusicBrainz))
 	// Library folders + filesystem browser (in-app folder picker). Managers can read the
 	// folders (Settings → Library shows them, and they scan from there) but only an admin
 	// may move a library or walk the host's filesystem.

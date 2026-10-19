@@ -22,7 +22,7 @@ func gateTestCoord(t *testing.T, on bool) (*Coordinator, *music.Service) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	svc := music.NewService(st.DB(), metadata.NewMusicBrainz(), slog.Default())
+	svc := music.NewService(st.DB(), metadata.NewMusicBrainz(nil, nil), slog.Default())
 	c := &Coordinator{music: svc, db: st.DB(), log: slog.Default(), bus: eventbus.New(slog.Default()),
 		imp: library.NewImporter(t.TempDir(), slog.Default())}
 	c.SetModuleGate(func(_ context.Context, module string) bool {

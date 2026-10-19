@@ -16,6 +16,7 @@ export function transferHref(item: Pick<TransferItem, "kind" | "id">): string {
     case "series": return `/series/${item.id}`;
     case "book": return `/books/${item.id}`;
     case "music": return `/music/album/${item.id}`;
+    case "music_artist": return `/music/${item.id}`; // a discography, grabbed for the artist
     default: return `/movies/${item.id}`;
   }
 }
@@ -49,7 +50,7 @@ export function useWide(): boolean {
   return wide;
 }
 
-const KIND_LETTER: Record<string, string> = { movie: "M", series: "TV", book: "B", music: "♪" };
+const KIND_LETTER: Record<string, string> = { movie: "M", series: "TV", book: "B", music: "♪", music_artist: "♪" };
 
 /** A 40×60 poster: the title's cover when there is one, else a quiet tile with its kind. */
 export function TransferPoster({ it }: { it: ActivityDownload }) {

@@ -2392,3 +2392,106 @@ func (im *Importer) PlaceFile(src, dst string) error {
 	_, err := im.linkOrCopy(src, dst)
 	return err
 }
+
+// PlaceAlbumTrack is PlaceFile for a track that may replace one already held: the file
+// at dst (same name, a better copy) and, when the better copy has a different extension,
+// the old file at old ("" for none). Neither is ever deleted outright. Each goes to the
+// recycle bin, and when the bin is off or can't take it nothing is placed at all and
+// ErrReplacementRefused comes back: the album keeps what it has, and a later import tries
+// again. A file outside the music folder isn't Arrmada's to move and is left where it is.
+func (im *Importer) PlaceAlbumTrack(src, dst, old string) error {
+	if err := im.checkRoot(im.MusicDir()); err != nil {
+		return err
+	}
+	if err := insideRoot(dst, im.MusicDir()); err != nil {
+		return err
+	}
+	if old == dst {
+		old = ""
+	}
+	if old != "" {
+		oi, err := os.Lstat(old)
+		if err != nil || insideRoot(old, im.MusicDir()) != nil {
+			old = "" // gone already, or not in the music folder
+		} else if di, derr := os.Stat(dst); derr == nil && os.SameFile(oi, di) {
+			// The same file under another spelling (a case-insensitive share: "X.FLAC" and
+			// "X.flac"): it's dst itself, handled below, not a sibling to recycle.
+			old = ""
+		}
+	}
+	// Everything that would be displaced must have a bin to go to before anything moves.
+	replaceDst := false
+	if di, err := os.Stat(dst); err == nil {
+		same := false
+		if si, serr := os.Stat(src); serr == nil {
+			same, _ = sameContent(src, dst, si, di)
+		}
+		replaceDst = !same
+	}
+	for _, p := range []string{dst, old} {
+		if p == "" || (p == dst && !replaceDst) {
+			continue
+		}
+		if err := im.binFor(p); err != nil {
+			return fmt.Errorf("%w (%v)", ErrReplacementRefused, err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return fmt.Errorf("create album dir: %w", err)
+	}
+	if replaceDst {
+		if err := im.replaceThroughBin(src, dst); err != nil {
+			return err
+		}
+	} else if _, err := im.linkOrCopy(src, dst); err != nil {
+		return err
+	}
+	if old != "" {
+		// The better copy is in place; the old one goes to the bin. If that fails now,
+		// both stay on disk: nothing is lost, and the warning says which file is extra.
+		if moved, err := RemoveToBin(im.bin, old); err != nil {
+			im.log.Warn("music: kept the replaced file — the recycle bin couldn't take it", "path", old, "err", err)
+		} else {
+			im.log.Info("recycled replaced file", "target", old, "recycled_to", moved)
+		}
+	}
+	return nil
+}
+
+// replaceThroughBin puts src in dst's place when dst holds something else. The new copy is
+// made first, beside dst under a temporary name; only once it exists does dst go to the
+// recycle bin and the copy take its name. A link and a copy that both fail leave dst
+// untouched (the temporary file, ours, is removed); a bin that refuses leaves dst where it
+// was. The one window that loses nothing either way is the final rename: dst is in the
+// bin, restorable, and the new copy sits beside it.
+func (im *Importer) replaceThroughBin(src, dst string) error {
+	tmp := dst + ".arrmada-part"
+	_ = os.Remove(tmp) // a temporary copy of ours left by an earlier, interrupted try
+	if _, err := linkOrCopyReport(src, tmp, im.copyReport); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	moved, err := RemoveToBin(im.bin, dst)
+	if err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("%w (%v)", ErrReplacementRefused, err)
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		return fmt.Errorf("the replaced file is in the recycle bin (%s) but the new copy couldn't take its place: %w", moved, err)
+	}
+	im.log.Info("recycled replaced file", "target", dst, "recycled_to", moved)
+	return nil
+}
+
+// binFor checks that a file could go to the recycle bin right now. Unlike CheckBin, a
+// bin that is switched off is a refusal: the caller replaces only through the bin.
+func (im *Importer) binFor(path string) error {
+	if im.bin == nil {
+		return ErrRecycleDisabled
+	}
+	dir, err := im.bin.For(path)
+	if err != nil {
+		return err
+	}
+	return os.MkdirAll(dir, 0o755)
+}

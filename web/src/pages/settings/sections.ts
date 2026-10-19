@@ -117,6 +117,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Modules", keywords: "books music enable disable turn on off preview module", section: "system", anchor: "modules" },
   { label: "API keys", keywords: "tmdb tvdb omdb hardcover opensubtitles key token metadata credentials connections", section: "connections", anchor: "api-keys" },
   { label: "Discovery region", keywords: "country region tmdb discover localize popular upcoming", section: "connections", anchor: "discovery-region", adminOnly: true },
+  { label: "MusicBrainz", keywords: "music musicbrainz metadata mirror self-hosted server rate limit contact email user agent cache artists albums", section: "connections", anchor: "musicbrainz", adminOnly: true },
   { label: "Outside address", keywords: "public url address domain tunnel external link alerts calendar feed outside", section: "system", anchor: "public-url" },
   { label: "Dashboard widget", keywords: "homepage gethomepage dashboard widget customapi services yaml key start page homelab", section: "system", anchor: "dashboard-widget" },
   { label: "Restart", keywords: "restart reboot logs", section: "system", anchor: "restart" },

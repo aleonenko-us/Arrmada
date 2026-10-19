@@ -604,16 +604,66 @@ func (c *Coordinator) detectStalledMusic(ctx context.Context, g grab, queue []do
 		c.closeStale(ctx, g, grabStatusFailed, tick)
 		return
 	}
+	// Something from this download was already imported (a partial album, say): it is done
+	// with, and a seeding torrent removed afterwards mustn't read as stalled and get its good
+	// release blocklisted. The import closes its own grab, knowing whether it left files in
+	// the download for a person; reaching it here means that didn't happen, so it's closed
+	// the way that keeps the files ('dismissed': removed at its seed goal, files kept), never
+	// as 'imported', which can take the data with it.
+	if c.hashAlreadyImported(ctx, g.InfoHash) {
+		c.closeStale(ctx, g, grabStatusDismissed, tick)
+		return
+	}
 	al, err := c.music.GetAlbum(ctx, g.MovieID) // album id lives in movie_id on the shared table
 	if err != nil {
 		c.closeStale(ctx, g, grabStatusFailed, tick)
 		return
 	}
 	if al.Complete() {
-		c.closeStale(ctx, g, grabStatusImported, tick)
+		// Another download completed the album while this one was still in flight. Nothing
+		// of it was imported, so it is closed keeping its files rather than as 'imported'.
+		c.closeStale(ctx, g, grabStatusDismissed, tick)
 		return
 	}
 	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) { return c.musicStallTarget(ctx, al, g) })
+}
+
+// detectStalledDiscography is the stall check of a discography grab (mediaMusicArtist,
+// the artist id in movie_id). It is judged on its own download, never on an album: done
+// once anything from it was imported (its hash is in imports), otherwise the usual stall
+// rules with nothing to replace it by — a discography is only ever grabbed on request.
+func (c *Coordinator) detectStalledDiscography(ctx context.Context, g grab, queue []download.Item, tick *stallTick) {
+	if c.hashAlreadyImported(ctx, g.InfoHash) {
+		c.closeStale(ctx, g, grabStatusDismissed, tick) // files kept, as for an album (above)
+		return
+	}
+	if c.music == nil {
+		return // left as it is: there's no artist to judge it for, and nothing is lost by waiting
+	}
+	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) {
+		return c.discographyStallTarget(ctx, g)
+	})
+}
+
+// discographyStallTarget is what a fail-over of discography grab g needs. Nothing replaces
+// it automatically, so a stalled one still in the client is kept and said so; one that
+// has left the client is closed (and blocklisted for the artist if it vanished before).
+func (c *Coordinator) discographyStallTarget(ctx context.Context, g grab) (stallTarget, bool) {
+	a, err := c.music.GetArtist(ctx, g.MovieID)
+	if err != nil {
+		return stallTarget{}, false
+	}
+	return stallTarget{
+		kind: mediaMusicArtist, id: a.ID, name: a.Name + " (discography)",
+		block: func(ctx context.Context, reason string) error {
+			c.addBlockMusicArtist(ctx, a.ID, g.Title, g.Indexer, reason)
+			return nil
+		},
+		event: func(ctx context.Context, detail string) {
+			c.music.AddEvent(ctx, a.ID, "failed", "Discography: "+detail)
+		},
+		replace: func(context.Context, map[string]bool) (string, error) { return "", nil },
+	}, true
 }
 
 // musicStallTarget is what a fail-over of album grab g needs.

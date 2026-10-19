@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -125,6 +126,11 @@ func (c *Coordinator) stallTargetFor(ctx context.Context, g grab) (stallTarget, 
 			return stallTarget{}, false
 		}
 		return c.musicStallTarget(ctx, al, g)
+	case mediaMusicArtist:
+		if c.music == nil {
+			return stallTarget{}, false
+		}
+		return c.discographyStallTarget(ctx, g)
 	}
 	if c.movies == nil {
 		return stallTarget{}, false
@@ -141,6 +147,8 @@ func claimKey(kind string, id int64) string {
 		return bookKey(id)
 	case "music":
 		return albumKey(id)
+	case mediaMusicArtist:
+		return "artist:" + strconv.FormatInt(id, 10)
 	}
 	return movieKey(id)
 }

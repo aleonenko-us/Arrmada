@@ -28,7 +28,10 @@ function stopWantingLabel(it: ActivityDownload): { label: string; disabled: bool
       return { label: scope ? `Also stop wanting ${scope}` : "Also stop wanting what this download was for", disabled: false };
     }
     case "book": return { label: "Also stop wanting this book", disabled: false };
-    case "music": return { label: "Also stop wanting this album", disabled: false };
+    case "music":
+      // A discography was grabbed on request for the artist; there's no one album to stop wanting.
+      if (it.item?.kind === "music_artist") return { label: "Also stop wanting — not for a discography", disabled: true };
+      return { label: "Also stop wanting this album", disabled: false };
     default: return { label: "Also stop wanting this movie", disabled: false };
   }
 }

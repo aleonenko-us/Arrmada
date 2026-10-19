@@ -36,6 +36,45 @@ func TestDetectQuality(t *testing.T) {
 	}
 }
 
+// MUS-05: the tier is read from whole tokens. A codec name inside another word sets
+// nothing, so a "Lossless only" profile can't be fooled into grabbing an MP3.
+func TestDetectQualityTokens(t *testing.T) {
+	cases := []struct {
+		name string
+		want Quality
+	}{
+		// False positives the substring reader made.
+		{"Journey - Escape (1981) [MP3 128]", QualityMP3128},
+		{"Palace - Life After (2019) [MP3 320]", QualityMP3320},
+		{"Against Me! - New Wave (2007) [MP3 V0]", QualityMP3V0},
+		{"Roberta Flack - First Take [MP3 320]", QualityMP3320},
+		{"Escape the Fate - Ungrateful [MP3 320]", QualityMP3320},
+		{"Ed Sheeran - Shape of You [MP3 320]", QualityMP3320},
+		{"Chance the Rapper - Coloring Book (Mixtape) [MP3 320]", QualityMP3320},
+		{"Isaac Hayes - Hot Buttered Soul [MP3 256]", QualityMP3256},
+		{"Snoop Dogg - Doggystyle [MP3]", QualityMP3192},
+		// Positives that must still read.
+		{"Artist - Album [FLAC]", QualityFLAC},
+		{"Artist - Album FLAC 24bit 96kHz", QualityFLAC24},
+		{"Artist - Album (2020) WEB-FLAC", QualityFLAC},
+		{"Artist - Album (ALAC)", QualityALAC},
+		{"Artist - Album [WavPack]", QualityFLAC},
+		{"Artist - Album [WAV]", QualityWAV},
+		{"Artist.Album.FLAC24", QualityFLAC24},
+		{"Artist - Album [APE]", QualityFLAC},
+		{"Artist - Album [AAC 256]", QualityAAC256},
+		{"Artist - Album [MP3V0]", QualityMP3V0},
+		{"Artist - Album [MP3320]", QualityMP3320},
+		// Only "lossless" and no codec: unknown, and so refused.
+		{"Artist - Album [Lossless]", QualityUnknown},
+	}
+	for _, c := range cases {
+		if got := DetectQuality(c.name); got != c.want {
+			t.Errorf("DetectQuality(%q) = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // Lossless outranks every lossy tier, and V0 sits above 256 because it averages ~245 kbps.
 func TestQualityLadderOrder(t *testing.T) {
 	ordered := []Quality{

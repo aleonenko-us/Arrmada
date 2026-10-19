@@ -269,6 +269,97 @@ func TestNoBackgroundContextInHandlers(t *testing.T) {
 	}
 }
 
+// TestAudiotagNotLinkedYet: nothing imports internal/audiotag until the music import's
+// tagging step (Phase 2) does, deliberately. Until then the binary links neither its
+// LGPL-2.1 TagLib backend nor anything else from it, and stays MIT/Apache, as
+// THIRD_PARTY_NOTICES.md says. Wiring it in means updating that file and this test.
+func TestAudiotagNotLinkedYet(t *testing.T) {
+	root := repoRoot(t)
+	const pkg = `"github.com/tristenlammi/arrmada/internal/audiotag"`
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if name := d.Name(); p != root && (name == "node_modules" || name == "web" || strings.HasPrefix(name, ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		rel := filepath.ToSlash(strings.TrimPrefix(p, root+string(filepath.Separator)))
+		if strings.HasPrefix(rel, "internal/audiotag/") {
+			return nil
+		}
+		f, perr := parser.ParseFile(token.NewFileSet(), p, nil, parser.ImportsOnly)
+		if perr != nil {
+			return nil
+		}
+		for _, imp := range f.Imports {
+			if imp.Path.Value == pkg {
+				t.Errorf("%s imports internal/audiotag — it would link LGPL code into the binary; update THIRD_PARTY_NOTICES.md (and ship it) first", rel)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestOneMusicBrainzClient: only main builds a MusicBrainz client. Every client shares the
+// one rate limiter, but a client built elsewhere would carry its own config and logger and
+// invite a way round the shared cache. Tests may build their own.
+func TestOneMusicBrainzClient(t *testing.T) {
+	root := repoRoot(t)
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if name := d.Name(); p != root && (name == "node_modules" || name == "web" || strings.HasPrefix(name, ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		rel := filepath.ToSlash(strings.TrimPrefix(p, root+string(filepath.Separator)))
+		if strings.HasPrefix(rel, "cmd/arrmada/") || rel == "internal/metadata/musicbrainz.go" {
+			return nil
+		}
+		fset := token.NewFileSet()
+		f, perr := parser.ParseFile(fset, p, nil, 0)
+		if perr != nil {
+			return nil
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			name := ""
+			switch fn := call.Fun.(type) {
+			case *ast.SelectorExpr:
+				name = fn.Sel.Name
+			case *ast.Ident:
+				name = fn.Name
+			}
+			if name == "NewMusicBrainz" {
+				t.Errorf("%s:%d: NewMusicBrainz outside cmd/arrmada — take the one client main builds", rel, fset.Position(call.Pos()).Line)
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestToolsThroughRunner: the media packages start ffmpeg, ffprobe and the other helper
 // tools through internal/toolrun, never exec.Command or exec.CommandContext. A bare one
 // runs at full CPU and disk priority next to someone's Plex stream, can't be paused with the
@@ -276,7 +367,7 @@ func TestNoBackgroundContextInHandlers(t *testing.T) {
 // exec.LookPath (finding a tool) is fine.
 func TestToolsThroughRunner(t *testing.T) {
 	root := repoRoot(t)
-	for _, rel := range []string{"internal/convert", "internal/subtitles", "internal/mediainfo", "internal/extract", "internal/kepub"} {
+	for _, rel := range []string{"internal/convert", "internal/subtitles", "internal/mediainfo", "internal/extract", "internal/kepub", "internal/audioserver"} {
 		fset, files := parseDir(t, filepath.Join(root, filepath.FromSlash(rel)))
 		for _, f := range files {
 			ast.Inspect(f, func(n ast.Node) bool {

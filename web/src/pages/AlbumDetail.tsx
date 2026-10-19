@@ -7,6 +7,12 @@ import { libraryStatus } from "../lib/status";
 import { Button, StatusChip } from "../ui";
 import { Page } from "../ui/Page";
 
+// isLosslessTier reads a track's stored format: a tier name ("FLAC-24") or an extension tag
+// from an unmeasured scan ("FLAC", "AIFF").
+function isLosslessTier(format: string): boolean {
+  return /^(FLAC|FLAC-24|ALAC|WAV|AIFF|APE|WV)$/i.test(format);
+}
+
 function fmtDuration(sec?: number): string {
   if (!sec || sec <= 0) return "";
   const m = Math.floor(sec / 60);
@@ -105,6 +111,7 @@ export function AlbumDetail() {
             </div>
             <div className="mt-2 font-mono text-sm text-ink-faint">
               {al.have_tracks}/{al.track_count} tracks{al.size_bytes ? ` · ${formatBytes(al.size_bytes)}` : ""}
+              {al.held_tier ? ` · Held: ${al.held_tier}` : ""}
             </div>
             <div className="mt-4">
               <Button
@@ -156,7 +163,13 @@ export function AlbumDetail() {
                   {t.title}
                 </span>
                 {t.format ? (
-                  <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--good-text)" }}>
+                  // Green only for lossless: the tier is measured from the file, so an MP3
+                  // in a release labelled FLAC shows as the MP3 it is.
+                  <span
+                    className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase"
+                    title={t.bitrate_kbps ? `${t.bitrate_kbps} kbps` : undefined}
+                    style={{ background: "var(--panel-2)", color: isLosslessTier(t.format) ? "var(--good-text)" : "var(--ink-dim)" }}
+                  >
                     {t.format}
                   </span>
                 ) : null}

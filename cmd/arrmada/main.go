@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -405,8 +406,21 @@ func main() {
 	// Secret History') along with their audio versions and everyone's listening place.
 	// Possible duplicates are flagged on the book's timeline for a person to review.
 	grp.Go("books: catalogue upgrade check", func(ctx context.Context) { booksSvc.MaybeSubmitUpgrade(ctx, jobRunner, "system") })
-	// MusicBrainz needs no key, the way Open Library needs none for books.
-	musicSvc := music.NewService(st.DB(), metadata.NewMusicBrainz(), modLog(log, "music"))
+	// MusicBrainz needs no key, the way Open Library needs none for books. This is the
+	// process's only client (an archtest forbids another): every caller shares its cache,
+	// and every client shares the one rate limiter. Its address, mirror rate and contact
+	// are read from Settings on every call, so a change applies without a restart.
+	mbClient := metadata.NewMusicBrainz(st.DB(), func() metadata.MBConfig {
+		ctx := context.Background()
+		rate, _ := strconv.Atoi(settingsSvc.Get(ctx, settings.KeyMusicBrainzMirrorRate, ""))
+		return metadata.MBConfig{
+			BaseURL:    settingsSvc.Get(ctx, settings.KeyMusicBrainzURL, ""),
+			MirrorRate: rate,
+			Contact:    settingsSvc.Get(ctx, settings.KeyMusicBrainzContact, ""),
+		}
+	})
+	mbClient.SetLogger(modLog(log, "music"))
+	musicSvc := music.NewService(st.DB(), mbClient, modLog(log, "music"))
 	// Music is off by default now (it's a preview), but an install already using it must
 	// not have it switched off underneath it by an upgrade: an unsaved toggle on a library
 	// with artists is pinned on. A saved choice, either way, is never touched.
@@ -851,6 +865,18 @@ func main() {
 		coordinator.SearchMusicMissing(ctx)
 		return nil
 	}, scheduler.Label("Search for missing albums"), scheduler.Description("Searches the indexers for monitored albums that are missing tracks."))
+	// Bring stale MusicBrainz answers up to date, slowly, on the background lane: cached
+	// answers are never removed, and a page open never waits on this.
+	sched.Register("refresh-music-cache", 6*time.Hour, false, func(ctx context.Context) error {
+		if !settingsSvc.GetBool(ctx, settings.KeyModuleMusic, settings.ModuleMusicDefault) {
+			return nil
+		}
+		n, err := mbClient.RefreshStale(ctx, musicCacheRefreshPerRun)
+		if n > 0 {
+			log.Info("music: refreshed stale MusicBrainz answers", "count", n)
+		}
+		return err
+	}, scheduler.Label("Refresh MusicBrainz answers"), scheduler.Description("Rechecks cached MusicBrainz answers that are past their freshness, at most 300 a run at MusicBrainz's pace. Nothing cached is ever removed; when MusicBrainz is down, Music keeps working from the cache."))
 	// Import finished album downloads (arrmada-music category).
 	sched.Register("import-music", 30*time.Second, false, func(ctx context.Context) error {
 		coordinator.ImportMusicDownloads(ctx)
@@ -1429,6 +1455,7 @@ func main() {
 		Ratings:      omdb,
 		Books:        booksSvc,
 		Music:        musicSvc,
+		MusicBrainz:  mbClient,
 		Subtitles:    subtitlesSvc,
 		Convert:      convertSvc,
 		Insights:     insightsSvc,
@@ -1690,6 +1717,10 @@ var logRing = applog.NewRing(50000)
 
 // scrubLegacyMarker records that the one-time audiobook scrub has run.
 const scrubLegacyMarker = ".scrub-audiobook-v1"
+
+// musicCacheRefreshPerRun caps the MusicBrainz calls one refresh-music-cache run makes:
+// about six minutes against musicbrainz.org at its pace.
+const musicCacheRefreshPerRun = 300
 
 // scrubLegacyLogs rewrites log files written before request logging switched to route
 // patterns, so no line on disk still names a book someone opened, played or bookmarked,

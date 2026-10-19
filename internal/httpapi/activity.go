@@ -113,6 +113,9 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 		mediaType := queueMediaType(it.Category)
 		if managed {
 			mediaType = acq.MediaType
+			if mediaType == "music_artist" {
+				mediaType = "music" // a discography is music; its item says it's the artist's
+			}
 			if acq.Profile != "" {
 				profile = pname(acq.Profile)
 			}

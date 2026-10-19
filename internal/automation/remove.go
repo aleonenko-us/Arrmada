@@ -164,6 +164,13 @@ func (c *Coordinator) describeGrab(ctx context.Context, g *grab) RemoveResult {
 				res.Title = a.Title
 			}
 		}
+	case mediaMusicArtist:
+		res.Kind = "music" // a discography, for the artist
+		if c.music != nil {
+			if a, err := c.music.GetArtist(ctx, g.MovieID); err == nil {
+				res.Title = a.Name + " (discography)"
+			}
+		}
 	}
 	return res
 }
@@ -192,6 +199,10 @@ func (c *Coordinator) addMediaEvent(ctx context.Context, g *grab, event, detail 
 			if a, err := c.music.GetAlbum(ctx, g.MovieID); err == nil {
 				c.music.AddEvent(ctx, a.ArtistID, event, detail)
 			}
+		}
+	case mediaMusicArtist:
+		if c.music != nil {
+			c.music.AddEvent(ctx, g.MovieID, event, detail) // a discography: the id is the artist's
 		}
 	}
 }

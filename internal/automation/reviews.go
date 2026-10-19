@@ -781,13 +781,16 @@ func (c *Coordinator) importContentInto(ctx context.Context, r Review, dest int6
 		if err != nil {
 			return err
 		}
-		placed, found := c.importAlbumContent(ctx, art, al, r.ContentPath, r.Name)
-		if placed == 0 {
-			if !found {
-				return fmt.Errorf("no audio files found in the download for %q", al.Title)
-			}
+		res := c.importAlbumContent(ctx, art, al, r.ContentPath, r.Name)
+		switch {
+		case !res.found:
+			return fmt.Errorf("no audio files found in the download for %q", al.Title)
+		case res.refused > 0:
+			return fmt.Errorf("the recycle bin couldn't take the files %d better track(s) would replace in %q", res.refused, al.Title)
+		case res.placed == 0 && res.kept == 0:
 			return fmt.Errorf("no track could be placed into %q", al.Title)
 		}
+		c.afterAlbumImport(ctx, art, al)
 	case "book":
 		// The books sweep creates reviews with MediaType "book", but this switch only knew
 		// series and movie — so every book review's "Import anyway" hit the default branch

@@ -64,6 +64,9 @@ type Album struct {
 	TrackCount int   `json:"track_count"`
 	HaveTracks int   `json:"have_tracks"`
 	SizeBytes  int64 `json:"size_bytes"`
+	// HeldTier is the lowest tier among the tracks on disk ("" when none are, or one
+	// can't be told), filled by the album detail read.
+	HeldTier Quality `json:"held_tier,omitempty"`
 }
 
 // Complete reports whether every monitored track on the album has a file.

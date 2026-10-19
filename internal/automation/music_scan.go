@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/mediainfo"
 	"github.com/tristenlammi/arrmada/internal/music"
 )
 
@@ -19,6 +20,7 @@ type MusicScanResult struct {
 	Tracks    int      `json:"tracks"`    // track files recorded
 	Skipped   int      `json:"skipped"`   // album folders already fully accounted for
 	Unmatched []string `json:"unmatched"` // folders we refused to guess at
+	Measured  int      `json:"measured"`  // tracks already on record measured for their real tier
 }
 
 // albumFolder is one on-disk folder holding an album's audio files.
@@ -113,9 +115,57 @@ func (c *Coordinator) ScanMusicLibrary(ctx context.Context, progress func(done, 
 		res.Tracks += n
 	}
 	progress(len(folders), len(folders))
+	res.Measured = c.measureUnmeasuredTracks(ctx, musicMeasurePerScan)
 	c.log.Info("music scan: finished", "artists", res.Artists, "albums", res.Albums,
-		"tracks", res.Tracks, "skipped", res.Skipped, "unmatched", len(res.Unmatched))
+		"tracks", res.Tracks, "skipped", res.Skipped, "unmatched", len(res.Unmatched), "measured", res.Measured)
 	return res, nil
+}
+
+// musicMeasurePerScan caps how many already-recorded tracks one scan measures, so a big
+// library recorded before tracks were probed catches up over a few scans.
+const musicMeasurePerScan = 200
+
+// measureUnmeasuredTracks probes up to limit tracks that have a file but no measured
+// bitrate (recorded before imports were probed, or by a scan that couldn't probe) and
+// records their real tier and bitrate. ffprobe only reads; nothing is moved or rewritten.
+// A file that's gone or unreadable is skipped and stays unmeasured; a cursor carries each
+// pass on from where the last one stopped, so files like that never hold the rest back,
+// and it starts over from the top once it reaches the end.
+func (c *Coordinator) measureUnmeasuredTracks(ctx context.Context, limit int) int {
+	if c.probeAudioFn == nil && !mediainfo.Available() {
+		return 0
+	}
+	tracks, err := c.music.UnmeasuredTracks(ctx, c.measureCursor.Load(), limit)
+	if err != nil {
+		c.log.Warn("music scan: couldn't list unmeasured tracks", "err", err)
+		return 0
+	}
+	if len(tracks) < limit {
+		c.measureCursor.Store(0) // the end: the next pass starts from the top again
+	}
+	n := 0
+	for _, t := range tracks {
+		if ctx.Err() != nil {
+			break
+		}
+		if len(tracks) == limit {
+			c.measureCursor.Store(t.ID)
+		}
+		info, err := c.probeAudio(ctx, t.FilePath)
+		if err != nil {
+			continue
+		}
+		q := music.TierFromProbe(info)
+		if q == music.QualityUnknown || info.BitrateKbps <= 0 {
+			continue
+		}
+		if err := c.music.SetTrackMeasured(ctx, t.ID, t.FilePath, string(q), info.BitrateKbps); err != nil {
+			c.log.Warn("music scan: recording a measured tier failed", "track", t.Title, "err", err)
+			continue
+		}
+		n++
+	}
+	return n
 }
 
 // scanResolveArtist finds the library artist for a folder, adding one only on an exact
@@ -182,9 +232,10 @@ func (c *Coordinator) recordAlbumFiles(ctx context.Context, a music.Artist, al m
 		if !ok || t.HasFile {
 			continue // already recorded, or nothing on disk for it
 		}
-		format := music.FormatOf(file.Path)
+		// Measured when it can be (read-only ffprobe), else the extension's tag.
+		tier, bitrate := c.trackTier(ctx, file.Path, music.QualityUnknown)
 		// The file is already in the library — record where it is, don't move it.
-		if err := c.music.MarkTrackImported(ctx, t.ID, file.Path, format, 0, file.SizeBytes, ""); err != nil {
+		if err := c.music.MarkTrackImported(ctx, t.ID, file.Path, string(tier), bitrate, file.SizeBytes, ""); err != nil {
 			c.log.Warn("music scan: recording a track failed", "track", t.Title, "err", err)
 			continue
 		}

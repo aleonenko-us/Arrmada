@@ -630,7 +630,7 @@ _Kept for the record. Nothing here will be built._
 _Accented, punctuated and scene-style names match. Quality tiers are read from whole tokens. Songs with numeric titles land on the right track. Discography and partial-album grabs stall, blocklist and seed correctly, and a held track is never downgraded or duplicated. Every track records its real codec and bitrate. MusicBrainz is called through one limiter with an honest User-Agent, every answer is cached for good, and a self-hosted mirror can be set. The tag library is chosen and proven on all three tag formats. Estimate: 3–3.5 weeks._
 
 <a id="mus-04"></a>
-- [ ] **MUS-04 · One music text-folding function for release matching and scan keys (accents, apostrophes, &, +, slashes, acronyms)** — `P1` · `S` · Phase 15 · R1
+- [x] **MUS-04 · One music text-folding function for release matching and scan keys (accents, apostrophes, &, +, slashes, acronyms)** — `P1` · `S` · Phase 15 · R1
   - **Rebuild note (2026-10-19):** Build foldMusic on parser.FoldTitle and parser.TitleWords: ACQ-21 shipped them as the one normaliser, and a second one is not allowed. foldMusic adds only the music rules they don't cover: joining letter/letter slashes and dotted single-letter acronyms, '+' as 'and', and the leading-'the' rule for artists. Like TitleKey it drops the standalone word 'and', so '&', 'and' and a missing conjunction agree. BOOK-06 already shipped its fold on the same base, so step 4's coordination is done. Phase 2's matcher ([MUS-31](#mus-31)) uses foldMusic for every string it compares.
   - **Problem:** normWords (internal/music/match.go:150-166) and NormKey (release.go:231-240) keep only ASCII a-z/0-9, and music never calls parser.FoldAccents. A release that keeps the original spelling does match. Matching fails whenever a release spells the name differently from MusicBrainz, which is common:
 - Bjork vs Björk, Motorhead vs Motörhead
@@ -680,7 +680,7 @@ indexer/service.go:363 folds accents out of the outgoing query, so results lean 
   - **Risk:** Looser matching could accept a different album with a near-identical title. Whole-word matching and the artist check still apply, and the 'the' drop applies only to the artist. The acronym join must only fire on single letters separated by dots, so 'Mr. Bungle' is unaffected.
   - **Resolves:** music-2
 <a id="mus-05"></a>
-- [ ] **MUS-05 · Token-based DetectQuality so 'Escape', 'Palace', 'New Wave', 'Mixtape', 'Isaac' and 'Doggystyle' can't set the tier** — `P1` · `S` · Phase 15 · R1
+- [x] **MUS-05 · Token-based DetectQuality so 'Escape', 'Palace', 'New Wave', 'Mixtape', 'Isaac' and 'Doggystyle' can't set the tier** — `P1` · `S` · Phase 15 · R1
   - **Rebuild note (2026-10-19):** Unchanged. From [MUS-11](#mus-11) on, the tier of a file on disk is measured; DetectQuality remains the tier of a release *name*, used only for grabbing and ranking.
   - **Problem:** DetectQuality (internal/music/release.go:94-108) does plain substring matching on the lowercased name. Current failures:
 - 'Journey - Escape [MP3 128]' → FLAC
@@ -731,7 +731,7 @@ albumScore (automation/music.go:156-175) scores on this tier alone. So 'Lossless
   - **Risk:** Releases that say only 'Lossless' with no codec now read as Unknown and are refused, which is the conservative choice. A title word that is exactly 'ape', 'tak' or 'wav' as a whole token (e.g. an album called 'Ape') would still read as lossless. That is rare, and interactive search (MUS-17) shows the tier so it can be spotted.
   - **Resolves:** music-3
 <a id="mus-06"></a>
-- [ ] **MUS-06 · Safer track-number parsing so '99 Problems', '7 Rings' and '4 Minutes' land on the right track** — `P1` · `S` · Phase 15 · R1
+- [x] **MUS-06 · Safer track-number parsing so '99 Problems', '7 Rings' and '4 Minutes' land on the right track** — `P1` · `S` · Phase 15 · R1
   - **Rebuild note (2026-10-19):** Unchanged in scope. From Phase 2 the parsed number is one signal (track_index) of the matcher ([MUS-31](#mus-31)) instead of the decision, and 'left unmatched beats misfiled' stays the rule. The AudioFile.Disc hint feeds the matcher's disc-folder grouping.
   - **Problem:** reLeadingNum (internal/music/match.go:18) reads any 'NN - ' as a disc number whenever another number follows:
 - '04 - 99 Problems' parses as disc 4, track 99.
@@ -772,7 +772,7 @@ When the prefix parses as disc 1, the file is silently misfiled: '01 - 7 Rings' 
   - **Risk:** Odd naming schemes that mix shapes in one folder fall back to track-only, which may leave some files unmatched. That is deliberate: unmatched is recoverable, a misfile isn't.
   - **Resolves:** music-4
 <a id="mus-07"></a>
-- [ ] **MUS-07 · Record discography grabs as media_type 'music_artist' so stall, blocklist and seeding act on the artist** — `P1` · `S` · Phase 15 · R1
+- [x] **MUS-07 · Record discography grabs as media_type 'music_artist' so stall, blocklist and seeding act on the artist** — `P1` · `S` · Phase 15 · R1
   - **Rebuild note (2026-10-19):** Unchanged. Grabs keep pointing at album (release-group) ids after [MUS-28](#mus-28), so nothing here moves in Phase 2. setMusicGrabStatus must use the grab-status words in internal/automation/grabstatus.go.
   - **Problem:** GrabDiscography records its grab with recordMusicGrab(ctx, artistID, …) and media_type 'music' (internal/automation/music.go:553), and blocklists with dropBlockedMusic(ctx, artistID) (:539). Every 2 minutes, detectStalledMusic reads g.MovieID as an album id (:477). The artist's discography is therefore judged by whichever album happens to share its numeric id:
 - No such album: the grab is marked failed within 2 minutes and is never seed-managed.
@@ -804,7 +804,7 @@ When the prefix parses as disc 1, the file is silently misfiled: '01 - 7 Rings' 
   - **Risk:** The LIKE patterns could reclassify an old single-album row titled '…Anthology…'. ParseRelease already treats such names as discographies, so this stays consistent with import routing.
   - **Resolves:** music-6
 <a id="mus-08"></a>
-- [ ] **MUS-08 · Partial albums: mark the grab imported, never overwrite a track with a worse copy, recycle replaced siblings** — `P1` · `M` · Phase 15 · R1
+- [x] **MUS-08 · Partial albums: mark the grab imported, never overwrite a track with a worse copy, recycle replaced siblings** — `P1` · `M` · Phase 15 · R1
   - **Rebuild note (2026-10-19):** Two changes. (1) Replaced files go through library.RemoveToBin / CheckBin (per-root bins shipped in Phase 3), and the import refuses when the bin fails: no RecycleReplaced helper, never an os.Remove fallback. (2) HeldTier / BetterTier read today's tracks.format; after [MUS-28](#mus-28) the same helpers read music_track_files.quality, which the migration copies across.
   - **Problem:** A music grab only becomes 'imported' when the album is Complete (internal/automation/music.go:482-485). ManageSeeding reads only 'imported' grabs (store.go:327-330), so any partial import (say 11/12 tracks) seeds forever and its seed rules never run.
 
@@ -872,7 +872,7 @@ When a seeding torrent is removed, detectStalledMusic blocklists the good releas
   - **Risk:** ffprobe on every track adds a few seconds per album import. Inferring VBR tiers is approximate, and the bands should be generous so MUS-16 doesn't churn on borderline files.
   - **Resolves:** music-3, music-5
 <a id="mus-26"></a>
-- [ ] **MUS-26 · MusicBrainz client: one app-wide limiter, an honest User-Agent, a permanent local cache, and an optional self-hosted mirror** — `P1` · `M` · Phase 15 · R1
+- [x] **MUS-26 · MusicBrainz client: one app-wide limiter, an honest User-Agent, a permanent local cache, and an optional self-hosted mirror** — `P1` · `M` · Phase 15 · R1
   - **Problem:** internal/metadata/musicbrainz.go paces at one call per 1.1 s with a mutex on the client value, so it only protects the app while exactly one client exists; nothing stops a second `NewMusicBrainz()`. Going over MusicBrainz's limit gets every request refused with 503, not just the extra ones. The User-Agent is a constant, `Arrmada/1.0 ( https://github.com/tristenlammi/Arrmada )`: it isn't the build's version, and "1.0" breaks the no-v1 rule. Nothing is cached (metadata_cache from 0080 is used by TMDB and Hardcover, not MusicBrainz), so every page open, listing and refresh pays 1.1 s a call again; the first load of a 300-artist library is about three hours, and every refresh repeats it. There is no way to point at a self-hosted mirror. And metadata_cache can't simply be reused: its rows are pruned by age.
   - **Approach:** 1. **One client.** main builds the only `*metadata.MusicBrainz` and passes it to music.Service, the coordinator, Discover/requests (R4) and the art fetcher (MUS-23). An archtest fails if `metadata.NewMusicBrainz` is called outside cmd/arrmada and tests.
     2. **Limiter** (`internal/metadata/mblimit.go`): one token bucket shared by every call. For musicbrainz.org the interval is fixed at 1.1 s and can't be set lower. For a mirror it is a setting (`music_mb_mirror_rate`, default 10 a second, at most 50). Two lanes: **interactive** (a person is waiting: add-artist search, opening an album, an import that is running) goes before **background** (refresh, backfill, cache refresh). Lanes share the one rate. A 503 or 429 pauses the background lane for 5 minutes (doubling to an hour) and records it in connstatus; the existing 3-try retry stays for interactive calls.
@@ -903,7 +903,7 @@ When a seeding torrent is removed, detectStalledMusic blocklists the good releas
   - **Risk:** The cache grows with the library (roughly 2–10 KB gzipped per entity, so 50–100 MB for a large library); the card shows its size. Stale data can show for days when MusicBrainz is down; that is the point, and pages say "last checked".
   - **Resolves:** 
 <a id="mus-27"></a>
-- [ ] **MUS-27 · Choose the tag library and prove it on FLAC, ID3v2.4 and MP4 before anything depends on it** — `P1` · `M` · Phase 15 · R1
+- [x] **MUS-27 · Choose the tag library and prove it on FLAC, ID3v2.4 and MP4 before anything depends on it** — `P1` · `M` · Phase 15 · R1
   - **Problem:** go.mod has no audio-tag library, so Music can neither read the tags files arrive with nor write any. Phase 2's matcher reads tags and its tagger writes the house style ([Design: House tag style](#house-tag-style-mus-33)), in three tag systems, with multi-value fields. The research compared the options ([Design: Tag library for Go](#tag-library-for-go-mus-27)) and recommends go-taglib (TagLib compiled to WASM, run by wazero; LGPL-2.1). Its claims must be proven on real files before Phase 2 builds on it, and the licence needs the owner's sign-off.
   - **Approach:** 1. Owner signs off the LGPL-2.1 dependency (or picks the fallback); record it in docs/decisions/music.md.
     2. New package `internal/audiotag`: `Read(path) (Tags, error)`, `Write(path, Tags, WriteOptions) error`, `ReadCover(path)`, `WriteCover(path, jpeg)`, `Properties(path)`. `Tags` is `map[string][]string` with Picard's key names. The go-taglib backend is the only implementation; nothing outside the package imports go-taglib, so a fallback can replace it.

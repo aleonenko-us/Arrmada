@@ -3,6 +3,7 @@ package music
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -76,6 +77,7 @@ func (s *Service) GetAlbum(ctx context.Context, id int64) (Album, error) {
 		return Album{}, err
 	}
 	al.Tracks = tracks
+	al.HeldTier, _ = lowestHeld(tracks)
 	return al, nil
 }
 
@@ -167,7 +169,12 @@ func (s *Service) Refresh(ctx context.Context, id int64) (Artist, error) {
 		s.log.Warn("music: artist metadata refresh failed", "artist", a.Name, "err", derr)
 	}
 	if n, aerr := s.syncAlbums(ctx, a, a.Monitored); aerr != nil {
+		// Nothing is removed, unmonitored or relisted on a failed answer: the albums the
+		// library has stay exactly as they were.
 		s.log.Warn("music: album refresh failed", "artist", a.Name, "err", aerr)
+		if errors.Is(aerr, metadata.ErrMusicBrainzUnavailable) {
+			s.repo.AddEvent(ctx, id, "refreshed", "MusicBrainz didn't answer; kept what we had")
+		}
 	} else {
 		s.repo.AddEvent(ctx, id, "refreshed", fmt.Sprintf("Refreshed — %d album(s) listed", n))
 	}
@@ -232,6 +239,21 @@ func (s *Service) SetQualityProfile(ctx context.Context, id int64, profile strin
 // MarkTrackImported records a track's file on disk.
 func (s *Service) MarkTrackImported(ctx context.Context, trackID int64, path, format string, bitrate int, size int64, sourceRelease string) error {
 	return s.repo.SetTrackFile(ctx, trackID, path, format, bitrate, size, sourceRelease)
+}
+
+// HeldTiers is the lowest tier the album holds (ok false when it holds nothing).
+func (s *Service) HeldTiers(ctx context.Context, albumID int64) (Quality, bool, error) {
+	return s.repo.HeldTiers(ctx, albumID)
+}
+
+// UnmeasuredTracks lists tracks with a file but no measured bitrate (see the scan).
+func (s *Service) UnmeasuredTracks(ctx context.Context, afterID int64, limit int) ([]Track, error) {
+	return s.repo.UnmeasuredTracks(ctx, afterID, limit)
+}
+
+// SetTrackMeasured records a held file's measured tier and bitrate.
+func (s *Service) SetTrackMeasured(ctx context.Context, trackID int64, path, format string, bitrate int) error {
+	return s.repo.SetTrackMeasured(ctx, trackID, path, format, bitrate)
 }
 
 // ClearTrackFile flips a track back to wanted.

@@ -8,6 +8,37 @@ import { plexConfig } from "./fixtures/modules";
 test.describe("admin", () => {
   test.use({ persona: "admin" });
 
+  test("MusicBrainz: a self-hosted mirror, its rate and a contact are saved and tested from its card", async ({ page, api }) => {
+    await page.route("**/api/v1/settings/musicbrainz", async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      const body = route.request().postDataJSON() as { base_url: string; mirror_rate: number; contact: string };
+      api.calls.push({ method: "PUT", path: "/api/v1/settings/musicbrainz", body });
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ ...body, default_base_url: "https://musicbrainz.org", max_mirror_rate: 50, cache: { entries: 1240, bytes: 3_400_000, stale: 12 }, paused: false }),
+      });
+    });
+    await page.route("**/api/v1/settings/musicbrainz/test", (route) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, detail: "MusicBrainz answered." }) }));
+
+    await page.goto("/settings/connections#musicbrainz");
+    const card = page.locator("#musicbrainz");
+    await expect(card.getByText("Public server")).toBeVisible();
+    await expect(card.getByText(/Cache: 1,240 answers/)).toBeVisible();
+    // The rate only matters for a mirror, so it appears with one.
+    await expect(card.getByLabel("Mirror requests a second")).toHaveCount(0);
+    await card.getByLabel("Server").fill("http://192.168.1.20:5000");
+    await card.getByLabel("Mirror requests a second").fill("20");
+    await card.getByLabel("Contact email (optional)").fill("owner@example.com");
+    await card.getByRole("button", { name: "Save" }).click();
+    await expect(card.getByText("Mirror", { exact: true })).toBeVisible();
+    expect(api.callsTo("PUT", "/api/v1/settings/musicbrainz")[0]?.body).toEqual({
+      base_url: "http://192.168.1.20:5000", mirror_rate: 20, contact: "owner@example.com",
+    });
+    await card.getByRole("button", { name: "Test" }).click();
+    await expect(card.getByRole("status")).toHaveText("MusicBrainz answered.");
+  });
+
   test("the old pages redirect and Connections lives only in Settings", async ({ page }) => {
     await page.goto("/indexers");
     await expect(page).toHaveURL(/\/settings\/connections#search$/);

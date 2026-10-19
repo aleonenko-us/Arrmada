@@ -105,6 +105,8 @@ func derivedScope(a Acquisition) string {
 		return "v" + strconv.FormatInt(a.VersionID, 10)
 	case "music":
 		return "album"
+	case mediaMusicArtist:
+		return "discography"
 	case "book":
 		if a.VersionID > 0 {
 			return "v" + strconv.FormatInt(a.VersionID, 10)
