@@ -577,6 +577,7 @@ type Importer struct {
 	naming       NamingProvider       // nil → built-in defaults
 	seriesNaming SeriesNamingProvider // nil → built-in defaults
 	bookNaming   BookNamingProvider   // nil → built-in defaults
+	musicNaming  MusicNamingProvider  // nil → built-in defaults (musicnaming.go)
 	// epTitleFn resolves an episode's metadata title for naming ("" when unknown or
 	// unset). Keyed by show name/year since the importer only knows the show by name.
 	epTitleFn func(seriesTitle string, year, season, episode int) string
