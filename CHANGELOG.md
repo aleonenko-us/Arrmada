@@ -26,6 +26,11 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Before you update
 
+- **"Stalled" now means half an hour without progress,** in the Queue, the Dashboard tile,
+  the Homepage widget's `queue.stalled` and Needs you. A torrent that's only briefly waiting
+  for peers counts as downloading. Time a download spends queued or paused in qBittorrent
+  no longer counts toward trying another release.
+
 - **Only an admin can connect Plex now.** Changing the Plex server or signing in with Plex
   for the connection is admin-only, like Jellyfin. Managers keep watch monitoring and Test,
   and see read-only Plex and Jellyfin cards.
@@ -138,6 +143,11 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   outside Arrmada, is ignored; the codec the file actually has wins (Convert); editions never
   come from the release; renames after a TV renumber still use the file name only. Nothing is
   renamed until you apply the preview.
+- **A Stalled filter on Activity, and which client each download is in.** The Queue gets a
+  Stalled pill (no data for half an hour while trying to download, the same rule Arrmada
+  uses before trying another release) with a "Try another release" button, and the
+  Dashboard, Homepage widget and Needs you now count stalled the same way. With more than one
+  download client, each row says which client it's in, with a client filter.
 - **SECURITY.md**: how to report a vulnerability privately, and which versions get fixes.
   The README now explains how Arrmada is built and tested.
 

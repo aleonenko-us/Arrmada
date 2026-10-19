@@ -177,3 +177,58 @@ func TestTrackUsenetStages(t *testing.T) {
 		}
 	}
 }
+
+// A requester's card says Stalled when every download for it is stalled by the rule the
+// staff queue and the stall fail-over share (automation.QueueStall): the grab's stall clock
+// or the client's own stalled state, held for the grace. A moment without data is still
+// "Waiting for peers", and one download moving keeps the request moving.
+func TestTrackStalled(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	at := time.Now().Add(-3 * time.Hour).UTC().Format("2006-01-02 15:04:05")
+	clock := time.Now().Add(-2 * time.Hour).UnixMilli()
+	for _, g := range []struct {
+		id   int64
+		hash string
+	}{{1, "dead"}, {2, "blip"}, {3, "pack-dead"}, {3, "pack-live"}} {
+		if _, err := s.repo.db.Exec(`INSERT INTO grabs (movie_id, title, status, media_type, info_hash, grabbed_at, progress, progress_at)
+			VALUES (?, 'x', 'grabbed', 'movie', ?, ?, 0.3, ?)`, g.id, g.hash, at, clock); err != nil {
+			t.Fatal(err)
+		}
+	}
+	item := func(hash, raw string, speed int64, idle time.Duration) download.Item {
+		return download.Item{Hash: hash, State: "downloading", RawState: raw, Progress: 0.3, SizeBytes: 1000, DownloadedBytes: 300,
+			RemainingBytes: 700, DownSpeed: speed, ETASeconds: 8640000, LastActivity: time.Now().Add(-idle).Unix()}
+	}
+	queue := []download.Item{
+		item("dead", "stalledDL", 0, 2*time.Hour),
+		item("pack-dead", "stalledDL", 0, 2*time.Hour),
+		item("pack-live", "downloading", 900, 0),
+	}
+	// "blip" has a fresh grab clock (held while it sat paused, just resumed) though the
+	// client last moved data two hours ago: the latest sign of life wins.
+	if _, err := s.repo.db.Exec(`UPDATE grabs SET progress_at = ? WHERE info_hash = 'blip'`, time.Now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	queue = append(queue, item("blip", "stalledDL", 0, 2*time.Hour))
+	reqs := []Request{
+		{Title: "dead", Status: StatusApproved, MediaType: "movie", libID: 1, released: true},
+		{Title: "blip", Status: StatusApproved, MediaType: "movie", libID: 2, released: true},
+		{Title: "pack", Status: StatusApproved, MediaType: "movie", libID: 3, released: true},
+	}
+	s.Track(ctx, reqs, queue, true)
+	want := []struct {
+		stalled bool
+		note    string
+	}{
+		{true, "Nobody is sharing it right now"},
+		{false, "Waiting for peers"},
+		{false, ""},
+	}
+	for i, w := range want {
+		got := reqs[i].Tracking
+		if got.Stage != StageDownloading || got.Stalled != w.stalled || got.Note != w.note {
+			t.Errorf("%s: %+v, want downloading, stalled %v, note %q", reqs[i].Title, got, w.stalled, w.note)
+		}
+	}
+}

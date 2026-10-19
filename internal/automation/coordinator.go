@@ -132,6 +132,10 @@ type Coordinator struct {
 	// the client or in a hard error, so one read can't condemn it (stallevidence.go).
 	stallSeenMu sync.Mutex
 	stallSeen   map[int64]stallSighting
+	// trying is when this process first saw each download (by lowercased hash) trying to
+	// download, for the queue's stall rule (queuestall.go).
+	tryingMu sync.Mutex
+	trying   map[string]time.Time
 
 	// upgradeBudgetFn reads how many upgrades one sweep may grab (Settings → Downloads),
 	// set once at startup; nil means DefaultUpgradeBudget. See upgradebudget.go.

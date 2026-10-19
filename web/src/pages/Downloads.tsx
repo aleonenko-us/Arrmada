@@ -5,17 +5,18 @@ import { useUnsavedGuard } from "../lib/useUnsavedGuard";
 import { useSearchParamState } from "../lib/useSearchState";
 import { LINKS } from "../lib/links";
 import { RemoveDownloadDialog, removedMessage } from "../components/RemoveDownloadDialog";
-import { api, type ActivityDownload, type ClientSettings, type DiskGuardHold, type DownloadClientsState, type WantedLists, type WantedRow } from "../lib/api";
+import { api, type ActivityDownload, type ClientSettings, type DiskGuardHold, type DownloadClientsState, type Job, type WantedLists, type WantedRow } from "../lib/api";
 import { downloadClientApi } from "../lib/downloadClientApi";
 import { useMe } from "../lib/me";
 import { useLiveEvent } from "../lib/live";
 import { useLiveQuery, useLiveRefresh } from "../lib/useLiveQuery";
 import { QUEUE_CHANGED, QUEUE_PROGRESS, patchProgress, progressByHash } from "../lib/queueLive";
-import { jobFailed, useJob } from "../lib/useJob";
+import { jobFailed, jobToast, useJob } from "../lib/useJob";
 import { searchJobLine } from "../lib/searchOutcome";
 import { wantedChip, wantedHref, wantedKey, wantedLine } from "../lib/wanted";
 import { STAGE, stageGroup, usenetStage, type QueueGroup } from "../lib/stages";
 import { isUsenetDownload, leftLine, usenetFailLine, usenetFailed } from "../lib/network";
+import { inClient, isStalled, queueClients, showClientNames, stalledMinutes } from "../lib/queueFilter";
 import { CardActions, ItemChips, TransferPoster, TransferTitle } from "./activity/transfer";
 import { EmptyState, ErrorState, IconButton, Skeleton, StatusChip, useToast } from "../ui";
 
@@ -60,10 +61,11 @@ function fmtReleaseDate(iso: string): string {
 }
 
 // Stalled and errored transfers share the avoid tone: both need a look, neither is the
-// red of a refusal.
+// red of a refusal. A moment with no peer sending (the client's "stalled" phase, before it
+// counts as stalled) is quiet: it usually passes on its own.
 const STATE_TONE: Record<string, string> = {
   downloading: "var(--accent-text)", seeding: "var(--good-text)", paused: "var(--ink-faint)", error: "var(--avoid-text)", checking: "var(--avoid-text)",
-  stalled: "var(--avoid-text)", metadata: "var(--ink-faint)", queued: "var(--ink-faint)", moving: "var(--avoid-text)", allocating: "var(--ink-faint)",
+  stalled: "var(--ink-faint)", metadata: "var(--ink-faint)", queued: "var(--ink-faint)", moving: "var(--avoid-text)", allocating: "var(--ink-faint)",
   unpacking: "var(--accent-text)",
 };
 // The client's phases in the words of the shared stage model (lib/stages), so this chip
@@ -90,19 +92,27 @@ function idleMinutes(it: ActivityDownload, nowSec: number): number | null {
   return (nowSec - since) / 60;
 }
 
-// phaseLabel is the in-flight chip's text. The phase (when the server sends one) tells a
-// torrent nobody is seeding, or one still fetching its file list, from a live download —
-// the plain state calls all of those "downloading".
+// phaseLabel is the in-flight chip's text. A download the server calls stalled (no
+// progress for half an hour, lib/queueFilter) reads "Stalled 2h"; otherwise the phase tells
+// a torrent no peer is sending to right now, or one still fetching its file list, from a
+// live download — the plain state calls all of those "downloading".
 export function phaseLabel(it: ActivityDownload, nowSec = Date.now() / 1000): { text: string; tone: string; tip?: string } {
   const phase = it.phase || it.state;
   const tone = STATE_TONE[phase] ?? "var(--ink-faint)";
+  const seeds = it.seeds ?? 0;
+  const swarm = it.swarm_seeds ?? 0;
+  const seedText = `${seeds} seed${seeds === 1 ? "" : "s"}`;
+  const swarmTip = `Connected to ${seedText}; the tracker reports ${swarm} in the swarm. Reannounce asks the trackers for peers again.`;
+  if (isStalled(it)) {
+    const m = stalledMinutes(it, nowSec);
+    const what = phase === "metadata" ? "no file list" : seedText;
+    return { text: `Stalled${m == null ? "" : ` ${mins(m)}`} · ${what}`, tone: "var(--avoid-text)", tip: `No progress for ${m == null ? "half an hour or more" : mins(m)}. ${swarmTip}` };
+  }
   if (phase === "stalled") {
-    const seeds = it.seeds ?? 0;
-    const swarm = it.swarm_seeds ?? 0;
     const idle = idleMinutes(it, nowSec);
     const nothingYet = !it.last_activity;
     const idleText = idle == null ? "" : nothingYet ? ` · no data yet (${mins(idle)})` : ` · no data for ${mins(idle)}`;
-    return { text: `Stalled · ${seeds} seed${seeds === 1 ? "" : "s"}${idleText}`, tone, tip: `No peer is sending data. Connected to ${seeds} seed${seeds === 1 ? "" : "s"}; the tracker reports ${swarm} in the swarm. Reannounce asks the trackers for peers again.` };
+    return { text: `Waiting for peers · ${seedText}${idleText}`, tone, tip: `No peer is sending data right now. ${swarmTip}` };
   }
   if (phase === "metadata") return { text: "Fetching metadata", tone, tip: "Waiting for peers to send the torrent's file list." };
   if (phase === "queued") return { text: "Queued", tone, tip: "Waiting for a slot — the client's active-download limit is reached." };
@@ -123,13 +133,14 @@ export function stallLine(it: ActivityDownload): string | null {
   return `No progress for ${mins(st.idle_minutes)} · ${next}`;
 }
 
-// isProblem: a download that needs a look — errored, stalled, or stuck fetching its file
-// list, or finished and not importing (the import keeps failing, it's held, it's in a
-// category nothing imports from). What ?filter=problems (the Needs-you links) narrows to.
-export function isProblem(it: Pick<ActivityDownload, "phase" | "state" | "stage">): boolean {
+// isProblem: a download that needs a look — errored, stalled (no peer sending, or the file
+// list never coming, for half an hour: lib/queueFilter), or finished and not importing (the
+// import keeps failing, it's held, it's in a category nothing imports from). What
+// ?filter=problems (the Needs-you links) narrows to.
+export function isProblem(it: Pick<ActivityDownload, "phase" | "state" | "stage" | "stalled">): boolean {
   if (it.stage === "import_retrying" || it.stage === "wrong_category" || it.stage === "needs_review") return true;
   const phase = it.phase || it.state;
-  return phase === "error" || phase === "stalled" || phase === "metadata" || it.state === "error";
+  return phase === "error" || isStalled(it) || it.state === "error";
 }
 
 // groupOf is the Queue view a download sits in. A usenet job never seeds: once it's
@@ -140,7 +151,11 @@ type SortKey = "name" | "progress" | "speed" | "size" | "ratio" | "seedtime";
 
 // The Queue tab's sub-views (?show=): what's still arriving, what's finished but not in the
 // library yet, and what's in the library and sharing — split on the shared stage model.
-const QUEUE_VIEWS: readonly QueueGroup[] = ["downloading", "finishing", "seeding"];
+// Stalled is the part of Downloading that has stopped making progress, beside it so it's
+// one tap away.
+type QueueView = QueueGroup | "stalled";
+const QUEUE_VIEWS: readonly QueueView[] = ["downloading", "stalled", "finishing", "seeding"];
+const QUEUE_VIEW_LABEL: Record<QueueView, string> = { downloading: "Downloading", stalled: "Stalled", finishing: "Finishing", seeding: "Seeding" };
 // The Wanted tab's sub-views (?show=): what's being searched for, and what isn't out yet.
 type WantedView = "searching" | "upcoming";
 const WANTED_VIEWS: readonly WantedView[] = ["searching", "upcoming"];
@@ -201,6 +216,8 @@ export function QueuePanel() {
   const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [sort, setSort] = useState<SortKey>("progress");
   const [typeFilter, setTypeFilter] = useSearchParamState<MediaFilter>("type", "all", { allowed: MEDIA_FILTERS });
+  // ?client=<id>: one download client's downloads, offered only with several clients.
+  const [clientFilter, setClientFilter] = useSearchParamState<string>("client", "");
   const { musicEnabled } = useMe();
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [clientId, setClientId] = useState<number | null>(null);
@@ -253,8 +270,10 @@ export function QueuePanel() {
       refreshQueue();
       return;
     }
+    // A bar moving forward is progress, which ends a stall at once rather than at the next
+    // read; a download only becomes stalled by the server's clock, on the next read.
     setDownloads((ds) => patchProgress(ds, live, (d) => ({ hash: d.hash, progress: d.progress, phase: d.phase || d.state }),
-      (d, p) => ({ ...d, progress: p.progress, eta_seconds: p.eta_seconds, phase: p.state })));
+      (d, p) => ({ ...d, progress: p.progress, eta_seconds: p.eta_seconds, phase: p.state, ...(p.progress > d.progress ? { stalled: false, stalled_since: undefined } : {}) })));
   });
 
   // The next refresh shows what happened; a failure (the client down, the disk guard
@@ -268,10 +287,32 @@ export function QueuePanel() {
     const held = r.held_by_guard ?? 0;
     note(`Resumed ${r.resumed ?? 0}${held > 0 ? ` · ${held} held by the disk guard` : ""}.`);
   });
+  // Try another release: the search runs as a job, followed here rather than in the row, so
+  // "Grabbed X instead" (or why not) still shows after the row has left the list — which
+  // is what a successful replacement does to it. By hash, one search per download.
+  const [failovers, setFailovers] = useState<Record<string, number>>({});
+  const tryAnother = (hash: string) => act(hash, async () => {
+    const id = (await api.failOverDownload(hash)).job_id;
+    if (id) setFailovers((f) => ({ ...f, [hash]: id }));
+    else note("Looking for another release…");
+  });
+  const failoverDone = (hash: string, j: Job) => {
+    setFailovers((f) => { const next = { ...f }; delete next[hash]; return next; });
+    toast(jobToast(j), { tone: jobFailed(j) ? "error" : undefined, ms: 8000 });
+    refreshQueue();
+  };
 
-  const activeDownloads = useMemo(() => downloads.filter((d) => groupOf(d) === "downloading"), [downloads]);
-  const finishingDownloads = useMemo(() => downloads.filter((d) => groupOf(d) === "finishing"), [downloads]);
-  const seedingDownloads = useMemo(() => downloads.filter((d) => groupOf(d) === "seeding"), [downloads]);
+  // Which client each download is in, named on the rows and offered as a filter only when
+  // more than one is switched on. A ?client= no row is in any more shows everything.
+  const showClients = showClientNames(clients);
+  const clientList = useMemo(() => queueClients(downloads), [downloads]);
+  const activeClient = showClients && clientList.some((c) => String(c.id) === clientFilter) ? clientFilter : "";
+  const scoped = useMemo(() => inClient(downloads, activeClient), [downloads, activeClient]);
+
+  const activeDownloads = useMemo(() => scoped.filter((d) => groupOf(d) === "downloading"), [scoped]);
+  const stalledDownloads = useMemo(() => activeDownloads.filter(isStalled), [activeDownloads]);
+  const finishingDownloads = useMemo(() => scoped.filter((d) => groupOf(d) === "finishing"), [scoped]);
+  const seedingDownloads = useMemo(() => scoped.filter((d) => groupOf(d) === "seeding"), [scoped]);
 
   const filterSort = (list: ActivityDownload[], sortKey: SortKey) => {
     const q = query.trim().toLowerCase();
@@ -292,10 +333,11 @@ export function QueuePanel() {
     return l;
   };
   const shownDownloads = useMemo(() => filterSort(activeDownloads, sort), [activeDownloads, query, sort, typeFilter, problemsOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shownStalled = useMemo(() => filterSort(stalledDownloads, sort), [stalledDownloads, query, sort, typeFilter, problemsOnly]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownSeeding = useMemo(() => filterSort(seedingDownloads, seedSort), [seedingDownloads, query, seedSort, typeFilter, problemsOnly]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownFinishing = useMemo(() => filterSort(finishingDownloads, "name"), [finishingDownloads, query, typeFilter, problemsOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const base = view === "seeding" ? seedingDownloads : view === "finishing" ? finishingDownloads : activeDownloads;
+  const base = view === "seeding" ? seedingDownloads : view === "finishing" ? finishingDownloads : view === "stalled" ? stalledDownloads : activeDownloads;
   const typeCount = (k: MediaFilter) => (k === "all" ? base.length : base.filter((d) => (d.media_type ?? "movie") === k).length);
   // With the problems filter on, the counts are of problems, so the pills say where they are.
   const viewCount = (l: ActivityDownload[]) => (problemsOnly ? l.filter(isProblem).length : l.length);
@@ -307,6 +349,7 @@ export function QueuePanel() {
 
   return (
     <>
+      {Object.entries(failovers).map(([hash, id]) => <FailoverJob key={hash} id={id} onDone={(j) => failoverDone(hash, j)} />)}
       {/* Header: live totals + free disk + controls */}
       <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-4 py-2.5" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>
         {!noClient && (
@@ -352,10 +395,10 @@ export function QueuePanel() {
 
       {/* Sub-view + search + sort, then the type filter */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <SubPills views={QUEUE_VIEWS} labels={{ downloading: "Downloading", finishing: "Finishing", seeding: "Seeding" }} counts={{ downloading: viewCount(activeDownloads), finishing: viewCount(finishingDownloads), seeding: viewCount(seedingDownloads) }} value={view} onChange={setView} label="Queue views" />
+        <SubPills views={QUEUE_VIEWS} labels={QUEUE_VIEW_LABEL} counts={{ downloading: viewCount(activeDownloads), stalled: viewCount(stalledDownloads), finishing: viewCount(finishingDownloads), seeding: viewCount(seedingDownloads) }} value={view} onChange={setView} label="Queue views" />
         <div className="ml-auto flex items-center gap-2">
           <SearchBox value={query} onChange={setQuery} />
-          {view === "downloading" && (
+          {(view === "downloading" || view === "stalled") && (
             <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort downloads" className="rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
               <option value="progress">Sort: Progress</option>
               <option value="name">Sort: Name</option>
@@ -387,6 +430,12 @@ export function QueuePanel() {
             Problems only ✕
           </button>
         )}
+        {showClients && clientList.length > 0 && (
+          <select value={activeClient} onChange={(e) => setClientFilter(e.target.value)} aria-label="Download client" className="ml-auto max-w-[220px] rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--panel-2)", border: `1px solid ${activeClient ? "var(--accent)" : "var(--line)"}`, color: "var(--ink)" }}>
+            <option value="">All clients</option>
+            {clientList.map((c) => <option key={c.id} value={String(c.id)}>{c.name} ({c.count})</option>)}
+          </select>
+        )}
       </div>
 
       {!loaded ? null : noClient ? (
@@ -394,20 +443,26 @@ export function QueuePanel() {
       ) : view === "downloading" ? (
         shownDownloads.length === 0 ? <Empty>{problemsOnly ? "No download needs a look right now." : "Nothing downloading. Grab a release and it'll appear here."}</Empty> : (
           <div className="flex flex-col gap-2">
-            {shownDownloads.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} onNote={note} />)}
+            {shownDownloads.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} onNote={note} showClient={showClients} searching={it.hash in failovers} onTryAnother={tryAnother} />)}
+          </div>
+        )
+      ) : view === "stalled" ? (
+        shownStalled.length === 0 ? <Empty>Nothing has stalled. A download counts as stalled after half an hour with no progress.</Empty> : (
+          <div className="flex flex-col gap-2">
+            {shownStalled.map((it) => <DownloadCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} onNote={note} showClient={showClients} searching={it.hash in failovers} onTryAnother={tryAnother} />)}
           </div>
         )
       ) : view === "finishing" ? (
         shownFinishing.length === 0 ? <Empty>{problemsOnly ? "No finished download needs a look right now." : "Nothing waiting to import. Finished downloads pass through here on their way into the library."}</Empty> : (
           <div className="flex flex-col gap-2">
-            {shownFinishing.map((it) => <FinishingCard key={it.hash} it={it} busy={!!busy[it.hash]} onRemoved={(m) => { note(m); refreshQueue(); }} />)}
+            {shownFinishing.map((it) => <FinishingCard key={it.hash} it={it} busy={!!busy[it.hash]} onRemoved={(m) => { note(m); refreshQueue(); }} showClient={showClients} />)}
           </div>
         )
       ) : (
         shownSeeding.length === 0 ? <Empty>{problemsOnly ? "No seeding download needs a look right now." : "Nothing seeding right now."}</Empty> : (
           <div className="flex flex-col gap-2">
             <SeedingSummary items={shownSeeding} />
-            {shownSeeding.map((it) => <SeedingCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} />)}
+            {shownSeeding.map((it) => <SeedingCard key={it.hash} it={it} guard={guard} busy={!!busy[it.hash]} act={act} onRemoved={note} showClient={showClients} />)}
           </div>
         )
       )}
@@ -519,6 +574,19 @@ function Empty({ children }: { children: React.ReactNode }) {
 // wantedMatches is the page's search box over a Wanted row: its title, author or artist.
 const wantedMatches = (s: WantedRow, q: string) => s.title.toLowerCase().includes(q) || (s.byline ?? "").toLowerCase().includes(q);
 
+// FailoverJob follows one Try another release search to its end; it draws nothing.
+function FailoverJob({ id, onDone }: { id: number; onDone: (j: Job) => void }) {
+  useJob(id, { onDone });
+  return null;
+}
+
+// ClientChip names the download client a transfer is in, as its card in Settings →
+// Connections does. Shown only when more than one client is switched on.
+function ClientChip({ it }: { it: ActivityDownload }) {
+  if (!it.client_name) return null;
+  return <span className="max-w-[140px] truncate rounded px-1.5 py-0.5 text-2xs font-semibold" title="Download client" data-testid="client-chip" style={{ background: "var(--panel-2)", color: "var(--ink-dim)", border: "1px solid var(--line-soft)" }}>{it.client_name}</span>;
+}
+
 function TypeChip({ mediaType }: { mediaType?: string }) {
   const label = mediaType === "series" ? "TV" : mediaType === "book" ? "Book" : mediaType === "music" ? "Music" : "Movie";
   return <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{label}</span>;
@@ -529,12 +597,21 @@ function TypeChip({ mediaType }: { mediaType?: string }) {
 //
 // A usenet job has no peers, seeds or trackers: it shows what's left to fetch, no Reannounce
 // or Recheck, and when SABnzbd failed it, its reason and Retry.
-function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: ActivityDownload; guard: DiskGuardHold | null; busy: boolean; act: (hash: string, fn: () => Promise<unknown>) => Promise<void>; onRemoved: (m: string) => void; onNote: (m: string) => void }) {
+function DownloadCard({ it, guard, busy, act, onRemoved, onNote, showClient, searching, onTryAnother }: { it: ActivityDownload; guard: DiskGuardHold | null; busy: boolean; act: (hash: string, fn: () => Promise<unknown>) => Promise<void>; onRemoved: (m: string) => void; onNote: (m: string) => void; showClient: boolean; searching: boolean; onTryAnother: (hash: string) => void }) {
   const paused = it.state === "paused";
   const [removing, setRemoving] = useState(false);
   const usenet = isUsenetDownload(it);
   const failed = usenet && usenetFailed(it);
+  const stalled = isStalled(it);
   const chip = phaseLabel(it);
+  // A stalled download a pending grab recorded by hash (it carries a stall state: what the
+  // fail-over endpoint accepts) can try another release now, as Needs you's does: this one
+  // is removed only once something else has been grabbed in its place. The search is
+  // followed by the panel, so its result shows even once the row has gone.
+  const tryAnother = {
+    label: searching ? "Searching…" : "Try another release", title: "Search for a different release; this one is removed only once another is grabbed", disabled: busy || searching,
+    onSelect: () => onTryAnother(it.hash),
+  };
   const stall = stallLine(it);
   const failLine = failed ? usenetFailLine(it) : null;
   const retry = (
@@ -547,8 +624,9 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
         <div className="min-w-0 flex-1">
           <TransferTitle it={it} />
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-            {paused && it.held_by_guard ? <GuardChip guard={guard} /> : <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" title={chip.tip} style={{ background: "var(--panel-2)", color: chip.tone }}>{chip.text}</span>}
+            {paused && it.held_by_guard ? <GuardChip guard={guard} /> : <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" title={chip.tip} data-testid={stalled ? "stalled-chip" : undefined} style={{ background: stalled ? "var(--avoid-soft)" : "var(--panel-2)", color: chip.tone }}>{chip.text}</span>}
             <ItemChips it={it} />
+            {showClient && <ClientChip it={it} />}
             <TypeChip mediaType={it.media_type} />
             <ProfileChip profile={it.quality_profile} />
             <span className="font-mono text-xs text-ink-faint">{bytes(it.size_bytes)}</span>
@@ -562,6 +640,7 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
           name={it.item?.title ?? it.name}
           primary={failed ? retry : <ResumeBtn it={it} guard={guard} busy={busy} act={act} />}
           secondary={[
+            ...(stalled && it.stall && !usenet ? [tryAnother] : []),
             { label: "Block", tone: "var(--avoid-text)", title: "Blocklist this release and grab a different one", disabled: busy, onSelect: () => act(it.hash, async () => { const r = await api.blockDownload(it.hash, it.name); onRemoved(`Blocked for ${r.blocked_for.title} — searching for another release.`); }) },
             { label: "Delete", danger: true, title: "Remove from the client — asks what to do with the files", disabled: busy, onSelect: () => setRemoving(true) },
           ]}
@@ -588,7 +667,7 @@ function DownloadCard({ it, guard, busy, act, onRemoved, onNote }: { it: Activit
 // FinishingCard is a finished transfer that isn't in the library yet: importing, held for
 // review, an import being retried, or filed where nothing imports it. Its stage chip and
 // why line say which, so it never passes for a healthy seed.
-function FinishingCard({ it, busy, onRemoved }: { it: ActivityDownload; busy: boolean; onRemoved: (m: string) => void }) {
+function FinishingCard({ it, busy, onRemoved, showClient }: { it: ActivityDownload; busy: boolean; onRemoved: (m: string) => void; showClient: boolean }) {
   const [removing, setRemoving] = useState(false);
   const stage = isUsenetDownload(it) ? usenetStage(it.stage) : it.stage;
   const st = stage ? STAGE[stage] : STAGE.importing;
@@ -604,6 +683,7 @@ function FinishingCard({ it, busy, onRemoved }: { it: ActivityDownload; busy: bo
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             <StatusChip tone={st.tone}>{st.label}</StatusChip>
             <ItemChips it={it} />
+            {showClient && <ClientChip it={it} />}
             <TypeChip mediaType={it.media_type} />
             <ProfileChip profile={it.quality_profile} />
             <span className="font-mono text-xs text-ink-faint">{bytes(it.size_bytes)}</span>
@@ -659,7 +739,7 @@ function SeedingSummary({ items }: { items: ActivityDownload[] }) {
 
 // SeedingCard is a completed torrent that's sharing back: the title it's for, ratio, seed
 // time, goal progress.
-function SeedingCard({ it, guard, busy, act, onRemoved }: { it: ActivityDownload; guard: DiskGuardHold | null; busy: boolean; act: (hash: string, fn: () => Promise<unknown>) => void; onRemoved: (m: string) => void }) {
+function SeedingCard({ it, guard, busy, act, onRemoved, showClient }: { it: ActivityDownload; guard: DiskGuardHold | null; busy: boolean; act: (hash: string, fn: () => Promise<unknown>) => void; onRemoved: (m: string) => void; showClient: boolean }) {
   const paused = it.state === "paused";
   const goal = seedGoal(it);
   const [removing, setRemoving] = useState(false);
@@ -675,6 +755,7 @@ function SeedingCard({ it, guard, busy, act, onRemoved }: { it: ActivityDownload
               <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{STAGE.not_managed.label}</span>
             ) : <span className="rounded px-1.5 py-0.5 font-mono text-2xs uppercase" style={{ background: "var(--panel-2)", color: paused ? "var(--ink-faint)" : "var(--good-text)" }}>{paused ? STAGE.paused.label : STAGE.seeding.label}</span>}
             <ItemChips it={it} />
+            {showClient && <ClientChip it={it} />}
             <TypeChip mediaType={it.media_type} />
             <span className="font-mono text-xs text-ink-faint">{bytes(it.size_bytes)}</span>
             <span className="font-mono text-xs" title="Share ratio" style={{ color: "var(--good-text)" }}>⇅ {it.ratio.toFixed(2)}</span>

@@ -126,6 +126,9 @@ type Frame struct {
 	Queue     []download.Item
 	// Acq is the acquisition record by lowercased info hash (nil when unreadable).
 	Acq map[string]automation.Acquisition
+	// Trying is when each download (lowercased hash) started trying to download, as the
+	// coordinator has watched it (automation.Coordinator.TryingSince); nil when unknown.
+	Trying map[string]time.Time
 }
 
 // InQueue reports whether the frame can tell hash is gone: false only when a complete read

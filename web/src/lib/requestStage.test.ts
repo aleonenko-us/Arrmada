@@ -26,6 +26,13 @@ describe("requestStage", () => {
       .toBe("3 of 10 episodes ready");
   });
 
+  it("says Stalled when every download for it is stalled, and Downloading while one moves", () => {
+    const stalled = requestStage(rq({ media_type: "movie", tracking: { stage: "downloading", progress: 0.3, stalled: true, note: "Nobody is sharing it right now" } }));
+    expect([stalled.badge, stalled.tone, stalled.detail]).toEqual(["Stalled", "avoid", "30% · nobody is sharing it right now"]);
+    const moving = requestStage(rq({ media_type: "movie", tracking: { stage: "downloading", progress: 0.3, note: "Waiting for peers" } }));
+    expect([moving.badge, moving.tone]).toEqual(["Downloading", "accent"]);
+  });
+
   it("says a title waiting for Plex is almost ready, and sorts it with what's moving", () => {
     const s = requestStage(rq({ media_type: "movie", available: true, tracking: { stage: "adding" } }));
     expect([s.badge, s.detail]).toEqual(["Almost ready", "Adding to Plex…"]);

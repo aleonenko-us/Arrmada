@@ -353,7 +353,7 @@ func (a *api) homepageWidget(ctx context.Context) homepageWidget {
 
 	if a.deps.Downloads != nil {
 		if items, err := a.deps.Downloads.Queue(ctx); err == nil {
-			q := summarizeQueue(items)
+			q := summarizeQueue(items, a.queueStallJudge(ctx))
 			out.Queue = widgetQueue{
 				OK: true, Total: len(items),
 				Downloading: q.Downloading, Seeding: q.Seeding, Stalled: q.Stalled,
