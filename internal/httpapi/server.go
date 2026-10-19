@@ -908,6 +908,16 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/music/albums/{id}", a.requireRole(auth.RoleManager, a.musicRoute(a.handleGetAlbum)))
 	mux.HandleFunc("PUT /api/v1/music/albums/{id}/monitor", a.requireRole(auth.RoleManager, a.musicRoute(a.handleSetAlbumMonitored)))
 	mux.HandleFunc("POST /api/v1/music/albums/{id}/notes/{note}/resolve", a.requireRole(auth.RoleManager, a.musicRoute(a.handleResolveAlbumNote)))
+	// Music placement (MUS-33, MUS-34): naming templates with a live preview, an album's
+	// rename preview and apply, the library-wide rename (preview, then a job), and a retag
+	// job (house tags into a staging copy, swapped in; originals to the recycle bin).
+	mux.HandleFunc("GET /api/v1/music/naming/presets", a.requireRole(auth.RoleManager, a.musicRoute(a.handleMusicNamingPresets)))
+	mux.HandleFunc("GET /api/v1/music/naming/preview", a.requireRole(auth.RoleManager, a.musicRoute(a.handleMusicNamingPreview)))
+	mux.HandleFunc("GET /api/v1/music/albums/{id}/rename", a.requireRole(auth.RoleManager, a.musicRoute(a.handleMusicAlbumRenamePreview)))
+	mux.HandleFunc("POST /api/v1/music/albums/{id}/rename", a.requireRole(auth.RoleManager, a.musicRoute(a.handleMusicAlbumRename)))
+	mux.HandleFunc("POST /api/v1/music/albums/{id}/retag", a.requireRole(auth.RoleManager, a.musicRoute(a.handleMusicAlbumRetag)))
+	mux.HandleFunc("GET /api/v1/music/organize", a.requireRole(auth.RoleManager, a.musicRoute(a.handleMusicOrganizePreview)))
+	mux.HandleFunc("POST /api/v1/music/organize", a.requireRole(auth.RoleManager, a.musicRoute(a.handleMusicOrganizeApply)))
 
 	// Books Discover (Open Library browse/search + author catalogues).
 	mux.HandleFunc("GET /api/v1/books/discover/trending", a.signedIn(a.handleBookDiscoverTrending).ext())
