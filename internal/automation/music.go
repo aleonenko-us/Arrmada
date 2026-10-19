@@ -243,6 +243,8 @@ func (o albumOutcome) searchOutcome() (SearchOutcome, error) {
 		res.Reason = ReasonBlockedOrBelow
 	case outcomeNoListing:
 		res.Searched, res.Reason = false, ReasonNothingWanted
+	case outcomeDeferred:
+		// Found, and left for the next sweep by the upgrade budget: settled from the counts.
 	case outcomeIndexerError:
 		// Nobody could answer: recorded as indexers_failed, with each indexer's error.
 		res.Reason = ReasonIndexersFailed
@@ -254,9 +256,14 @@ func (o albumOutcome) searchOutcome() (SearchOutcome, error) {
 }
 
 // SearchAlbumNow searches for one album now and grabs the best release, the way the
-// sweep would, and says what it found. Used after a Block, to find another release.
+// sweep would, and says what it found: a person's Search now (the album page, Wanted),
+// and the search after a Block. It ignores the album's backoff, but not the rest:
+//   - nothing is searched while the Music module is off;
+//   - an album with a download in flight isn't searched again (the outcome names it);
+//   - a complete album gets an upgrade search, and only when its profile allows upgrades
+//     and it is below its cutoff: another copy of what it has is never grabbed.
 func (c *Coordinator) SearchAlbumNow(ctx context.Context, albumID int64) (SearchOutcome, error) {
-	if c.music == nil {
+	if c.music == nil || !c.moduleOn(ctx, "music") {
 		return SearchOutcome{Reason: ReasonNothingWanted}, nil
 	}
 	release, ok := c.claims.claim(albumKey(albumID))
@@ -272,8 +279,36 @@ func (c *Coordinator) SearchAlbumNow(ctx context.Context, albumID int64) (Search
 	if err != nil {
 		return SearchOutcome{}, err
 	}
+	busy, err := c.albumInFlight(ctx, al.ID)
+	if err != nil {
+		return SearchOutcome{}, err
+	}
+	if busy != "" {
+		ctx, notes := newSearchNotes(ctx)
+		out := SearchOutcome{Reason: ReasonAlreadyDownloading, Example: busy}
+		c.recordAttempt(ctx, notes, AttemptMusic, al.ID, ScopeAlbum, &out, nil)
+		return out, nil
+	}
+	if al.Complete() {
+		return c.upgradeAlbumNow(ctx, a, al)
+	}
 	out := c.grabAlbum(ctx, a, al)
 	return out.searchOutcome()
+}
+
+// albumInFlight names a download still in flight for an album ("" for none). An
+// unreadable answer is an error: a second copy mustn't be grabbed on a guess.
+func (c *Coordinator) albumInFlight(ctx context.Context, albumID int64) (string, error) {
+	acqs, err := c.Active(ctx, "music", albumID)
+	if err != nil {
+		return "", err
+	}
+	for _, acq := range acqs {
+		if acq.Downloading() {
+			return acq.Title, nil
+		}
+	}
+	return "", nil
 }
 
 // grabAlbumExcluding is grabAlbum that also skips the normalized titles in exclude: a stall
@@ -361,8 +396,8 @@ func (c *Coordinator) grabMusic(ctx context.Context, indexerName, url, title, ca
 // between torrents (nets.beats: a usenet release isn't compared on seeders).
 //
 // The ladder is the profile's format_scores keyed by tier ("FLAC", "MP3-320"…), so scoring
-// is just a lookup — and because nothing outscores the tier already held, this same scoring
-// is what makes upgrades stop by themselves at the top of the ladder.
+// is just a lookup. The upgrade sweep picks with it too, among releases already shown to be
+// an upgrade (music.UpgradeTiers), which is what stops it at the top of the ladder.
 func pickBestAlbum(nets netPolicy, sp quality.StoredProfile, releases []indexer.Release) *indexer.Release {
 	var best *indexer.Release
 	bestScore := 0
@@ -914,11 +949,14 @@ func (c *Coordinator) recordMusicGrab(ctx context.Context, mediaType string, id 
 	// Same profile the album was chosen under (musicProfile), so the stall window matches.
 	profile = c.effectiveProfile(ctx, profile, quality.MediaMusic)
 	transport, seedEnabled, seedRatio, seedHours := c.grabPolicy(ctx, indexerName, infoHash)
+	// An upgrade grab says so (decided_mode 'upgrade'): its import mustn't move the album
+	// to another edition (importMusicDownload).
+	key, mode := pickOf(ctx, title)
 	_, err := c.db.ExecContext(ctx,
-		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, transport)
-		 VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, decided_by, decided_mode, transport)
+		 VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, title, indexerName, profile, c.quality.StallMinutes(ctx, profile),
-		boolToInt(seedEnabled), seedRatio, seedHours, mediaType, infoHash, transport)
+		boolToInt(seedEnabled), seedRatio, seedHours, mediaType, infoHash, key, mode, transport)
 	if err != nil {
 		c.log.Warn("music: recording the grab failed", "kind", mediaType, "id", id, "err", err)
 		return

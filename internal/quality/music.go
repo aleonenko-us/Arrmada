@@ -8,9 +8,10 @@ package quality
 //
 // They're still expressed as format_scores rather than a separate ladder field: score the
 // tiers in rank order and the existing engine picks the best tier available at grab time and
-// refuses anything scoring 0 or below. There is no music upgrade sweep yet — an album that
-// is complete isn't searched again — so the ladder decides the first grab only. When a sweep
-// is built, the same scores give it a natural stop: nothing outranks the top tier you kept.
+// refuses anything scoring 0 or below. The same scores drive the music upgrade sweep
+// (automation.UpgradeMusic, with upgrades_enabled): a complete album is upgraded only to a
+// tier scored higher than what it holds that is also better audio (music.UpgradeTiers),
+// which gives it a natural stop at the top tier you kept.
 //
 // The names match what trackers actually print, so a profile reads like the release list.
 

@@ -894,6 +894,11 @@ func main() {
 		coordinator.SearchMusicMissing(ctx)
 		return nil
 	}, scheduler.Label("Search for missing albums"), scheduler.Description("Searches the indexers for monitored albums that are missing tracks."))
+	// Look for better copies of complete albums, up to each profile's cutoff (MUS-16).
+	sched.Register("upgrade-music", 6*time.Hour, false, func(ctx context.Context) error {
+		coordinator.UpgradeMusic(ctx)
+		return nil
+	}, scheduler.Label("Look for better album releases"), scheduler.Description("Grabs a better copy of a complete album when its quality profile allows upgrades and the files are below the profile's top tier. Searches at most 10 albums a run and grabs no more than the per-sweep limit (Settings → Downloads); replaced files go to the recycle bin."))
 	// Bring stale MusicBrainz answers up to date, slowly, on the background lane: cached
 	// answers are never removed, and a page open never waits on this.
 	sched.Register("refresh-music-cache", 6*time.Hour, false, func(ctx context.Context) error {
