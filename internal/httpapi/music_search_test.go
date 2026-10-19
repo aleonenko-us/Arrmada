@@ -215,6 +215,8 @@ func TestMusicSearchRoutesOffWhenModuleOff(t *testing.T) {
 	}
 	for _, c := range []struct{ method, path string }{
 		{"POST", fmt.Sprintf("/api/v1/music/artists/%d/search", a.ID)},
+		{"GET", fmt.Sprintf("/api/v1/music/albums/%d/releases", al.ID)},
+		{"POST", fmt.Sprintf("/api/v1/music/albums/%d/grab", al.ID)},
 		{"GET", fmt.Sprintf("/api/v1/music/albums/%d/search-state", al.ID)},
 	} {
 		if rec := s.doJSON(c.method, c.path, mgr, `{}`); rec.Code != http.StatusNotFound {

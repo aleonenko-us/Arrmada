@@ -912,8 +912,10 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("PUT /api/v1/music/release-defaults", a.requireRole(auth.RoleManager, a.musicRoute(a.handleSetReleaseDefaults)))
 	mux.HandleFunc("GET /api/v1/music/new-releases", a.requireRole(auth.RoleManager, a.musicRoute(a.handleNewReleases)))
 	mux.HandleFunc("GET /api/v1/music/albums/{id}", a.requireRole(auth.RoleManager, a.musicRoute(a.handleGetAlbum)))
-	// Searching from the album and artist pages (MUS-09, MUS-16): music_search.go.
+	// Searching from the album and artist pages (MUS-09, MUS-16, MUS-17): music_search.go.
 	mux.HandleFunc("POST /api/v1/music/artists/{id}/search", a.requireRole(auth.RoleManager, a.musicRoute(a.handleArtistSearch)))
+	mux.HandleFunc("GET /api/v1/music/albums/{id}/releases", a.requireRole(auth.RoleManager, a.musicRoute(a.handleAlbumReleases)))
+	mux.HandleFunc("POST /api/v1/music/albums/{id}/grab", a.requireRole(auth.RoleManager, a.musicRoute(a.handleGrabAlbum)))
 	mux.HandleFunc("GET /api/v1/music/albums/{id}/search-state", a.requireRole(auth.RoleManager, a.musicRoute(a.handleAlbumSearchState)))
 	mux.HandleFunc("PUT /api/v1/music/albums/{id}/monitor", a.requireRole(auth.RoleManager, a.musicRoute(a.handleSetAlbumMonitored)))
 	mux.HandleFunc("POST /api/v1/music/albums/{id}/notes/{note}/resolve", a.requireRole(auth.RoleManager, a.musicRoute(a.handleResolveAlbumNote)))
