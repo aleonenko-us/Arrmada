@@ -6,13 +6,16 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"testing"
 )
 
+var backends = []Backend{Permissive, TagLib}
+
 // houseFixture fills every house field, with two or more values in every
 // multi-value field and non-ASCII and slash-containing values throughout.
-func houseFixture() Tags {
-	return Tags{
+func houseFixture() Fields {
+	return Fields{
 		Title:        "Jóga (Live at Ásbyrgi)",
 		Artist:       "Björk & Sigur Rós",
 		Artists:      []string{"Björk", "Sigur Rós"},
@@ -51,59 +54,95 @@ func houseFixture() Tags {
 	}
 }
 
-// diffTags reports every field that differs, by name, so a failure says which
-// mapping is broken rather than dumping two structs.
+// diffTags reports every key that differs, so a failure names the broken
+// mapping rather than dumping two maps.
 func diffTags(t *testing.T, got, want Tags) {
 	t.Helper()
-	gv, wv := reflect.ValueOf(got), reflect.ValueOf(want)
-	for i := 0; i < gv.NumField(); i++ {
-		g, w := gv.Field(i).Interface(), wv.Field(i).Interface()
-		if !reflect.DeepEqual(g, w) {
-			t.Errorf("%s: got %#v, want %#v", gv.Type().Field(i).Name, g, w)
+	keys := map[string]bool{}
+	for k := range got {
+		keys[k] = true
+	}
+	for k := range want {
+		keys[k] = true
+	}
+	var sorted []string
+	for k := range keys {
+		sorted = append(sorted, k)
+	}
+	sort.Strings(sorted)
+	for _, k := range sorted {
+		if !reflect.DeepEqual(got[k], want[k]) {
+			t.Errorf("%s: got %q, want %q", k, got[k], want[k])
 		}
 	}
 }
 
-func TestFieldsRoundTrip(t *testing.T) {
-	want := houseFixture()
-	diffTags(t, tagsFromFields(want.fields()), want)
-
-	// Every house key is produced by a full Tags, so houseKeys can't drift from
-	// the conversion tables.
-	m := want.fields()
+func TestFixtureCoversEveryHouseKey(t *testing.T) {
+	tags := houseFixture().Tags()
 	for _, k := range houseKeys {
-		if len(m[k]) == 0 {
-			t.Errorf("full fixture produced no %s", k)
+		if len(tags[k]) == 0 {
+			t.Errorf("fixture has no %s", k)
 		}
 	}
-	if len(m) != len(houseKeys) {
-		t.Errorf("fields() has %d keys, houseKeys has %d", len(m), len(houseKeys))
+	if len(tags) != len(houseKeys) {
+		t.Errorf("fixture has %d keys, houseKeys has %d", len(tags), len(houseKeys))
 	}
+	if !reflect.DeepEqual(FieldsOf(tags), houseFixture()) {
+		t.Error("Fields -> Tags -> Fields is not lossless")
+	}
+	// Canonical Tags pass through both normalisers unchanged.
+	clean, err := prepareWrite(tags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diffTags(t, clean, tags)
+	diffTags(t, normalizeRead(tags), tags)
 }
 
-func TestEmptyFieldsAreAbsent(t *testing.T) {
-	m := Tags{Artists: []string{"", "  "}, Title: " "}.fields()
-	if len(m) != 0 {
-		t.Fatalf("empty values produced fields: %v", m)
-	}
-}
-
-func TestTagsFromFieldsLenient(t *testing.T) {
-	got := tagsFromFields(fieldMap{
-		keyTrackNumber: {"3/12"},
-		keyDiscNumber:  {"02"},
-		keyDiscTotal:   {"4"},
-		keyCompilation: {"true"},
-		keyTitle:       {"first", "second"},
+func TestNormalizeRead(t *testing.T) {
+	got := normalizeRead(map[string][]string{
+		"tracknumber": {"3/12"},
+		"DISCNUMBER":  {"02"},
+		"TOTALDISCS":  {"4"},
+		"Compilation": {"true"},
+		"TITLE":       {"first", "second"},
+		"GENRE":       {"Rock", " ", "Pop"},
+		"COMMENT":     {"not a house key"},
+		"ISRC":        {""},
 	})
-	if got.TrackNumber != 3 || got.TrackTotal != 12 || got.DiscNumber != 2 || got.DiscTotal != 4 {
-		t.Errorf("numbers: %+v", got)
+	want := Tags{
+		KeyTrackNumber: {"3"}, KeyTrackTotal: {"12"},
+		KeyDiscNumber: {"2"}, KeyDiscTotal: {"4"},
+		KeyCompilation: {"1"},
+		KeyTitle:       {"first"},
+		KeyGenre:       {"Rock", "Pop"},
 	}
-	if !got.Compilation {
-		t.Error("compilation not parsed")
+	diffTags(t, got, want)
+
+	// The canonical total wins over an alias, and a false compilation vanishes.
+	got = normalizeRead(map[string][]string{"TRACKTOTAL": {"9"}, "TOTALTRACKS": {"8"}, "TRACKNUMBER": {"1"}, "COMPILATION": {"0"}})
+	diffTags(t, got, Tags{KeyTrackNumber: {"1"}, KeyTrackTotal: {"9"}})
+}
+
+func TestPrepareWrite(t *testing.T) {
+	got, err := prepareWrite(Tags{"title": {" x "}, "TRACKNUMBER": {"03"}, "COMPILATION": {"no"}, "GENRE": {"", "Rock"}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got.Title != "first" {
-		t.Errorf("single-value field should take the first value, got %q", got.Title)
+	diffTags(t, got, Tags{KeyTitle: {"x"}, KeyTrackNumber: {"3"}, KeyGenre: {"Rock"}})
+
+	for name, bad := range map[string]Tags{
+		"unknown key":    {"MOOD": {"calm"}},
+		"two titles":     {KeyTitle: {"a", "b"}},
+		"bad number":     {KeyTrackNumber: {"3/12"}},
+		"zero disc":      {KeyDiscNumber: {"0"}},
+		"vertical tab":   {KeyArtists: {"a\vb"}},
+		"embedded NUL":   {KeyArtists: {"a\x00b"}},
+		"too big number": {KeyTrackTotal: {"70000"}},
+	} {
+		if _, err := prepareWrite(bad); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
 	}
 }
 
@@ -118,30 +157,27 @@ func TestIlstRoundTripAndPreservation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := houseFixture()
-	payload := buildIlst(old, want.fields())
+	want := houseFixture().Tags()
+	payload := buildIlst(old, want)
 	items, err := parseIlst(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	diffTags(t, tagsFromFields(ilstFields(items)), want)
+	diffTags(t, normalizeRead(ilstFields(items)), want)
 
 	// Foreign items survive verbatim and first; stale house items are gone.
 	if !bytes.HasPrefix(payload, append(append([]byte{}, foreign...), comment...)) {
 		t.Error("foreign items not preserved verbatim at the front")
 	}
-	for _, it := range items {
-		if it.typ == "gnre" {
-			t.Error("old numeric genre survived")
-		}
-		if it.typ == "----" && it.name == "artists" {
-			t.Error("stale lower-case ARTISTS freeform survived")
-		}
-	}
-	// ARTISTS is one atom with two data children, not two atoms.
 	n := 0
 	for _, it := range items {
-		if it.typ == "----" && it.name == "ARTISTS" {
+		switch {
+		case it.typ == "gnre":
+			t.Error("old numeric genre survived")
+		case it.typ == "----" && it.name == "artists":
+			t.Error("stale lower-case ARTISTS freeform survived")
+		case it.typ == "----" && it.name == "ARTISTS":
+			// One atom with one data child per value, not one atom per value.
 			n++
 			if len(it.data) != 2 {
 				t.Errorf("ARTISTS has %d data atoms, want 2", len(it.data))
@@ -177,40 +213,75 @@ func TestCheckID3Frames(t *testing.T) {
 	}
 }
 
+func TestMP3TrailerStart(t *testing.T) {
+	audio := bytes.Repeat([]byte{0xFF, 0xFB, 0x90, 0x00}, 64)
+	ape := func() []byte {
+		item := []byte("\x05\x00\x00\x00\x00\x00\x00\x00Title\x00hello")
+		footer := make([]byte, 32)
+		copy(footer, "APETAGEX")
+		footer[8] = 0xD0 // version 2000
+		footer[9] = 0x07
+		size := len(item) + 32
+		footer[12] = byte(size)
+		footer[16] = 1 // one item
+		return append(item, footer...)
+	}()
+	v1 := append([]byte("TAG"), make([]byte, 125)...)
+	for name, tail := range map[string][]byte{
+		"none":     nil,
+		"id3v1":    v1,
+		"ape":      ape,
+		"ape+v1":   append(append([]byte{}, ape...), v1...),
+		"lyrics+1": append(append([]byte("LYRICSBEGINhi"), []byte("000013LYRICS200")...), v1...),
+	} {
+		p := filepath.Join(t.TempDir(), "x.mp3")
+		if err := os.WriteFile(p, append(append([]byte{}, audio...), tail...), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		f, _ := os.Open(p)
+		end, err := mp3TrailerStart(f)
+		f.Close()
+		if err != nil || end != int64(len(audio)) {
+			t.Errorf("%s: end %d, %v; want %d", name, end, err, len(audio))
+		}
+	}
+}
+
 func TestUnknownFormat(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "notes.flac")
 	if err := os.WriteFile(p, []byte("just some text, not audio"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Read(p); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("Read: got %v, want ErrUnsupported", err)
-	}
-	if err := Write(p, houseFixture()); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("Write: got %v, want ErrUnsupported", err)
+	for _, b := range backends {
+		tg := New(b)
+		if _, err := tg.Read(p); !errors.Is(err, ErrUnsupported) {
+			t.Errorf("%s Read: got %v, want ErrUnsupported", b, err)
+		}
+		if err := tg.Write(p, houseFixture().Tags(), WriteOptions{}); !errors.Is(err, ErrUnsupported) {
+			t.Errorf("%s Write: got %v, want ErrUnsupported", b, err)
+		}
 	}
 }
 
 // A write that fails part-way must leave the original byte-identical and no
 // temporary file behind.
 func TestFailedWriteLeavesOriginal(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "broken.flac")
-	// "fLaC" + a STREAMINFO header claiming 34 bytes, but only 10 follow.
-	orig := append([]byte("fLaC\x80\x00\x00\x22"), make([]byte, 10)...)
-	if err := os.WriteFile(p, orig, 0o644); err != nil {
-		t.Fatal(err)
+	for _, b := range backends {
+		dir := t.TempDir()
+		p := filepath.Join(dir, "broken.flac")
+		// "fLaC" + a STREAMINFO header claiming 34 bytes, but only 10 follow.
+		orig := append([]byte("fLaC\x80\x00\x00\x22"), make([]byte, 10)...)
+		if err := os.WriteFile(p, orig, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := New(b).Write(p, houseFixture().Tags(), WriteOptions{}); err == nil {
+			t.Errorf("%s: Write of a truncated file succeeded", b)
+		}
+		if got, _ := os.ReadFile(p); !bytes.Equal(got, orig) {
+			t.Errorf("%s: original was modified", b)
+		}
+		assertOnlyFile(t, dir, "broken.flac")
 	}
-	if err := Write(p, houseFixture()); err == nil {
-		t.Fatal("Write of a truncated file succeeded")
-	}
-	got, err := os.ReadFile(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(got, orig) {
-		t.Error("original was modified")
-	}
-	assertOnlyFile(t, dir, "broken.flac")
 }
 
 func TestReplaceFileCleansUp(t *testing.T) {
@@ -221,6 +292,9 @@ func TestReplaceFileCleansUp(t *testing.T) {
 	}
 	boom := errors.New("boom")
 	err := replaceFile(p, func(dst *os.File) error {
+		if filepath.Ext(dst.Name()) != ".mp3" {
+			t.Errorf("temp file %q lost the extension", dst.Name())
+		}
 		_, _ = dst.WriteString("half")
 		return boom
 	})

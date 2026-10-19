@@ -12,6 +12,7 @@ require (
 	github.com/go-flac/go-flac v1.0.0
 	github.com/nwaples/rardecode/v2 v2.2.5
 	github.com/oschwald/geoip2-golang v1.13.0
+	go.senan.xyz/taglib v0.15.0
 	golang.org/x/crypto v0.57.0
 	modernc.org/sqlite v1.53.0
 	rsc.io/qr v0.2.0
@@ -26,6 +27,7 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/tetratelabs/wazero v1.11.1-0.20260428013916-2bbd517b7633 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect

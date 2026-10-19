@@ -19,45 +19,6 @@ import (
 // "mean" (always com.apple.iTunes here) and a "name".
 const itunesMean = "com.apple.iTunes"
 
-// mp4Field maps a canonical key to a standard atom, or to a freeform name when
-// atom is "----". Names follow Picard; freeform names are matched
-// case-insensitively on read because taggers disagree on case (replaygain_*).
-type mp4Field struct {
-	key  string
-	atom string
-	name string
-}
-
-var mp4Fields = []mp4Field{
-	{keyTitle, "\xa9nam", ""},
-	{keyArtist, "\xa9ART", ""},
-	{keyArtists, "----", "ARTISTS"},
-	{keyAlbum, "\xa9alb", ""},
-	{keyAlbumArtist, "aART", ""},
-	{keyAlbumArtists, "----", "ALBUMARTISTS"},
-	{keyDate, "\xa9day", ""},
-	{keyOriginalDate, "----", "ORIGINALDATE"},
-	{keyGenre, "\xa9gen", ""},
-	{keyMBRecordingID, "----", "MusicBrainz Track Id"},
-	{keyMBReleaseTrackID, "----", "MusicBrainz Release Track Id"},
-	{keyMBReleaseID, "----", "MusicBrainz Album Id"},
-	{keyMBReleaseGroupID, "----", "MusicBrainz Release Group Id"},
-	{keyMBArtistID, "----", "MusicBrainz Artist Id"},
-	{keyMBAlbumArtistID, "----", "MusicBrainz Album Artist Id"},
-	{keyReleaseType, "----", "MusicBrainz Album Type"},
-	{keyReleaseStatus, "----", "MusicBrainz Album Status"},
-	{keyReleaseCountry, "----", "MusicBrainz Album Release Country"},
-	{keyLabel, "----", "LABEL"},
-	{keyCatalogNumber, "----", "CATALOGNUMBER"},
-	{keyBarcode, "----", "BARCODE"},
-	{keyISRC, "----", "ISRC"},
-	{keyMedia, "----", "MEDIA"},
-	{keyRGTrackGain, "----", "replaygain_track_gain"},
-	{keyRGTrackPeak, "----", "replaygain_track_peak"},
-	{keyRGAlbumGain, "----", "replaygain_album_gain"},
-	{keyRGAlbumPeak, "----", "replaygain_album_peak"},
-}
-
 // Atoms the house set owns besides mp4Fields. "gnre" is the old numeric genre;
 // it is removed whenever genres are written so it can't contradict "\xa9gen".
 const (
@@ -86,7 +47,7 @@ type ilstData struct {
 	value []byte
 }
 
-func readMP4(f *os.File) (fieldMap, error) {
+func readMP4(f *os.File) (map[string][]string, error) {
 	info, err := inspectMP4(f)
 	if err != nil {
 		return nil, err
@@ -99,23 +60,23 @@ func readMP4(f *os.File) (fieldMap, error) {
 }
 
 // ilstFields extracts the house fields from parsed ilst items.
-func ilstFields(items []ilstItem) fieldMap {
-	m := fieldMap{}
+func ilstFields(items []ilstItem) map[string][]string {
+	m := map[string][]string{}
 	for _, it := range items {
 		switch it.typ {
 		case atomTrack, atomDisc:
 			if v := it.firstData(dataImplicit); len(v) >= 6 {
-				n, t := int(binary.BigEndian.Uint16(v[2:4])), int(binary.BigEndian.Uint16(v[4:6]))
+				pair := fmt.Sprintf("%d/%d", binary.BigEndian.Uint16(v[2:4]), binary.BigEndian.Uint16(v[4:6]))
 				if it.typ == atomTrack {
-					setPair(m, keyTrackNumber, keyTrackTotal, n, t)
+					m[KeyTrackNumber] = []string{pair}
 				} else {
-					setPair(m, keyDiscNumber, keyDiscTotal, n, t)
+					m[KeyDiscNumber] = []string{pair}
 				}
 			}
 			continue
 		case atomCompilation:
 			if v := it.firstData(dataInt); len(v) > 0 && v[len(v)-1] != 0 {
-				m[keyCompilation] = []string{"1"}
+				m[KeyCompilation] = []string{"1"}
 			}
 			continue
 		}
@@ -164,7 +125,7 @@ func (it ilstItem) isHouse() bool {
 
 // buildIlst returns the new ilst payload: every item we don't own, verbatim and
 // in order, followed by the house fields from m.
-func buildIlst(old []ilstItem, m fieldMap) []byte {
+func buildIlst(old []ilstItem, m Tags) []byte {
 	var out bytes.Buffer
 	for _, it := range old {
 		if !it.isHouse() {
@@ -188,21 +149,21 @@ func buildIlst(old []ilstItem, m fieldMap) []byte {
 		out.Write(box(fd.atom, children...))
 	}
 	writePair := func(atom, nKey, tKey string, trailer bool) {
-		n, t := parseLeadingInt(m.first(nKey)), parseLeadingInt(m.first(tKey))
+		n, t := itoa16(m.first(nKey)), itoa16(m.first(tKey))
 		if n == 0 && t == 0 {
 			return
 		}
 		v := make([]byte, 6, 8)
-		binary.BigEndian.PutUint16(v[2:], uint16(min(n, math.MaxUint16)))
-		binary.BigEndian.PutUint16(v[4:], uint16(min(t, math.MaxUint16)))
+		binary.BigEndian.PutUint16(v[2:], n)
+		binary.BigEndian.PutUint16(v[4:], t)
 		if trailer {
 			v = append(v, 0, 0) // trkn carries two extra reserved bytes; disk doesn't
 		}
 		out.Write(box(atom, dataBox(dataImplicit, v)))
 	}
-	writePair(atomTrack, keyTrackNumber, keyTrackTotal, true)
-	writePair(atomDisc, keyDiscNumber, keyDiscTotal, false)
-	if parseBool(m.first(keyCompilation)) {
+	writePair(atomTrack, KeyTrackNumber, KeyTrackTotal, true)
+	writePair(atomDisc, KeyDiscNumber, KeyDiscTotal, false)
+	if parseBool(m.first(KeyCompilation)) {
 		out.Write(box(atomCompilation, dataBox(dataInt, []byte{1})))
 	}
 	return out.Bytes()
@@ -354,7 +315,8 @@ func inspectMP4(f io.ReadSeeker) (*mp4Layout, error) {
 // file unchanged. When moov sits before the media data (a "fast start" file)
 // and changes size, every chunk offset in stco/co64 is shifted by the same
 // amount so it still points at the same, unmoved audio bytes.
-func writeMP4(src *os.File, dst io.Writer, m fieldMap) error {
+func writeMP4(src *os.File, dst io.Writer, m Tags, opts WriteOptions) error {
+	m = applyGenreJoin(m, opts.MP4GenreSeparator)
 	return rewriteMP4(src, dst, func(items []ilstItem) []byte {
 		return buildIlst(items, m)
 	})
@@ -524,14 +486,6 @@ func newMeta(ilst []byte) []byte {
 		u32(0), u32(0), // reserved
 		[]byte{0}) // empty name
 	return box("meta", u32(0), hdlr, box("ilst", ilst))
-}
-
-func copyRange(dst io.Writer, src io.ReadSeeker, off, n int64) error {
-	if _, err := src.Seek(off, io.SeekStart); err != nil {
-		return err
-	}
-	_, err := io.CopyN(dst, src, n)
-	return err
 }
 
 // memWriteSeeker is the in-memory io.WriteSeeker go-mp4's Writer needs to patch

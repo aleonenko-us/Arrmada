@@ -7,13 +7,65 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// ErrUnsupported is returned (wrapped) for files this package won't read or
-// write: an unknown container, or a format feature it can't handle safely (e.g.
-// ID3v2.2, unsynchronised or compressed ID3 frames, fragmented MP4). The caller
-// should leave such a file alone rather than retry.
+// ErrUnsupported is returned (wrapped) for files a backend won't read or write:
+// an unknown container, a format the backend doesn't cover (Ogg in the
+// permissive backend), or a feature it can't handle safely (e.g. ID3v2.2,
+// unsynchronised ID3 frames, fragmented MP4). Leave such a file untagged.
 var ErrUnsupported = errors.New("audiotag: unsupported file")
+
+// Backend selects the tag library behind a Tagger.
+type Backend int
+
+const (
+	// Permissive is pure Go with MIT/Apache-2.0 libraries: go-flac + flacvorbis
+	// (FLAC), bogem/id3v2 (MP3) and abema/go-mp4 (MP4/M4A). No Ogg.
+	Permissive Backend = iota
+	// TagLib is TagLib 2 compiled to WebAssembly and run by wazero
+	// (go.senan.xyz/taglib, LGPL-2.1). Also covers Ogg Vorbis and Opus.
+	TagLib
+)
+
+// DefaultBackend is what the package-level functions use. It stays Permissive
+// until the owner decides on shipping LGPL code; switching is this one line,
+// and nothing outside this package imports either library.
+const DefaultBackend = Permissive
+
+func (b Backend) String() string {
+	if b == TagLib {
+		return "taglib"
+	}
+	return "permissive"
+}
+
+// WriteOptions tunes how tags are rendered.
+type WriteOptions struct {
+	// MP4GenreSeparator, when set, writes MP4 genres as one joined value
+	// (e.g. "; "), for players that show only the first of several. Empty
+	// writes one value per genre, as Picard does. Other formats ignore it.
+	MP4GenreSeparator string
+}
+
+// Tagger reads and writes tags through one backend. The zero value uses
+// Permissive. It is safe for concurrent use on different files.
+type Tagger struct{ backend Backend }
+
+// New returns a Tagger using b.
+func New(b Backend) *Tagger { return &Tagger{backend: b} }
+
+// Read returns the house tags of the file at path, using DefaultBackend.
+func Read(path string) (Tags, error) { return New(DefaultBackend).Read(path) }
+
+// Write replaces the house tags of the file at path, using DefaultBackend.
+func Write(path string, t Tags, opts WriteOptions) error {
+	return New(DefaultBackend).Write(path, t, opts)
+}
+
+// Properties returns the audio properties of the file at path, using
+// DefaultBackend.
+func Properties(path string) (AudioProperties, error) { return New(DefaultBackend).Properties(path) }
 
 type format int
 
@@ -22,72 +74,119 @@ const (
 	formatFLAC
 	formatMP3
 	formatMP4
+	formatOgg
 )
 
-// Read returns the house tags of the file at path.
-func Read(path string) (Tags, error) {
+func (tg *Tagger) supports(f format) bool {
+	return f != formatUnknown && (tg.backend == TagLib || f != formatOgg)
+}
+
+// open opens path and identifies its container.
+func (tg *Tagger) open(path string) (*os.File, format, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return Tags{}, err
+		return nil, 0, err
+	}
+	ft, err := sniff(f)
+	if err == nil && !tg.supports(ft) {
+		err = fmt.Errorf("%w: %s backend has no Ogg support", ErrUnsupported, tg.backend)
+	}
+	if err != nil {
+		f.Close()
+		return nil, 0, err
+	}
+	return f, ft, nil
+}
+
+// Read returns the house tags of the file at path. Values come back
+// normalised (see Tags) whichever backend and format produced them.
+func (tg *Tagger) Read(path string) (Tags, error) {
+	f, ft, err := tg.open(path)
+	if err != nil {
+		return nil, fmt.Errorf("audiotag: read %s: %w", path, err)
 	}
 	defer f.Close()
 
-	ft, err := sniff(f)
-	if err != nil {
-		return Tags{}, fmt.Errorf("audiotag: read %s: %w", path, err)
-	}
-	var m fieldMap
-	switch ft {
-	case formatFLAC:
-		m, err = readFLAC(f)
-	case formatMP3:
-		m, err = readMP3(f)
-	case formatMP4:
-		m, err = readMP4(f)
+	var raw map[string][]string
+	switch {
+	case tg.backend == TagLib:
+		raw, err = readTagLib(path)
+	case ft == formatFLAC:
+		raw, err = readFLAC(f)
+	case ft == formatMP3:
+		raw, err = readMP3(f)
+	case ft == formatMP4:
+		raw, err = readMP4(f)
 	}
 	if err != nil {
-		return Tags{}, fmt.Errorf("audiotag: read %s: %w", path, err)
+		return nil, fmt.Errorf("audiotag: read %s: %w", path, err)
 	}
-	return tagsFromFields(m), nil
+	return normalizeRead(raw), nil
 }
 
-// Write replaces the house tags of the file at path with t (see the package doc
-// for exactly what is replaced and preserved). It writes a new file next to the
-// original and renames it into place, so it never leaves a half-written file and
-// it breaks hardlinks on purpose.
-func Write(path string, t Tags) error {
-	src, err := os.Open(path)
+// Write makes the file's house tags exactly t: house keys missing from t are
+// removed, every other tag in the file is kept, and the audio is not touched.
+// The new file is built next to the original and renamed over it (see the
+// package doc), so a failed write leaves the original as it was.
+func (tg *Tagger) Write(path string, t Tags, opts WriteOptions) error {
+	clean, err := prepareWrite(t)
 	if err != nil {
 		return err
 	}
-	defer src.Close()
-
-	ft, err := sniff(src)
+	src, ft, err := tg.open(path)
 	if err != nil {
 		return fmt.Errorf("audiotag: write %s: %w", path, err)
 	}
-	var rewrite func(src *os.File, dst io.Writer, m fieldMap) error
-	switch ft {
-	case formatFLAC:
-		rewrite = writeFLAC
-	case formatMP3:
-		rewrite = writeMP3
-	case formatMP4:
-		rewrite = writeMP4
-	}
-	m := t.fields()
+	defer src.Close()
+
 	err = replaceFile(path, func(dst *os.File) error {
-		if err := rewrite(src, dst, m); err != nil {
+		if tg.backend == TagLib {
+			return writeTagLib(src, dst, ft, clean, opts)
+		}
+		var rewrite func(*os.File, io.Writer, Tags, WriteOptions) error
+		switch ft {
+		case formatFLAC:
+			rewrite = writeFLAC
+		case formatMP3:
+			rewrite = writeMP3
+		case formatMP4:
+			rewrite = writeMP4
+		}
+		if err := rewrite(src, dst, clean, opts); err != nil {
 			return err
 		}
-		// Done with the original; close it before the rename (Windows refuses
-		// to replace a file that is still open).
+		// Close before the rename (Windows refuses to replace an open file).
 		return src.Close()
 	})
 	if err != nil {
 		return fmt.Errorf("audiotag: write %s: %w", path, err)
 	}
 	return nil
+}
+
+// Properties returns the audio properties of the file at path.
+func (tg *Tagger) Properties(path string) (AudioProperties, error) {
+	f, ft, err := tg.open(path)
+	if err != nil {
+		return AudioProperties{}, fmt.Errorf("audiotag: properties %s: %w", path, err)
+	}
+	defer f.Close()
+
+	var p AudioProperties
+	switch {
+	case tg.backend == TagLib:
+		p, err = propertiesTagLib(path)
+	case ft == formatFLAC:
+		p, err = flacProperties(f)
+	case ft == formatMP3:
+		p, err = mp3Properties(f)
+	case ft == formatMP4:
+		p, err = mp4Properties(f)
+	}
+	if err != nil {
+		return AudioProperties{}, fmt.Errorf("audiotag: properties %s: %w", path, err)
+	}
+	return p, nil
 }
 
 // sniff identifies the container from the first bytes rather than the file
@@ -105,11 +204,13 @@ func sniff(f *os.File) (format, error) {
 	switch {
 	case bytes.HasPrefix(head, []byte("fLaC")):
 		return formatFLAC, nil
+	case bytes.HasPrefix(head, []byte("OggS")):
+		return formatOgg, nil
 	case len(head) >= 8 && string(head[4:8]) == "ftyp":
 		return formatMP4, nil
 	case bytes.HasPrefix(head, []byte("ID3")):
 		// ID3v2 is also (wrongly) prepended to some FLAC files; those fail later
-		// in the MP3 path's frame check rather than being misparsed.
+		// in the MP3 path rather than being misparsed.
 		return formatMP3, nil
 	case len(head) >= 2 && head[0] == 0xFF && head[1]&0xE0 == 0xE0:
 		// Bare MPEG audio frame sync with no ID3 tag yet.
@@ -120,8 +221,9 @@ func sniff(f *os.File) (format, error) {
 
 // replaceFile writes a new version of path through fill and atomically renames
 // it over path. The temporary file lives in the same directory so the rename
-// never crosses filesystems. On any error the temporary file is removed and the
-// original is untouched.
+// never crosses filesystems, and keeps the extension so libraries that pick a
+// format by name still see the right one. On any error the temporary file is
+// removed and the original is untouched.
 //
 // The rename gives path a new inode: other hardlinks to the old file (a seeding
 // torrent's copy) keep the old contents. That is intended.
@@ -130,7 +232,9 @@ func replaceFile(path string, fill func(dst *os.File) error) (err error) {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".audiotag-*")
+	base := filepath.Base(path)
+	ext := filepath.Ext(base)
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+strings.TrimSuffix(base, ext)+".audiotag-*"+ext)
 	if err != nil {
 		return err
 	}
@@ -166,4 +270,12 @@ func replaceFile(path string, fill func(dst *os.File) error) (err error) {
 		d.Close()
 	}
 	return nil
+}
+
+func copyRange(dst io.Writer, src io.ReadSeeker, off, n int64) error {
+	if _, err := src.Seek(off, io.SeekStart); err != nil {
+		return err
+	}
+	_, err := io.CopyN(dst, src, n)
+	return err
 }

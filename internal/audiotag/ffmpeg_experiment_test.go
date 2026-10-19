@@ -30,13 +30,13 @@ func TestFFmpegMultiValueExperiment(t *testing.T) {
 	}
 	report := func(label, p string) {
 		raw, _ := os.ReadFile(p)
-		tags, err := Read(p)
+		tags, err := New(Permissive).Read(p)
 		if err != nil {
 			t.Logf("RESULT %s: our reader failed: %v", label, err)
 			return
 		}
 		t.Logf("RESULT %s: Artists read back = %q; raw has \"Simon\": %v, \"Garfunkel\": %v; ffprobe ARTISTS = %q",
-			label, tags.Artists, bytes.Contains(raw, []byte("Simon")), bytes.Contains(raw, []byte("Garfunkel")),
+			label, tags[KeyArtists], bytes.Contains(raw, []byte("Simon")), bytes.Contains(raw, []byte("Garfunkel")),
 			probeTags(t, p)["artists"])
 	}
 

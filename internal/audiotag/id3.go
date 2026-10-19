@@ -5,52 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/bogem/id3v2/v2"
 )
-
-// id3Field maps a canonical key to an ID3v2.4 frame: a plain text frame (desc
-// empty) or a TXXX frame with that description. Names follow Picard.
-type id3Field struct {
-	key   string
-	frame string
-	desc  string
-}
-
-var id3Fields = []id3Field{
-	{keyTitle, "TIT2", ""},
-	{keyArtist, "TPE1", ""},
-	{keyArtists, "TXXX", "ARTISTS"},
-	{keyAlbum, "TALB", ""},
-	{keyAlbumArtist, "TPE2", ""},
-	{keyAlbumArtists, "TXXX", "ALBUMARTISTS"},
-	{keyDate, "TDRC", ""},
-	{keyOriginalDate, "TDOR", ""},
-	{keyGenre, "TCON", ""},
-	{keyCompilation, "TCMP", ""},
-	{keyMBReleaseTrackID, "TXXX", "MusicBrainz Release Track Id"},
-	{keyMBReleaseID, "TXXX", "MusicBrainz Album Id"},
-	{keyMBReleaseGroupID, "TXXX", "MusicBrainz Release Group Id"},
-	{keyMBArtistID, "TXXX", "MusicBrainz Artist Id"},
-	{keyMBAlbumArtistID, "TXXX", "MusicBrainz Album Artist Id"},
-	{keyReleaseType, "TXXX", "MusicBrainz Album Type"},
-	{keyReleaseStatus, "TXXX", "MusicBrainz Album Status"},
-	{keyReleaseCountry, "TXXX", "MusicBrainz Album Release Country"},
-	{keyLabel, "TPUB", ""},
-	{keyCatalogNumber, "TXXX", "CATALOGNUMBER"},
-	{keyBarcode, "TXXX", "BARCODE"},
-	{keyISRC, "TSRC", ""},
-	{keyMedia, "TMED", ""},
-	{keyRGTrackGain, "TXXX", "REPLAYGAIN_TRACK_GAIN"},
-	{keyRGTrackPeak, "TXXX", "REPLAYGAIN_TRACK_PEAK"},
-	{keyRGAlbumGain, "TXXX", "REPLAYGAIN_ALBUM_GAIN"},
-	{keyRGAlbumPeak, "TXXX", "REPLAYGAIN_ALBUM_PEAK"},
-}
-
-// The MusicBrainz recording id lives in a UFID frame, not TXXX (as Picard does).
-const mbUFIDOwner = "http://musicbrainz.org"
 
 // id3LegacyDateFrames are the ID3v2.3 date frames that TDRC/TDOR replace in v2.4.
 // They are read as a fallback and dropped on write, since the file becomes v2.4.
@@ -59,12 +17,12 @@ var id3LegacyDateFrames = []string{"TYER", "TDAT", "TIME", "TORY", "TRDA"}
 // id3Sep separates multiple values inside one ID3v2.4 text or TXXX frame.
 const id3Sep = "\x00"
 
-func readMP3(f *os.File) (fieldMap, error) {
+func readMP3(f *os.File) (map[string][]string, error) {
 	tag, _, err := parseID3(f)
 	if err != nil {
 		return nil, err
 	}
-	m := fieldMap{}
+	m := map[string][]string{}
 	txxx := tag.GetFrames("TXXX")
 	for _, fd := range id3Fields {
 		var raw string
@@ -82,43 +40,28 @@ func readMP3(f *os.File) (fieldMap, error) {
 			m[fd.key] = vals
 		}
 	}
-	if n, t := parsePair(tag.GetTextFrame("TRCK").Text); n > 0 || t > 0 {
-		setPair(m, keyTrackNumber, keyTrackTotal, n, t)
-	}
-	if n, t := parsePair(tag.GetTextFrame("TPOS").Text); n > 0 || t > 0 {
-		setPair(m, keyDiscNumber, keyDiscTotal, n, t)
-	}
+	// "n/total"; normalizeRead splits it.
+	m[KeyTrackNumber] = splitID3(tag.GetTextFrame("TRCK").Text)
+	m[KeyDiscNumber] = splitID3(tag.GetTextFrame("TPOS").Text)
 	for _, fr := range tag.GetFrames("UFID") {
 		if u, ok := fr.(id3v2.UFIDFrame); ok && u.OwnerIdentifier == mbUFIDOwner {
-			m[keyMBRecordingID] = []string{string(u.Identifier)}
+			m[KeyMBRecordingID] = []string{string(u.Identifier)}
 		}
 	}
 	// ID3v2.3 files carry the year in TYER/TORY instead of TDRC/TDOR.
-	if _, ok := m[keyDate]; !ok {
-		if y := strings.TrimSpace(tag.GetTextFrame("TYER").Text); y != "" {
-			m[keyDate] = []string{y}
-		}
+	if len(m[KeyDate]) == 0 {
+		m[KeyDate] = splitID3(tag.GetTextFrame("TYER").Text)
 	}
-	if _, ok := m[keyOriginalDate]; !ok {
-		if y := strings.TrimSpace(tag.GetTextFrame("TORY").Text); y != "" {
-			m[keyOriginalDate] = []string{y}
-		}
+	if len(m[KeyOriginalDate]) == 0 {
+		m[KeyOriginalDate] = splitID3(tag.GetTextFrame("TORY").Text)
 	}
 	return m, nil
 }
 
-func setPair(m fieldMap, nKey, tKey string, n, t int) {
-	if n > 0 {
-		m[nKey] = []string{strconv.Itoa(n)}
-	}
-	if t > 0 {
-		m[tKey] = []string{strconv.Itoa(t)}
-	}
-}
-
-// writeMP3 rebuilds the ID3v2 tag as v2.4 and copies everything after the old
-// tag (the MPEG frames and any ID3v1 tag at the end) unchanged.
-func writeMP3(src *os.File, dst io.Writer, m fieldMap) error {
+// writeMP3 rebuilds the ID3v2 tag as v2.4 and copies the MPEG audio after it
+// unchanged. Trailing ID3v1, Lyrics3 and APE tags are dropped: the ID3v2.4 tag
+// is the only tag the file keeps, so stale copies can't contradict it.
+func writeMP3(src *os.File, dst io.Writer, t Tags, _ WriteOptions) error {
 	tag, tagEnd, err := parseID3(src)
 	if err != nil {
 		return err
@@ -151,7 +94,7 @@ func writeMP3(src *os.File, dst io.Writer, m fieldMap) error {
 
 	tag.SetVersion(4)
 	for _, fd := range id3Fields {
-		vals := m[fd.key]
+		vals := t[fd.key]
 		if len(vals) == 0 {
 			continue
 		}
@@ -164,37 +107,27 @@ func writeMP3(src *os.File, dst io.Writer, m fieldMap) error {
 			tag.AddTextFrame(fd.frame, id3v2.EncodingUTF8, text)
 		}
 	}
-	if v := id3Pair(m, keyTrackNumber, keyTrackTotal); v != "" {
+	if v := joinPair(t, KeyTrackNumber, KeyTrackTotal); v != "" {
 		tag.AddTextFrame("TRCK", id3v2.EncodingUTF8, v)
 	}
-	if v := id3Pair(m, keyDiscNumber, keyDiscTotal); v != "" {
+	if v := joinPair(t, KeyDiscNumber, KeyDiscTotal); v != "" {
 		tag.AddTextFrame("TPOS", id3v2.EncodingUTF8, v)
 	}
-	if id := m.first(keyMBRecordingID); id != "" {
+	if id := t.first(KeyMBRecordingID); id != "" {
 		tag.AddUFIDFrame(id3v2.UFIDFrame{OwnerIdentifier: mbUFIDOwner, Identifier: []byte(id)})
 	}
 
+	audioEnd, err := mp3TrailerStart(src)
+	if err != nil {
+		return err
+	}
+	if audioEnd < tagEnd {
+		return fmt.Errorf("%w: MP3 trailing tags overlap the ID3v2 tag", ErrUnsupported)
+	}
 	if _, err := tag.WriteTo(dst); err != nil {
 		return err
 	}
-	if _, err := src.Seek(tagEnd, io.SeekStart); err != nil {
-		return err
-	}
-	_, err = io.Copy(dst, src)
-	return err
-}
-
-// id3Pair renders TRCK/TPOS: "n" or "n/total". A total without a number can't
-// be expressed, so it is dropped.
-func id3Pair(m fieldMap, nKey, tKey string) string {
-	n, t := m.first(nKey), m.first(tKey)
-	switch {
-	case n == "":
-		return ""
-	case t == "":
-		return n
-	}
-	return n + "/" + t
+	return copyRange(dst, src, tagEnd, audioEnd-tagEnd)
 }
 
 func isID3HouseTXXX(desc string) bool {
@@ -225,6 +158,9 @@ func splitID3(s string) []string {
 // ID3v2.2, unsynchronisation, extended headers, footers, and compressed,
 // encrypted, grouped or length-prefixed frames. These are rare in practice.
 func parseID3(f *os.File) (*id3v2.Tag, int64, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return nil, 0, err
+	}
 	hdr := make([]byte, 10)
 	if _, err := io.ReadFull(f, hdr); err != nil || string(hdr[:3]) != "ID3" {
 		// No ID3v2 tag: start an empty v2.4 one. Audio begins at byte 0.
@@ -246,9 +182,6 @@ func parseID3(f *os.File) (*id3v2.Tag, int64, error) {
 		return nil, 0, err
 	}
 
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return nil, 0, err
-	}
 	tagEnd := 10 + size
 	tag, err := id3v2.ParseReader(io.NewSectionReader(f, 0, tagEnd), id3v2.Options{Parse: true})
 	if err != nil {
@@ -289,4 +222,58 @@ func checkID3Frames(body []byte, ver byte) error {
 
 func synchsafe(b []byte) uint32 {
 	return uint32(b[0]&0x7F)<<21 | uint32(b[1]&0x7F)<<14 | uint32(b[2]&0x7F)<<7 | uint32(b[3]&0x7F)
+}
+
+// mp3TrailerStart returns the offset where trailing tags (ID3v1, Lyrics3v2,
+// APEv2, in any stacking order) begin, i.e. the end of the audio.
+func mp3TrailerStart(f *os.File) (int64, error) {
+	fi, err := f.Stat()
+	if err != nil {
+		return 0, err
+	}
+	end := fi.Size()
+	read := func(off int64, n int) []byte {
+		if off < 0 {
+			return nil
+		}
+		b := make([]byte, n)
+		if _, err := f.ReadAt(b, off); err != nil {
+			return nil
+		}
+		return b
+	}
+	for {
+		switch {
+		case string(read(end-128, 3)) == "TAG":
+			end -= 128
+		case string(read(end-9, 9)) == "LYRICS200":
+			sz := read(end-15, 6)
+			n := parseLeadingInt(string(sz))
+			if len(sz) != 6 || n <= 0 {
+				return end, nil
+			}
+			end -= int64(n) + 15
+		case string(read(end-32, 8)) == "APETAGEX":
+			footer := read(end-32, 32)
+			n := int64(binary.LittleEndian.Uint32(footer[12:16])) // items + footer
+			if binary.LittleEndian.Uint32(footer[20:24])&(1<<31) != 0 {
+				n += 32 // header present
+			}
+			if n < 32 || n > end {
+				return 0, fmt.Errorf("%w: bad APE tag size", ErrUnsupported)
+			}
+			end -= n
+		default:
+			return end, nil
+		}
+	}
+}
+
+// stripMP3Trailers truncates trailing ID3v1/Lyrics3/APE tags from f.
+func stripMP3Trailers(f *os.File) error {
+	end, err := mp3TrailerStart(f)
+	if err != nil {
+		return err
+	}
+	return f.Truncate(end)
 }
