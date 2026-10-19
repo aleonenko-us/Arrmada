@@ -47,12 +47,53 @@ func GroupFiles(files []MatchFile) []MatchGroup {
 	}
 	sort.SliceStable(all, func(i, j int) bool { return all[i].Path < all[j].Path })
 	var out []MatchGroup
+	// Groups made only of disc folders of one parent ("CD1", "CD2" side by side) are one
+	// album whatever their tags say: each disc's tags often name its own disc.
+	discParent := map[string]int{}
 	for _, g := range splitByTags(all) {
-		if len(g) > 0 {
-			out = append(out, MatchGroup{Dir: commonDir(g), Files: g})
+		if len(g) == 0 {
+			continue
 		}
+		if p := discFolderParent(g); p != "" {
+			if i, ok := discParent[p]; ok {
+				out[i].Files = append(out[i].Files, g...)
+				continue
+			}
+			discParent[p] = len(out)
+		}
+		out = append(out, MatchGroup{Dir: commonDir(g), Files: g})
 	}
 	return out
+}
+
+// discFolderParent is the folder a group's disc folders sit in, when every file of the
+// group is in a disc folder of that one folder ("" otherwise).
+func discFolderParent(files []MatchFile) string {
+	parent := ""
+	for _, f := range files {
+		dir := filepath.Dir(f.Path)
+		if DiscOfFolder(filepath.Base(dir)) == 0 {
+			return ""
+		}
+		p := filepath.Dir(dir)
+		if parent != "" && p != parent {
+			return ""
+		}
+		parent = p
+	}
+	return parent
+}
+
+// reDiscSuffix is a disc named at the end of an album tag: "In Rainbows (Disc 1)",
+// "Album [CD 2]", "Album CD2", "Album - Disc 1 of 2".
+var reDiscSuffix = regexp.MustCompile(`(?i)[\s\-–:,]*[\(\[\{]?\s*(?:disc|disk|cd)\s*\d{1,2}(?:\s*(?:of|/)\s*\d{1,2})?\s*[\)\]\}]?\s*$`)
+
+// StripDiscSuffix takes a disc number off the end of an album name.
+func StripDiscSuffix(album string) string {
+	if s := strings.TrimSpace(reDiscSuffix.ReplaceAllString(album, "")); s != "" {
+		return s
+	}
+	return album
 }
 
 // commonDir is the deepest folder every file is in (a disc folder's files: its parent).
@@ -86,7 +127,7 @@ func splitByTags(files []MatchFile) [][]MatchFile {
 		if f.Tags.Album == "" {
 			return ""
 		}
-		return NormKey(f.Tags.AlbumArtist) + "\x00" + NormKey(f.Tags.Album)
+		return NormKey(f.Tags.AlbumArtist) + "\x00" + NormKey(StripDiscSuffix(f.Tags.Album))
 	}
 	counts := map[string]int{}
 	var order []string

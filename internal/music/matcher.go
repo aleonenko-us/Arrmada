@@ -778,7 +778,8 @@ func consensusOf(files []*MatchFile, folder string) consensus {
 		return plurality(vals, len(files))
 	}
 	var c consensus
-	c.Album, _ = pick(func(f *MatchFile) string { return f.Tags.Album })
+	// "Album (Disc 1)" and "Album (Disc 2)" are one album.
+	c.Album, _ = pick(func(f *MatchFile) string { return StripDiscSuffix(f.Tags.Album) })
 	c.Artist, _ = pick(func(f *MatchFile) string { return f.Tags.AlbumArtist })
 	if c.Artist == "" {
 		c.Artist, _ = pick(func(f *MatchFile) string { return f.Tags.Artist })
