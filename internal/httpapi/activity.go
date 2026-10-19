@@ -86,6 +86,15 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 		reqs = a.requestersByLibrary(ctx, now)
 	}
 
+	// The download clients, read once: whether there's one at all and whether it answered
+	// (the "clients" block below), and each one's name for the rows, so someone with
+	// several can tell which client a download is in. Left out when the list can't be read.
+	clients, clientsErr := a.deps.Downloads.List(ctx)
+	clientName := make(map[int64]string, len(clients))
+	for _, c := range clients {
+		clientName[c.ID] = c.Name
+	}
+
 	downloads := make([]map[string]any, 0, len(queue))
 	var totalDown, totalUp int64
 	active, stalled := 0, 0
@@ -110,7 +119,18 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 			active++
 		}
 		phase := it.Phase()
-		if phase == "stalled" {
+		h := strings.ToLower(it.Hash)
+		_, isHeld := guardHeld[h]
+		// Stalled is the one rule this page and a requester's card share, built on the stall
+		// fail-over's own clock (automation.QueueStall): an Arrmada grab by the clock the
+		// fail-over counts, anything else by the client's own stalled state — each held for
+		// the fail-over's grace. qBittorrent's "stalledDL" alone flickers on and off.
+		var clock time.Time
+		if managed {
+			clock = acq.ProgressAt
+		}
+		stallSince, isStalled := automation.QueueStall(it, clock, isHeld, now)
+		if isStalled {
 			stalled++
 		}
 		entry := map[string]any{
@@ -150,11 +170,21 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 				entry["item"] = item
 			}
 		}
-		h := strings.ToLower(it.Hash)
 		if st, ok := stallInfo[h]; ok && !it.Complete() {
 			entry["stall"] = st
 		}
-		_, isHeld := guardHeld[h]
+		if isStalled {
+			entry["stalled"] = true
+			entry["stalled_since"] = stallSince.Unix()
+		}
+		// Which download client it's in, by the name its card has in Settings → Connections.
+		// The page shows it only when there's more than one client.
+		if it.ClientID > 0 {
+			entry["client_id"] = it.ClientID
+			if name := clientName[it.ClientID]; name != "" {
+				entry["client_name"] = name
+			}
+		}
 		if it.State == "paused" && isHeld {
 			entry["held_by_guard"] = true
 			heldCount++
@@ -164,7 +194,7 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 		in := pipeline.Input{
 			Phase: phase, Complete: it.Complete(), Linked: managed, Imported: imported[it.Hash] || imported[h],
 			OwnCategory: fin.own[it.Category], HeldByGuard: isHeld, Category: it.Category, Now: now,
-			Usenet: it.Transport == download.TransportUsenet,
+			Usenet: it.Transport == download.TransportUsenet, Stalled: isStalled,
 		}
 		// The network, so the page can mark a usenet job and leave out what only a torrent
 		// has (seeds, ratio, reannounce). A failed usenet job's reason, and whether it's the
@@ -223,7 +253,7 @@ func (a *api) handleDownloadsFeed(w http.ResponseWriter, r *http.Request) {
 	// say "no download client yet" or "qBittorrent unreachable since 14:02" instead of
 	// looking like an empty queue. Left out when the list can't be read rather than
 	// guessing.
-	if clients, err := a.deps.Downloads.List(ctx); err == nil {
+	if clientsErr == nil {
 		out["clients"] = clientsStateOf(clients, snap, qerr)
 	}
 	if heldCount > 0 {

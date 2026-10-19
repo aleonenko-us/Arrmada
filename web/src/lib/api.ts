@@ -368,6 +368,12 @@ export interface ActivityDownload {
   // How an in-flight grab stands against its stall window; absent for torrents Arrmada
   // didn't grab. idle_minutes stays 0 while the clock is held (paused, queued, checking).
   stall?: { idle_minutes: number; failover_in_minutes: number; off: boolean };
+  /** Stalled by the rule the stall fail-over's clock follows (lib/queueFilter isStalled), and since when (unix seconds). */
+  stalled?: boolean;
+  stalled_since?: number;
+  /** The download client it's in, and that client's name in Settings → Connections. */
+  client_id?: number;
+  client_name?: string;
   /** An Arrmada grab recorded this torrent (by info hash). */
   managed?: boolean;
   /** Which network it came over; a usenet job's hash is its "sab-…" key either way. */
@@ -1782,6 +1788,8 @@ export interface RequestTracking {
   have?: number; // series: episodes on disk
   total?: number; // series: aired episodes wanted
   note?: string;
+  /** Every download for it is stalled (the staff queue's rule): the card says Stalled. */
+  stalled?: boolean;
   /** Books not found yet: when the next search is due (RFC3339; format in the viewer's locale). */
   next_check_at?: string;
   /** A book not out yet: the day it is (YYYY-MM-DD, a calendar day) — "Out 12 Mar". */

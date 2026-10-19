@@ -104,6 +104,10 @@ type Failure struct {
 type Input struct {
 	Phase    string // download.Item.Phase(): queued, metadata, downloading, stalled, checking, moving, allocating, paused, seeding, error, unpacking
 	Complete bool   // every wanted byte is on disk
+	// Stalled is the queue's stall verdict (automation.QueueStall): trying to download and
+	// no progress for the fail-over's grace. The client's own "stalled" phase alone isn't
+	// one — qBittorrent says it whenever no peer has sent anything for a few seconds.
+	Stalled bool
 	// Usenet: a usenet job, which never seeds — finished and imported, it is Imported.
 	Usenet bool
 	// FailMessage is a failed usenet job's reason as its client gave it, and FailFix what
@@ -150,10 +154,15 @@ func Describe(in Input) (stage, why string) {
 			return Queued, "Waiting its turn in SABnzbd"
 		case in.Phase == "queued":
 			return Queued, "Waiting for a download slot"
+		case in.Stalled && in.Phase == "metadata":
+			return Stalled, "Nobody has sent the file list"
+		case in.Stalled:
+			return Stalled, "Nobody is sending data"
 		case in.Phase == "metadata":
 			return FetchingMetadata, "Waiting for peers to send the file list"
 		case in.Phase == "stalled":
-			return Stalled, "Nobody is sending data"
+			// No peer is sending this moment, but not for long enough to call it stalled.
+			return Downloading, "Waiting for peers"
 		}
 		return Downloading, ""
 	}

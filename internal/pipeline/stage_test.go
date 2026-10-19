@@ -22,7 +22,12 @@ func TestDescribeEveryStage(t *testing.T) {
 		{"downloading", Input{Phase: "downloading"}, Downloading, "", GroupDownloading},
 		{"queued for a slot", Input{Phase: "queued"}, Queued, "download slot", GroupDownloading},
 		{"fetching the file list", Input{Phase: "metadata"}, FetchingMetadata, "file list", GroupDownloading},
-		{"stalled", Input{Phase: "stalled"}, Stalled, "Nobody is sending", GroupDownloading},
+		// Stalled is the queue's verdict (automation.QueueStall), not the client's word for
+		// this moment: qBittorrent's stalledDL inside the grace is still downloading.
+		{"stalled", Input{Phase: "stalled", Stalled: true}, Stalled, "Nobody is sending", GroupDownloading},
+		{"no data for a moment", Input{Phase: "stalled"}, Downloading, "Waiting for peers", GroupDownloading},
+		{"no progress while called downloading", Input{Phase: "downloading", Stalled: true}, Stalled, "Nobody is sending", GroupDownloading},
+		{"file list never came", Input{Phase: "metadata", Stalled: true}, Stalled, "file list", GroupDownloading},
 		{"paused by hand", Input{Phase: "paused"}, Paused, "", GroupDownloading},
 		{"paused by the disk guard", Input{Phase: "paused", HeldByGuard: true}, PausedByGuard, "disk guard", GroupDownloading},
 		{"errored", Input{Phase: "error"}, Failed, "error", GroupDownloading},

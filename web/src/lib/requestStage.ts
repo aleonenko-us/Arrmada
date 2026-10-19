@@ -56,6 +56,8 @@ export function requestStage(rq: StagedRequest, queueKnown = true): RequestStage
       if (tr.eta_seconds) parts.push(`${formatEta(tr.eta_seconds)} left`);
       else if (tr.note) parts.push(tr.note.toLowerCase());
       if (eps) parts.push(eps);
+      // Stalled: nobody is sharing it, by the staff queue's own rule.
+      if (tr.stalled) return { badge: STAGE.stalled.label, tone: "avoid", detail: parts.join(" · "), detailTone: "var(--avoid-text)" };
       return { badge: STAGE.downloading.label, tone: "accent", detail: parts.join(" · "), detailTone: "var(--accent-text)" };
     }
     case "importing":

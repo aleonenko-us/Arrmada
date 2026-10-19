@@ -296,45 +296,73 @@ export const wantedSearchJob: Job = {
   created_at: new Date(NOW).toISOString(), started_at: new Date(NOW).toISOString(), finished_at: new Date(NOW).toISOString(),
 };
 
+export const STALLED_QUEUE_HASH = "e2e0000000000000000000000000000000000006";
+
 export const activity: ActivityFeed = {
   downloads: [
     {
       hash: "e2e0000000000000000000000000000000000001", name: "Driftwood.2025.2160p.WEB-DL.DV.HDR.H265-FIXTURE", state: "downloading",
       progress: 0.42, size_bytes: 18_000_000_000, down_speed: 12_400_000, up_speed: 400_000, eta_seconds: 900, ratio: 0.1,
-      quality_profile: "uhd-2160p", media_type: "movie", seeds: 40, peers: 12, stage: "downloading", managed: true,
+      quality_profile: "uhd-2160p", media_type: "movie", seeds: 40, peers: 12, stage: "downloading", managed: true, client_id: 1, client_name: "qBittorrent",
       // ACQ-29: the title the grab was for, by hash: poster, link, version and who asked.
       item: { kind: "movie", id: 3, title: "Driftwood", year: 2025, poster_url: poster(5), scope: "4K", requested_by: ["Mum"] },
     },
     {
       hash: "e2e0000000000000000000000000000000000002", name: "Harbour.Lights.S02E04.1080p.WEB.H264-FIXTURE", state: "seeding",
       progress: 1, size_bytes: 2_100_000_000, down_speed: 0, up_speed: 400_000, eta_seconds: 0, ratio: 1.3,
-      quality_profile: "hd-1080p", media_type: "series", imported: true, stage: "seeding", managed: true,
+      quality_profile: "hd-1080p", media_type: "series", imported: true, stage: "seeding", managed: true, client_id: 1, client_name: "qBittorrent",
       item: { kind: "series", id: 1, title: "Harbour Lights", year: 2024, scope: "S02E04", requested_by: ["Dad", "Gran"] },
     },
     // Finished, not in the library: one held for review, one whose import keeps failing.
     {
       hash: "e2e0000000000000000000000000000000000003", name: "Alien.1979.1080p.BluRay-FIXTURE", state: "seeding",
       progress: 1, size_bytes: 9_000_000_000, down_speed: 0, up_speed: 0, eta_seconds: 0, ratio: 0.2,
-      quality_profile: "hd-1080p", media_type: "movie", stage: "needs_review", why: "Held for review: it doesn't look like Aliens", managed: true,
+      quality_profile: "hd-1080p", media_type: "movie", stage: "needs_review", why: "Held for review: it doesn't look like Aliens", managed: true, client_id: 1, client_name: "qBittorrent",
       item: { kind: "movie", id: 4, title: "Aliens", year: 1986 },
     },
     {
       hash: "e2e0000000000000000000000000000000000004", name: "Heat.1995.1080p.BluRay-FIXTURE", state: "seeding",
       progress: 1, size_bytes: 11_000_000_000, down_speed: 0, up_speed: 0, eta_seconds: 0, ratio: 0.1,
-      quality_profile: "hd-1080p", media_type: "movie", stage: "import_retrying", why: "Import failed 3× (permission denied) — next try in 8 min", managed: true,
+      quality_profile: "hd-1080p", media_type: "movie", stage: "import_retrying", why: "Import failed 3× (permission denied) — next try in 8 min", managed: true, client_id: 1, client_name: "qBittorrent",
       item: { kind: "movie", id: 2, title: "Heat", year: 1995, upgrade: true },
     },
     // Nothing in Arrmada grabbed it: the release name is all there is.
     {
       hash: "e2e0000000000000000000000000000000000005", name: "Some.Linux.Distro.ISO-FIXTURE", state: "seeding",
       progress: 1, size_bytes: 3_000_000_000, down_speed: 0, up_speed: 0, eta_seconds: 0, ratio: 0.5,
-      quality_profile: "n/a", media_type: "movie", stage: "not_managed", why: "Not managed by Arrmada",
+      quality_profile: "n/a", media_type: "movie", stage: "not_managed", why: "Not managed by Arrmada", client_id: 1, client_name: "qBittorrent",
+    },
+    // Stalled: no progress for two hours by the grab's stall clock (the server's verdict).
+    {
+      hash: STALLED_QUEUE_HASH, name: "Old.Film.2019.1080p.WEB-DL-FIXTURE", state: "downloading", raw_state: "stalledDL", phase: "stalled",
+      progress: 0.18, size_bytes: 6_000_000_000, down_speed: 0, up_speed: 0, eta_seconds: 8640000, ratio: 0, seeds: 0, swarm_seeds: 0,
+      last_activity: NOW / 1000 - 2 * 3600, added_on: NOW / 1000 - 5 * 3600,
+      quality_profile: "hd-1080p", media_type: "movie", stage: "stalled", why: "Nobody is sending data", managed: true, client_id: 1, client_name: "qBittorrent",
+      stalled: true, stalled_since: NOW / 1000 - 2 * 3600, stall: { idle_minutes: 120, failover_in_minutes: 240, off: false },
+      item: { kind: "movie", id: 5, title: "Old Film", year: 2019 },
+    },
+    // No peer sending this moment, but not for long enough to count as stalled.
+    {
+      hash: "e2e0000000000000000000000000000000000007", name: "Quiet.Bay.S01E02.1080p.WEB.H264-FIXTURE", state: "downloading", raw_state: "stalledDL", phase: "stalled",
+      progress: 0.6, size_bytes: 1_500_000_000, down_speed: 0, up_speed: 0, eta_seconds: 8640000, ratio: 0, seeds: 2, swarm_seeds: 9,
+      last_activity: NOW / 1000 - 4 * 60, added_on: NOW / 1000 - 3600,
+      quality_profile: "hd-1080p", media_type: "series", stage: "downloading", why: "Waiting for peers", managed: true, client_id: 1, client_name: "qBittorrent",
+      item: { kind: "series", id: 2, title: "Quiet Bay", year: 2025, scope: "S01E02" },
     },
   ],
-  totals: { down_speed: 12_400_000, up_speed: 800_000, active: 2 },
+  totals: { down_speed: 12_400_000, up_speed: 800_000, active: 2, stalled: 1 },
   free_gb: 2400,
   disk_path: "/downloads",
   clients: { configured: 1, enabled: 1, ok: true },
+};
+
+// The same queue with two qBittorrents: the stalled download and a seed sit in the second,
+// so the rows name their client and the queue can be narrowed to one.
+export const activityTwoClients: ActivityFeed = {
+  ...activity,
+  downloads: activity.downloads.map((d) =>
+    d.hash === STALLED_QUEUE_HASH || d.hash === "e2e0000000000000000000000000000000000002" ? { ...d, client_id: 2, client_name: "qBittorrent 2" } : d),
+  clients: { configured: 2, enabled: 2, ok: true },
 };
 
 export const downloadClients: DownloadClientList = {

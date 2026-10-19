@@ -71,6 +71,10 @@ type Tracking struct {
 	Have       int     `json:"have,omitempty"`        // series: episodes on disk
 	Total      int     `json:"total,omitempty"`       // series: aired episodes wanted
 	Note       string  `json:"note,omitempty"`        // a short explanation ("Not out yet")
+	// Stalled: every download in flight for it is stalled, by the rule the staff queue and
+	// the stall fail-over share (automation.QueueStall). The card says so; why, and what
+	// Arrmada does about it, is staff detail.
+	Stalled bool `json:"stalled,omitempty"`
 	// AddingTo, at stage "adding", names the media servers the title is being added to
 	// ("plex", "jellyfin"): the card says "Adding to Plex…", or "…your library…" for both.
 	AddingTo []mediaserver.Kind `json:"adding_to,omitempty"`
@@ -277,7 +281,7 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 	// What's in flight for it. checking counts the finished ones a person or a retry is
 	// dealing with (held in Review, an import that failed): still "importing" to the
 	// requester, with a note that it's being checked — never why.
-	var active, done, failed, paused, checking, usenetActive int
+	var active, done, failed, paused, checking, usenetActive, stalled int
 	var size, got, speed, eta int64
 	matched := 0
 	for _, a := range acqs {
@@ -323,6 +327,10 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 			if it.Transport == download.TransportUsenet {
 				usenetActive++
 			}
+			// The guard's hold reads as paused above, so it's never stalled here.
+			if _, ok := automation.QueueStall(*it, a.ProgressAt, false, now); ok {
+				stalled++
+			}
 			size, got, speed = size+it.SizeBytes, got+it.DownloadedBytes, speed+it.DownSpeed
 			if it.ETASeconds > eta && it.ETASeconds < 100*24*3600 { // qBittorrent's "infinite" is 8640000
 				eta = it.ETASeconds
@@ -343,6 +351,11 @@ func track(rq *Request, acqs []automation.Acquisition, byHash map[string]*downlo
 			t.Note = "Waiting its turn"
 		} else if speed == 0 {
 			t.Note = "Waiting for peers"
+		}
+		if stalled == active {
+			// Every download for it has stopped: say so, rather than "Starting the download"
+			// or "Waiting for peers" for hours.
+			t.Stage, t.Stalled, t.Note = StageDownloading, true, "Nobody is sharing it right now"
 		}
 	case paused > 0:
 		t.Stage = StagePaused
