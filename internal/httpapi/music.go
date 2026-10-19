@@ -47,6 +47,12 @@ func (a *api) handleAddArtist(w http.ResponseWriter, r *http.Request) {
 		MBID           string `json:"mbid"`
 		QualityProfile string `json:"quality_profile"`
 		Monitored      *bool  `json:"monitored"`
+		// Monitor is which of the artist's current albums are wanted: all (default),
+		// future, latest or none. MonitorNew and ReleaseTypes are the artist's own
+		// options (MUS-14); left out, it follows the library defaults.
+		Monitor      string              `json:"monitor"`
+		MonitorNew   string              `json:"monitor_new"`
+		ReleaseTypes *music.ReleaseTypes `json:"release_types"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
@@ -55,11 +61,37 @@ func (a *api) handleAddArtist(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "mbid is required")
 		return
 	}
+	if req.Monitor != "" && !music.ValidMonitor(req.Monitor) {
+		a.writeError(w, http.StatusBadRequest, `monitor must be "all", "future", "latest" or "none"`)
+		return
+	}
+	if !music.ValidMonitorNew(req.MonitorNew) {
+		a.writeError(w, http.StatusBadRequest, `monitor_new must be "all", "none" or "" (the library default)`)
+		return
+	}
+	if req.ReleaseTypes != nil {
+		if _, err := req.ReleaseTypes.Normalize(); err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	if req.QualityProfile == "" {
 		req.QualityProfile = a.deps.Quality.DefaultProfile(r.Context(), quality.MediaMusic)
+	} else if a.deps.Automation != nil && !a.deps.Automation.KnownProfile(r.Context(), req.QualityProfile) {
+		a.writeError(w, http.StatusBadRequest, "unknown quality profile")
+		return
 	}
 	monitored := req.Monitored == nil || *req.Monitored
-	art, err := a.deps.Music.AddArtist(r.Context(), strings.TrimSpace(req.MBID), req.QualityProfile, monitored)
+	monitor := req.Monitor
+	if monitor == "" {
+		monitor = music.MonitorAll
+		if !monitored {
+			monitor = music.MonitorNone
+		}
+	}
+	art, err := a.deps.Music.AddArtistWith(r.Context(), strings.TrimSpace(req.MBID), req.QualityProfile, music.AddOptions{
+		Monitored: monitored, Monitor: monitor, MonitorNew: req.MonitorNew, ReleaseTypes: req.ReleaseTypes,
+	})
 	switch {
 	case errors.Is(err, music.ErrExists):
 		a.writeError(w, http.StatusConflict, "that artist is already in your library")

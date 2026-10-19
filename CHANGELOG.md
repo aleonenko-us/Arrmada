@@ -187,6 +187,14 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Fixed
 
+- **Music (Preview) keeps up with new releases.** Every few hours Arrmada checks your artists
+  (through the cache and MusicBrainz's polite limit); a genuinely new album from an artist set to
+  follow new releases is wanted and searched once, and listed under New releases on the Music page.
+  Release types work properly ("Album + Live" means live albums), singles already on an album
+  aren't wanted, and "Latest" never picks an unreleased album. Per-artist Options on the artist
+  page, a library default in Settings. Nothing old is ever wanted by surprise, changing settings
+  never wants anything by itself ("Want matching albums…" shows a count first), and albums
+  MusicBrainz removes are kept, files and all, but not searched automatically.
 - **Music (Preview) splits single-file albums.** A rip that's one big FLAC, WAV or WavPack image
   plus a `.cue` sheet is matched first, then cut into one FLAC per track at the exact sample
   positions (gaps stay where CD players put them), proven sample-exact against the image, and

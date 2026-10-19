@@ -62,14 +62,17 @@ func TestMusicBrainzSendsUserAgent(t *testing.T) {
 	}
 }
 
-// Live albums, compilations and remix editions are secondary types of a release group that
-// is usually already listed. Importing them would bury the real albums and mark hundreds of
-// unobtainable things wanted.
-func TestArtistAlbumsSkipsSecondaryTypes(t *testing.T) {
+// The album browse asks for albums and EPs exactly as it always has (so cached answers
+// stay valid) and returns every one with its MusicBrainz types: the music service picks
+// what to list from the artist's release types (MUS-14), so a live album comes back
+// labelled Live with its primary type kept.
+func TestArtistAlbumsCarriesTypes(t *testing.T) {
+	var query string
 	m := mbStub(t, func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query().Get("type")
 		_, _ = io.WriteString(w, `{"release-groups":[
 		  {"id":"rg1","title":"OK Computer","primary-type":"Album","first-release-date":"1997-05-21"},
-		  {"id":"rg2","title":"Live at the BBC","primary-type":"Album","secondary-types":["Live"],"first-release-date":"2000-01-01"},
+		  {"id":"rg2","title":"Live at the BBC","primary-type":"Album","secondary-types":["Live"],"first-release-date":"1996-01-01"},
 		  {"id":"rg3","title":"Airbag EP","primary-type":"EP","first-release-date":"1998-03-01"}
 		]}`)
 	})
@@ -77,11 +80,14 @@ func TestArtistAlbumsSkipsSecondaryTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(albums) != 2 {
-		t.Fatalf("want the album and the EP but not the live record, got %d: %+v", len(albums), albums)
+	if query != "album|ep" {
+		t.Errorf("browse asked for type %q, want album|ep", query)
+	}
+	if len(albums) != 3 {
+		t.Fatalf("want all three release groups, got %d: %+v", len(albums), albums)
 	}
 	// Newest first.
-	if albums[0].Title != "Airbag EP" || albums[0].Year != 1998 {
+	if albums[0].Title != "Airbag EP" || albums[0].Year != 1998 || albums[0].PrimaryType != "EP" {
 		t.Errorf("expected the 1998 EP first, got %+v", albums[0])
 	}
 	if albums[1].Year != 1997 {
@@ -89,6 +95,47 @@ func TestArtistAlbumsSkipsSecondaryTypes(t *testing.T) {
 	}
 	if albums[1].CoverURL != "https://art.example/release-group/rg1/front-500" {
 		t.Errorf("cover URL = %q", albums[1].CoverURL)
+	}
+	live := albums[2]
+	if live.Type != "Live" || live.PrimaryType != "Album" || len(live.SecondaryTypes) != 1 || live.SecondaryTypes[0] != "Live" {
+		t.Errorf("live album = %+v, want label Live, primary Album, secondary [Live]", live)
+	}
+}
+
+// Singles, broadcasts and "other" are their own browse, asked only when wanted.
+func TestArtistOtherReleaseGroupsQuery(t *testing.T) {
+	var query string
+	m := mbStub(t, func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query().Get("type")
+		_, _ = io.WriteString(w, `{"release-groups":[{"id":"s1","title":"Creep","primary-type":"Single","first-release-date":"1992-09-21"}]}`)
+	})
+	got, err := m.ArtistOtherReleaseGroups(context.Background(), "artist")
+	if err != nil || len(got) != 1 || got[0].Type != "Single" {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	if query != "single|broadcast|other" {
+		t.Errorf("browse asked for type %q, want single|broadcast|other", query)
+	}
+}
+
+// A merged release group answers under its new MBID; a removed one is "not found", which
+// is not the same as MusicBrainz not answering.
+func TestReleaseGroupLookup(t *testing.T) {
+	m := mbStub(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/release-group/old":
+			_, _ = io.WriteString(w, `{"id":"new","title":"OK Computer","primary-type":"Album"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"error":"Not Found"}`)
+		}
+	})
+	rg, err := m.ReleaseGroup(context.Background(), "old")
+	if err != nil || rg.MBID != "new" {
+		t.Fatalf("merged lookup = %+v, %v; want the new MBID", rg, err)
+	}
+	if _, err := m.ReleaseGroup(context.Background(), "gone"); !IsNotFound(err) {
+		t.Errorf("removed lookup err = %v, want not found", err)
 	}
 }
 

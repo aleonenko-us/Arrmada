@@ -8,6 +8,7 @@ import { useSearchParamState } from "../lib/useSearchState";
 import { isWanted, libraryStatus } from "../lib/status";
 import { Button, ErrorState, FilterBar, IconButton, LibraryToolbar, Modal, Skeleton, StatusChip, TONE_HUE, useConfirm, useToast } from "../ui";
 import { LibraryEmpty } from "../features/library/LibraryEmpty";
+import { NewReleasesModal } from "../components/music/NewReleases";
 import { Page } from "../ui/Page";
 
 const FILTERS = [
@@ -60,6 +61,7 @@ export function Music() {
   const [filter, setFilter] = useSearchParamState<FilterKey>("filter", "all", { allowed: FILTER_KEYS });
   const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   const [adding, setAdding] = useState(false);
+  const [showNew, setShowNew] = useState(false);
   const [multiSelect, setMultiSelect] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -150,6 +152,11 @@ export function Music() {
             busy: scan.running,
             title: "Find artists already in your music folder and catalog them",
             onClick: scanLibrary,
+          }]}
+          actions={[{
+            label: "New releases",
+            title: "What the daily refresh found on MusicBrainz lately, wanted or only listed",
+            onClick: () => setShowNew(true),
           }]}
           primary={{ label: "+ Add artist", onClick: () => setAdding(true) }}
         />
@@ -279,6 +286,7 @@ export function Music() {
           }}
         />
       )}
+      {showNew && <NewReleasesModal onClose={() => { setShowNew(false); load(); }} />}
     </>
   );
 }
@@ -372,6 +380,7 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [monitor, setMonitor] = useState<"all" | "future" | "latest" | "none">("all");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const search = async (e?: React.FormEvent) => {
@@ -393,7 +402,7 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
     setSaving(r.mbid);
     setError(null);
     try {
-      await api.addArtist({ mbid: r.mbid, monitored: true });
+      await api.addArtist({ mbid: r.mbid, monitored: true, monitor });
       onAdded(r.name);
       onClose();
     } catch (err) {
@@ -428,6 +437,21 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
             Search
           </Button>
         </form>
+
+        <label className="mb-3 flex flex-wrap items-center gap-2 text-sm text-ink-dim">
+          Want
+          <select
+            value={monitor}
+            onChange={(e) => setMonitor(e.target.value as typeof monitor)}
+            className="rounded-lg px-2 py-1 text-sm"
+            style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
+          >
+            <option value="all">every album listed</option>
+            <option value="latest">the latest album out, and new releases</option>
+            <option value="future">new releases only</option>
+            <option value="none">nothing for now</option>
+          </select>
+        </label>
 
         {error && (
           <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>

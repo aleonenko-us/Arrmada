@@ -108,6 +108,20 @@ Deezer appears above only as a **metadata** source. Arrmada never downloads audi
 - [docs/roadmap/MUS.md](../roadmap/MUS.md) becomes the rebuild plan in five phases: **1 Safety**, **2 Core model**, **3 Stay current**, **4 Household**, **5 Beyond Lidarr**. Existing task IDs are kept where they apply; new work is MUS-26 onward.
 - The README's Music line changes only when [MUS-12](../roadmap/MUS.md#mus-12) graduates the module.
 
+## Staying current: nothing is wanted by surprise
+
+_Added 2026-10-20 with [MUS-13](../roadmap/MUS.md#mus-13) and [MUS-14](../roadmap/MUS.md#mus-14)._
+
+Music re-reads every followed artist from MusicBrainz about once a day (through the cache). Lidarr's version of this regularly wants dozens of albums nobody asked for: a release-type change, a MusicBrainz import of an artist's back catalogue, or a merge. Arrmada's rule is that **a refresh only ever wants a new release**: a release group MusicBrainz didn't list for the artist before, dated within the last year, for a monitored artist whose New releases option says "Want them", and not one of more than ten for that artist in 30 days. Everything else a refresh finds is listed and not wanted, with the reason shown, and Music → New releases offers it with one click. The refresh after a change of options, and the one after MusicBrainz merges the artist's own entry, want nothing. An add that couldn't read the albums keeps its choice for the first refresh that can.
+
+**Undated newcomers wait** (owner's decision, 2026-10-20). A release group MusicBrainz lists with no date could be an announcement or old music catalogued without one. It is listed and not wanted until a date appears; a date within the last year then makes it a new release.
+
+**Albums no longer on MusicBrainz are never searched by themselves** (decided 2026-10-20). They stay in the library with their files and show "No longer on MusicBrainz", not as wanted. Nothing searches them automatically, though a person can search by hand.
+
+Changing an artist's release types, or the library default, never wants or unwants an album by itself; it decides what new albums get and what is listed. Applying the types to the albums already listed is a separate "Want matching albums…" step that shows exactly what it would want or stop wanting first, and never unwants an album that holds files.
+
+And the cache rule holds for refreshes: when MusicBrainz is down, slow, or answers with an empty list, nothing is added, removed, unmonitored or flagged. An album MusicBrainz merged follows its new id; one it removed is flagged "no longer on MusicBrainz" and kept, files and all.
+
 ## Revisit when
 
 - Copies-while-seeding use more disk than the owner is happy with (see above).

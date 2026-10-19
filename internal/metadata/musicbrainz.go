@@ -200,10 +200,29 @@ type ArtistDetails struct {
 type AlbumResult struct {
 	MBID        string `json:"mbid"`
 	Title       string `json:"title"`
-	Type        string `json:"type,omitempty"` // Album | EP | Single | Live | Compilation…
+	Type        string `json:"type,omitempty"` // the label: Album | EP | Single | Live | Compilation…
 	ReleaseDate string `json:"release_date,omitempty"`
 	Year        int    `json:"year,omitempty"`
 	CoverURL    string `json:"cover_url,omitempty"`
+	// PrimaryType and SecondaryTypes are MusicBrainz's own (Album; Live, Compilation…).
+	// Type is the label made from them: the first secondary type when there is one.
+	PrimaryType    string   `json:"primary_type,omitempty"`
+	SecondaryTypes []string `json:"secondary_types,omitempty"`
+}
+
+// OtherReleaseGroupsProvider lists an artist's release groups outside albums and EPs:
+// singles, broadcasts and "other". A separate browse, asked only for artists whose
+// release types include one of those, so a big artist's hundreds of singles cost nothing
+// for everyone else.
+type OtherReleaseGroupsProvider interface {
+	ArtistOtherReleaseGroups(ctx context.Context, mbid string) ([]AlbumResult, error)
+}
+
+// ReleaseGroupProvider looks one release group up by MBID. MusicBrainz answers a merged
+// group under its new MBID, which is how an album that left its artist's list is told
+// apart from one that was merged into another.
+type ReleaseGroupProvider interface {
+	ReleaseGroup(ctx context.Context, mbid string) (AlbumResult, error)
 }
 
 // TrackResult is one track of an album's listing.
@@ -298,43 +317,70 @@ func (m *MusicBrainz) GetArtist(ctx context.Context, mbid string) (*ArtistDetail
 	}}, nil
 }
 
-// ArtistAlbums returns the artist's albums and EPs, newest first.
-//
-// Deliberately excludes singles and the secondary types (compilation, live, remix): a
-// discography import that pulled every single would bury the actual albums and set hundreds
-// of unobtainable things "wanted".
+// ArtistAlbums returns the artist's albums and EPs, newest first, with their secondary
+// types (live, compilation, remix…): the music service decides which to list from the
+// artist's release types, so changing them costs no MusicBrainz call. The browse asks
+// exactly what it always has, so the cached answers stay valid.
 func (m *MusicBrainz) ArtistAlbums(ctx context.Context, mbid string) ([]AlbumResult, error) {
+	return m.artistReleaseGroups(ctx, mbid, "album|ep")
+}
+
+// ArtistOtherReleaseGroups returns the artist's singles, broadcasts and "other" release
+// groups, newest first (see OtherReleaseGroupsProvider).
+func (m *MusicBrainz) ArtistOtherReleaseGroups(ctx context.Context, mbid string) ([]AlbumResult, error) {
+	return m.artistReleaseGroups(ctx, mbid, "single|broadcast|other")
+}
+
+// mbReleaseGroup is a release group as browses and lookups return it.
+type mbReleaseGroup struct {
+	ID               string   `json:"id"`
+	Title            string   `json:"title"`
+	PrimaryType      string   `json:"primary-type"`
+	SecondaryTypes   []string `json:"secondary-types"`
+	FirstReleaseDate string   `json:"first-release-date"`
+}
+
+func (m *MusicBrainz) albumResult(rg mbReleaseGroup) AlbumResult {
+	label := rg.PrimaryType
+	if len(rg.SecondaryTypes) > 0 {
+		label = rg.SecondaryTypes[0]
+	}
+	return AlbumResult{
+		MBID: rg.ID, Title: rg.Title, Type: mbOrDefault(label, "Album"),
+		ReleaseDate: rg.FirstReleaseDate, Year: mbYearOf(rg.FirstReleaseDate),
+		CoverURL:    m.art + "/release-group/" + rg.ID + "/front-500",
+		PrimaryType: rg.PrimaryType, SecondaryTypes: rg.SecondaryTypes,
+	}
+}
+
+// mbReleaseGroupPages bounds an artist's browse: 500 release groups of one kind, past any
+// real discography's albums and EPs.
+const mbReleaseGroupPages = 5
+
+// MBReleaseGroupBrowseCap is the most release groups one artist browse returns. A browse
+// that came back this full may be cut short, so a release group missing from it may only
+// be past the end.
+const MBReleaseGroupBrowseCap = mbReleaseGroupPages * 100
+
+func (m *MusicBrainz) artistReleaseGroups(ctx context.Context, mbid, types string) ([]AlbumResult, error) {
 	if strings.TrimSpace(mbid) == "" {
 		return nil, fmt.Errorf("musicbrainz: empty artist id")
 	}
 	var out []AlbumResult
-	for offset := 0; offset < 500; offset += 100 {
+	for page := 0; page < mbReleaseGroupPages; page++ {
 		var body struct {
-			ReleaseGroups []struct {
-				ID               string   `json:"id"`
-				Title            string   `json:"title"`
-				PrimaryType      string   `json:"primary-type"`
-				SecondaryTypes   []string `json:"secondary-types"`
-				FirstReleaseDate string   `json:"first-release-date"`
-			} `json:"release-groups"`
-			Count int `json:"release-group-count"`
+			ReleaseGroups []mbReleaseGroup `json:"release-groups"`
+			Count         int              `json:"release-group-count"`
 		}
 		q := url.Values{
-			"artist": {mbid}, "type": {"album|ep"},
-			"limit": {"100"}, "offset": {strconv.Itoa(offset)},
+			"artist": {mbid}, "type": {types},
+			"limit": {"100"}, "offset": {strconv.Itoa(page * 100)},
 		}
 		if err := m.lookup(ctx, mbKindReleaseGroup, "/release-group", q, &body); err != nil {
 			return nil, err
 		}
 		for _, rg := range body.ReleaseGroups {
-			if len(rg.SecondaryTypes) > 0 {
-				continue // live/compilation/remix editions of an album already listed
-			}
-			out = append(out, AlbumResult{
-				MBID: rg.ID, Title: rg.Title, Type: mbOrDefault(rg.PrimaryType, "Album"),
-				ReleaseDate: rg.FirstReleaseDate, Year: mbYearOf(rg.FirstReleaseDate),
-				CoverURL: m.art + "/release-group/" + rg.ID + "/front-500",
-			})
+			out = append(out, m.albumResult(rg))
 		}
 		if len(body.ReleaseGroups) < 100 {
 			break
@@ -343,6 +389,24 @@ func (m *MusicBrainz) ArtistAlbums(ctx context.Context, mbid string) ([]AlbumRes
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Year > out[j].Year })
 	return out, nil
 }
+
+// ReleaseGroup looks one release group up by MBID. A merged group comes back under its
+// new MBID; a removed one is a not-found error (IsNotFound).
+func (m *MusicBrainz) ReleaseGroup(ctx context.Context, mbid string) (AlbumResult, error) {
+	if strings.TrimSpace(mbid) == "" {
+		return AlbumResult{}, fmt.Errorf("musicbrainz: empty release-group id")
+	}
+	var rg mbReleaseGroup
+	if err := m.lookup(ctx, mbKindReleaseGroupLookup, "/release-group/"+url.PathEscape(mbid), url.Values{}, &rg); err != nil {
+		return AlbumResult{}, err
+	}
+	return m.albumResult(rg), nil
+}
+
+var (
+	_ OtherReleaseGroupsProvider = (*MusicBrainz)(nil)
+	_ ReleaseGroupProvider       = (*MusicBrainz)(nil)
+)
 
 // AlbumTracks returns a release group's track listing.
 //
@@ -507,19 +571,60 @@ func mbKey(k mbKind, path string, q url.Values) string {
 //   - not cached and MusicBrainz can't be asked: ErrMusicBrainzUnavailable.
 //
 // A 404 decodes as errNotFound.
+//
+// A caller that marked ctx WithMBRevalidate (the scheduled artist refresh) asks again for a
+// stale answer itself, on its own lane, instead of leaving it to the background: it needs
+// the newest list it can get, and is pacing itself on the calls it makes. If MusicBrainz
+// can't answer, the stale answer is still used (and the trace says so).
 func (m *MusicBrainz) lookup(ctx context.Context, k mbKind, path string, q url.Values, out any) error {
 	key := mbKey(k, path, q)
+	tr := mbTraceOf(ctx)
 	if e, ok := m.cache.get(ctx, key); ok {
-		if !e.fresh(k, m.now()) {
-			m.refreshLater(key)
+		if e.fresh(k, m.now()) {
+			tr.add(traceFromCache)
+			return decodeMB(e.status, e.body, out)
 		}
-		return decodeMB(e.status, e.body, out)
+		if !mbRevalidating(ctx) {
+			tr.add(traceFromCache)
+			m.refreshLater(key)
+			return decodeMB(e.status, e.body, out)
+		}
+		if _, busy := m.refreshing.LoadOrStore(key, true); busy {
+			tr.add(traceFromCache) // a background refresh has it in hand
+			return decodeMB(e.status, e.body, out)
+		}
+		body, status, err := m.fetch(ctx, m.root(), path, q)
+		m.refreshing.Delete(key)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			tr.add(traceStaleFallback)
+			return decodeMB(e.status, e.body, out)
+		}
+		tr.add(traceFetched)
+		m.keep(ctx, key, status, body)
+		if status == http.StatusNotFound && mbFreshNotFound(ctx) {
+			// The caller asked whether the thing still exists, and MusicBrainz just said
+			// no: that is the answer, though the cache keeps what it had for everyone else.
+			return errNotFound
+		}
+		// keep may have kept the old answer (an empty list or a 404 where we had content):
+		// read back whatever the cache now holds.
+		if now, ok := m.cache.get(ctx, key); ok {
+			return decodeMB(now.status, now.body, out)
+		}
+		return decodeMB(status, body, out)
 	}
 	root := m.root()
 	body, status, err := m.fetch(ctx, root, path, q)
 	if err != nil {
+		if ctx.Err() == nil {
+			tr.add(traceFailed)
+		}
 		return err
 	}
+	tr.add(traceFetched)
 	m.keep(ctx, key, status, body)
 	return decodeMB(status, body, out)
 }
@@ -564,7 +669,7 @@ func (m *MusicBrainz) keepUnderNewID(ctx context.Context, key string, status int
 		return
 	}
 	k, ok := mbKindOfKey(key)
-	if !ok || (k != mbKindArtist && k != mbKindRelease) {
+	if !ok || (k != mbKindArtist && k != mbKindRelease && k != mbKindReleaseGroupLookup) {
 		return
 	}
 	var ent struct {

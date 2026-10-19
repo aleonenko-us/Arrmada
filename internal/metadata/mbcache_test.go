@@ -374,3 +374,51 @@ func TestMBUsesMirror(t *testing.T) {
 		t.Errorf("Test against the mirror: %v", err)
 	}
 }
+
+// The scheduled refresh asks for a stale answer itself (WithMBRevalidate) and counts what
+// it cost (WithMBTrace): a fresh answer is free, a stale one is one call, and when
+// MusicBrainz can't answer the stale answer is still served and counted as such.
+func TestMBRevalidateAndTrace(t *testing.T) {
+	m, f, now := cachedMB(t)
+	ctx, tr := WithMBTrace(WithMBRevalidate(context.Background()))
+	if albums, err := m.ArtistAlbums(ctx, "abc"); err != nil || len(albums) != 1 {
+		t.Fatalf("seed: %v %v", albums, err)
+	}
+	if tr.Fetched.Load() != 1 {
+		t.Fatalf("fetched = %d, want 1", tr.Fetched.Load())
+	}
+	// Fresh: no call.
+	if _, err := m.ArtistAlbums(ctx, "abc"); err != nil || tr.Fetched.Load() != 1 || tr.FromCache.Load() != 1 {
+		t.Fatalf("fresh read: fetched %d cached %d err %v", tr.Fetched.Load(), tr.FromCache.Load(), err)
+	}
+	// Stale (the album list is fresh for 3 days): asked again now, the new answer used.
+	*now = now.Add(4 * 24 * time.Hour)
+	f.mu.Lock()
+	f.bodies["/release-group"] = `{"release-groups":[
+		{"id":"rg1","title":"OK Computer","primary-type":"Album","first-release-date":"1997-05-21"},
+		{"id":"rg2","title":"Kid A","primary-type":"Album","first-release-date":"2000-10-02"}]}`
+	f.mu.Unlock()
+	albums, err := m.ArtistAlbums(ctx, "abc")
+	if err != nil || len(albums) != 2 || tr.Fetched.Load() != 2 {
+		t.Fatalf("revalidated read = %d albums, fetched %d, err %v; want 2 and a second call", len(albums), tr.Fetched.Load(), err)
+	}
+	// Stale and MusicBrainz down: the stale answer, counted as unanswered.
+	*now = now.Add(4 * 24 * time.Hour)
+	f.set("500")
+	inner, own := WithMBTrace(ctx)
+	if albums, err := m.ArtistAlbums(inner, "abc"); err != nil || len(albums) != 2 {
+		t.Fatalf("down: %v %v, want the cached two", albums, err)
+	}
+	if own.StaleFallback.Load() != 1 || own.Unanswered() != 1 || tr.StaleFallback.Load() != 1 {
+		t.Errorf("stale fallback counted %d (outer %d), want 1 in both", own.StaleFallback.Load(), tr.StaleFallback.Load())
+	}
+	// An empty answer where we had albums keeps what we had, revalidated or not.
+	f.set("")
+	*now = now.Add(4 * 24 * time.Hour)
+	f.mu.Lock()
+	f.bodies["/release-group"] = `{"release-groups":[]}`
+	f.mu.Unlock()
+	if albums, err := m.ArtistAlbums(ctx, "abc"); err != nil || len(albums) != 2 {
+		t.Errorf("empty answer: %v %v, want the two we had", albums, err)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/mediainfo"
 	"github.com/tristenlammi/arrmada/internal/metadata"
@@ -19,6 +20,8 @@ type Service struct {
 	// lookup reads a saved setting (the matcher's thresholds, the edition policy); nil
 	// reads every one as its default.
 	lookup func(key string) (string, bool)
+	// now is the clock (tests move it); nil is the real one.
+	now func() time.Time
 }
 
 // NewService wires the module.
@@ -137,56 +140,100 @@ func (s *Service) FileOwner(ctx context.Context, path string) (int64, error) {
 	return s.repo.FileOwner(ctx, path)
 }
 
-// AddArtist adds an artist and its album list.
+// AddOptions are the add dialog's choices.
+type AddOptions struct {
+	// Monitored is whether the artist itself is monitored (searched at all). The scan adds
+	// the artists it recognises unmonitored.
+	Monitored bool
+	// Monitor is which of today's albums are wanted: all (the default), future, latest
+	// or none.
+	Monitor string
+	// MonitorNew and ReleaseTypes are the artist's own choices; "" and nil follow the
+	// library default. Future and latest want new releases, none doesn't, unless given.
+	MonitorNew   string
+	ReleaseTypes *ReleaseTypes
+}
+
+// AddArtist adds an artist and its album list: every listed album wanted when monitored,
+// none otherwise (AddArtistWith has the add dialog's other choices).
+func (s *Service) AddArtist(ctx context.Context, mbid, qualityProfile string, monitored bool) (Artist, error) {
+	opt := AddOptions{Monitored: monitored, Monitor: MonitorAll}
+	if !monitored {
+		opt.Monitor = MonitorNone
+	}
+	return s.AddArtistWith(ctx, mbid, qualityProfile, opt)
+}
+
+// AddArtistWith adds an artist and its album list with the add dialog's choices.
 //
 // Track listings are NOT fetched here. MusicBrainz allows anonymous clients one request per
 // second, and a listing costs two calls per album — adding a 25-album discography would
 // block for the better part of a minute before the artist even appeared. Albums arrive
 // immediately (two calls total) and each album's tracks are filled in the first time it's
 // opened or searched for, via EnsureTracks.
-func (s *Service) AddArtist(ctx context.Context, mbid, qualityProfile string, monitored bool) (Artist, error) {
+func (s *Service) AddArtistWith(ctx context.Context, mbid, qualityProfile string, opt AddOptions) (Artist, error) {
+	if opt.Monitor == "" {
+		opt.Monitor = MonitorAll
+	}
+	if !ValidMonitor(opt.Monitor) {
+		return Artist{}, fmt.Errorf("unknown monitor choice %q", opt.Monitor)
+	}
+	if !ValidMonitorNew(opt.MonitorNew) {
+		return Artist{}, fmt.Errorf("unknown new-release choice %q", opt.MonitorNew)
+	}
+	types := ""
+	if opt.ReleaseTypes != nil {
+		t, err := opt.ReleaseTypes.Normalize()
+		if err != nil {
+			return Artist{}, err
+		}
+		types = t.String()
+	}
+	if opt.MonitorNew == "" && opt.Monitored {
+		switch opt.Monitor {
+		case MonitorFuture, MonitorLatest:
+			opt.MonitorNew = MonitorNewAll
+		case MonitorNone:
+			opt.MonitorNew = MonitorNewNone
+		}
+	}
 	d, err := s.meta.GetArtist(ctx, mbid)
 	if err != nil {
 		return Artist{}, fmt.Errorf("fetch metadata: %w", err)
 	}
 	created, err := s.repo.CreateArtist(ctx, Artist{
 		MBID: d.MBID, Name: d.Name, SortName: d.SortName, Overview: d.Overview,
-		Genres: d.Genres, Monitored: monitored, QualityProfile: qualityProfile,
+		Genres: d.Genres, Monitored: opt.Monitored, QualityProfile: qualityProfile,
 		Disambiguation: d.Disambiguation, Type: d.Type, Country: d.Country,
 	})
 	if err != nil {
 		return Artist{}, err
 	}
+	if opt.MonitorNew != "" || types != "" {
+		if err := s.repo.SetArtistOptions(ctx, created.ID, opt.MonitorNew, types); err != nil {
+			return Artist{}, err
+		}
+		if created, err = s.repo.GetArtist(ctx, created.ID); err != nil {
+			return Artist{}, err
+		}
+	}
 	s.log.Info("music: artist added", "name", created.Name, "mbid", created.MBID)
 	s.repo.AddEvent(ctx, created.ID, "added", "Added to library")
 
-	if n, aerr := s.syncAlbums(ctx, created, monitored); aerr != nil {
+	res, aerr := s.syncAlbums(ctx, created, syncAdd, opt.Monitor, false)
+	if aerr != nil || res.Unanswered {
 		// The artist is in the library either way — a failed album pull is something a
-		// refresh can retry, not a reason to fail the add and lose the row.
+		// refresh can retry, not a reason to fail the add and lose the row. The add's
+		// choice is kept for that refresh, which applies it as the add would have.
 		s.log.Warn("music: couldn't fetch the artist's albums", "artist", created.Name, "err", aerr)
+		if err := s.repo.SetPendingAdd(ctx, created.ID, opt.Monitor); err != nil {
+			return Artist{}, err
+		}
 	} else {
-		s.repo.AddEvent(ctx, created.ID, "refreshed", fmt.Sprintf("Found %d album(s)", n))
+		s.repo.AddEvent(ctx, created.ID, "refreshed", fmt.Sprintf("Found %d album(s)", res.Listed))
+		_ = s.repo.StampRefreshed(ctx, created.ID, s.clock())
 	}
 	return s.GetArtist(ctx, created.ID)
-}
-
-// syncAlbums pulls the artist's album list into the library, adding new release groups and
-// correcting the metadata on ones already stored.
-func (s *Service) syncAlbums(ctx context.Context, a Artist, monitored bool) (int, error) {
-	albums, err := s.meta.ArtistAlbums(ctx, a.MBID)
-	if err != nil {
-		return 0, err
-	}
-	for _, al := range albums {
-		if _, err := s.repo.UpsertAlbum(ctx, Album{
-			ArtistID: a.ID, MBID: al.MBID, Title: al.Title, Year: al.Year,
-			AlbumType: al.Type, CoverURL: al.CoverURL, ReleaseDate: al.ReleaseDate,
-			Monitored: monitored,
-		}); err != nil {
-			s.log.Warn("music: storing an album failed", "album", al.Title, "err", err)
-		}
-	}
-	return len(albums), nil
 }
 
 // EnsureTracks fills in an album's track listing when its target edition has none yet.
@@ -226,28 +273,14 @@ func (s *Service) ensureListing(ctx context.Context, al Album) error {
 	return s.repo.UpsertListing(ctx, al.ID, l)
 }
 
-// Refresh re-pulls an artist's metadata and album list.
+// Refresh re-pulls an artist's metadata and album list (the Refresh button): the same
+// rules as the scheduled refresh (RefreshArtist), with a history line either way.
 func (s *Service) Refresh(ctx context.Context, id int64) (Artist, error) {
-	a, err := s.repo.GetArtist(ctx, id)
-	if err != nil {
-		return Artist{}, err
-	}
-	if d, derr := s.meta.GetArtist(ctx, a.MBID); derr == nil {
-		if err := s.repo.UpdateArtistMeta(ctx, id, d.Overview, a.ImageURL, d.Genres, d.Disambiguation, d.Type, d.Country); err != nil {
-			s.log.Warn("music: updating artist metadata failed", "artist", a.Name, "err", err)
+	if _, err := s.RefreshArtist(ctx, id, RefreshOptions{}); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return Artist{}, err
 		}
-	} else {
-		s.log.Warn("music: artist metadata refresh failed", "artist", a.Name, "err", derr)
-	}
-	if n, aerr := s.syncAlbums(ctx, a, a.Monitored); aerr != nil {
-		// Nothing is removed, unmonitored or relisted on a failed answer: the albums the
-		// library has stay exactly as they were.
-		s.log.Warn("music: album refresh failed", "artist", a.Name, "err", aerr)
-		if errors.Is(aerr, metadata.ErrMusicBrainzUnavailable) {
-			s.repo.AddEvent(ctx, id, "refreshed", "MusicBrainz didn't answer; kept what we had")
-		}
-	} else {
-		s.repo.AddEvent(ctx, id, "refreshed", fmt.Sprintf("Refreshed — %d album(s) listed", n))
+		s.log.Warn("music: album refresh failed", "artist_id", id, "err", err)
 	}
 	return s.GetArtist(ctx, id)
 }
@@ -302,9 +335,13 @@ func (s *Service) SetArtistMonitored(ctx context.Context, id int64, monitored bo
 	return s.repo.SetArtistMonitored(ctx, id, monitored)
 }
 
-// SetAlbumMonitored toggles one album (and its tracks).
+// SetAlbumMonitored toggles one album (and its tracks): a person's choice, so a single
+// waiting for the automatic singles check is taken out of it and stays as they set it.
 func (s *Service) SetAlbumMonitored(ctx context.Context, id int64, monitored bool) error {
-	return s.repo.SetAlbumMonitored(ctx, id, monitored)
+	if err := s.repo.SetAlbumMonitored(ctx, id, monitored); err != nil {
+		return err
+	}
+	return s.repo.ClearPendingSingle(ctx, id)
 }
 
 // SetQualityProfile changes an artist's quality profile.

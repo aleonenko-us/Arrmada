@@ -53,12 +53,15 @@ var (
 	mbKindReleases     = mbKind{"release-browse", MBFreshRelease, "releases"}
 	mbKindRelease      = mbKind{"release", MBFreshRelease, "media"}
 	mbKindSearch       = mbKind{"artist-search", MBFreshSearch, ""}
+	// mbKindReleaseGroupLookup is one release group looked up by MBID: asked only when an
+	// album the library holds stops appearing in its artist's list (merged or removed).
+	mbKindReleaseGroupLookup = mbKind{"release-group", MBFreshArtist, ""}
 )
 
 var mbKinds = map[string]mbKind{}
 
 func init() {
-	for _, k := range []mbKind{mbKindArtist, mbKindReleaseGroup, mbKindReleases, mbKindRelease, mbKindSearch} {
+	for _, k := range []mbKind{mbKindArtist, mbKindReleaseGroup, mbKindReleases, mbKindRelease, mbKindSearch, mbKindReleaseGroupLookup} {
 		mbKinds[k.name] = k
 	}
 }
@@ -136,7 +139,7 @@ func (c mbCache) touch(ctx context.Context, key string, now time.Time) {
 
 // mbRefreshKinds are the kinds the refresh task rechecks. Searches aren't among them: a
 // search is only worth answering again when someone searches again.
-var mbRefreshKinds = []mbKind{mbKindReleaseGroup, mbKindArtist, mbKindReleases, mbKindRelease}
+var mbRefreshKinds = []mbKind{mbKindReleaseGroup, mbKindArtist, mbKindReleases, mbKindRelease, mbKindReleaseGroupLookup}
 
 // keyRange is the primary-key range holding a kind's rows ("kind:" up to "kind;"), so a
 // per-kind read goes through the index.

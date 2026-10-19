@@ -22,21 +22,33 @@ type Repo struct{ db *sql.DB }
 func NewRepo(db *sql.DB) *Repo { return &Repo{db: db} }
 
 const artistCols = `id, mbid, name, sort_name, overview, image_url, genres_json,
-	monitored, quality_profile, added_at, disambiguation, artist_type, country, in_library`
+	monitored, quality_profile, added_at, disambiguation, artist_type, country, in_library,
+	last_refreshed_at, stale_since, monitor_new, release_types, rg_seen_scopes, pending_add_monitor`
 
 func scanArtist(row interface{ Scan(...any) error }) (Artist, error) {
 	var (
-		a          Artist
-		genresJSON string
-		mon, inLib int
+		a                 Artist
+		genresJSON, types string
+		mon, inLib        int
+		refreshed, stale  sql.NullString
 	)
 	if err := row.Scan(&a.ID, &a.MBID, &a.Name, &a.SortName, &a.Overview, &a.ImageURL,
-		&genresJSON, &mon, &a.QualityProfile, &a.AddedAt, &a.Disambiguation, &a.Type, &a.Country, &inLib); err != nil {
+		&genresJSON, &mon, &a.QualityProfile, &a.AddedAt, &a.Disambiguation, &a.Type, &a.Country, &inLib,
+		&refreshed, &stale, &a.MonitorNew, &types, &a.seenScopes, &a.pendingAdd); err != nil {
 		return Artist{}, err
 	}
 	a.Monitored, a.InLibrary = mon != 0, inLib != 0
+	a.LastRefreshedAt, a.StaleSince = refreshed.String, stale.String
 	if genresJSON != "" {
 		_ = json.Unmarshal([]byte(genresJSON), &a.Genres)
+	}
+	if types != "" {
+		// Stored values were checked when saved; one that no longer reads (a type
+		// MusicBrainz retired) falls back to the library default rather than hiding the
+		// artist's albums.
+		if rt, err := ParseReleaseTypes(types); err == nil {
+			a.ReleaseTypes = &rt
+		}
 	}
 	return a, nil
 }
@@ -107,7 +119,7 @@ const albumCounts = `
 // counts and arithmetic as statsFromAlbums (which the detail read uses), so list and
 // detail agree. About a third of a second on a 15,000-album, 200,000-track library.
 func (r *Repo) artistStats(ctx context.Context) (map[int64]*ArtistStats, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT al.artist_id, al.monitored,`+albumCounts+` FROM albums al`)
+	rows, err := r.db.QueryContext(ctx, `SELECT al.artist_id, (al.monitored = 1 AND al.stale_since IS NULL),`+albumCounts+` FROM albums al`)
 	if err != nil {
 		return nil, err
 	}
@@ -298,25 +310,25 @@ const albumHead = `SELECT al.id, al.artist_id, al.mbid, al.title, al.year, al.al
 	al.release_date, al.monitored, al.added_at, al.last_search_at, al.search_misses, al.primary_type,
 	al.secondary_types, COALESCE(al.artist_credit_id, 0),
 	COALESCE((SELECT c.display FROM music_artist_credits c WHERE c.id = al.artist_credit_id), ''),
-	COALESCE(al.target_release_id, 0), al.edition_pinned,`
+	COALESCE(al.target_release_id, 0), al.edition_pinned, al.found_at, al.found_as, al.stale_since, al.source, al.departure_checked_at,`
 
 // albumSelect reads album rows with their counts.
 const albumSelect = albumHead + albumCounts + ` FROM albums al`
 
 func scanAlbum(row interface{ Scan(...any) error }) (Album, error) {
 	var (
-		al          Album
-		mon, pinned int
-		last        sql.NullString
+		al                           Album
+		mon, pinned                  int
+		last, found, stale, departed sql.NullString
 	)
 	if err := row.Scan(&al.ID, &al.ArtistID, &al.MBID, &al.Title, &al.Year, &al.AlbumType, &al.CoverURL,
 		&al.ReleaseDate, &mon, &al.AddedAt, &last, &al.SearchMisses, &al.PrimaryType, &al.SecondaryTypes,
-		&al.CreditID, &al.ArtistCredit, &al.TargetEditionID, &pinned,
+		&al.CreditID, &al.ArtistCredit, &al.TargetEditionID, &pinned, &found, &al.FoundAs, &stale, &al.Source, &departed,
 		&al.TrackCount, &al.HaveTracks, &al.SizeBytes, &al.EditionTracks); err != nil {
 		return Album{}, err
 	}
 	al.Monitored, al.EditionPinned = mon != 0, pinned != 0
-	al.LastSearchAt = last.String
+	al.LastSearchAt, al.FoundAt, al.StaleSince, al.departureChecked = last.String, found.String, stale.String, departed.String
 	return al, nil
 }
 
@@ -415,11 +427,18 @@ func (r *Repo) GetAlbum(ctx context.Context, id int64) (Album, error) {
 // duplicate row or disturbing the user's monitoring choice. A new album takes its
 // artist's own credit.
 func (r *Repo) UpsertAlbum(ctx context.Context, al Album) (int64, error) {
-	primary, secondary := splitAlbumType(al.AlbumType)
+	primary, secondary := al.PrimaryType, al.SecondaryTypes
+	if primary == "" && secondary == "" {
+		primary, secondary = splitAlbumType(al.AlbumType)
+	}
+	var foundAt sql.NullString
+	if al.FoundAt != "" {
+		foundAt = sql.NullString{String: al.FoundAt, Valid: true}
+	}
 	res, err := r.db.ExecContext(ctx,
 		`INSERT INTO albums (artist_id, mbid, title, year, album_type, cover_url, release_date, monitored,
-		                     primary_type, secondary_types, artist_credit_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+		                     primary_type, secondary_types, found_at, found_as, artist_credit_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 		         (SELECT c.id FROM artists a JOIN music_artist_credits c ON c.credit_key = a.mbid WHERE a.id = ?))
 		 ON CONFLICT(mbid) DO UPDATE SET
 		   title = excluded.title, year = excluded.year, album_type = excluded.album_type,
@@ -428,7 +447,7 @@ func (r *Repo) UpsertAlbum(ctx context.Context, al Album) (int64, error) {
 		   artist_credit_id = COALESCE(albums.artist_credit_id, excluded.artist_credit_id),
 		   stale_since = NULL`,
 		al.ArtistID, al.MBID, al.Title, al.Year, al.AlbumType, al.CoverURL, al.ReleaseDate, b2i(al.Monitored),
-		primary, secondary, al.ArtistID)
+		primary, secondary, foundAt, al.FoundAs, al.ArtistID)
 	if err != nil {
 		return 0, err
 	}
@@ -447,10 +466,13 @@ func (r *Repo) UpsertAlbum(ctx context.Context, al Album) (int64, error) {
 // those tracks had a file, the upgrade couldn't give them one, and searching would grab
 // the whole album again over what is most likely a scan's mix-up. A person resolves the
 // note on the album page, or the track gets its file, and the album comes back.
+//
+// An album MusicBrainz no longer lists (stale_since) is left out too: it is kept with its
+// files, and a person can still search for it by hand, but nothing searches it by itself.
 func (r *Repo) WantedAlbums(ctx context.Context) ([]Album, error) {
 	return r.albums(ctx, `
 		JOIN artists ar ON ar.id = al.artist_id
-		WHERE al.monitored = 1 AND ar.monitored = 1
+		WHERE al.monitored = 1 AND ar.monitored = 1 AND al.stale_since IS NULL
 		  AND NOT EXISTS (SELECT 1 FROM music_migration_notes n WHERE n.album_id = al.id AND `+openNote+`)
 		ORDER BY al.id`)
 }

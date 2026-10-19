@@ -125,9 +125,16 @@ export function AlbumDetail() {
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2.5">
-              <StatusChip tone={st.tone} size="md">
-                {st.label}
-              </StatusChip>
+              {al.stale_since ? (
+                // Kept with its files, never searched by itself: not "wanted".
+                <StatusChip tone="faint" size="md" title="MusicBrainz no longer lists this album. It's kept with its files; search for it by hand if you want it.">
+                  No longer on MusicBrainz
+                </StatusChip>
+              ) : (
+                <StatusChip tone={st.tone} size="md">
+                  {st.label}
+                </StatusChip>
+              )}
               {al.year ? <span className="font-mono text-xs text-ink-faint">{al.year}</span> : null}
               {al.album_type ? <span className="font-mono text-xs text-ink-faint">{al.album_type}</span> : null}
               <a
