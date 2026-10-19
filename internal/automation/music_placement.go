@@ -198,7 +198,7 @@ func (c *Coordinator) placeFiles(ctx context.Context, a music.Artist, al music.A
 		return res
 	}
 	// A cue-sheet image is split now that it's known which of its tracks are taken.
-	plan, splitDone, ok := c.splitPlanned(ctx, al, plan, releaseTier, &res)
+	plan, splitDone, ok := c.splitPlanned(ctx, al, tracks, plan, releaseTier, &res)
 	defer splitDone()
 	if !ok {
 		return res

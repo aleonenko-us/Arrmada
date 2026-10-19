@@ -1,9 +1,12 @@
 package stage
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/md5"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash"
@@ -13,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/diskspace"
@@ -24,14 +28,19 @@ import (
 // "split"), and those files are then imported like any download's tracks: copied into an
 // import job, house-tagged, checked and moved in. The image in the download is only read.
 //
-// How: one ffmpeg run per image, decoding it once and cutting the decoded samples with the
-// asegment filter at exact sample offsets (CD frame × rate / 75), each piece encoded to
-// FLAC at the image's own bit depth. A filter cut on decoded audio is exact to the sample;
-// seeking (-ss) is not.
+// How: ffmpeg decodes the image once, to raw 32-bit PCM on a pipe (no resampling, no
+// remixing). Arrmada reads that stream and cuts it at exact sample counts (CD frame × rate
+// / 75), feeding each piece to its own ffmpeg FLAC encoder, one at a time, at the image's
+// own depth. Memory stays at a pipe's buffer or two however long the image is: an earlier
+// version cut with one ffmpeg filter graph feeding every output at once, and that held most
+// of the decoded disc in memory (half a gigabyte for a CD, gigabytes for 24/192).
 //
-// The proof: the image and the pieces are both decoded to raw PCM, and the pieces, joined
-// in order, must hash the same as the image and have exactly the planned number of
-// samples each. Anything else and the split is thrown away and the album goes to Review.
+// The proof: while the image streams through, its samples are hashed; afterwards each piece
+// is decoded again (to 32-bit, so no bit escapes the comparison) and the pieces, joined in
+// order, must hash the same and hold exactly their planned number of samples. A FLAC image
+// is also checked against the MD5 of its samples its own header carries, so a damaged
+// image isn't split. Anything else and the split is thrown away and the album goes to
+// Review.
 //
 // The pieces are scratch: an interrupted split is deleted at the next start (Recover:
 // nothing in a split job ever reached the library), and a finished one is deleted once
@@ -53,11 +62,15 @@ type SplitPlan struct {
 	// increasing and above zero. The image becomes len(Cuts)+1 pieces.
 	Cuts []int64
 	// TotalSamples is the image's length in samples (per channel), as probed. Only used to
-	// refuse cuts past the end; the check measures the real length by decoding.
+	// refuse cuts past the end; the split measures the real length as it decodes.
 	TotalSamples int64
-	// Channels and Bits are the image's (Bits: its real sample depth, 8 to 24).
+	// Rate, Channels and Bits are the image's (Bits: its real sample depth, 8 to 24).
+	// Layout is its channel layout as ffmpeg names it ("stereo"); "" picks the usual one
+	// for the channel count.
+	Rate     int
 	Channels int
 	Bits     int
+	Layout   string
 	// Tags are written into each piece (ffmpeg metadata keys: title, artist, album,
 	// album_artist, track, disc, date, genre). nil or short is fine.
 	Tags []map[string]string
@@ -79,8 +92,8 @@ func (p SplitPlan) want(k int, total int64) int64 {
 }
 
 func (p SplitPlan) validate() error {
-	if p.Channels <= 0 {
-		return fmt.Errorf("%w: the image's channel count is unknown", ErrSplit)
+	if p.Channels <= 0 || p.Rate <= 0 {
+		return fmt.Errorf("%w: the image's channel count or sample rate is unknown", ErrSplit)
 	}
 	if p.Bits < 8 || p.Bits > 24 {
 		// 0 is a depth the probe couldn't read (a guess could truncate 24-bit audio);
@@ -100,10 +113,26 @@ func (p SplitPlan) validate() error {
 	return nil
 }
 
+// layout is the channel layout the raw stream is declared with.
+func (p SplitPlan) layout() string {
+	switch {
+	case p.Layout != "" && !strings.Contains(p.Layout, "unknown"):
+		return p.Layout
+	case p.Channels == 1:
+		return "mono"
+	case p.Channels == 2:
+		return "stereo"
+	}
+	return strconv.Itoa(p.Channels) + "c"
+}
+
 // SplitResult is one image's pieces, in order.
 type SplitResult struct {
 	Files   []string
 	Samples []int64
+	// PeakRSSKB is the most memory any ffmpeg process of the split used (kilobytes; 0
+	// where the platform doesn't say).
+	PeakRSSKB int64
 }
 
 // splitTimeout bounds one image's split and its check. FLAC decodes and encodes at
@@ -199,125 +228,260 @@ func (j *Job) checkFree(need uint64) error {
 	return nil
 }
 
-// splitOne runs ffmpeg for one image and checks its pieces.
+// pcmFrame is the size of one sample of every channel in the decoded stream (32-bit).
+func (p SplitPlan) pcmFrame() int { return 4 * p.Channels }
+
+// decodeArgs decodes path's first audio stream to raw 32-bit little-endian PCM on stdout:
+// no resampling, no remixing, every bit of a 24-bit sample kept.
+func decodeArgs(path string) []string {
+	return []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-i", path, "-map", "0:a:0",
+		"-c:a", "pcm_s32le", "-f", "s32le", "-"}
+}
+
+// encodeArgs encodes one piece, read as raw PCM from stdin, to FLAC at the image's depth:
+// 16-bit and shallower as s16le (Arrmada narrows the 32-bit stream, losslessly), deeper as
+// s32le with the real depth declared so FLAC stores exactly those bits. Only the given
+// tags are written; nothing of the image's.
+func encodeArgs(p SplitPlan, k int, file string) []string {
+	in := "s32le"
+	if p.Bits <= 16 {
+		in = "s16le"
+	}
+	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-n",
+		"-f", in, "-ar", strconv.Itoa(p.Rate), "-ch_layout", p.layout(), "-i", "-",
+		"-map_metadata", "-1", "-c:a", "flac"}
+	if p.Bits > 16 {
+		args = append(args, "-bits_per_raw_sample", strconv.Itoa(p.Bits))
+	}
+	if k < len(p.Tags) {
+		for _, key := range []string{"title", "artist", "album", "album_artist", "track", "disc", "date", "genre"} {
+			if v := strings.TrimSpace(p.Tags[k][key]); v != "" {
+				args = append(args, "-metadata", key+"="+v)
+			}
+		}
+	}
+	return append(args, "-fflags", "+bitexact", "-flags:a", "+bitexact", "-f", "flac", file)
+}
+
+// splitOne cuts one image into files and proves the pieces.
 func (j *Job) splitOne(ctx context.Context, p SplitPlan, files []string) (SplitResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, splitTimeout)
 	defer cancel()
-	out, err := toolrun.Command(ctx, toolrun.Idle, "ffmpeg", SplitArgs(p, files)...).CombinedOutput()
+	res := SplitResult{Files: files}
+	image := sha256.New()
+	info, _ := readStreamInfo(p.Image)
+	var md *streamMD5
+	if info.ok && info.bits == p.Bits && info.md5 != ([16]byte{}) {
+		md = newStreamMD5(info.bits)
+	}
+
+	dec := toolrun.Command(ctx, toolrun.Idle, "ffmpeg", decodeArgs(p.Image)...)
+	var decErr bytes.Buffer
+	dec.Stderr = &limitedBuffer{b: &decErr, max: 64 << 10}
+	pipe, err := dec.StdoutPipe()
 	if err != nil {
+		return res, err
+	}
+	if err := dec.Start(); err != nil {
+		return res, err
+	}
+	finishDecoder := func() error {
+		werr := dec.Wait()
+		res.PeakRSSKB = max(res.PeakRSSKB, maxRSSKB(dec.ProcessState))
+		return werr
+	}
+	fail := func(err error) (SplitResult, error) {
+		stopped := ctx.Err() // a shutdown or the time limit, before our own cancel below
+		cancel()             // stops the decoder (its whole group)
+		_ = finishDecoder()
+		if stopped != nil && !errors.Is(err, ErrNoSpace) {
+			return SplitResult{}, stopped
+		}
+		return SplitResult{}, err
+	}
+
+	r := bufio.NewReaderSize(pipe, 1<<20)
+	frame := p.pcmFrame()
+	buf := make([]byte, frame*8192)
+	narrow := make([]byte, len(buf)/2)
+	var total int64
+	for k, file := range files {
+		limit := int64(-1) // the last piece runs to the end
+		if k < len(p.Cuts) {
+			limit = p.want(k, 0) // set by its two cuts alone
+		}
+		n, rss, err := j.encodePiece(ctx, p, k, file, r, limit, buf, narrow, image, md)
+		res.PeakRSSKB = max(res.PeakRSSKB, rss)
+		if err != nil {
+			return fail(err)
+		}
+		if limit >= 0 && n != limit {
+			// The stream ended early: the decoder failed, or the cue runs past the image.
+			if derr := finishDecoder(); derr != nil {
+				return SplitResult{}, fmt.Errorf("%w: decoding the image: %v: %s", ErrSplit, derr, lastLine(decErr.Bytes()))
+			}
+			return SplitResult{}, fmt.Errorf("%w: the image ends before piece %d's planned end (the cue sheet runs past it)", ErrSplit, k+1)
+		}
+		res.Samples = append(res.Samples, n)
+		total += n
+	}
+	if err := finishDecoder(); err != nil {
 		if ctx.Err() != nil {
 			return SplitResult{}, ctx.Err()
 		}
-		return SplitResult{}, fmt.Errorf("%w: ffmpeg: %v: %s", ErrSplit, err, lastLine(out))
+		return SplitResult{}, fmt.Errorf("%w: decoding the image: %v: %s", ErrSplit, err, lastLine(decErr.Bytes()))
 	}
-	for i := range files {
-		if fi, err := os.Stat(files[i]); err != nil || fi.Size() == 0 {
-			return SplitResult{}, fmt.Errorf("%w: ffmpeg made no piece %d", ErrSplit, i+1)
+	if md != nil {
+		if got := md.sum(); got != info.md5 {
+			return SplitResult{}, fmt.Errorf("%w: the image's audio doesn't match the checksum in its own header — it's damaged", ErrSplit)
+		}
+		if info.samples > 0 && info.samples != total {
+			return SplitResult{}, fmt.Errorf("%w: the image decodes to %d samples, its header says %d", ErrSplit, total, info.samples)
 		}
 	}
-	return verifySplit(ctx, p, files)
+	return res, verifyPieces(ctx, p, files, image.Sum(nil), &res)
 }
 
-// SplitArgs is the ffmpeg command line that cuts p into files (one per piece): decode once,
-// cut the samples with asegment, encode each piece to FLAC at the image's depth, with only
-// the tags given (nothing copied from the image: its tags describe the whole disc, and its
-// embedded pictures aren't audio).
-func SplitArgs(p SplitPlan, files []string) []string {
-	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-i", p.Image}
-	cuts := make([]string, len(p.Cuts))
-	for i, c := range p.Cuts {
-		cuts[i] = strconv.FormatInt(c, 10)
+// encodePiece streams up to limit samples (-1: to the end) from r into a new ffmpeg FLAC
+// encoder writing file, hashing them on the way. It returns how many samples it took.
+func (j *Job) encodePiece(ctx context.Context, p SplitPlan, k int, file string, r io.Reader, limit int64,
+	buf, narrow []byte, image hash.Hash, md *streamMD5) (int64, int64, error) {
+	enc := toolrun.Command(ctx, toolrun.Idle, "ffmpeg", encodeArgs(p, k, file)...)
+	var encErr bytes.Buffer
+	enc.Stderr = &limitedBuffer{b: &encErr, max: 64 << 10}
+	in, err := enc.StdinPipe()
+	if err != nil {
+		return 0, 0, err
 	}
-	var graph strings.Builder
-	graph.WriteString("[0:a:0]asegment=samples=")
-	graph.WriteString(strings.Join(cuts, "|"))
-	for k := range files {
-		fmt.Fprintf(&graph, "[s%d]", k)
+	if err := enc.Start(); err != nil {
+		return 0, 0, err
 	}
-	args = append(args, "-filter_complex", graph.String())
-	for k, f := range files {
-		args = append(args, "-map", fmt.Sprintf("[s%d]", k), "-map_metadata", "-1", "-c:a", "flac")
-		if p.Bits > 16 {
-			args = append(args, "-bits_per_raw_sample", strconv.Itoa(p.Bits))
+	frame := p.pcmFrame()
+	var samples int64
+	var werr, rerr error
+	for limit < 0 || samples < limit {
+		want := len(buf)
+		if limit >= 0 && int64(want/frame) > limit-samples {
+			want = int(limit-samples) * frame
 		}
-		if k < len(p.Tags) {
-			for _, key := range []string{"title", "artist", "album", "album_artist", "track", "disc", "date", "genre"} {
-				if v := strings.TrimSpace(p.Tags[k][key]); v != "" {
-					args = append(args, "-metadata", key+"="+v)
+		n, err := io.ReadFull(r, buf[:want])
+		if n%frame != 0 {
+			rerr = fmt.Errorf("%w: the image decoded to a partial sample", ErrSplit)
+			break
+		}
+		if n > 0 {
+			chunk := buf[:n]
+			image.Write(chunk)
+			if md != nil {
+				md.write(chunk)
+			}
+			out := chunk
+			if p.Bits <= 16 {
+				out = narrow[:n/2]
+				for i := 0; i < n; i += 4 {
+					// The top two bytes of a little-endian 32-bit sample are the 16-bit
+					// sample. Anything in the low two is caught by the proof.
+					out[i/2], out[i/2+1] = chunk[i+2], chunk[i+3]
 				}
 			}
+			if _, err := in.Write(out); err != nil {
+				werr = err
+				break
+			}
+			samples += int64(n / frame)
 		}
-		args = append(args, "-fflags", "+bitexact", "-flags:a", "+bitexact", "-f", "flac", f)
-	}
-	return args
-}
-
-// verifySplit decodes the image and the pieces to raw PCM and checks the pieces, in order,
-// are the image exactly: the same samples, each piece the planned length.
-func verifySplit(ctx context.Context, p SplitPlan, files []string) (SplitResult, error) {
-	whole := sha256.New()
-	total, err := decodePCM(ctx, p, p.Image, whole)
-	if err != nil {
-		return SplitResult{}, err
-	}
-	if len(p.Cuts) > 0 && p.Cuts[len(p.Cuts)-1] >= total {
-		return SplitResult{}, fmt.Errorf("%w: a track starts after the end of the image (%d samples)", ErrSplit, total)
-	}
-	joined := sha256.New()
-	res := SplitResult{Files: files}
-	var sum int64
-	for k, f := range files {
-		n, err := decodePCM(ctx, p, f, joined)
 		if err != nil {
-			return SplitResult{}, err
+			if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+				rerr = err
+			}
+			break
 		}
-		if want := p.want(k, total); n != want {
-			return SplitResult{}, fmt.Errorf("%w: piece %d has %d samples, not %d", ErrSplit, k+1, n, want)
+	}
+	_ = in.Close()
+	waitErr := enc.Wait()
+	rss := maxRSSKB(enc.ProcessState)
+	if diskFull(werr, waitErr, encErr.Bytes()) {
+		return samples, rss, fmt.Errorf("%w: the disk filled up while splitting", ErrNoSpace)
+	}
+	if rerr != nil {
+		return samples, rss, rerr
+	}
+	if werr != nil || waitErr != nil {
+		if ctx.Err() != nil {
+			return samples, rss, ctx.Err()
 		}
-		res.Samples = append(res.Samples, n)
-		sum += n
+		return samples, rss, fmt.Errorf("%w: encoding piece %d: %v %v: %s", ErrSplit, k+1, werr, waitErr, lastLine(encErr.Bytes()))
 	}
-	if sum != total {
-		return SplitResult{}, fmt.Errorf("%w: the pieces hold %d samples, the image %d", ErrSplit, sum, total)
-	}
-	if !bytes.Equal(whole.Sum(nil), joined.Sum(nil)) {
-		return SplitResult{}, fmt.Errorf("%w: the pieces' audio isn't the image's", ErrSplit)
-	}
-	return res, nil
+	return samples, rss, nil
 }
 
-// decodePCM decodes path's first audio stream to raw little-endian PCM (16-bit, or 32-bit
-// for deeper audio, so 24-bit samples keep every bit), writes it to h and says how many
-// samples per channel it held.
-func decodePCM(ctx context.Context, p SplitPlan, path string, h hash.Hash) (int64, error) {
-	format, width := "s16le", 2
-	if p.Bits > 16 {
-		format, width = "s32le", 4
+// diskFull reports whether a piece failed because the staging drive filled up: worth
+// trying again later, not a Review.
+func diskFull(werr, waitErr error, stderr []byte) bool {
+	return errors.Is(werr, syscall.ENOSPC) || errors.Is(waitErr, syscall.ENOSPC) ||
+		bytes.Contains(bytes.ToLower(stderr), []byte("no space left on device"))
+}
+
+// verifyPieces decodes every piece (to 32-bit) and checks that, joined in order, they are
+// exactly the image's samples, each the length it was cut to.
+func verifyPieces(ctx context.Context, p SplitPlan, files []string, want []byte, res *SplitResult) error {
+	joined := sha256.New()
+	for k, f := range files {
+		n, rss, err := decodePCM(ctx, p, f, joined)
+		res.PeakRSSKB = max(res.PeakRSSKB, rss)
+		if err != nil {
+			return err
+		}
+		if n != res.Samples[k] {
+			return fmt.Errorf("%w: piece %d decodes to %d samples, not the %d cut", ErrSplit, k+1, n, res.Samples[k])
+		}
 	}
-	cmd := toolrun.Command(ctx, toolrun.Idle, "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
-		"-i", path, "-map", "0:a:0", "-c:a", "pcm_"+format, "-f", format, "-")
+	if !bytes.Equal(want, joined.Sum(nil)) {
+		return fmt.Errorf("%w: the pieces' audio isn't the image's", ErrSplit)
+	}
+	return nil
+}
+
+// decodePCM decodes path's first audio stream to raw 32-bit little-endian PCM, writes it
+// to h and says how many samples per channel it held.
+func decodePCM(ctx context.Context, p SplitPlan, path string, h hash.Hash) (int64, int64, error) {
+	cmd := toolrun.Command(ctx, toolrun.Idle, "ffmpeg", decodeArgs(path)...)
 	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	cmd.Stderr = &limitedBuffer{b: &stderr, max: 64 << 10}
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if err := cmd.Start(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	n, cerr := io.Copy(h, pipe)
 	werr := cmd.Wait()
+	rss := maxRSSKB(cmd.ProcessState)
 	if ctx.Err() != nil {
-		return 0, ctx.Err()
+		return 0, rss, ctx.Err()
 	}
 	if cerr != nil || werr != nil {
-		return 0, fmt.Errorf("%w: decoding %s: %v %v: %s", ErrSplit, filepath.Base(path), cerr, werr, lastLine(stderr.Bytes()))
+		return 0, rss, fmt.Errorf("%w: decoding %s: %v %v: %s", ErrSplit, filepath.Base(path), cerr, werr, lastLine(stderr.Bytes()))
 	}
-	frame := int64(width * p.Channels)
+	frame := int64(p.pcmFrame())
 	if n%frame != 0 {
-		return 0, fmt.Errorf("%w: %s decoded to a partial sample", ErrSplit, filepath.Base(path))
+		return 0, rss, fmt.Errorf("%w: %s decoded to a partial sample", ErrSplit, filepath.Base(path))
 	}
-	return n / frame, nil
+	return n / frame, rss, nil
+}
+
+// limitedBuffer keeps the first max bytes written to it (a tool's error output).
+type limitedBuffer struct {
+	b   *bytes.Buffer
+	max int
+}
+
+func (l *limitedBuffer) Write(p []byte) (int, error) {
+	if room := l.max - l.b.Len(); room > 0 {
+		l.b.Write(p[:min(len(p), room)])
+	}
+	return len(p), nil
 }
 
 func lastLine(b []byte) string {
@@ -331,6 +495,71 @@ func lastLine(b []byte) string {
 	return s
 }
 
+// streamInfo is what a FLAC file's STREAMINFO block says about its audio.
+type streamInfo struct {
+	ok      bool
+	bits    int
+	samples int64
+	md5     [16]byte
+}
+
+// readStreamInfo reads a FLAC file's STREAMINFO (ok false for anything else).
+func readStreamInfo(path string) (streamInfo, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return streamInfo{}, err
+	}
+	defer f.Close()
+	var hdr [4 + 4 + 34]byte
+	if _, err := io.ReadFull(f, hdr[:]); err != nil {
+		return streamInfo{}, nil
+	}
+	// "fLaC", then the first metadata block, which must be STREAMINFO (type 0, 34 bytes).
+	if string(hdr[:4]) != "fLaC" || hdr[4]&0x7f != 0 || int(hdr[5])<<16|int(hdr[6])<<8|int(hdr[7]) != 34 {
+		return streamInfo{}, nil
+	}
+	si := hdr[8:]
+	// Bytes 10..17: 20 bits rate, 3 bits channels-1, 5 bits depth-1, 36 bits samples.
+	x := binary.BigEndian.Uint64(si[10:18])
+	out := streamInfo{ok: true, bits: int((x>>36)&0x1f) + 1, samples: int64(x & (1<<36 - 1))}
+	copy(out.md5[:], si[18:34])
+	return out, nil
+}
+
+// streamMD5 computes the MD5 FLAC's STREAMINFO carries: every sample, signed little-endian,
+// interleaved, in as many bytes as its depth needs — here from the 32-bit decoded stream.
+type streamMD5 struct {
+	h     hash.Hash
+	bits  int
+	width int
+	out   []byte
+}
+
+func newStreamMD5(bits int) *streamMD5 {
+	return &streamMD5{h: md5.New(), bits: bits, width: (bits + 7) / 8}
+}
+
+func (s *streamMD5) write(chunk []byte) {
+	n := len(chunk) / 4 * s.width
+	if cap(s.out) < n {
+		s.out = make([]byte, n)
+	}
+	out := s.out[:n]
+	shift := 32 - s.bits
+	for i, o := 0, 0; i+4 <= len(chunk); i, o = i+4, o+s.width {
+		v := int32(binary.LittleEndian.Uint32(chunk[i:])) >> shift
+		for b := 0; b < s.width; b++ {
+			out[o+b] = byte(v >> (8 * b))
+		}
+	}
+	s.h.Write(out)
+}
+
+func (s *streamMD5) sum() (out [16]byte) {
+	copy(out[:], s.h.Sum(nil))
+	return out
+}
+
 // SplitFiles lists a split job's pieces in order (their staged paths).
 func (j *Job) SplitFiles() []string {
 	var out []string
@@ -340,13 +569,18 @@ func (j *Job) SplitFiles() []string {
 	return out
 }
 
-// isScratch reports whether path is a piece inside a split job in the same staging folder
-// as this job (never this job's own folder, never anything outside a job's files/).
+// isScratch reports whether path is a piece of a split job (Kind "split") in the same
+// staging folder as this job: never this job's own folder, never anything outside a
+// split job's files/.
 func (j *Job) isScratch(path string) bool {
 	files := filepath.Dir(path)
 	job := filepath.Dir(files)
-	return filepath.Base(files) == filesDir && reJobID.MatchString(filepath.Base(job)) &&
-		filepath.Clean(filepath.Dir(job)) == filepath.Clean(filepath.Dir(j.dir)) && filepath.Clean(job) != filepath.Clean(j.dir)
+	if filepath.Base(files) != filesDir || !reJobID.MatchString(filepath.Base(job)) ||
+		filepath.Clean(filepath.Dir(job)) != filepath.Clean(filepath.Dir(j.dir)) || filepath.Clean(job) == filepath.Clean(j.dir) {
+		return false
+	}
+	m, err := readManifest(job)
+	return err == nil && m.Kind == KindSplit
 }
 
 // dropScratch deletes an item's source once its copy is in the library, when the source

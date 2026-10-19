@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -154,7 +155,7 @@ func (c *Coordinator) expandCueSheets(ctx context.Context, root string, files []
 	}
 	cs := &cueSet{parts: map[string]cuePart{}}
 	drop := map[string]bool{} // images replaced by their tracks, or redundant
-	claimed := map[string]bool{}
+	claimed := map[string]ref{}
 	for _, r := range refs {
 		tracks := 0
 		for _, i := range r.s.TracksIn(r.file) {
@@ -171,10 +172,17 @@ func (c *Coordinator) expandCueSheets(ctx context.Context, root string, files []
 			}
 			return nil, nil, cueTrouble("The cue sheet %s names %q, which isn't in the download", filepath.Base(r.sheetPath), r.s.Files[r.file].Name)
 		}
-		if claimed[r.img] {
-			continue // a second cue sheet for the same image ("Album.cue" and "Album (EAC).cue")
+		if first, ok := claimed[r.img]; ok {
+			// A second cue sheet for the same image ("Album.cue" and "Album (EAC).cue"): the
+			// same cuts are the same sheet in other clothes; different cuts mean one of them
+			// is for another rip, and which can't be guessed.
+			if !sameCuts(first.s, first.file, r.s, r.file) {
+				return nil, nil, cueTrouble("The cue sheets %s and %s both name %s but cut it differently",
+					filepath.Base(first.sheetPath), filepath.Base(r.sheetPath), filepath.Base(r.img))
+			}
+			continue
 		}
-		claimed[r.img] = true
+		claimed[r.img] = r
 		if audioBeside(filepath.Dir(r.img), files, images) >= tracks {
 			c.log.Info("music import: the image's tracks are in the download as files already — not splitting it",
 				"image", filepath.Base(r.img), "cue", filepath.Base(r.sheetPath))
@@ -237,10 +245,21 @@ func (c *Coordinator) expandCueSheets(ctx context.Context, root string, files []
 func (c *Coordinator) cueImageOf(ctx context.Context, s *cue.Sheet, f int, sheetPath, img string, disc int) (*cueImage, error) {
 	info, err := c.probeAudio(ctx, img)
 	if err != nil {
-		if errors.Is(err, errNoFFprobe) {
+		var exit *exec.ExitError
+		switch {
+		case ctx.Err() != nil:
+			return nil, ctx.Err()
+		case errors.Is(err, errNoFFprobe):
 			return nil, cueTrouble("%s is a disc image with a cue sheet; splitting it needs ffmpeg, which isn't installed", filepath.Base(img))
+		case errors.Is(err, mediainfo.ErrNoAudio), errors.As(err, &exit) && exit.ExitCode() > 0:
+			// ffprobe ran and couldn't read it: the file itself is the problem.
+			return nil, cueTrouble("Couldn't read the disc image %s: %v", filepath.Base(img), err)
 		}
-		return nil, cueTrouble("Couldn't read the disc image %s: %v", filepath.Base(img), err)
+		// A timeout, a killed probe, a busy disk: tried again with the next sweep.
+		return nil, fmt.Errorf("reading the disc image %s: %w", filepath.Base(img), err)
+	}
+	if err := wavConsistent(img); err != nil {
+		return nil, cueTrouble("%s: %v", filepath.Base(img), err)
 	}
 	if q := music.TierFromProbe(info); q == music.QualityUnknown || !music.IsLosslessQuality(q) {
 		return nil, cueTrouble("%s is a %s disc image: only lossless images (FLAC, WAV, APE, WavPack) are split into tracks", filepath.Base(img), strings.ToUpper(info.Codec))
@@ -422,50 +441,89 @@ func findCueSheets(root string) []string {
 }
 
 // resolveCueFile finds the file a cue sheet's FILE line names, beside the sheet: the name
-// as written; the same name in another case; the same name with another lossless
-// audio extension (rippers write the cue for the .wav, then compress it to .flac); and —
-// when the sheet cuts one image only — the audio file named like the cue sheet itself.
-// Never a file outside root. "" when none.
+// as written; the same name in another case; the same name with another audio extension
+// (rippers write the cue for the .wav, then compress it to .flac); and — when the sheet
+// cuts one image only — the audio file named like the cue sheet itself. The answer is
+// always the name as it is on disk (a case-insensitive share answers "album.flac" for
+// "Album.FLAC"), a regular file (never a symlink), and inside root once every link in its
+// folders is followed. "" when none.
 func resolveCueFile(root, sheetPath, name string, single bool) string {
 	dir := filepath.Dir(sheetPath)
 	want := filepath.Clean(filepath.Join(dir, filepath.FromSlash(strings.ReplaceAll(name, `\`, "/"))))
 	if !insideDir(want, root) {
 		return ""
 	}
-	if fi, err := os.Stat(want); err == nil && fi.Mode().IsRegular() {
-		return want
-	}
-	// look lists dir for a file named name in any case, and an audio file with stem.
+	// look lists dir for a file named name (as written first, then in any case) and an
+	// audio file with stem. ReadDir's types come from lstat: a symlink isn't regular.
 	look := func(dir, name, stem string) (exact, sameStem string) {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			return "", ""
 		}
+		folded := ""
 		for _, e := range entries {
 			if !e.Type().IsRegular() {
 				continue
 			}
-			if name != "" && strings.EqualFold(e.Name(), name) {
+			switch {
+			case name != "" && e.Name() == name:
 				exact = filepath.Join(dir, e.Name())
+			case name != "" && folded == "" && strings.EqualFold(e.Name(), name):
+				folded = filepath.Join(dir, e.Name())
 			}
 			// Any audio file: a lossy one is found, and then refused with that reason.
 			if music.IsAudioFile(e.Name()) && sameStem == "" && strings.EqualFold(strings.TrimSuffix(e.Name(), filepath.Ext(e.Name())), stem) {
 				sameStem = filepath.Join(dir, e.Name())
 			}
 		}
+		if exact == "" {
+			exact = folded
+		}
 		return exact, sameStem
 	}
 	base := filepath.Base(want)
+	found := ""
 	if exact, other := look(filepath.Dir(want), base, strings.TrimSuffix(base, filepath.Ext(base))); exact != "" {
-		return exact
+		found = exact
 	} else if other != "" {
-		return other
+		found = other
+	} else if single {
+		_, found = look(dir, "", strings.TrimSuffix(filepath.Base(sheetPath), filepath.Ext(sheetPath)))
 	}
-	if !single {
+	if found == "" || !confined(found, root) {
 		return ""
 	}
-	_, other := look(dir, "", strings.TrimSuffix(filepath.Base(sheetPath), filepath.Ext(sheetPath)))
-	return other
+	return found
+}
+
+// confined reports whether path is inside root with every symlink on the way followed: a
+// download's folder linked to somewhere else is never read through.
+func confined(path, root string) bool {
+	rp, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+	rr, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false
+	}
+	return insideDir(rp, rr)
+}
+
+// sameCuts reports whether two sheets cut their files at the same places: the same track
+// types starting at the same INDEX 01 points.
+func sameCuts(a *cue.Sheet, af int, b *cue.Sheet, bf int) bool {
+	ai, bi := a.TracksIn(af), b.TracksIn(bf)
+	if len(ai) != len(bi) {
+		return false
+	}
+	for k := range ai {
+		ta, tb := a.Tracks[ai[k]], b.Tracks[bi[k]]
+		if ta.Index01.Frames != tb.Index01.Frames || ta.Audio() != tb.Audio() {
+			return false
+		}
+	}
+	return true
 }
 
 // audioBeside counts the audio files in dir that aren't disc images: a folder holding as

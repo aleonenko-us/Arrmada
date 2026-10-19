@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -325,6 +326,13 @@ func (c *Coordinator) importMusicDownload(ctx context.Context, it download.Item)
 	// once the matcher is sure and placement takes its tracks.
 	files, cues, err := c.expandCueSheets(ctx, it.ContentPath, files)
 	if err != nil {
+		var problem *cueProblem
+		if !errors.As(err, &problem) {
+			// The image couldn't be read just now (a probe timed out, shutting down): the
+			// next sweep tries again.
+			c.log.Warn("music import: couldn't read a disc image just now — will retry", "release", it.Name, "err", err)
+			return
+		}
 		expected := gid
 		if expected == 0 && nameOK {
 			expected = named.ID

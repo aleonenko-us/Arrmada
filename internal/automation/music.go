@@ -761,8 +761,14 @@ func (c *Coordinator) importAlbumContent(ctx context.Context, a music.Artist, al
 	// A disc image with a cue sheet stands in for its tracks (MUS-35).
 	files, cues, err := c.expandCueSheets(ctx, contentPath, files)
 	if err != nil {
-		res.splitFailed, res.splitWhy = 1, err.Error()
-		c.log.Warn("music import: a cue-sheet album can't be split", "album", al.Title, "why", err)
+		var problem *cueProblem
+		if errors.As(err, &problem) {
+			res.splitFailed, res.splitWhy = 1, err.Error()
+			c.log.Warn("music import: a cue-sheet album can't be split", "album", al.Title, "why", err)
+		} else {
+			res.failed = len(files) // read again later
+			c.log.Warn("music import: couldn't read a disc image just now", "album", al.Title, "err", err)
+		}
 		return res
 	}
 	ctx = withCueSet(ctx, cues)
@@ -1212,6 +1218,11 @@ func (c *Coordinator) importAlbumFolder(ctx context.Context, a music.Artist, al 
 	}
 	files, cues, err := c.expandCueSheets(ctx, f.path, f.files)
 	if err != nil {
+		var problem *cueProblem
+		if !errors.As(err, &problem) {
+			c.log.Warn("music import: couldn't read a discography folder's disc image just now", "album", al.Title, "err", err)
+			return albumImport{found: true, failed: len(f.files)} // tried again later
+		}
 		c.log.Warn("music import: a discography folder's cue sheet can't be used — left in the download", "album", al.Title, "folder", filepath.Base(f.path), "why", err)
 		return albumImport{found: true, unmatched: len(f.files)}
 	}

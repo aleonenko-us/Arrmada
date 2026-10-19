@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
+	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/mediainfo"
@@ -68,10 +70,12 @@ func (c *Coordinator) cueHiddenTracks(ctx context.Context, tracks []music.Track,
 }
 
 // splitPlanned splits the images whose tracks the plan places and puts the pieces in the
-// virtual files' place. ok is false when nothing should be placed: the split couldn't run
-// now (no space, the music folder missing: tried again later) or failed (the album goes
-// to Review). done deletes the pieces left once placement is over.
-func (c *Coordinator) splitPlanned(ctx context.Context, al music.Album, plan []placement, releaseTier music.Quality, res *albumImport) (out []placement, done func(), ok bool) {
+// virtual files' place. tracks are the album's target tracks. ok is false when nothing
+// should be placed: the split couldn't run now (no space, the music folder missing: tried
+// again later) or shouldn't (the image's length isn't the disc's, the split didn't prove
+// exact, AcoustID hears other recordings: the album goes to Review). done deletes the
+// pieces left once placement is over.
+func (c *Coordinator) splitPlanned(ctx context.Context, al music.Album, tracks []music.Track, plan []placement, releaseTier music.Quality, res *albumImport) (out []placement, done func(), ok bool) {
 	done = func() {}
 	cs := cueSetFrom(ctx)
 	var imgs []*cueImage
@@ -87,6 +91,16 @@ func (c *Coordinator) splitPlanned(ctx context.Context, al music.Album, plan []p
 	if len(imgs) == 0 {
 		return plan, done, true
 	}
+	if why := cueLengthMismatch(cs, imgs, tracks, plan); why != "" {
+		// The cue sheet's cuts were matched; the image's own length is what ties the
+		// audio to the disc MusicBrainz lists.
+		res.splitFailed++
+		if res.splitWhy == "" {
+			res.splitWhy = why
+		}
+		c.log.Warn("music import: the disc image's length isn't the disc's — not splitting it", "album", al.Title, "why", why)
+		return nil, done, false
+	}
 	if err := c.imp.CheckMusicRoot(); err != nil {
 		res.failed += len(plan)
 		c.log.Warn("music import: the music folder isn't there — not splitting the disc image", "album", al.Title, "err", err)
@@ -94,8 +108,8 @@ func (c *Coordinator) splitPlanned(ctx context.Context, al music.Album, plan []p
 	}
 	plans := make([]stage.SplitPlan, len(imgs))
 	for i, ci := range imgs {
-		plans[i] = stage.SplitPlan{Image: ci.path, Cuts: ci.cuts, TotalSamples: ci.total,
-			Channels: ci.info.Channels, Bits: ci.info.BitsPerSample, Tags: ci.tags}
+		plans[i] = stage.SplitPlan{Image: ci.path, Cuts: ci.cuts, TotalSamples: ci.total, Rate: ci.info.SampleRateHz,
+			Channels: ci.info.Channels, Bits: ci.info.BitsPerSample, Layout: ci.info.ChannelLayout, Tags: ci.tags}
 	}
 	c.log.Info("music import: splitting a cue-sheet disc image into tracks", "album", al.Title, "images", len(imgs),
 		"image", filepath.Base(imgs[0].path))
@@ -121,6 +135,10 @@ func (c *Coordinator) splitPlanned(ctx context.Context, al music.Album, plan []p
 			c.log.Warn("music import: a split's leftover tracks were kept for the next start", "album", al.Title, "err", err)
 		}
 	}
+	for i, r := range results {
+		c.log.Info("music import: split a disc image into tracks", "album", al.Title, "image", filepath.Base(imgs[i].path),
+			"tracks", len(r.Files), "peak_mb", r.PeakRSSKB>>10)
+	}
 	used := map[*cueImage]map[int]bool{}
 	out = make([]placement, 0, len(plan))
 	for _, p := range plan {
@@ -138,6 +156,15 @@ func (c *Coordinator) splitPlanned(ctx context.Context, al music.Album, plan []p
 			used[part.img] = map[int]bool{}
 		}
 		used[part.img][part.seg] = true
+	}
+	if why := c.cueSoundsWrong(ctx, out); why != "" {
+		done()
+		res.splitFailed++
+		if res.splitWhy == "" {
+			res.splitWhy = why
+		}
+		c.log.Warn("music import: the split tracks don't sound like the album — not placing them", "album", al.Title, "why", why)
+		return nil, func() {}, false
 	}
 	// Audio of the image that isn't imported is said so, never dropped silently.
 	for i, ci := range imgs {
@@ -160,6 +187,111 @@ func (c *Coordinator) splitPlanned(ctx context.Context, al music.Album, plan []p
 	return out, done, true
 }
 
+// cueLengthTolerance is how far an image's track audio may be from the disc's listed
+// length: a few seconds, plus half a second a track, since stored track lengths are whole
+// seconds rounded down (so the expected length is taken half a second a track longer).
+func cueLengthTolerance(tracks int) float64 { return 3 + 0.5*float64(tracks) }
+
+// cueLengthMismatch checks each image against the disc its tracks were matched to: the
+// image's real length (as probed, less what isn't a track) must be the length MusicBrainz
+// lists for that disc, within cueLengthTolerance. A cue sheet only says where to cut; this
+// is what says the audio is the disc's. "" when every image fits (or a disc has a track of
+// unknown length, so there's nothing to compare).
+func cueLengthMismatch(cs *cueSet, imgs []*cueImage, tracks []music.Track, plan []placement) string {
+	for _, ci := range imgs {
+		disc := -1
+		for _, p := range plan {
+			if part, ok := cs.part(p.f.Path); ok && part.img == ci && p.t.TrackNumber > 0 {
+				disc = p.t.DiscNumber
+				break
+			}
+		}
+		if disc < 0 {
+			continue
+		}
+		listed, n := 0, 0
+		for _, t := range tracks {
+			if t.DiscNumber != disc || t.TrackNumber == 0 {
+				continue
+			}
+			if t.DurationSec <= 0 {
+				listed = -1
+				break
+			}
+			listed += t.DurationSec
+			n++
+		}
+		if listed <= 0 {
+			continue
+		}
+		var samples int64
+		for k, seg := range ci.segs {
+			if seg.Kind != cue.SegTrack {
+				continue
+			}
+			start, end := int64(0), ci.total
+			if k > 0 {
+				start = ci.cuts[k-1]
+			}
+			if k < len(ci.cuts) {
+				end = ci.cuts[k]
+			}
+			samples += end - start
+		}
+		have := float64(samples) / float64(ci.info.SampleRateHz)
+		if math.Abs(have-(float64(listed)+0.5*float64(n))) > cueLengthTolerance(n) {
+			return fmt.Sprintf("the disc image %s holds %s of tracks, but MusicBrainz lists %s for disc %d of this edition",
+				filepath.Base(ci.path), clock(have), clock(float64(listed)), disc)
+		}
+	}
+	return ""
+}
+
+func clock(sec float64) string {
+	s := int(math.Round(sec))
+	return fmt.Sprintf("%d:%02d", s/60, s%60)
+}
+
+// cueSoundsWrong fingerprints up to two split tracks (when an AcoustID key is set) and
+// says why when AcoustID clearly names other recordings for all it recognised: a cue
+// sheet that matched by its text over audio that is something else. "" otherwise —
+// including when AcoustID knows none of them, or can't be asked.
+func (c *Coordinator) cueSoundsWrong(ctx context.Context, plan []placement) string {
+	fp := c.fingerprinter
+	if fp == nil || !fp.Enabled() {
+		return ""
+	}
+	var picks []placement
+	for _, p := range plan {
+		if p.scratch && p.t.RecordingMBID != "" {
+			picks = append(picks, p)
+		}
+	}
+	if len(picks) > 2 {
+		picks = []placement{picks[0], picks[len(picks)/2]}
+	}
+	heard, agreed := 0, 0
+	var names []string
+	for _, p := range picks {
+		got, err := fp.Recordings(ctx, p.f.Path)
+		if err != nil || len(got) == 0 {
+			continue
+		}
+		heard++
+		for _, g := range got {
+			if strings.EqualFold(g, p.t.RecordingMBID) {
+				agreed++
+				break
+			}
+		}
+		names = append(names, p.t.Title)
+	}
+	if heard == 0 || agreed > 0 {
+		return ""
+	}
+	return fmt.Sprintf("AcoustID recognises the split audio as other recordings than %s", strings.Join(names, " and "))
+}
+
 // splitImages runs the split (stage.Split) in the music folder's staging area.
 func (c *Coordinator) splitImages(ctx context.Context, plans []stage.SplitPlan) (*stage.Job, []stage.SplitResult, error) {
 	return stage.Split(ctx, c.imp.MusicDir(), plans, c.stageDeps())
@@ -174,6 +306,7 @@ func (c *Coordinator) musicCueReview(ctx context.Context, it download.Item, idx 
 			title = al.Title
 		}
 	}
+	c.clearMusicRetry(it.Hash)
 	c.log.Warn("music import: a cue-sheet album can't be split — sending to review", "release", it.Name, "why", why)
 	c.addReview(ctx, Review{
 		Hash: it.Hash, Name: it.Name, ContentPath: it.ContentPath, MediaType: "music", ReasonCode: ReasonImportFailed,
