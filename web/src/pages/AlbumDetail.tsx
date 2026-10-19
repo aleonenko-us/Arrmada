@@ -148,11 +148,11 @@ export function AlbumDetail() {
                   {al.edition_pinned ? " (kept)" : ""}
                   {(al.editions?.length ?? 0) > 1 ? ` · ${al.editions!.length} editions known` : ""}
                 </span>
-                {(al.editions?.length ?? 0) > 1 && (
-                  <button className="font-semibold" style={{ color: "var(--accent-text)" }} onClick={() => setPicking(true)}>
-                    Change edition…
-                  </button>
-                )}
+                {/* Always offered: opening it lists the album's editions from MusicBrainz
+                    when that hasn't happened yet (the page itself never asks). */}
+                <button className="font-semibold" style={{ color: "var(--accent-text)" }} onClick={() => setPicking(true)}>
+                  Change edition…
+                </button>
               </div>
             )}
             <div className="mt-4">

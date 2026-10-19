@@ -385,10 +385,16 @@ func (r *Repo) switchEdition(ctx context.Context, albumID, releaseID int64, pinn
 			}
 		}
 		moved := mapTracks(from, free)
+		var before albumTally
 		if allOrNothing {
 			for _, h := range files {
 				if _, ok := moved[h.track.ID]; h.onCur && !ok {
 					return ErrWouldStrand
+				}
+			}
+			if cur.Valid {
+				if before, err = tallyTx(ctx, tx, albumID, cur.Int64); err != nil {
+					return err
 				}
 			}
 		}
@@ -423,11 +429,43 @@ func (r *Repo) switchEdition(ctx context.Context, albumID, releaseID int64, pinn
 				mon[id] = m
 			}
 			mrows.Close()
+			carried := map[int64]bool{}
 			for fromTrack, toTrack := range mapTracks(old, to) {
+				carried[toTrack] = true
 				if _, err := tx.ExecContext(ctx, `UPDATE music_release_tracks SET monitored = ? WHERE id = ?`,
 					mon[fromTrack], toTrack); err != nil {
 					return err
 				}
+			}
+			if allOrNothing {
+				// A re-key only renames what the album already had: a track of the new
+				// edition the old listing didn't have, and no file covers, isn't newly
+				// wanted (a deluxe's bonus tracks don't start being searched for).
+				filed := map[int64]bool{}
+				for _, toTrack := range moved {
+					filed[toTrack] = true
+				}
+				for id := range taken {
+					filed[id] = true
+				}
+				for _, t := range to {
+					if !carried[t.ID] && !filed[t.ID] {
+						if _, err := tx.ExecContext(ctx, `UPDATE music_release_tracks SET monitored = 0 WHERE id = ?`, t.ID); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+		if allOrNothing && cur.Valid {
+			// And it never makes the album read as less complete than it was: no fewer
+			// tracks held, no more wanted ones missing.
+			after, err := tallyTx(ctx, tx, albumID, releaseID)
+			if err != nil {
+				return err
+			}
+			if after.have < before.have || after.tracks-after.have > before.tracks-before.have {
+				return ErrWouldStrand
 			}
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE albums SET target_release_id = ?, edition_pinned = ? WHERE id = ?`,
@@ -435,6 +473,24 @@ func (r *Repo) switchEdition(ctx context.Context, albumID, releaseID int64, pinn
 		return err
 	})
 	return res, err
+}
+
+// albumTally is what an edition says about an album's completeness: its wanted tracks
+// and how many of those hold a file on disk.
+type albumTally struct{ tracks, have int }
+
+// tallyTx counts an edition of an album the way the library does (Repo.albumCounts):
+// wanted tracks are monitored ones, or every one when the album isn't monitored.
+func tallyTx(ctx context.Context, tx *sql.Tx, albumID, releaseID int64) (albumTally, error) {
+	var t albumTally
+	err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*), COALESCE(SUM(EXISTS (SELECT 1 FROM music_track_files f
+		                                       WHERE f.release_track_id = rt.id AND f.missing_since IS NULL)), 0)
+		  FROM music_media m
+		  JOIN music_release_tracks rt ON rt.medium_id = m.id
+		  JOIN albums al ON al.id = ?
+		 WHERE m.release_id = ? AND `+wantedTrack, albumID, releaseID).Scan(&t.tracks, &t.have)
+	return t, err
 }
 
 // EditionFileCounts counts each of an album's editions' file rows (for hiding a legacy

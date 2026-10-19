@@ -47,7 +47,9 @@ func musicEditionServer(t *testing.T) (http.Handler, *settings.Service, string, 
 		t.Fatal(err)
 	}
 	set := settings.NewService(st.DB())
-	svc := music.NewService(st.DB(), metadata.NewMusicBrainz(nil, nil), slog.Default())
+	// Listings only: opening the picker would otherwise list editions from the real
+	// MusicBrainz.
+	svc := music.NewService(st.DB(), listingOnly{metadata.NewMusicBrainz(nil, nil)}, slog.Default())
 	svc.SetSettingsLookup(set.Lookup)
 	srv := New(Deps{Log: slog.Default(), Store: st, Auth: authSvc, Settings: set, Music: svc})
 	return srv.Handler, set, session, st.DB()

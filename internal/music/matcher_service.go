@@ -218,8 +218,11 @@ func (s *Service) TargetCandidates(ctx context.Context, albumID int64) ([]MatchC
 	if err != nil {
 		return nil, err
 	}
-	if s.meta != nil {
-		if err := s.EnsureTracks(ctx, al); err != nil {
+	if s.meta != nil && al.EditionTracks == 0 {
+		// The album has no listing at all: fetch the one listing, as the scan always did.
+		// No editions are listed and nothing is re-keyed from here: a scan of a big
+		// library can't afford MusicBrainz calls per album.
+		if err := s.ensureListing(ctx, al); err != nil {
 			return nil, err
 		}
 		if al, err = s.repo.GetAlbum(ctx, albumID); err != nil {

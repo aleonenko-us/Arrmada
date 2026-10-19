@@ -75,11 +75,16 @@ func (s *Service) GetAlbum(ctx context.Context, id int64) (Album, error) {
 	if err != nil {
 		return Album{}, err
 	}
-	if err := s.EnsureTracks(ctx, al); err != nil {
-		s.log.Warn("music: couldn't fetch the track listing", "album", al.Title, "err", err)
-	}
-	if refreshed, rerr := s.repo.GetAlbum(ctx, id); rerr == nil {
-		al = refreshed
+	// Opening an album page costs no MusicBrainz call once it has a listing: its editions
+	// are listed (and a migrated album re-keyed) when it's searched for, imported into, or
+	// its edition picker is opened.
+	if al.EditionTracks == 0 {
+		if err := s.EnsureTracks(ctx, al); err != nil {
+			s.log.Warn("music: couldn't fetch the track listing", "album", al.Title, "err", err)
+		}
+		if refreshed, rerr := s.repo.GetAlbum(ctx, id); rerr == nil {
+			al = refreshed
+		}
 	}
 	tracks, err := s.repo.TracksFor(ctx, id)
 	if err != nil {
