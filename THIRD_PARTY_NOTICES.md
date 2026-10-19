@@ -19,7 +19,16 @@ of them covers.
 - Module: `go.senan.xyz/taglib` (v0.15.0), source: https://github.com/sentriz/go-taglib
 - It embeds TagLib 2 (https://taglib.org, LGPL-2.1 / MPL-1.1, source:
   https://github.com/taglib/taglib) compiled to WebAssembly, as the file `taglib.wasm`.
-- Licence text: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+- Licence text: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html, and in full in
+  `LICENSES/LGPL-2.1.txt` (shipped in the image at `/usr/share/doc/arrmada/LICENSES/`).
+
+**Source for the LGPL part.** The exact source of the TagLib code in each Arrmada build is
+go-taglib's `v0.15.0` tag (https://github.com/sentriz/go-taglib/tree/v0.15.0) with the
+TagLib commit its `taglib` submodule pins at that tag; `go.mod` names the version. If you
+can't get it from there, ask through the Arrmada repository's issues
+(https://github.com/tristenlammi/Arrmada/issues) and we'll send it to you: this offer is
+valid for at least three years from the release of the Arrmada build you have, to anyone
+who has it.
 
 **Replacing the LGPL part.** The TagLib code runs from that one WebAssembly file, which
 can be swapped for a build of your own without changing Arrmada: build Arrmada with
@@ -38,6 +47,12 @@ with a `replace` line in `go.mod`.
 - Module: `github.com/tetratelabs/wazero`, source: https://github.com/tetratelabs/wazero
 - The WebAssembly runtime go-taglib runs TagLib in.
 - Licence text: https://www.apache.org/licenses/LICENSE-2.0
+- Its NOTICE file reads:
+
+  ```
+  wazero
+  Copyright 2020-2023 wazero authors
+  ```
 
 ### The permissive tag libraries
 

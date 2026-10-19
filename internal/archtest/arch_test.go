@@ -291,6 +291,18 @@ func TestAudiotagNoticeShips(t *testing.T) {
 	if !strings.Contains(read("Dockerfile"), "THIRD_PARTY_NOTICES.md /usr/share/doc/arrmada/") {
 		t.Error("the Dockerfile must copy THIRD_PARTY_NOTICES.md into the image")
 	}
+	// LGPL-2.1 §1/§6: the full licence text goes with the binary, not just a link to it.
+	if lgpl := read("LICENSES/LGPL-2.1.txt"); !strings.Contains(lgpl, "GNU LESSER GENERAL PUBLIC LICENSE") ||
+		!strings.Contains(lgpl, "END OF TERMS AND CONDITIONS") {
+		t.Error("LICENSES/LGPL-2.1.txt must hold the full LGPL-2.1 text")
+	}
+	if !strings.Contains(read("Dockerfile"), "COPY LICENSES/ /usr/share/doc/arrmada/LICENSES/") {
+		t.Error("the Dockerfile must copy LICENSES/ into the image")
+	}
+	// Apache-2.0 §4(d): wazero's NOTICE travels with it.
+	if !strings.Contains(read("THIRD_PARTY_NOTICES.md"), "Copyright 2020-2023 wazero authors") {
+		t.Error("THIRD_PARTY_NOTICES.md must reproduce wazero's NOTICE")
+	}
 }
 
 // TestAudiotagImportersKnown: only the music import reads tags (the matcher); anything
