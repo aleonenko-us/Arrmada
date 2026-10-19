@@ -67,6 +67,8 @@ export function episodeCode(season: number, episode: number): string {
 /** The line under a title: 'S02E05 · Episode name' or 'Movie · 2026'. */
 export function itemLine(it: CalendarItem): string {
   if (it.type === "movie") return it.year ? `Movie · ${it.year}` : "Movie";
+  // An album: 'Artist · EP'.
+  if (it.type === "album") return it.artist ? `${it.artist} · ${it.album_type || "Album"}` : it.subtitle;
   if (it.season == null || it.episode == null) return it.subtitle; // an older server
   const code = episodeCode(it.season, it.episode);
   return it.episode_title ? `${code} · ${it.episode_title}` : code;
@@ -75,8 +77,10 @@ export function itemLine(it: CalendarItem): string {
 /**
  * Where tapping an item goes: staff to the library page, everyone else to the title's
  * Discover page (the only title page a requester has). null when there's nowhere to go.
+ * Albums are staff-only, so a requester never has one to open.
  */
 export function itemHref(it: CalendarItem, staff: boolean): string | null {
+  if (it.type === "album") return staff ? `/music/album/${it.ref_id}` : null;
   if (staff) return it.type === "movie" ? `/movies/${it.ref_id}` : `/series/${it.ref_id}`;
   if (!it.tmdb_id) return null;
   return `/discover/${it.media_type === "movie" ? "movie" : "series"}/${it.tmdb_id}`;

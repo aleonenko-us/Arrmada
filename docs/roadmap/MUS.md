@@ -1466,7 +1466,7 @@ ClearTrackFile (internal/music/service.go:197-200) has no callers and the scan o
   - **Risk:** Common-word aliases could widen matches; the album-title check and the matcher still gate.
   - **Resolves:** 
 <a id="mus-24"></a>
-- [ ] **MUS-24 · Show Music on the Dashboard and Calendar** — `P3` · `S` · Phase 15 · R3
+- [x] **MUS-24 · Show Music on the Dashboard and Calendar** — `P3` · `S` · Phase 15 · R3
   - **Rebuild note (2026-10-19):** Calendar entries come from release groups of monitored artists with a future or recent date (filled by [MUS-13](#mus-13)), in the agenda view (lib/calendar.ts) too. Dashboard counts use [MUS-29](#mus-29)'s completeness; recent activity already includes artist events (History's feed).
   - **Problem:** From the audit's Phase 3 overhaul (not a single finding). Music is invisible outside its own pages. The dashboard computes artist and album counts (internal/httpapi/dashboard.go:270-271) but never renders them, and the Calendar has no upcoming album releases.
   - **Approach:** 1. dashboard.go:

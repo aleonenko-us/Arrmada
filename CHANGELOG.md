@@ -26,6 +26,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Before you update
 
+- **Homepage widget: `wanted.total` now includes albums** (released albums still missing) while
+  Music is on. New fields `artists`, `albums`, `tracks` and `wanted.albums` are 0 while it's off.
+
 - **Music imports are copies now, not hardlinks,** because Arrmada writes clean tags (Settings →
   Naming & metadata → Music naming & tags → Write house tags, on by default). While a torrent
   seeds, its album takes up space twice. Turn Write house tags off to keep hardlinks.
@@ -187,6 +190,10 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Fixed
 
+- **Music (Preview) on the Dashboard and Calendar.** With Music on, staff get an Albums tile and a
+  Music card (library, missing and upcoming albums, new releases, recent imports), album release
+  dates on the Calendar and in their personal calendar feed, and music counts in the Homepage
+  widget. Requesters don't see albums.
 - **Music (Preview) keeps up with new releases.** Every few hours Arrmada checks your artists
   (through the cache and MusicBrainz's polite limit); a genuinely new album from an artist set to
   follow new releases is wanted and searched once, and listed under New releases on the Music page.

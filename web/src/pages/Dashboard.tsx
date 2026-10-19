@@ -7,6 +7,8 @@ import {
   type Status,
   type Health,
   type DashboardData,
+  type DashboardMusic,
+  type DashboardNewRelease,
   type StorageVolume,
   type ActivityEvent,
   type InsightsStream,
@@ -71,6 +73,8 @@ export function Dashboard() {
   const serversLabel = bothServers ? "Plex & Jellyfin" : data?.jellyfin_configured && !data?.plex_configured ? "Jellyfin" : "Plex";
   const listening = data?.listening ?? [];
   const lib = data?.library;
+  // Music's part: the server sends it only while the Music module is on.
+  const music = data?.music;
 
   return (
     <>
@@ -175,7 +179,7 @@ export function Dashboard() {
 
         {/* Library + transfers. */}
         <SectionLabel>Library</SectionLabel>
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <div className={`grid grid-cols-2 gap-2.5 ${music ? "sm:grid-cols-3 lg:grid-cols-5" : "sm:grid-cols-4"}`}>
           <Tile
             to="/movies"
             label="Movies"
@@ -203,7 +207,11 @@ export function Dashboard() {
             sub={lib && lib.books_missing > 0 ? `${lib.books_missing} missing` : "complete"}
             warn={!!lib && lib.books_missing > 0}
           />
+          {music && (
+            <Tile to="/music" label="Albums" value={music.albums} sub={musicTileSub(music)} warn={music.albums_missing > 0} />
+          )}
           <Tile
+            className={music ? "col-span-2 sm:col-span-1" : undefined}
             to={LINKS.activityQueue}
             label="Downloading"
             value={data && !data.queue_note ? data.queue.downloading : "—"}
@@ -212,6 +220,15 @@ export function Dashboard() {
             warn={!!data && (!!data.queue_note || data.queue.errored > 0 || (data.queue.stalled ?? 0) > 0)}
           />
         </div>
+
+        {/* Music, while the module is on: its numbers, what the refresh found lately and what
+            was imported (Recent activity mixes every library, so imports can be buried). */}
+        {music && (
+          <>
+            <SectionLabel link={{ to: "/music", label: "Music →" }}>Music</SectionLabel>
+            <MusicCard m={music} />
+          </>
+        )}
 
         {/* What Arrmada has been doing — the newest of Activity → History. */}
         <SectionLabel link={{ to: LINKS.history, label: "See all →" }}>Recent activity</SectionLabel>
@@ -498,6 +515,78 @@ export function downloadingSub(d: Pick<DashboardData, "queue" | "queue_note">): 
   return parts.join(" · ");
 }
 
+// musicTileSub is the Albums tile's second line: what's missing first, then the artists.
+export function musicTileSub(m: Pick<DashboardMusic, "artists" | "albums_missing">): string {
+  const artists = `${m.artists} artist${m.artists === 1 ? "" : "s"}`;
+  return m.albums_missing > 0 ? `${m.albums_missing} missing · ${artists}` : artists;
+}
+
+// musicUpcoming is the wanted albums that aren't out yet: the Wanted page's Upcoming tab.
+export function musicUpcoming(m: Pick<DashboardMusic, "albums_wanted" | "albums_missing">): number {
+  return Math.max(0, m.albums_wanted - m.albums_missing);
+}
+
+// releaseLine is a new release's second line: 'Artist · EP · 2026-11-14'.
+export function releaseLine(r: Pick<DashboardNewRelease, "artist_name" | "album_type" | "release_date">): string {
+  return [r.artist_name, r.album_type, r.release_date].filter(Boolean).join(" · ");
+}
+
+// MusicCard is Music's numbers, the newest new releases and the newest music imports.
+function MusicCard({ m }: { m: DashboardMusic }) {
+  return (
+    <Card>
+      <dl className="m-0 grid grid-cols-2 gap-x-6 gap-y-3 font-mono text-sm text-ink-dim sm:grid-cols-3 lg:grid-cols-6">
+        <Stat k="Artists" v={String(m.artists)} />
+        <Stat k="Albums" v={String(m.albums)} />
+        <Stat k="Tracks" v={String(m.tracks)} />
+        <Stat k="Size" v={bytes(m.size_bytes)} />
+        {/* The wanted albums, split as the Wanted page splits them, each opening the tab
+            that lists it: released ones (searching) and ones not out yet (upcoming). */}
+        <Stat k="Missing" v={String(m.albums_missing)} tone={m.albums_missing > 0 ? "avoid" : undefined} to={`${LINKS.downloadsSearching}?show=searching`} />
+        <Stat k="Upcoming" v={String(musicUpcoming(m))} to={`${LINKS.downloadsSearching}?show=upcoming`} />
+      </dl>
+      <div className="mt-5 grid gap-5 sm:grid-cols-2">
+        <section aria-labelledby="dash-new-releases" className="min-w-0">
+          <h3 id="dash-new-releases" className="m-0 mb-1 text-xs uppercase tracking-[0.1em] text-ink-faint">
+            New releases{m.new_releases_total > 0 ? ` · ${m.new_releases_total} in 30 days` : ""}
+          </h3>
+          {m.new_releases.length === 0 ? (
+            <p className="m-0 text-base text-ink-faint">Nothing new in the last 30 days.</p>
+          ) : (
+            <ul className="m-0 flex list-none flex-col p-0">
+              {m.new_releases.map((r) => (
+                <li key={r.id} className="py-1.5" style={{ borderTop: "1px solid var(--line)" }}>
+                  <Link to={`/music/album/${r.id}`} className="flex items-baseline gap-2.5 no-underline" style={{ color: "var(--ink)" }}>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-base font-semibold">{r.title}</span>
+                      <span className="block truncate font-mono text-xs text-ink-faint">{releaseLine(r)}</span>
+                    </span>
+                    <span className="flex-none text-xs font-semibold" style={{ color: r.monitored ? "var(--accent-text)" : "var(--ink-faint)" }}>
+                      {r.monitored ? "Wanted" : "Not wanted"}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section aria-labelledby="dash-music-imports" className="min-w-0">
+          <h3 id="dash-music-imports" className="m-0 mb-1 text-xs uppercase tracking-[0.1em] text-ink-faint">Recent imports</h3>
+          {m.imports.length === 0 ? (
+            <p className="m-0 text-base text-ink-faint">No music imported yet.</p>
+          ) : (
+            <ul className="m-0 flex list-none flex-col p-0">
+              {m.imports.map((e, i) => (
+                <ActivityRow key={`${e.id}-${e.at_ms}-${i}`} e={e} />
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </Card>
+  );
+}
+
 function Tile({
   to,
   label,
@@ -505,6 +594,7 @@ function Tile({
   sub,
   warn,
   title,
+  className,
 }: {
   to: string;
   label: string;
@@ -512,12 +602,13 @@ function Tile({
   sub: string;
   warn?: boolean;
   title?: string;
+  className?: string;
 }) {
   return (
     <Link
       to={to}
       title={title}
-      className="rounded-[11px] p-3.5 no-underline"
+      className={`rounded-[11px] p-3.5 no-underline${className ? ` ${className}` : ""}`}
       style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}
     >
       <div className="text-xs uppercase tracking-[0.1em] text-ink-faint">{label}</div>

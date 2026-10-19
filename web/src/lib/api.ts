@@ -794,12 +794,14 @@ export interface UserNotification {
 }
 
 export interface CalendarItem {
-  date: string; type: "episode" | "movie"; title: string; subtitle: string; poster_url?: string; ref_id: number; has_file: boolean;
+  date: string; type: "episode" | "movie" | "album"; title: string; subtitle: string; poster_url?: string; ref_id: number; has_file: boolean;
   // Searched for (an episode: it's wanted and its show's searching is on). searching_off: a
-  // wanted episode of a show whose searching is off.
+  // wanted episode of a show whose searching is off (an album: of an artist switched off).
   monitored: boolean; searching_off?: boolean;
   // The title's TMDB id and kind open its Discover page (APP-16); the episode's numbers and name.
-  tmdb_id?: number; media_type?: "movie" | "series"; year?: number; season?: number; episode?: number; episode_title?: string;
+  tmdb_id?: number; media_type?: "movie" | "series" | "music"; year?: number; season?: number; episode?: number; episode_title?: string;
+  // An album's artist and kind (MUS-24). Albums are on staff's calendar only, while Music is on.
+  artist?: string; album_type?: string;
   // The viewer asked for this title or follows a request for it (APP-17).
   requested_by_me?: boolean;
 }
@@ -1036,7 +1038,21 @@ export interface LibraryCounts {
   movies: number; movies_missing: number;
   series: number; episodes: number; episodes_missing: number;
   books: number; books_missing: number;
-  artists: number; albums: number;
+}
+// DashboardMusic is Music's part of the Dashboard (MUS-24), sent only while Music is on.
+// albums: albums with a track on disk; albums_wanted: incomplete wanted albums by the
+// Wanted page's rules (downloading ones included), of which albums_missing are released
+// (the rest are on its Upcoming tab).
+export interface DashboardMusic {
+  artists: number; albums: number; tracks: number; size_bytes: number;
+  albums_wanted: number; albums_missing: number;
+  /** The newest of the New releases list (last 30 days); new_releases_total is how many it holds. */
+  new_releases: DashboardNewRelease[]; new_releases_total: number;
+  /** The newest music imports (title is the artist). */
+  imports: ActivityEvent[];
+}
+export interface DashboardNewRelease {
+  id: number; title: string; artist_name: string; album_type?: string; release_date?: string; monitored: boolean; found_as?: string;
 }
 export interface ActivityEvent {
   kind: HistoryKind; // music is the artist
@@ -1053,6 +1069,7 @@ export interface DashboardData {
   queue: QueueSummary;
   queue_note?: string;
   library: LibraryCounts;
+  music?: DashboardMusic;
   activity: ActivityEvent[];
   listening?: NowListening[];
   audio_off?: boolean;
