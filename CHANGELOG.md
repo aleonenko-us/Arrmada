@@ -118,6 +118,14 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   for that kind of media; for a show it's on the season picker's confirm button. Leave it
   alone and the default is used. Requesters see no change, and a profile a requester sends
   through the API is ignored (staff still choose when approving).
+- **Order the library your way** (#36). Movies and TV list views get sortable Year, Added and
+  Rating columns (click a header, click again to reverse), the Sort menu and the headers share
+  one remembered order, and a new ↑/↓ button reverses it in grid view and on phones. The Books
+  table sorts from its headers too, with a new Added column.
+- **Browse one library folder** (#34). With several Movies or TV folders, the library page gets
+  a Folder picker (`?folder=` in the address, so a filtered view can be bookmarked). Search,
+  counts and Select all stay inside the chosen folder, and Add from a filtered view puts the
+  new title in that folder.
 - **SECURITY.md**: how to report a vulnerability privately, and which versions get fixes.
   The README now explains how Arrmada is built and tested.
 
