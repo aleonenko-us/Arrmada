@@ -19,7 +19,8 @@ import (
 
 // folderFixture is a series service over one TV folder (/tv unless changed), with shows
 // whose episode rows point wherever a test says. Nothing needs to exist on disk: which
-// folder a show lives in is read from its recorded files.
+// folder a show lives in is read from its recorded files (and every recorded file counts
+// as there, unless a test says otherwise).
 type folderFixture struct {
 	t   *testing.T
 	db  *sql.DB
@@ -36,6 +37,7 @@ func newFolderFixture(t *testing.T, root string) *folderFixture {
 	t.Cleanup(func() { _ = st.Close() })
 	svc := NewService(st.DB(), nil, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	svc.SetRootFunc(func() string { return root })
+	svc.fileGone = func(string) bool { return false }
 	return &folderFixture{t: t, db: st.DB(), svc: svc}
 }
 
@@ -135,6 +137,15 @@ func TestShowFolderOfIgnoresMisplacedFiles(t *testing.T) {
 	}
 	if got := f.svc.ExistingFolderName(ctx, lost); got != "" {
 		t.Errorf("ExistingFolderName = %q, want none", got)
+	}
+	// Once the misplaced files have been moved away by hand they no longer count against
+	// the show; files in its own folder are never checked on disk.
+	f.svc.fileGone = func(p string) bool { return strings.Contains(p, filepath.FromSlash("/tv/S")) }
+	if info := f.svc.ShowFolderOf(ctx, lost); info.Unknown || info.Path != "" {
+		t.Errorf("misplaced files gone: ShowFolderOf = %+v", info)
+	}
+	if info := f.svc.ShowFolderOf(ctx, id); info.Path != filepath.FromSlash("/tv/Pechino Express") || info.Total != 2 {
+		t.Errorf("Pechino Express with its misplaced files gone = %+v", info)
 	}
 }
 

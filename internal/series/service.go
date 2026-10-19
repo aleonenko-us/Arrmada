@@ -76,6 +76,9 @@ type Service struct {
 	// seasonFolder also counts the configured season folder template's names as season
 	// folders (nil = only the common names); see showfolder.go.
 	seasonFolder func(name string) bool
+	// fileGone reports a recorded file that's no longer on disk (nil = os.Stat says
+	// so). Tests that record paths without making files swap it.
+	fileGone func(path string) bool
 }
 
 // SetLibraryChanged installs who hears that a show folder's files changed through a

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -313,7 +315,30 @@ func (s *Service) ShowFolderOf(ctx context.Context, seriesID int64) ShowFolderIn
 	if err != nil {
 		return ShowFolderInfo{Unknown: true, Why: "the show's files couldn't be read: " + err.Error()}
 	}
-	return s.showFolderFrom(paths, s.dbJudge(ctx, seriesID))
+	j := s.dbJudge(ctx, seriesID)
+	return s.showFolderFrom(s.dropGoneMisplaced(paths, j), j)
+}
+
+// dropGoneMisplaced leaves out files recorded in a folder no show should own that are no
+// longer there — moved back by hand before a rescan caught up — so they don't keep a show
+// from its folder. Only those files are looked at on disk; every other path is kept as
+// recorded, so a share that's down never changes where a show lives.
+func (s *Service) dropGoneMisplaced(paths []string, j *folderJudge) []string {
+	gone := s.fileGone
+	if gone == nil {
+		gone = func(p string) bool {
+			_, err := os.Stat(p)
+			return errors.Is(err, fs.ErrNotExist)
+		}
+	}
+	out := paths[:0:0]
+	for _, p := range paths {
+		if home, _, inFolder := j.homeOf(p); home == "" && inFolder && gone(p) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // MisplacedFile is one of a show's episode files that is outside its show's folder, in a
@@ -352,6 +377,7 @@ func (s *Service) MisplacedFiles(ctx context.Context, seriesID int64) (ShowFolde
 		return ShowFolderInfo{}, nil, err
 	}
 	j := s.dbJudge(ctx, seriesID)
+	paths = s.dropGoneMisplaced(paths, j)
 	info := s.showFolderFrom(paths, j)
 	return info, s.misplacedFrom(info, paths, j), nil
 }

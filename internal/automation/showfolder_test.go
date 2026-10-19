@@ -139,6 +139,27 @@ func TestImportIntoSharedFolderGoesToReview(t *testing.T) {
 	}
 }
 
+// Moving a misplaced file back by hand and rescanning is enough: the rescan finds it in
+// the show's folder, and the next import goes there.
+func TestRescanAfterMovingMisplacedFileBackByHand(t *testing.T) {
+	h := newLifecycleHarness(t)
+	tv := h.c.imp.TVRoot()
+	own := filepath.Join(tv, "Show")
+	setEpisodeFile(t, h.c, h.seriesID, 1, 1, libFile(t, filepath.Join(own, "S01", "Show - S01E01.mkv")), "Show.S01E01")
+	lost := libFile(t, filepath.Join(tv, "S01", "Season 1", "Show - S01E02.mkv"))
+	setEpisodeFile(t, h.c, h.seriesID, 1, 2, lost, "Show.S01E02")
+	back := filepath.Join(own, "S01", "Show - S01E02.mkv")
+	if err := os.Rename(lost, back); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.c.RescanSeries(h.ctx, h.seriesID); err != nil {
+		t.Fatalf("rescan: %v", err)
+	}
+	if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 2); cur.Path != back {
+		t.Errorf("S01E02 = %q after the rescan, want %s", cur.Path, back)
+	}
+}
+
 // Files the bug misplaced, even outnumbering the show's own, don't pull the next import
 // out of the show's folder.
 func TestImportFollowsTheShowsFolderPastMisplacedFiles(t *testing.T) {
