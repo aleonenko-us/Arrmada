@@ -1,0 +1,383 @@
+# Changelog
+
+What changed in each Arrmada release, written for the people running it. Read **Before you
+update** first: it lists anything that behaves differently afterwards, or that you need to do
+by hand.
+
+Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are
+[semantic](https://semver.org/). How to update:
+[Updating Arrmada](https://github.com/tristenlammi/Arrmada/blob/main/docs/updating.md).
+
+## [Unreleased]
+
+### Highlights
+
+- **Kobo e-readers get KEPUB downloads**, which give Kobo's own reader real page numbers and
+  reading stats.
+- **Calibre libraries scan properly.** Point the Ebooks folder at a Calibre library and each
+  book is matched from its `metadata.opf`.
+- **Edit a book's details by hand.** The details the catalogue matched are kept underneath,
+  so you can reset any edit.
+- **A round of security fixes** from a full audit, covering sign-in, saved passwords and keys,
+  the bundled download clients and file handling. Some of them change behaviour, so read
+  **Before you update**.
+- **The disk guard can measure a different drive**, for Unraid cache pools and ZFS.
+
+### Before you update
+
+- **Only an admin can connect Plex now.** Changing the Plex server or signing in with Plex
+  for the connection is admin-only, like Jellyfin. Managers keep watch monitoring and Test,
+  and see read-only Plex and Jellyfin cards.
+- **Changing a connection's address needs its key typed again.** For Plex, Prowlarr,
+  indexers and download clients, a saved key, token or password is only sent back to the
+  address it was saved for. Change the address and the form asks for the secret again.
+  Switching an indexer to another kind also asks for it.
+- **Scripts that use a session cookie must send `Content-Type: application/json`.** Writes
+  (POST, PUT, PATCH, DELETE) made with a browser session are refused if they come from
+  another site, and a request body must be JSON. Personal API keys (`X-Api-Key` or
+  `Authorization: Bearer`) are unaffected.
+- **Reverse proxies must send `X-Forwarded-For`** (or `Forwarded`). Without it, every
+  visitor looks like they're on your home network and they all share one sign-in limit.
+  Caddy, Traefik and Nginx Proxy Manager send it already. Plain nginx needs
+  `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`. Cloudflare's visitor
+  header is now trusted only where Cloudflare can have set it. Cloudflare Tunnel needs
+  nothing, and `ARRMADA_TRUST_CF_HEADER=1` or `0` overrides the automatic rule
+  ([Who a visitor is](https://github.com/tristenlammi/Arrmada/blob/main/docs/configuration.md#who-a-visitor-is)).
+- **First-run setup only works from your home network.** A fresh install that's reachable
+  from the internet can no longer be claimed by whoever finds it first. To set up from
+  outside, add `ARRMADA_ALLOW_REMOTE_SETUP=1` to `.env`, run `docker compose up -d`, and
+  take the line out again afterwards. Installs that already have an admin aren't affected.
+- **Staff who sign in with Plex or Jellyfin are asked for their two-factor code.** That
+  applies to admins and managers with two-factor on (a trusted device still skips the code),
+  and "Require two-factor for admins" now covers these sign-ins too. Requesters are
+  unchanged.
+- **Setting the audiobook password needs your Arrmada password**, plus your two-factor code
+  if that's on. An account that only signs in with Plex or Jellyfin needs to have signed in
+  within the last 15 minutes. Changing your Arrmada password, or an admin's "Sign out
+  everywhere", now signs listening apps out too. They sign in again with the audiobook
+  password.
+- **The bundled qBittorrent (Compose installs) is always locked with a password,** even
+  when its card in Arrmada was removed or switched off. The one exception: it's left alone
+  while another qBittorrent of yours is switched on, and Settings → Status says so. New
+  installs no longer let home-network devices in without a password. Its own web page is
+  published on the server only (`127.0.0.1`) once its container is recreated. To keep it
+  open to your network, add `ARRMADA_QBIT_WEBUI_BIND=0.0.0.0` to `.env`. The update script
+  prints a note until you choose
+  ([qBittorrent's own page](https://github.com/tristenlammi/Arrmada/blob/main/docs/configuration.md#qbittorrents-own-page)).
+- **The bundled SABnzbd's page gets a login** (user `arrmada` and a random password) if it
+  had none. Admins see it on SABnzbd's card in Settings → Connections. A login you set
+  yourself is never changed.
+- **The database and backups are readable by Arrmada's user only.** The data folder
+  becomes `0700`, and the database and backups become `0600`, at the next start. A new
+  `.env` is `0600`, and the update script tightens an existing one that you own.
+- **Archive extraction has limits.** An archive may unpack to at most 1.5 times its size
+  plus 1 GiB, and hold at most 20000 entries. One that goes over is skipped and reported,
+  and the rest of the download still unpacks.
+- **Rolling back to v0.3.1 needs `./update.sh --rollback --with-db`.** This version adds a
+  database migration (0334, for book edits), so v0.3.1 refuses to start on the upgraded
+  database. `--with-db` puts back the backup from before the update, which loses anything
+  recorded since. On Unraid, restore that backup before changing the Repository tag
+  ([Updating](https://github.com/tristenlammi/Arrmada/blob/main/docs/updating.md#rolling-back-by-hand)).
+- **Subtitle sync-check refuses unknown language codes** (`POST /api/v1/subtitles/sync-check`
+  answers 400). It used to accept any tag.
+- **Alerts and webhooks name people without their email.** "New request", "Auto-approved
+  request" and "Problem reported" now carry the person's Plex or Jellyfin name, or the part
+  of their account name before the @. Check any n8n workflow that matched on that field.
+
+### New
+
+- **KEPUB for Kobo.** EPUBs can be downloaded as KEPUB from My shelf and the book page
+  ("Download for Kobo (KEPUB)"), and the OPDS catalogue offers a KEPUB link beside each
+  EPUB. The KEPUB is made on download from a copy (the library file is never changed) and
+  cached. If the conversion fails, you get the EPUB. A switch in Settings → Book server turns it off. The e-reader panel gains a
+  "Kobo (stock reader)" row.
+- **Calibre folder scan.** The library scan reads Calibre's `metadata.opf` to tell which
+  book a folder holds: its ISBN first, then its title and authors. Series and publication
+  date fill gaps the catalogue leaves, and `cover.jpg` is used only when the catalogue has
+  no cover. Calibre's " (123)" is taken off a folder name only when the folder really is
+  Calibre's, so your own "Saga (2)" keeps its number. Nothing is written to the Calibre
+  folder.
+- **Edit a book's details** (book page → Fix → Edit details…): title, subtitle, author(s),
+  series and position, description, year, language, tags, ISBN, narrator(s) and publisher.
+  Each edited detail is marked, shows the catalogue's value, and has Reset to matched (or
+  Reset all). Refreshes, the Hardcover upgrade and merges never undo an edit. Change match
+  asks whether to keep your edits. Edits show everywhere: Books, ⌘K search, series,
+  requests, listening apps and OPDS. Files are never renamed by an edit. When an edit would
+  change the files' names, the page offers Preview rename for that book.
+- **The disk guard can measure a different drive.** Settings → Downloads → Download disk
+  guard → "Measure a different drive". On Unraid, the downloads share reports the whole
+  array while torrents fill the cache pool. Map the pool read-only (for example `/cache`)
+  and the guard watches that. A new "Also pause when free space drops below (GB)" limit
+  helps on ZFS pools, where the percentage counts only the root dataset. A drive that can't
+  be read, or that turns out to be a RAM folder (a mistyped Unraid pool name), is a clear
+  warning, and nothing is paused or released on its account
+  ([Download disk guard](https://github.com/tristenlammi/Arrmada/blob/main/docs/configuration.md#download-disk-guard)).
+- **SECURITY.md**: how to report a vulnerability privately, and which versions get fixes.
+  The README now explains how Arrmada is built and tested.
+
+### Changed
+
+- **Built with Go 1.26.9**, because Go 1.25 is out of support. The Docker build pins Go to
+  the patch release. Building from source outside Docker needs Go 1.26.
+- **Vulnerability scanning in CI.** Every change runs govulncheck (it fails when our code
+  can reach a known-vulnerable function) and `npm audit` (high or critical, in the UI's
+  production dependencies). CodeQL code scanning runs on Go and TypeScript. Go modules with
+  known advisories were upgraded (`golang.org/x/net`, `x/crypto`, `x/sys`,
+  `golang-jwt/jwt`).
+- **Sign-in limits are shared.** The audiobook server and the OPDS catalogue count wrong
+  passwords with the main sign-in limiter (10 per address in 15 minutes, then a pause per
+  username from outside your network). Your own devices that signed in recently aren't held
+  up, and an e-reader repeating the same stale password counts once.
+- **Web Push** only sends to the browsers' own push services, and an account keeps at most
+  10 devices (the oldest goes).
+- The image's Apprise is pinned and installed with hashes.
+- Release notes on GitHub now come from this changelog, with a Before you update section
+  for each version (#31).
+
+### Fixed
+
+- Library folders: a show, artist or album whose name is only dots can no longer reach
+  outside its library folder. Names like "..." are still allowed.
+- Archive extraction: a refused archive no longer stops the rest of the download. Zips of RAR
+  volumes and subtitles nested in zips unpack.
+- Books: a merge keeps edits honest, and a title edited into a different one ("Dune" →
+  "Dune Messiah") no longer picks up the old book's releases.
+- Books: the Calibre scan no longer replaces a cover or series set while it was running.
+  Symlinked or odd `metadata.opf` files are ignored.
+- Books: the Kobo download shows for a Calibre folder that holds an AZW3 and an EPUB.
+- Managers no longer get a Jellyfin editor that fails on save.
+- CodeQL fixes: the all-in-one image refuses a `PUID`/`PGID` past 32 bits instead of
+  running as root, and file names are built only from checked values.
+
+### Security
+
+- The fixes listed under **Before you update**: CSRF protection, client address and
+  Cloudflare header, LAN-only first-run setup, two-factor on staff Plex and Jellyfin
+  sign-in, the audiobook password step-up, saved secrets kept with their address,
+  admin-only Plex connection, locked bundled qBittorrent and SABnzbd, private database and
+  backups, and archive limits.
+- Cover images: a requester-supplied cover is kept only from a catalogue image host. The
+  image cache fetches only public addresses and real raster images (no SVG), and serves
+  them sandboxed. Before, a book request's cover could carry a script or reach into your
+  network.
+- Keys and tokens sent in headers never follow a redirect to another server.
+- The Plex token only goes to servers that say they belong to the account, and a manager can
+  no longer repoint Plex sign-in at their own server.
+- Sign-in checks take turns, so a burst of guesses can't slip past the limit.
+- `.env` is `0600` on new installs, and edits keep its mode.
+- The release workflow's third-party action is pinned to a commit, and CI's token is
+  read-only.
+
+## [0.3.1] - 2026-10-18
+
+### Highlights
+
+- **Two-factor sign-in** (TOTP) for password accounts (#21).
+- **Personal API keys** for scripts, n8n and Home Assistant.
+- **Display titles**: show films and shows in English, in their original language, or in
+  yours (#27).
+- **Command palette**: Ctrl K / ⌘K searches titles, pages and settings from anywhere (#17).
+- **Book naming templates** with a safe rename for books already in the library (#25).
+- **A downloads folder per library folder**, so libraries on separate disks hardlink
+  instead of copying (#11).
+
+### Before you update
+
+- **Rolling back to v0.3.0 needs `./update.sh --rollback --with-db`.** This version adds
+  database migrations 0329 to 0333, so v0.3.0 refuses to start on the upgraded database.
+- **Send to Kindle email moved.** The "Outgoing email" card under Settings → Alerts is now
+  "Send to Kindle email" in Settings → Book server (the renamed audiobook server section).
+  It only ever sent ebooks to Kindles, never alerts (#10). Old links still land on it.
+- **Arrmada no longer creates library folders by itself at startup.** A missing folder may
+  be a share that isn't mounted yet. New Compose installs get their default folders from
+  the media setup container. On an existing install, use **Create it** on the folder in
+  Settings → Library. It refuses a folder that held files, because its share is probably
+  not mounted (#24).
+- **qBittorrent downloads with their own save path turn off its Automatic Torrent
+  Management**, so re-filing a torrent never moves its files.
+- **The Unraid template now installs the all-in-one image** (`:stable-aio`, with
+  qBittorrent and FlareSolverr built in). Containers installed from the earlier template
+  keep running `:stable` until you change the Repository
+  ([Unraid → Updating](https://github.com/tristenlammi/Arrmada/blob/main/docs/unraid.md#updating)).
+
+### New
+
+- **Two-factor sign-in (TOTP)** on the Me page: QR code setup, ten recovery codes, and
+  "trust this device for 30 days". Admins can reset someone's two-factor and require it for
+  admins. The `reset-2fa` command helps a locked-out owner. Repeated wrong codes raise an
+  alert (#21).
+- **Personal API keys** on the Me page, read-only or full, with optional expiry. A key can
+  never do more than its owner's current role. Keys go in `X-Api-Key` or
+  `Authorization: Bearer`, never in the address. Admins see and revoke everyone's keys in
+  People & access. The guide is in [docs/api.md](https://github.com/tristenlammi/Arrmada/blob/main/docs/api.md).
+- **Display titles** (Settings → Library → Display titles): English, original title, or a
+  language of your choice, plus original titles for chosen languages. A title can be set
+  one at a time from its ⋯ menu. Matching, metadata and file names keep using the canonical
+  title. API responses add `display_title` beside `title` (#27).
+- **Command palette** (Ctrl K / ⌘K): titles, pages, Settings cards and a few safe actions.
+  Requesters get their own pages and Discover (#17).
+- **Book naming templates** in Settings → Naming & metadata: audiobook and ebook folder and
+  file templates with a live preview, an Audiobookshelf preset, and "Preview book rename…"
+  for books already in the library. Listening places and app downloads survive a rename.
+  The default naming is exactly the old one (#25).
+- **A downloads folder per Movies or TV folder** (Settings → Library). Torrents for that
+  folder's titles save there and import as hardlinks (#11).
+- **Scan one library folder.** Adding a folder that already holds something offers a scan.
+  Each extra folder has its own Scan button and says how much isn't in the library yet (#3).
+- **TV searches use translated titles** in the "Also match titles in" languages. A German
+  tracker's "Haus des Geldes" is found as Money Heist, but only with evidence beyond the
+  name (language, year or country).
+- **Homepage dashboard widget** for gethomepage.dev: counts only, with its own key
+  (Settings → System → Dashboard widget) (#18).
+- **Media folder on the host through `.env`** (`ARRMADA_MEDIA_HOST`), with no override file
+  needed (#19).
+- **Library scans** get 12 hours instead of minutes, stop cleanly, and have a Stop button
+  (#22).
+- **GPU guide** ([docs/gpu.md](https://github.com/tristenlammi/Arrmada/blob/main/docs/gpu.md)) for Intel, AMD and NVIDIA. AMD cards now use
+  VAAPI automatically (#20).
+
+### Fixed
+
+- Upgrades: the bitrate ceiling no longer stops the search for a file that's still missing
+  a Must (for example an H.264 file under "Must HEVC").
+- Book renames are journaled and recover after a crash. Audiobook file ids stay stable, so
+  Lissen downloads keep working (#25).
+- Create it makes the folder that's in use instead of answering "unchanged" (#24).
+- The setup wizard no longer warns about managed storage when `/media` is a host folder
+  (#19).
+- A folder scan of a dead network share says "not responding" instead of hanging the page
+  (#3).
+
+## [0.3.0] - 2026-10-17
+
+### Highlights
+
+- **More than one Movies and TV folder**, such as Kids, Animation or Anime, with rules for
+  where new titles go and a Move to folder job (#3).
+- **Import from Radarr and Sonarr**, files and all, without re-downloading.
+- **64-bit ARM** (Raspberry Pi 4/5, ARM NAS boxes) and an **Unraid all-in-one image** with
+  qBittorrent and FlareSolverr built in.
+- **Audio language rules** in quality profiles, with language badges on files.
+- **n8n and webhook alerts** with signed JSON.
+- **Release previews**: admins see which release a waiting request would grab.
+
+### Before you update
+
+- **Ordered ranking (v2) is now the default** for choosing and upgrading releases. Upgrades
+  follow the same rules as grabs. If you preferred the old behaviour, pick Classic in the
+  Ranking switch on the Quality page (Advanced). A saved Classic choice is kept.
+- **The bundled qBittorrent (Compose installs) gets a password.** Its own page now asks for
+  a login. Admins find it on the qBittorrent card in Settings → Connections (Show its
+  login). Torrents and settings are kept
+  ([qBittorrent now asks for a password](https://github.com/tristenlammi/Arrmada/blob/main/docs/updating.md#qbittorrent-now-asks-for-a-password)).
+- **Indexers, Prowlarr and download clients now see the User-Agent
+  `Arrmada/<version>`** instead of Go's default. Cloudflare-protected indexers that blocked
+  the old one now work.
+- **Rolling back to v0.2.0 needs `./update.sh --rollback --with-db`**, because of database
+  migrations 0321 to 0328.
+
+### New
+
+- **Several Movies and TV folders**, each with an optional rule (animation, anime, kids),
+  folder pickers when adding or approving, and Move to folder (#3).
+- **Radarr / Sonarr import** in Settings → Import & migrate: preview, then import titles,
+  profiles, monitoring and existing files where they are. Imported wanted titles are
+  searched at a gentle pace.
+- **arm64 images** alongside amd64. The installer accepts 64-bit ARM. On ARM, Convert and AI
+  subtitles use the CPU.
+- **Unraid all-in-one image** (`-aio` tags): Arrmada with qBittorrent and FlareSolverr in
+  one container. On arm64 it has qBittorrent only.
+- **Audio language** row in quality profiles (Must / Prefer / Avoid per language, or
+  "Original language"), judged by the file's real tracks once downloaded. Language badges
+  appear on movie files and episodes.
+- **Titles in other languages** (Settings → Library): downloads and folders named in
+  another language match their title.
+- **n8n / Webhook alerts** in Settings → Alerts: signed, versioned JSON, with sample events
+  for testing ([docs/n8n.md](https://github.com/tristenlammi/Arrmada/blob/main/docs/n8n.md)).
+- **Release previews** for requests waiting for approval, and "Approve & grab this".
+- **SABnzbd fetches the NZB itself** when an indexer blocks Arrmada's own download.
+- An **Update** label beside the sidebar version when a new release is out.
+
+### Changed
+
+- Needs-you imports (Import anyway, Choose different…, Map files…, Import into…) run as
+  jobs with copy progress, instead of timing out behind a proxy (#15).
+- Files from a release group the profile avoids (YTS and the like) are replaced under
+  every "Replace for" setting, not only "Any improvement".
+
+### Fixed
+
+- AI subtitles: whisper now runs on any x86-64 CPU. v0.2.0's crashed with "Illegal
+  instruction" on CPUs without AVX2 (Celeron J4125/N5105, older i5/i7).
+- A film released without a year in its name gets a real title, instead of being held as
+  "doesn't match".
+- An indexer that blocks Arrmada says so, instead of claiming the API key was refused.
+
+## [0.2.0] - 2026-10-15
+
+### Highlights
+
+- **Jellyfin** alongside Plex: Watch buttons, library updates, Insights and Sign in with
+  Jellyfin.
+- **Usenet** through SABnzbd, optional and alongside qBittorrent.
+- **Release channels**: installs follow published releases (`stable`) by default.
+
+### Before you update
+
+- **Updates now follow the stable channel.** `ARRMADA_CHANNEL=stable` (the default)
+  downloads the published release. `main` compiles the latest code as before. An install
+  without the line gets one on its next update and never moves backwards. An install
+  running newer code than the release keeps its build
+  ([Stable or main](https://github.com/tristenlammi/Arrmada/blob/main/docs/updating.md#stable-or-main)).
+- **Plain `docker compose up -d` runs the published image** (`ARRMADA_APP_IMAGE`, default
+  `ghcr.io/tristenlammi/arrmada:stable`) instead of compiling. Existing installs are pinned
+  to their own build, so nothing switches silently.
+- **Settings → Plex became Settings → Media servers**, covering both servers. Old links
+  redirect.
+- **Rolling back to v0.1.0 needs `./update.sh --rollback --with-db`**, because of database
+  migrations 0310 to 0320.
+
+### New
+
+- **Jellyfin**: connection, library updates with path mappings, watch history in Insights
+  (with a server filter), Watch links per server, and Sign in with Jellyfin (password or
+  Quick Connect) with account linking.
+- **Usenet (SABnzbd)**: add your own SABnzbd in Settings → Connections, or
+  `install.sh --with-sabnzbd` for a bundled one. Newznab indexers are searched once a
+  usenet client exists, with a Usenet-or-torrents preference. Failed and stalled jobs are
+  handled, and `.torrent` and `.nzb` files can be uploaded.
+- A version badge at the foot of the staff sidebar.
+
+### Changed
+
+- The image builds in about 2 GB of memory (it needed about 7 GB) and explains when it
+  runs out.
+- The example compose file works as a Portainer stack.
+
+## [0.1.0] - 2026-10-14
+
+The first tagged release (early development).
+
+### Highlights
+
+- **One app for movies, TV, books and requests.** Movies and TV (anime numbering
+  included), ebooks and audiobooks, and music as a preview that's off by default. Searching,
+  downloading, importing, renaming and upgrading, driven by quality profiles that describe
+  the file you want.
+- **Requests**: Discover, Overseerr-style requests with auto-approval, and Overseerr import.
+- **Audiobook server** for Lissen and other Audiobookshelf apps, OPDS for e-readers, and
+  Send to Kindle.
+- **Plex**: library updates, Watch buttons, Plex sign-in, and Insights (Tautulli-style
+  watch history and stats).
+- **Media tools**: subtitles (embedded, OpenSubtitles or local Whisper AI) and Convert
+  (HEVC/AV1 re-encodes checked against the original).
+- **Bundled qBittorrent and FlareSolverr**, Torznab indexers and Prowlarr sync.
+- **Safety nets**: hardlinked imports, a recycle bin, nightly backups, a blocklist, and
+  `update.sh` with automatic rollback.
+
+[Unreleased]: https://github.com/tristenlammi/Arrmada/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/tristenlammi/Arrmada/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/tristenlammi/Arrmada/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/tristenlammi/Arrmada/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/tristenlammi/Arrmada/releases/tag/v0.1.0
