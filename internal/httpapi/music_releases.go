@@ -65,6 +65,9 @@ func (a *api) handleGrabAlbum(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, music.ErrNotFound):
 		a.writeError(w, http.StatusNotFound, "album not found")
 		return
+	case errors.Is(err, automation.ErrGrabInFlight):
+		a.writeError(w, http.StatusConflict, err.Error())
+		return
 	case err != nil:
 		a.deps.Log.Warn("music grab failed", "indexer", ref.Indexer, "title", ref.Title, "err", err)
 		a.writeGrabError(w, err, ref)

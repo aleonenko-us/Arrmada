@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/metadata"
 )
 
 // MUS-17: interactive search judges each release exactly as the sweep would and says why
@@ -16,6 +17,12 @@ func TestRankAlbumReleasesReasons(t *testing.T) {
 	ref := musicProfileRef(t, h, "Lossless, or the best MP3", losslessOrMP3, true)
 	a := h.addArtist(t, "Radiohead", ref, []string{"OK Computer", "Kid A"}, nil, "1997-05-21")
 	al := h.album(t, a.ID, "OK Computer")
+	// Track lengths, so the size check has a listing to judge by (8 minutes).
+	h.fake.mu.Lock()
+	h.fake.tracks["artist-Radiohead-rg-0"] = []metadata.TrackResult{
+		{Title: "One", Disc: 1, Number: 1, DurationSec: 240}, {Title: "Two", Disc: 1, Number: 2, DurationSec: 240},
+	}
+	h.fake.mu.Unlock()
 	h.c.addBlockMusic(h.ctx, al.ID, "Radiohead - OK Computer (1997) [ALAC]", "Test", "bad rip")
 	video := rel("Radiohead - OK Computer Live 1998 1080p BluRay FLAC 2.0 x264")
 	video.SizeBytes = 6 << 30

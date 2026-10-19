@@ -84,13 +84,14 @@ func MusicPresets() []MusicPreset {
 
 // FallbackMusicProfile scores the full ladder in rank order. Used when an artist references
 // a profile that no longer exists, so acquisition degrades to "best available" instead of
-// stalling — the same role fallbackProfile plays for video.
+// stalling — the same role fallbackProfile plays for video. It never upgrades: nobody
+// chose it, so it mustn't replace albums anyone already has.
 func FallbackMusicProfile() StoredProfile {
 	for _, p := range MusicPresets() {
 		if p.Name == "Any quality" {
 			return StoredProfile{
 				MediaType: MediaMusic, Name: p.Name, FormatScores: p.FormatScores,
-				MinFormatScore: p.MinFormatScore, UpgradesEnabled: p.UpgradesEnabled,
+				MinFormatScore: p.MinFormatScore, UpgradesEnabled: false,
 			}
 		}
 	}

@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -33,10 +34,10 @@ func (c *Coordinator) RankAlbumReleases(ctx context.Context, albumID int64) (Rel
 	sp := c.musicProfile(ctx, a.QualityProfile)
 	// The listing sizes the plausibility check; an album with none is still searchable by
 	// hand (a person may know better), it just isn't size-checked.
-	listing := 0
+	var listing music.SizeListing
 	if err := c.music.EnsureTracks(ctx, al); err == nil {
 		if tracks, err := c.music.Tracks(ctx, al.ID); err == nil {
-			listing = music.ListingSeconds(tracks)
+			listing = music.ListingOf(tracks)
 		}
 	}
 	mode, err := c.albumModeOf(ctx, al)
@@ -52,7 +53,7 @@ func (c *Coordinator) RankAlbumReleases(ctx context.Context, albumID int64) (Rel
 		return ReleaseList{}, err
 	}
 	nets := c.networks(ctx)
-	j := &albumJudge{artist: a.Name, album: al.Title, sp: sp, nets: nets, listingSec: listing, mode: mode}
+	j := &albumJudge{artist: a.Name, album: al.Title, sp: sp, nets: nets, listing: listing, mode: mode}
 	judged, err := c.judgeAlbum(ctx, al.ID, j, res.Releases)
 	if err != nil {
 		return ReleaseList{}, fmt.Errorf("couldn't read the album's blocklist or pending grabs: %w", err)
@@ -133,6 +134,10 @@ func albumWhy(r albumRelease, mode albumMode) []string {
 	return why
 }
 
+// ErrGrabInFlight is a manual grab of a release already grabbed for the album and not
+// imported or closed yet.
+var ErrGrabInFlight = errors.New("that release is already downloading for this album")
+
 // GrabForAlbum grabs a release a person chose in interactive search for one album. It is
 // recorded against the album, so the import matches the download against it (the matcher
 // still decides which file is which track and holds anything doubtful for Reviews), and
@@ -151,6 +156,14 @@ func (c *Coordinator) GrabForAlbum(ctx context.Context, albumID int64, indexerNa
 	a, err := c.music.GetArtist(ctx, al.ArtistID)
 	if err != nil {
 		return err
+	}
+	// The same release already on its way for this album: a second copy would only race it.
+	pending, err := c.pendingMusicGrabTitles(ctx, al.ID)
+	if err != nil {
+		return err
+	}
+	if pending[normTitle(title)] {
+		return ErrGrabInFlight
 	}
 	hash, err := c.grabMusic(ctx, indexerName, downloadURL, title, musicCategory)
 	if err != nil {

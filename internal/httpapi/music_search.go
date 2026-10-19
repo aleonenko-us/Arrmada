@@ -20,11 +20,16 @@ import (
 const artistSearchTimeout = 30 * time.Minute
 
 // artistSearchJob searches an artist's wanted albums, one at a time (single-flight per
-// artist through the job runner).
-func (a *api) artistSearchJob(id int64) jobs.Spec {
+// artist through the job runner). interactive is a person's click: their search may ask
+// an indexer that is backing off. The search an add starts is background work, and leaves
+// those indexers alone, as a sweep does.
+func (a *api) artistSearchJob(id int64, interactive bool) jobs.Spec {
 	return jobs.Spec{Kind: "artist.search", Target: jobTarget("artist", id), Class: jobs.ClassIndexerSearch, Timeout: artistSearchTimeout,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
-			ctx = automation.WithDefaultSearchTrigger(indexer.WithInteractive(ctx), automation.TriggerManual)
+			if interactive {
+				ctx = indexer.WithInteractive(ctx)
+			}
+			ctx = automation.WithDefaultSearchTrigger(ctx, automation.TriggerManual)
 			res, err := a.deps.Automation.SearchArtistNow(ctx, id, func(done, total int) {
 				if total > 0 {
 					p.Set(float64(done)/float64(total), fmt.Sprintf("Searched %d of %d albums", done, total))
@@ -53,7 +58,7 @@ func (a *api) handleArtistSearch(w http.ResponseWriter, r *http.Request) {
 		a.musicErr(w, err, "could not load the artist")
 		return
 	}
-	jobID, existing, ok := a.submitOr503(w, r, a.artistSearchJob(id))
+	jobID, existing, ok := a.submitOr503(w, r, a.artistSearchJob(id, true))
 	if !ok {
 		return
 	}

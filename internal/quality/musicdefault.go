@@ -44,9 +44,11 @@ func (s *Service) EnsureDefaultMusicProfile(ctx context.Context) (created bool, 
 		for k, v := range preset.FormatScores {
 			scores[k] = v
 		}
+		// Upgrades off: a profile made without anyone looking mustn't start replacing the
+		// albums a library already has. The owner turns them on in the profile.
 		if _, err := s.Create(ctx, StoredProfile{
 			MediaType: MediaMusic, Name: preset.Name, FormatScores: scores,
-			MinFormatScore: preset.MinFormatScore, UpgradesEnabled: preset.UpgradesEnabled,
+			MinFormatScore: preset.MinFormatScore, UpgradesEnabled: false,
 		}); err != nil {
 			return false, err
 		}

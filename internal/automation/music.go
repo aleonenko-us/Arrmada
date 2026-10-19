@@ -220,11 +220,18 @@ func (c *Coordinator) albumDownloading(queue []download.Item, a music.Artist, al
 // call is one search attempt (scope "album"); the sweep's backoff still reads the
 // albumOutcome as before.
 func (c *Coordinator) grabAlbum(ctx context.Context, a music.Artist, al music.Album) albumOutcome {
+	out, _, _ := c.grabAlbumRecorded(ctx, a, al)
+	return out
+}
+
+// grabAlbumRecorded is grabAlbum that also returns the recorded outcome, with what the
+// search saw folded in (counts, each indexer's error): what Search now reports.
+func (c *Coordinator) grabAlbumRecorded(ctx context.Context, a music.Artist, al music.Album) (albumOutcome, SearchOutcome, error) {
 	ctx, notes := newSearchNotes(ctx)
 	out := c.grabAlbumExcluding(ctx, a, al, nil)
 	so, err := out.searchOutcome()
 	c.recordAttempt(ctx, notes, AttemptMusic, al.ID, ScopeAlbum, &so, err)
-	return out
+	return out, so, err
 }
 
 // searchOutcome is an album search's result in the shared outcome's terms. A failure on our
@@ -292,8 +299,8 @@ func (c *Coordinator) SearchAlbumNow(ctx context.Context, albumID int64) (Search
 	if al.Complete() {
 		return c.upgradeAlbumNow(ctx, a, al)
 	}
-	out := c.grabAlbum(ctx, a, al)
-	return out.searchOutcome()
+	_, so, err := c.grabAlbumRecorded(ctx, a, al)
+	return so, err
 }
 
 // albumInFlight names a download still in flight for an album ("" for none). An

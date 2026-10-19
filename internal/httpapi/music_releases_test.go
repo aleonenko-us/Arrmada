@@ -68,6 +68,10 @@ func TestAlbumInteractiveSearchAndGrab(t *testing.T) {
 		t.Fatalf("grab: HTTP %d: %s", rec.Code, rec.Body)
 	}
 	noSecrets(t, "grab", rec.Body.String())
+	// The same release again while it downloads: refused, nothing fetched.
+	if rec := s.doJSON("POST", grabPath, mgr, `{"token":"`+tok+`"}`); rec.Code != http.StatusConflict {
+		t.Errorf("a repeat grab: HTTP %d, want 409: %s", rec.Code, rec.Body)
+	}
 	if f := mt.fetches(); len(f) != 1 || !strings.HasPrefix(f[0], "/dl/3?apikey=") {
 		t.Fatalf("fetched %v, want the stored link of release 3", f)
 	}

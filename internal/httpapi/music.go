@@ -108,7 +108,7 @@ func (a *api) handleAddArtist(w http.ResponseWriter, r *http.Request) {
 		searchNow = *req.SearchNow
 	}
 	if searchNow && art.Monitored && a.deps.Automation != nil {
-		_, _, _ = a.submit(r, triggered(automation.TriggerAdd, a.artistSearchJob(art.ID)))
+		_, _, _ = a.submit(r, triggered(automation.TriggerAdd, a.artistSearchJob(art.ID, false)))
 	}
 	a.writeJSON(w, http.StatusCreated, art)
 }

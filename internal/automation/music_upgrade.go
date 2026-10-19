@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
@@ -178,15 +179,15 @@ func (c *Coordinator) musicUpgradesDue(ctx context.Context) ([]upgradeDue, error
 // "upgrade".
 func (c *Coordinator) upgradeAlbum(ctx context.Context, a music.Artist, al music.Album, held music.Quality, budget *upgradeBudget) albumOutcome {
 	ctx, notes := newSearchNotes(WithDefaultSearchTrigger(ctx, TriggerUpgrade))
-	out := c.upgradeAlbumSearch(ctx, a, al, held, budget)
+	out := c.upgradeAlbumSearch(ctx, a, al, held, budget, nil)
 	so, err := out.searchOutcome()
 	c.recordAttempt(ctx, notes, AttemptMusic, al.ID, ScopeUpgrade, &so, err)
 	return out
 }
 
-func (c *Coordinator) upgradeAlbumSearch(ctx context.Context, a music.Artist, al music.Album, held music.Quality, budget *upgradeBudget) albumOutcome {
+func (c *Coordinator) upgradeAlbumSearch(ctx context.Context, a music.Artist, al music.Album, held music.Quality, budget *upgradeBudget, exclude map[string]bool) albumOutcome {
 	mode := albumMode{upgrade: true, held: held}
-	judged, sp, fail := c.searchAlbumReleases(ctx, a, al, mode, nil)
+	judged, sp, fail := c.searchAlbumReleases(ctx, a, al, mode, exclude)
 	if fail != nil {
 		return *fail
 	}
@@ -279,6 +280,53 @@ func (c *Coordinator) musicGrabWasUpgrade(ctx context.Context, hash, name string
 		}
 	}
 	return byName
+}
+
+// completedUnderGrab reports whether an album that reads complete was completed by another
+// download while grab g was in flight, which is when the stall check may close g as no
+// longer needed. Not for an upgrade the sweep grabbed or a person's own grab, and not for
+// a grab made after the album was already complete: those were meant for a complete album,
+// and closing one as 'dismissed' would keep its files forever, let a second upgrade be
+// grabbed beside it, and lose it before its import. Unreadable facts keep the old rule.
+func (c *Coordinator) completedUnderGrab(ctx context.Context, g grab, al music.Album) bool {
+	var mode string
+	var manual int
+	if err := c.db.QueryRowContext(ctx, `SELECT decided_mode, manual FROM grabs WHERE id = ?`, g.ID).Scan(&mode, &manual); err != nil {
+		return true
+	}
+	if mode == decidedUpgrade || manual != 0 {
+		return false
+	}
+	var last sql.NullString
+	if err := c.db.QueryRowContext(ctx,
+		`SELECT MAX(added_at) FROM music_track_files WHERE album_id = ? AND release_track_id IS NOT NULL`, al.ID).Scan(&last); err != nil {
+		return true
+	}
+	grabbed, completed := parseTime(g.GrabbedAt), parseTime(last.String)
+	if grabbed.IsZero() || completed.IsZero() {
+		return true
+	}
+	return !grabbed.After(completed)
+}
+
+// replaceUpgrade is the fail-over search for a stalled grab of a complete album: another
+// upgrade when the profile allows upgrades and the album is below its cutoff, else
+// nothing (the outcome's empty code).
+func (c *Coordinator) replaceUpgrade(ctx context.Context, a music.Artist, al music.Album, exclude map[string]bool) albumOutcome {
+	sp := c.musicProfile(ctx, a.QualityProfile)
+	if !sp.UpgradesEnabled {
+		return albumOutcome{}
+	}
+	held, ok, err := c.music.HeldTiers(ctx, al.ID)
+	if err != nil {
+		return albumOutcome{Code: outcomeUnreadable, Detail: err.Error()}
+	}
+	if !ok || len(music.UpgradeTiers(held, sp.FormatScores)) == 0 {
+		return albumOutcome{}
+	}
+	// The grab must be recorded as an upgrade, which the search's collector carries.
+	ctx, _ = withSearchNotes(ctx)
+	return c.upgradeAlbumSearch(ctx, a, al, held, nil, exclude)
 }
 
 // upgradeEditionHold is the review an upgrade's import becomes instead of moving the album

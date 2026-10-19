@@ -17,8 +17,14 @@ func TestEnsureDefaultMusicProfileSeedsOnce(t *testing.T) {
 		t.Fatalf("music profiles = %d (%v), want 1", len(list), err)
 	}
 	sp := list[0]
-	if sp.Name != DefaultMusicPreset || !sp.UpgradesEnabled || sp.FormatScores["FLAC"] <= 0 || sp.FormatScores["MP3-128"] > 0 {
+	if sp.Name != DefaultMusicPreset || sp.FormatScores["FLAC"] <= 0 || sp.FormatScores["MP3-128"] > 0 {
 		t.Fatalf("seeded profile = %+v, want the %q preset", sp, DefaultMusicPreset)
+	}
+	if sp.UpgradesEnabled {
+		t.Error("the seeded profile must not upgrade until the owner says so")
+	}
+	if FallbackMusicProfile().UpgradesEnabled {
+		t.Error("the fallback profile must never upgrade")
 	}
 	if got := s.DefaultProfile(ctx, MediaMusic); got == "" {
 		t.Fatal("the seeded profile should be the music default (no more silent 'Any quality')")

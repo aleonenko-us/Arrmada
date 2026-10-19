@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/music"
@@ -60,15 +61,15 @@ type albumJudge struct {
 	artist, album string
 	sp            quality.StoredProfile
 	nets          netPolicy
-	listingSec    int
+	listing       music.SizeListing
 	mode          albumMode
 	// The release sets that keep a release out by its normalized title: read only when a
 	// release gets as far as needing them (readAlbumSets).
 	blocked, pending, exclude map[string]bool
-	// grabbedBefore (upgrades only) are the releases ever grabbed for the album. One that
-	// was grabbed and imported already gave the album everything it had that was better;
-	// grabbing it again would download it again for nothing, every sweep.
-	grabbedBefore map[string]bool
+	// imported (upgrades only) are the releases imported into the album lately. One that
+	// was imported already gave the album everything it had that was better; grabbing it
+	// again would download it again for nothing, every sweep.
+	imported importedReleases
 }
 
 // early runs the checks that need nothing from the database (steps 1-3).
@@ -82,7 +83,7 @@ func (j *albumJudge) early(rel indexer.Release) albumRelease {
 		r.stage, r.code, r.reason = stageTitle, DropWrongTitle, why
 		return r
 	}
-	if ok, code, why := music.ReleaseSane(rel.Title, rel.Categories, rel.SizeBytes, r.tier, j.listingSec); !ok {
+	if ok, code, why := music.ReleaseSane(rel.Title, rel.Categories, rel.SizeBytes, r.tier, j.listing); !ok {
 		r.stage, r.reason = stageSane, why
 		r.code = DropSize
 		if code == music.SaneVideo {
@@ -107,8 +108,8 @@ func (j *albumJudge) late(r albumRelease) albumRelease {
 	case j.exclude[key]:
 		r.stage, r.code, r.reason = stageBlocked, DropBlocklisted, "the download being replaced"
 		return r
-	case j.grabbedBefore[key]:
-		r.stage, r.code, r.reason = stageBlocked, DropBlocklisted, "grabbed for this album before"
+	case j.imported.has(r.rel):
+		r.stage, r.code, r.reason = stageBlocked, DropBlocklisted, "imported into this album already"
 		return r
 	}
 	if why, code := j.tierCheck(r.tier); why != "" {
@@ -181,29 +182,59 @@ func (c *Coordinator) readAlbumSets(ctx context.Context, albumID int64, j *album
 	}
 	j.blocked, j.pending = blocked, pending
 	if j.mode.upgrade {
-		if j.grabbedBefore, err = c.musicGrabbedTitles(ctx, albumID); err != nil {
+		if j.imported, err = c.musicImportedReleases(ctx, albumID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// musicGrabbedTitles is every release ever grabbed for an album, by normalized title.
-func (c *Coordinator) musicGrabbedTitles(ctx context.Context, albumID int64) (map[string]bool, error) {
-	rows, err := c.db.QueryContext(ctx, `SELECT title FROM grabs WHERE media_type = 'music' AND movie_id = ?`, albumID)
+// importedReleases are the releases imported into an album lately (grabs imported or since
+// seeded, within importedRecall): by info hash where the grab knows it, by normalized
+// title where it doesn't. A failed grab isn't here: failures are the blocklist's job.
+type importedReleases struct {
+	hashes        map[string]bool // lower-case info hashes
+	hashlessTitle map[string]bool // titles of grabs with no info hash
+	anyTitle      map[string]bool // every title, for a release whose hash isn't listed
+}
+
+// importedRecall is how far back an imported release keeps an upgrade from grabbing it
+// again: long enough for any upgrade sweep's backoff, short enough that a release the
+// owner later wants again isn't refused for ever.
+const importedRecall = "-90 days"
+
+// has reports whether rel is one of them.
+func (ir importedReleases) has(rel indexer.Release) bool {
+	if h := strings.ToLower(rel.InfoHash); h != "" {
+		return ir.hashes[h] || ir.hashlessTitle[normTitle(rel.Title)]
+	}
+	return ir.anyTitle[normTitle(rel.Title)]
+}
+
+// musicImportedReleases reads the releases imported into an album lately.
+func (c *Coordinator) musicImportedReleases(ctx context.Context, albumID int64) (importedReleases, error) {
+	ir := importedReleases{hashes: map[string]bool{}, hashlessTitle: map[string]bool{}, anyTitle: map[string]bool{}}
+	rows, err := c.db.QueryContext(ctx, `SELECT title, info_hash FROM grabs
+		WHERE media_type = 'music' AND movie_id = ? AND `+everImportedWhere+`
+		  AND grabbed_at > datetime('now', '`+importedRecall+`')`, albumID)
 	if err != nil {
-		return nil, err
+		return ir, err
 	}
 	defer rows.Close()
-	out := map[string]bool{}
 	for rows.Next() {
-		var t string
-		if err := rows.Scan(&t); err != nil {
-			return nil, err
+		var title, hash string
+		if err := rows.Scan(&title, &hash); err != nil {
+			return ir, err
 		}
-		out[normTitle(t)] = true
+		key := normTitle(title)
+		ir.anyTitle[key] = true
+		if hash == "" {
+			ir.hashlessTitle[key] = true
+		} else {
+			ir.hashes[strings.ToLower(hash)] = true
+		}
 	}
-	return out, rows.Err()
+	return ir, rows.Err()
 }
 
 // judgeAlbum judges every release for an album. The blocklist and pending grabs are read
@@ -299,7 +330,7 @@ func (c *Coordinator) searchAlbumReleases(ctx context.Context, a music.Artist, a
 	}
 	j := &albumJudge{
 		artist: a.Name, album: al.Title, sp: sp, nets: c.networks(ctx),
-		listingSec: music.ListingSeconds(tracks), mode: mode, exclude: exclude,
+		listing: music.ListingOf(tracks), mode: mode, exclude: exclude,
 	}
 	judged, err := c.judgeAlbum(ctx, al.ID, j, res.Releases)
 	for _, r := range judged {
