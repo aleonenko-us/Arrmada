@@ -185,6 +185,29 @@ func TestMBCacheEmptyListKeepsOld(t *testing.T) {
 	}
 }
 
+// An album with no release listed yet isn't stuck that way for the release kind's 30 days:
+// an empty list is rechecked after a day, and the listing that appears is used.
+func TestMBCacheEmptyListRecheckedSoon(t *testing.T) {
+	m, f, now := cachedMB(t)
+	ctx := context.Background()
+	f.mu.Lock()
+	f.bodies["/release"] = `{"releases":[]}`
+	f.mu.Unlock()
+	if tracks, err := m.AlbumTracks(ctx, "rg-new"); err != nil || len(tracks) != 0 {
+		t.Fatalf("no release yet: %v %v", tracks, err)
+	}
+	f.mu.Lock()
+	f.bodies["/release"] = `{"releases":[{"id":"r1","date":"2026-11-01","status":"Official"}]}`
+	f.bodies["/release/r1"] = `{"id":"r1","media":[{"position":1,"tracks":[{"id":"t1","title":"One","position":1,"length":1000}]}]}`
+	f.mu.Unlock()
+	*now = now.Add(25 * time.Hour)
+	_, _ = m.AlbumTracks(ctx, "rg-new") // stale: the old (empty) answer now, refetched behind
+	m.bg.Wait()
+	if tracks, err := m.AlbumTracks(ctx, "rg-new"); err != nil || len(tracks) != 1 {
+		t.Errorf("after a day: %v %v, want the new listing", tracks, err)
+	}
+}
+
 // A merged artist (asked for by its old id, answered under the new) is cached under both.
 func TestMBCacheMergedID(t *testing.T) {
 	m, f, _ := cachedMB(t)

@@ -71,7 +71,17 @@ type mbEntry struct {
 	checkedAt time.Time // the last time MusicBrainz was asked and answered
 }
 
-func (e mbEntry) fresh(k mbKind, now time.Time) bool { return now.Sub(e.checkedAt) < k.fresh }
+// fresh reports whether a cached answer can be used without asking again. An empty list
+// (an album announced with no release listed yet, an artist with nothing out) is only
+// trusted for a day, so a listing that appears is noticed long before the kind's own
+// freshness runs out.
+func (e mbEntry) fresh(k mbKind, now time.Time) bool {
+	window := k.fresh
+	if k.list != "" && e.status == 200 && mbListLen(e.body, k.list) == 0 && window > MBFreshSearch {
+		window = MBFreshSearch
+	}
+	return now.Sub(e.checkedAt) < window
+}
 
 // mbCache is the store behind music_mb_cache. A nil db caches nothing (tests).
 type mbCache struct{ db *sql.DB }
