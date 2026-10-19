@@ -252,8 +252,21 @@ export function Music() {
         ) : artists.length === 0 ? (
           <LibraryEmpty noun="artists" folder="music folder" addLabel="Add artist" onScan={scanLibrary} scanning={scan.running} />
         ) : shown.length === 0 ? (
-          <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
-            No artists match this filter.
+          <div className="rounded-xl p-10 text-center" style={{ border: "1px solid var(--line)" }}>
+            <p className="m-0 text-base font-semibold">No artists match</p>
+            <p className="mb-4 mt-1 text-sm text-ink-dim">
+              {query.trim()
+                ? `No results for “${query.trim()}”${filter !== "all" ? ` in ${FILTERS.find((f) => f.key === filter)?.label.toLowerCase()}` : ""}.`
+                : `There are no ${filter === "wanted" ? "wanted" : filter} artists in your library.`}
+            </p>
+            <button
+              type="button"
+              onClick={() => { setQuery(""); setFilter("all"); }}
+              className="rounded-lg px-3 py-1.5 text-sm font-semibold"
+              style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}
+            >
+              Clear search and filters
+            </button>
           </div>
         ) : (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
