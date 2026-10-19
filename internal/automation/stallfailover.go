@@ -604,6 +604,13 @@ func (c *Coordinator) detectStalledMusic(ctx context.Context, g grab, queue []do
 		c.closeStale(ctx, g, grabStatusFailed, tick)
 		return
 	}
+	// Something from this download was already imported (a partial album, say): it is
+	// imported, and its seed rule applies. A seeding torrent removed afterwards mustn't read
+	// as stalled and get its good release blocklisted.
+	if c.hashAlreadyImported(ctx, g.InfoHash) {
+		c.closeStale(ctx, g, grabStatusImported, tick)
+		return
+	}
 	al, err := c.music.GetAlbum(ctx, g.MovieID) // album id lives in movie_id on the shared table
 	if err != nil {
 		c.closeStale(ctx, g, grabStatusFailed, tick)

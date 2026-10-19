@@ -272,12 +272,20 @@ func escapeLike(q string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
 }
 
+// fillAlbumCounts reads an album's track count, how many of them have a file, and their
+// size. The have count and size used to be scanned and then dropped, so every album read
+// one at a time (album pages, the stall check, imports) said it held nothing and never
+// read as complete; only the sweep's grouped query had them right.
 func (r *Repo) fillAlbumCounts(ctx context.Context, al *Album) error {
 	var have, size sql.NullInt64
-	return r.db.QueryRowContext(ctx,
+	if err := r.db.QueryRowContext(ctx,
 		`SELECT COUNT(*), SUM(CASE WHEN has_file = 1 THEN 1 ELSE 0 END), SUM(COALESCE(size_bytes, 0))
 		   FROM tracks WHERE album_id = ?`, al.ID).
-		Scan(&al.TrackCount, &have, &size)
+		Scan(&al.TrackCount, &have, &size); err != nil {
+		return err
+	}
+	al.HaveTracks, al.SizeBytes = int(have.Int64), size.Int64
+	return nil
 }
 
 // GetAlbum returns one album by id (without tracks).
@@ -451,6 +459,62 @@ func (r *Repo) SetTrackFile(ctx context.Context, trackID int64, path, format str
 		  WHERE id = ?`,
 		path, format, bitrate, size, sourceRelease, sourceRelease, trackID)
 	return affected(res, err)
+}
+
+// HeldTiers is the lowest tier among an album's tracks that have a file — the floor a
+// new release must reach before it's worth grabbing (see HeldTier). ok is false when no
+// track has a file. A held file whose tier is unknown makes the floor unknown: nothing is
+// refused on a guess.
+func (r *Repo) HeldTiers(ctx context.Context, albumID int64) (lowest Quality, ok bool, err error) {
+	tracks, err := r.TracksFor(ctx, albumID)
+	if err != nil {
+		return QualityUnknown, false, err
+	}
+	for _, t := range tracks {
+		if !t.HasFile {
+			continue
+		}
+		q := HeldTier(t.Format, t.BitrateKbps)
+		if !ok || QualityRank(q) < QualityRank(lowest) {
+			lowest = q
+		}
+		ok = true
+	}
+	return lowest, ok, nil
+}
+
+// UnmeasuredTracks lists up to limit tracks that have a file but no measured bitrate:
+// files recorded before tracks were probed, or by a scan that couldn't probe them.
+func (r *Repo) UnmeasuredTracks(ctx context.Context, limit int) ([]Track, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+trackCols+` FROM tracks WHERE has_file = 1 AND bitrate_kbps = 0 AND file_path != ''
+		  ORDER BY id LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Track
+	for rows.Next() {
+		var t Track
+		var mon, hf int
+		if err := rows.Scan(&t.ID, &t.AlbumID, &t.MBID, &t.DiscNumber, &t.TrackNumber, &t.Title,
+			&t.DurationSec, &mon, &hf, &t.FilePath, &t.Format, &t.BitrateKbps, &t.SizeBytes, &t.SourceRelease); err != nil {
+			return nil, err
+		}
+		t.Monitored, t.HasFile = mon != 0, hf != 0
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// SetTrackMeasured records a held file's measured tier and bitrate, leaving where it is
+// and where it came from alone. Guarded on the path, so a file replaced meanwhile isn't
+// stamped with the old one's measurements.
+func (r *Repo) SetTrackMeasured(ctx context.Context, trackID int64, path, format string, bitrate int) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE tracks SET format = ?, bitrate_kbps = ? WHERE id = ? AND has_file = 1 AND file_path = ?`,
+		format, bitrate, trackID, path)
+	return err
 }
 
 // ClearTrackFile flips a track back to wanted.

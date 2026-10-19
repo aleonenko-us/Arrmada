@@ -234,6 +234,21 @@ func (s *Service) MarkTrackImported(ctx context.Context, trackID int64, path, fo
 	return s.repo.SetTrackFile(ctx, trackID, path, format, bitrate, size, sourceRelease)
 }
 
+// HeldTiers is the lowest tier the album holds (ok false when it holds nothing).
+func (s *Service) HeldTiers(ctx context.Context, albumID int64) (Quality, bool, error) {
+	return s.repo.HeldTiers(ctx, albumID)
+}
+
+// UnmeasuredTracks lists tracks with a file but no measured bitrate (see the scan).
+func (s *Service) UnmeasuredTracks(ctx context.Context, limit int) ([]Track, error) {
+	return s.repo.UnmeasuredTracks(ctx, limit)
+}
+
+// SetTrackMeasured records a held file's measured tier and bitrate.
+func (s *Service) SetTrackMeasured(ctx context.Context, trackID int64, path, format string, bitrate int) error {
+	return s.repo.SetTrackMeasured(ctx, trackID, path, format, bitrate)
+}
+
 // ClearTrackFile flips a track back to wanted.
 func (s *Service) ClearTrackFile(ctx context.Context, trackID int64) error {
 	return s.repo.ClearTrackFile(ctx, trackID)
