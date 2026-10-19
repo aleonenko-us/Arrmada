@@ -5,6 +5,7 @@ import { lazyPage } from "../../lib/lazyPage";
 import { posterThumb } from "../../lib/img";
 import { titlePath } from "../../lib/refLink";
 import { useTitle } from "../../lib/title";
+import { shownOverview } from "../../lib/displayTitle";
 import { Button, IconButton, Sheet, StatusChip, POSTER_CHIP_BG, POSTER_TONE, type ToastFn } from "../../ui";
 import { WatchButton } from "../../components/brand/WatchPills";
 import { watchLinksOf } from "../../components/brand/servers";
@@ -165,7 +166,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
   // whole show, as before seasons could be picked.
   const ask = () => (isShow && seasons !== "error" ? setPicking(true) : request());
 
-  const overview = d?.display_overview || d?.overview || c.display_overview || c.overview;
+  const overview = shownOverview(d) || shownOverview(c);
   const runtime = d?.runtime ? `${Math.floor(d.runtime / 60)}h ${d.runtime % 60}m` : "";
   const director = crewByJob(d?.crew, "Director");
   const writer = crewByJob(d?.crew, "Writer");

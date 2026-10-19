@@ -75,6 +75,8 @@ export function Hero({ ctx }: { ctx: RowCtx }) {
           {cur.vote_average > 0 && <span style={{ color: "var(--accent-text)" }}>★ {cur.vote_average.toFixed(1)}</span>}
           <span className="rounded px-1.5 py-px text-xs uppercase" style={{ background: "rgba(255,255,255,.14)" }}>{cur.media_type === "series" ? "TV" : "Movie"}</span>
         </div>
+        {/* Inline rather than lib/displayTitle's shownOverview: importing it here pulls that
+            chunk into the requester's first load (96.6 vs 96.5 KB of the 97 KB budget). */}
         {(cur.display_overview || cur.overview) && <p className="m-0 line-clamp-2 max-w-[560px] text-md leading-relaxed sm:line-clamp-3" style={{ color: "rgba(255,255,255,.78)" }}>{cur.display_overview || cur.overview}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <button
