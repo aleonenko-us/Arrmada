@@ -26,4 +26,8 @@ func TestMatcherSwitchStandsOnlyWithAPlacement(t *testing.T) {
 		t.Errorf("edition %d (%d tracks, pinned %v), want %d (6 tracks, pinned %v) as before",
 			after.TargetEditionID, after.EditionTracks, after.EditionPinned, before.TargetEditionID, before.EditionPinned)
 	}
+	// It did switch (the download fits the deluxe) and then switched back.
+	if n := artistEvents(t, r.svc, r.artist.ID, "back: nothing"); n != 1 {
+		t.Errorf("history lines about switching back = %d, want 1", n)
+	}
 }
