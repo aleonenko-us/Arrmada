@@ -101,6 +101,11 @@ type MediaDetail struct {
 	// (the always-on adult filter), so it never reaches a browser as true; it is
 	// serialised only so the disk cache keeps it.
 	Adult bool `json:"adult,omitempty"`
+	// Overviews are the title's overviews in every other language TMDB has, from the same
+	// request (the translations append), so the sheet can describe a title in the
+	// household's language without asking TMDB again. Serialised for the disk cache only:
+	// the detail endpoint picks the one it shows and drops the rest before answering.
+	Overviews []TranslatedOverview `json:"overviews,omitempty"`
 }
 
 // CollectionRef names a movie's collection.
@@ -144,7 +149,8 @@ func (t *TMDB) MediaDetails(ctx context.Context, media string, tmdbID int) (*Med
 	// v3: records carry Adult; a v2 copy would read as "not adult" until it expired.
 	// v4: cast and crew carry their person ids (the links to their pages).
 	// v5: movies carry their collection.
-	key := "tmdb:detail:v5:" + kind + ":" + strconv.Itoa(tmdbID)
+	// v6: records carry the overviews in other languages.
+	key := "tmdb:detail:v6:" + kind + ":" + strconv.Itoa(tmdbID)
 	return swr(ctx, t.disk, key, mediaDetailTTL, func(ctx context.Context) (*MediaDetail, error) {
 		if kind == "tv" {
 			return t.seriesDetail(ctx, tmdbID)
@@ -158,7 +164,7 @@ const mediaDetailTTL = 12 * time.Hour
 
 func (t *TMDB) movieDetail(ctx context.Context, tmdbID int) (*MediaDetail, error) {
 	q := url.Values{}
-	q.Set("append_to_response", "credits,release_dates,external_ids,videos,recommendations")
+	q.Set("append_to_response", "credits,release_dates,external_ids,videos,recommendations,translations")
 	body, err := t.get(ctx, "/movie/"+strconv.Itoa(tmdbID), q)
 	if err != nil {
 		return nil, err
@@ -192,12 +198,13 @@ func (t *TMDB) movieDetail(ctx context.Context, tmdbID int) (*MediaDetail, error
 	}
 	d.TrailerURL = bestTrailerURL(m.Videos.Results)
 	d.Similar = recommendedItems(m.Recommendations.Results, "movie")
+	d.Overviews = m.Translations.overviews(anyLang)
 	return d, nil
 }
 
 func (t *TMDB) seriesDetail(ctx context.Context, tmdbID int) (*MediaDetail, error) {
 	q := url.Values{}
-	q.Set("append_to_response", "credits,external_ids,videos,recommendations")
+	q.Set("append_to_response", "credits,external_ids,videos,recommendations,translations")
 	body, err := t.get(ctx, "/tv/"+strconv.Itoa(tmdbID), q)
 	if err != nil {
 		return nil, err
@@ -234,6 +241,7 @@ func (t *TMDB) seriesDetail(ctx context.Context, tmdbID int) (*MediaDetail, erro
 	d.TrailerURL = bestTrailerURL(s.Videos.Results)
 	d.Similar = recommendedItems(s.Recommendations.Results, "tv")
 	d.Seasons = seasonSummaries(s)
+	d.Overviews = s.Translations.overviews(anyLang)
 	return d, nil
 }
 

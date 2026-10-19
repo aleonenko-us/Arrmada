@@ -34,6 +34,27 @@ func (s *Service) policy() displaytitle.Policy {
 	return s.displayPolicy()
 }
 
+// titleSource is where every name of a show is read from, with its overviews in the
+// language the display setting describes titles in, so the import gate, the backfills and
+// the display names share one cached TMDB request per show.
+func (s *Service) titleSource() metadata.TitlesSource {
+	return metadata.WithOverviews(s.titles, s.policy().OverviewLang())
+}
+
+// withDisplayOverview sets sr's DisplayOverview: its overview in the setting's language
+// when one is stored, left empty when that is the English overview it already carries.
+// Worked out on read from the stored names; never asks TMDB. Season and episode
+// overviews stay TMDB's English ones (series.go, DisplayOverview).
+func (s *Service) withDisplayOverview(sr *Series) {
+	var names *displaytitle.Names
+	if sr.Extra != nil {
+		names = sr.Extra.DisplayNames
+	}
+	if o := s.policy().ShownOverview(sr.Overview, names); o != sr.Overview {
+		sr.DisplayOverview = o
+	}
+}
+
 // shownTitle is the stored display_title, or the canonical title when it's empty
 // (the default, and rows not worked out yet).
 func shownTitle(display, title string) string {
@@ -242,7 +263,7 @@ func (s *Service) TitleChoices(ctx context.Context, id int64) ([]displaytitle.Ch
 	}
 	var all *metadata.Titles
 	if s.titles != nil && sr.TMDBID > 0 {
-		if t, err := s.titles.Titles(ctx, metadata.TitlesSeries, sr.TMDBID); err == nil {
+		if t, err := s.titleSource().Titles(ctx, metadata.TitlesSeries, sr.TMDBID); err == nil {
 			all = t
 		} else {
 			s.log.Debug("series: couldn't read every title for the picker; offering the stored ones", "series", sr.Title, "err", err)
@@ -270,12 +291,12 @@ func (s *Service) refreshDisplayNames(ctx context.Context, id int64, tmdbID int,
 	if p.Default() || s.titles == nil || tmdbID <= 0 {
 		return
 	}
-	t, err := s.titles.Titles(ctx, metadata.TitlesSeries, tmdbID)
+	t, err := s.titleSource().Titles(ctx, metadata.TitlesSeries, tmdbID)
 	if err != nil {
 		s.log.Debug("series: couldn't read display titles; the titles backfill tries again", "series", title, "err", err)
 		return
 	}
-	if err := s.repo.SetDisplayNames(ctx, id, displaytitle.FromTitles(t, p.TranslationLangs())); err != nil {
+	if err := s.repo.SetDisplayNames(ctx, id, p.NamesFrom(t)); err != nil {
 		s.log.Warn("series: couldn't store display titles", "series", title, "err", err)
 	}
 }
@@ -305,13 +326,13 @@ func (s *Service) backfillDisplayOnce(ctx context.Context, every time.Duration) 
 			return filled, ctx.Err()
 		case <-t.C:
 		}
-		got, err := s.titles.Titles(ctx, metadata.TitlesSeries, sr.TMDBID)
+		got, err := s.titleSource().Titles(ctx, metadata.TitlesSeries, sr.TMDBID)
 		var names *displaytitle.Names
 		switch {
 		case errors.Is(err, metadata.ErrNotConfigured):
 			return filled, nil
 		case errors.Is(err, metadata.ErrNotFound):
-			names = displaytitle.FromTitles(nil, p.TranslationLangs()) // read, nothing to show
+			names = p.NamesFrom(nil) // read, nothing to show
 		case err != nil:
 			if ctx.Err() != nil {
 				return filled, ctx.Err()
@@ -319,7 +340,7 @@ func (s *Service) backfillDisplayOnce(ctx context.Context, every time.Duration) 
 			s.log.Debug("series: couldn't read display titles; trying again next run", "series", sr.Title, "err", err)
 			continue
 		default:
-			names = displaytitle.FromTitles(got, p.TranslationLangs())
+			names = p.NamesFrom(got)
 		}
 		if err := s.repo.SetDisplayNames(ctx, sr.ID, names); err != nil {
 			return filled, err

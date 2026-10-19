@@ -528,6 +528,7 @@ func (a *api) handleGetMovie(w http.ResponseWriter, r *http.Request) {
 		search = a.deps.Automation.MovieSearchState(r.Context(), m)
 	}
 	m.Acquisition = a.movieAcquisition(r.Context(), &m, acqs, byHash, queue)
+	m.Extra = apiMovieExtra(m.Extra) // display_title and display_overview carry what pages need
 	a.writeJSON(w, http.StatusOK, struct {
 		movies.Movie
 		automation.SearchState

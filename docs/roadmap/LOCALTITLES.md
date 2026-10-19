@@ -66,6 +66,20 @@ read it without TMDB. It never feeds matching or naming: `TitleKeys`, `FitReleas
 `MatchRelease`, the importer and renames keep `title`. Code: `internal/displaytitle`,
 `movies/display.go`, `series/display.go`, `httpapi/displaytitles.go`.
 
+Overviews (GitHub #35) ride on the same read. In the `language` mode only
+(`Policy.OverviewLang`; English and original modes and `display_title_original_in` keep
+English), `TMDB.TitlesIn` keeps that one language's overviews from the same translations
+append, under a cache key of its own (`…:overviews:<lang>`; the plain Titles entry is
+unchanged). Every titles read in the movies and series services goes through
+`metadata.WithOverviews`, so the import gate, the backfills and the display names share that
+one entry. They are stored with the names (`display_names.overviews`, `overview_lang`), no
+migration; names read before overviews were kept no longer `Cover` the setting, so the same
+throttled backfill reads each title once more. `display_overview` is worked out on read
+(`Service.Get`), never stored in a column. Discover's detail record appends `translations`
+(detail cache v6) and the handler picks the overview; the hero's trending list is read once
+more with `language=`. Episodes and seasons keep English (their translations are per season
+and language on TMDB, and stored episode numbering follows TVDB/TVmaze).
+
 ## Checklist
 
 - [x] `series.SearchFit` (`Fit`, `QueryTitle`; lazy library read, fails closed) with tests: setting empty is `FitRelease` for every show and release; German release taken; another show's title, a shared title, a library show's own name refused; year and country; short words; languages not set; library not fully read.

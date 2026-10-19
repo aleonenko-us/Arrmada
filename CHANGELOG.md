@@ -126,6 +126,11 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   a Folder picker (`?folder=` in the address, so a filtered view can be bookmarked). Search,
   counts and Select all stay inside the chosen folder, and Add from a filtered view puts the
   new title in that folder.
+- **Descriptions in your language** (#35). With Settings → Library → "Show titles as" set to
+  **My language**, movie and show descriptions on the title pages and in Discover come in that
+  language when TMDB has a translation, and in English otherwise. English and Original modes
+  keep English descriptions; season and episode descriptions stay English. Existing libraries
+  catch up in the background, about one title every two seconds.
 - **SECURITY.md**: how to report a vulnerability privately, and which versions get fixes.
   The README now explains how Arrmada is built and tested.
 

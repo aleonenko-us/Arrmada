@@ -1851,6 +1851,8 @@ export interface DiscoverCard {
   display_title?: string;
   year: number;
   overview?: string;
+  /** The overview in the language titles are shown in, when TMDB has one; overview stays English. Use lib/displayTitle shownOverview. */
+  display_overview?: string;
   poster_url?: string;
   backdrop_url?: string;
   vote_average: number;
@@ -2076,6 +2078,8 @@ export interface MediaDetail {
   title: string;
   year: number;
   overview?: string;
+  /** The overview in the language titles are shown in, when TMDB has one; overview stays English. */
+  display_overview?: string;
   poster_url?: string;
   backdrop_url?: string;
   runtime?: number;
@@ -2239,6 +2243,8 @@ export interface Series {
   title_override?: string;
   year: number;
   overview?: string;
+  /** The overview in the language titles are shown in, when one is stored; overview stays English. */
+  display_overview?: string;
   poster_url?: string;
   status?: string;
   network?: string;
@@ -3835,6 +3841,8 @@ export interface Movie {
   title_override?: string;
   year: number;
   overview?: string;
+  /** The overview in the language titles are shown in, when one is stored; overview stays English. */
+  display_overview?: string;
   poster_url?: string;
   runtime?: number;
   status?: string;

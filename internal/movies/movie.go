@@ -51,6 +51,9 @@ type Movie struct {
 	// (internal/libfolders): 0 is the default folder, which is every film's until an
 	// extra folder is added.
 	LibraryFolderID int64 `json:"library_folder_id"`
+	// DisplayOverview is the overview in the language titles are shown in (display.go,
+	// filled by Service.Get); empty when it is Overview, TMDB's English one, which stays.
+	DisplayOverview string `json:"display_overview,omitempty"`
 
 	// Extra holds enriched metadata (genres, cast, collection, …), stored as
 	// JSON. Present on both list and detail responses.

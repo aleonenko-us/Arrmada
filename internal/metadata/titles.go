@@ -37,6 +37,11 @@ type Titles struct {
 	Year             int               `json:"year,omitempty"`
 	Alternatives     []AltTitle        `json:"alternatives,omitempty"`
 	Translations     []TranslatedTitle `json:"translations,omitempty"`
+	// Overviews are the title's overviews in OverviewLang (ISO 639-1), read by TitlesIn
+	// for the display-title setting's language; empty when no language was asked for.
+	// Only the one language is kept, so a cached entry stays small.
+	Overviews    []TranslatedOverview `json:"overviews,omitempty"`
+	OverviewLang string               `json:"overview_lang,omitempty"`
 }
 
 // TranslatedTitle is a title's name in one language (TMDB's translations).
@@ -125,6 +130,14 @@ func tmdbTitlesPath(media string) (string, error) {
 // titlesTTL in the disk cache under its own key so the Discover detail cache (v5) is
 // untouched. v2 added the original language: v1 entries lack it, so they're read again.
 func (t *TMDB) Titles(ctx context.Context, media string, tmdbID int) (*Titles, error) {
+	return t.TitlesIn(ctx, media, tmdbID, "")
+}
+
+// TitlesIn is Titles that also keeps the title's overviews in overviewLang (ISO 639-1),
+// from the same response. Each overview language is its own cache entry ("" is Titles'
+// entry, unchanged), so turning the setting on reads each title once more and nothing
+// new is read on installs that never use it.
+func (t *TMDB) TitlesIn(ctx context.Context, media string, tmdbID int, overviewLang string) (*Titles, error) {
 	path, err := tmdbTitlesPath(media)
 	if err != nil {
 		return nil, err
@@ -132,7 +145,11 @@ func (t *TMDB) Titles(ctx context.Context, media string, tmdbID int) (*Titles, e
 	if media == "tv" {
 		media = TitlesSeries
 	}
+	overviewLang = strings.ToLower(strings.TrimSpace(overviewLang))
 	key := "tmdb:titles:v2:" + media + ":" + strconv.Itoa(tmdbID)
+	if overviewLang != "" {
+		key += ":overviews:" + overviewLang
+	}
 	return swr(ctx, t.disk, key, titlesTTL, func(ctx context.Context) (*Titles, error) {
 		q := url.Values{}
 		q.Set("append_to_response", "alternative_titles,translations")
@@ -140,15 +157,15 @@ func (t *TMDB) Titles(ctx context.Context, media string, tmdbID int) (*Titles, e
 		if err != nil {
 			return nil, err
 		}
-		return parseTMDBTitles(body)
+		return parseTMDBTitles(body, overviewLang)
 	})
 }
 
 // parseTMDBTitles reads a movie or TV detail body with alternative_titles and translations
 // appended. Movies and TV differ in every field name: title/name, original_title/
 // original_name, release_date/first_air_date, alternative_titles' "titles"/"results", and
-// a translation's data.title/data.name.
-func parseTMDBTitles(body []byte) (*Titles, error) {
+// a translation's data.title/data.name. The overviews in overviewLang, if any, are kept.
+func parseTMDBTitles(body []byte, overviewLang string) (*Titles, error) {
 	type alt struct {
 		Country string `json:"iso_3166_1"`
 		Title   string `json:"title"`
@@ -180,6 +197,16 @@ func parseTMDBTitles(body []byte) (*Titles, error) {
 	if err := json.Unmarshal(body, &p); err != nil {
 		return nil, fmt.Errorf("tmdb: parse titles: %w", err)
 	}
+	// The overviews sit in the same translations, read on their own so a language whose
+	// title is empty (it uses the original one) still gives its overview.
+	var ov struct {
+		Translations tmdbOverviewTranslations `json:"translations"`
+	}
+	if overviewLang != "" {
+		if err := json.Unmarshal(body, &ov); err != nil {
+			return nil, fmt.Errorf("tmdb: parse titles: %w", err)
+		}
+	}
 	first := func(a, b string) string {
 		if s := strings.TrimSpace(a); s != "" {
 			return s
@@ -204,6 +231,10 @@ func parseTMDBTitles(body []byte) (*Titles, error) {
 				Lang: strings.ToLower(tr.Lang), Country: strings.ToUpper(tr.Country), Title: title,
 			})
 		}
+	}
+	if overviewLang != "" {
+		t.OverviewLang = overviewLang
+		t.Overviews = ov.Translations.overviews(func(lang string) bool { return lang == overviewLang })
 	}
 	return t, nil
 }

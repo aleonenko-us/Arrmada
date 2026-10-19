@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { TitleWatchPills, WatchedBy } from "../../components/PlexBits";
 import type { Series as SeriesT } from "../../lib/api";
-import { shownTitle } from "../../lib/displayTitle";
+import { shownOverview, shownTitle } from "../../lib/displayTitle";
 import { libraryStatus } from "../../lib/status";
 import { StatusChip } from "../../ui";
 import { fmtAirDay, fmtSize, nextEpisode, sxe } from "./util";
@@ -87,7 +87,7 @@ export function Hero({ series: s, children }: { series: SeriesT; children?: Reac
           </div>
 
           <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
-            <Overview text={s.overview} />
+            <Overview text={shownOverview(s)} />
             {ex?.genres && ex.genres.length > 0 && (
               <div className="mt-2.5 flex flex-wrap gap-1.5">{ex.genres.map((g) => <span key={g} className="rounded-full px-2 py-0.5 text-xs" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{g}</span>)}</div>
             )}
