@@ -14,7 +14,17 @@ export const dashboard: DashboardData = {
     { roots: ["movies", "tv"], path: "/media", total_bytes: 8e12, free_bytes: 2.4e12, used_bytes: 5.6e12, used_pct: 70 },
   ],
   queue: { downloading: 2, stalled: 0, seeding: 5, paused: 0, errored: 0, down_speed: 12_400_000, up_speed: 800_000 },
-  library: { movies: 42, movies_missing: 3, series: 12, episodes: 480, episodes_missing: 7, books: 30, books_missing: 2, artists: 4, albums: 9 },
+  library: { movies: 42, movies_missing: 3, series: 12, episodes: 480, episodes_missing: 7, books: 30, books_missing: 2 },
+  // MUS-24: Music's part (the fixtures run with Music on).
+  music: {
+    artists: 4, albums: 9, tracks: 112, size_bytes: 3_400_000_000, albums_wanted: 3, albums_missing: 2,
+    new_releases: [
+      { id: 51, title: "Low Tide Sessions", artist_name: "The Quiet Harbours", album_type: "EP", release_date: day(8), monitored: true, found_as: "new" },
+      { id: 53, title: "Harbour Demos", artist_name: "The Quiet Harbours", album_type: "Album", release_date: "2009", monitored: false, found_as: "back_catalogue" },
+    ],
+    new_releases_total: 2,
+    imports: [{ kind: "music", id: 5, title: "The Quiet Harbours", event: "imported", detail: "Imported 10/10 of \"Low Tide\"", at_ms: NOW - 5_400_000 }],
+  },
   activity: [
     { kind: "movie", id: 1, title: "The Cartographer", event: "imported", detail: "2160p WEB-DL", at_ms: NOW - 3_600_000 },
     { kind: "series", id: 1, title: "Harbour Lights", event: "grabbed", detail: "S02E04", at_ms: NOW - 7_200_000 },
@@ -49,11 +59,24 @@ export const calendarItems: CalendarItem[] = [
   mv(30, 4, 1004, "Iron Tide"),
 ];
 
-// calendar answers GET /api/v1/calendar for the window asked, like the server does.
-export function calendar(url: URL): { items: CalendarItem[]; start: string; end: string } {
+// MUS-24: album releases, on staff's calendar only (the server leaves them out for
+// requesters): one coming up, and one out yesterday that's already here.
+const album = (offset: number, ref: number, title: string, artist: string, kind: string, over: Partial<CalendarItem> = {}): CalendarItem => ({
+  date: day(offset), type: "album", title, subtitle: `${artist} · ${kind}`, ref_id: ref, has_file: false, monitored: true,
+  tmdb_id: 0, media_type: "music", year: 2026, artist, album_type: kind, ...over,
+});
+export const calendarAlbums: CalendarItem[] = [
+  album(8, 51, "Low Tide Sessions", "The Quiet Harbours", "EP"),
+  album(-1, 52, "Breakwater Live", "Ana Lys", "Album", { has_file: true }),
+];
+
+// calendar answers GET /api/v1/calendar for the window asked, like the server does: albums
+// only for staff.
+export function calendar(url: URL, staff = false): { items: CalendarItem[]; start: string; end: string } {
   const start = url.searchParams.get("start") ?? day(-7);
   const end = url.searchParams.get("end") ?? day(42);
-  return { start, end, items: calendarItems.filter((it) => it.date >= start && it.date <= end) };
+  const all = staff ? [...calendarItems, ...calendarAlbums] : calendarItems;
+  return { start, end, items: all.filter((it) => it.date >= start && it.date <= end) };
 }
 
 // The library list is slim summaries (MOV-10): no cast, overview or file paths.

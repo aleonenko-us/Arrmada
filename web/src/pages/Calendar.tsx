@@ -10,8 +10,8 @@ import { pickTab } from "../lib/useTabParam";
 import { Button, ErrorState, Sheet, StaleBanner, StatusChip, type Tone } from "../ui";
 import { Page } from "../ui/Page";
 
-// Calendar — upcoming episodes and movie releases. Visible to everyone (staff and
-// requesters). Two views: a month grid (the desktop default) and an agenda list (the
+// Calendar — upcoming episodes and movie releases, and for staff while Music is on, album
+// releases (MUS-24). Visible to everyone (staff and requesters). Two views: a month grid (the desktop default) and an agenda list (the
 // default on a phone, where a 7-column month leaves each day ~45px wide). Items open their
 // title: staff go to the library page, requesters to the title's Discover page. 'My
 // requests' narrows it to what the viewer asked for or follows (the requester's default).
@@ -41,10 +41,13 @@ type Scope = (typeof SCOPES)[number];
 
 const STATUS_TONE: Record<ReturnType<typeof itemStatus>, Tone> = { Downloaded: "good", Upcoming: "accent", Wanted: "avoid", Unmonitored: "faint", "Searching off": "faint" };
 
+// Each kind's colour in the month grid and its legend.
+const KIND_COLOR: Record<CalendarItem["type"], string> = { episode: "var(--accent)", movie: "var(--good)", album: "var(--mismatch)" };
+
 interface Loaded { key: string; start: string; end: string; items: CalendarItem[] }
 
 export function Calendar({ chrome = true }: { chrome?: boolean }) {
-  const { user } = useMe();
+  const { user, musicEnabled } = useMe();
   const staff = isStaff(user);
   const today = useMemo(() => new Date(), []);
   const todayStr = ymd(today);
@@ -138,8 +141,9 @@ export function Calendar({ chrome = true }: { chrome?: boolean }) {
             {view === "month" && (
               <>
                 <div className="flex items-center gap-3 text-xs">
-                  <Legend color="var(--accent)" label="Episodes" />
-                  <Legend color="var(--good)" label="Movies" />
+                  <Legend color={KIND_COLOR.episode} label="Episodes" />
+                  <Legend color={KIND_COLOR.movie} label="Movies" />
+                  {staff && musicEnabled && <Legend color={KIND_COLOR.album} label="Albums" />}
                 </div>
                 <span className="mx-1 h-5 w-px" style={{ background: "var(--line)" }} />
                 <button onClick={() => setCursor(new Date(today.getFullYear(), today.getMonth(), 1))} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={NAV_BTN}>Today</button>
@@ -269,7 +273,7 @@ function MonthGrid({ cells, monthIdx, todayStr, items, staff, onMore }: {
 }
 
 function DayItem({ it, staff }: { it: CalendarItem; staff: boolean }) {
-  const color = it.type === "movie" ? "var(--good)" : "var(--accent)";
+  const color = KIND_COLOR[it.type] ?? KIND_COLOR.episode;
   const label = `${it.title} — ${itemLine(it)}`;
   // Something nobody is waiting for steps back with a fainter tint and bar and dimmer
   // words, not opacity, which took the title below a readable contrast.
@@ -365,7 +369,7 @@ function AgendaRow({ it, staff, todayStr, markMine, replace }: { it: CalendarIte
         <div className="truncate text-sm text-ink-dim">{itemLine(it)}</div>
         {markMine && it.requested_by_me && <StatusChip tone="accent" size="xs" className="mt-0.5 inline-block">You asked for this</StatusChip>}
       </div>
-      <StatusChip tone={STATUS_TONE[status]} className="flex-none" title={status === "Searching off" ? "Searching is off for this show — nothing is searched until it's turned back on." : undefined}>{status === "Downloaded" ? "✓ Downloaded" : status}</StatusChip>
+      <StatusChip tone={STATUS_TONE[status]} className="flex-none" title={status === "Searching off" ? `Searching is off for this ${it.type === "album" ? "artist" : "show"} — nothing is searched until it's turned back on.` : undefined}>{status === "Downloaded" ? "✓ Downloaded" : status}</StatusChip>
     </>
   );
   const className = "flex min-h-[44px] items-center gap-3 rounded-lg px-2 py-1.5";

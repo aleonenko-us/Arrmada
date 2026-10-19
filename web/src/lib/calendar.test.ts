@@ -60,6 +60,19 @@ describe("item lines and links", () => {
     expect(itemHref(item({ tmdb_id: 0 }), false)).toBeNull();
   });
 
+  // MUS-24: an album reads 'Artist · EP' and opens its album page; only staff ever get one.
+  it("writes an album's artist and kind, and opens its album page for staff", () => {
+    const album = item({ type: "album", media_type: "music", title: "Low Tide", ref_id: 51, tmdb_id: 0, artist: "The Quiet Harbours", album_type: "EP",
+      subtitle: "The Quiet Harbours · EP", season: undefined, episode: undefined, episode_title: undefined });
+    expect(itemLine(album)).toBe("The Quiet Harbours · EP");
+    expect(itemLine({ ...album, album_type: "" })).toBe("The Quiet Harbours · Album");
+    expect(itemLine({ ...album, artist: undefined })).toBe("The Quiet Harbours · EP"); // the subtitle
+    expect(itemHref(album, true)).toBe("/music/album/51");
+    expect(itemHref(album, false)).toBeNull();
+    // A paused artist's wanted album: Searching off, like a paused show's episode.
+    expect(itemStatus({ ...album, monitored: false, searching_off: true }, "2026-10-01")).toBe("Searching off");
+  });
+
   it("says where an item stands", () => {
     expect(itemStatus(item({ has_file: true }), "2026-10-09")).toBe("Downloaded");
     expect(itemStatus(item({ monitored: false }), "2026-10-09")).toBe("Unmonitored");
