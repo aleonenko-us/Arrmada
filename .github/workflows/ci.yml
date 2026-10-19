@@ -145,7 +145,7 @@ jobs:
       # build without leaving the app down; a quoting slip there is not caught anywhere
       # else. shellcheck is preinstalled on the runner image. -s sh: they are POSIX sh.
       - name: shellcheck
-        run: shellcheck -s sh update.sh install.sh docker/entrypoint.sh
+        run: shellcheck -s sh update.sh install.sh docker/entrypoint.sh scripts/changelog-section.sh
 
   web:
     name: Web build
