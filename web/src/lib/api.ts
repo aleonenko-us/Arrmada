@@ -1040,8 +1040,9 @@ export interface LibraryCounts {
   books: number; books_missing: number;
 }
 // DashboardMusic is Music's part of the Dashboard (MUS-24), sent only while Music is on.
-// albums: albums with a track on disk; albums_wanted: the Wanted page's music, of which
-// albums_missing are released (the rest are Upcoming).
+// albums: albums with a track on disk; albums_wanted: incomplete wanted albums by the
+// Wanted page's rules (downloading ones included), of which albums_missing are released
+// (the rest are on its Upcoming tab).
 export interface DashboardMusic {
   artists: number; albums: number; tracks: number; size_bytes: number;
   albums_wanted: number; albums_missing: number;

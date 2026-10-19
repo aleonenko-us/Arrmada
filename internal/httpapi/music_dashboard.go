@@ -34,9 +34,11 @@ type musicCounts struct {
 	Albums    int   `json:"albums"`
 	Tracks    int   `json:"tracks"` // tracks with a file on disk
 	SizeBytes int64 `json:"size_bytes"`
-	// AlbumsWanted is the Wanted page's music: monitored albums of monitored artists that
-	// aren't complete. AlbumsMissing is the released ones among them, the ones the music
-	// sweep is searching for (the rest are Upcoming).
+	// AlbumsWanted is monitored albums of monitored artists that aren't complete, by the
+	// Wanted page's rules; AlbumsMissing is the released ones among them, what the music
+	// sweep is searching for (the rest are on the Wanted page's Upcoming tab). One thing
+	// differs from the Wanted page: it leaves out an album while a download for it is in
+	// the client, and these count it, as movies_missing counts a downloading movie.
 	AlbumsWanted  int `json:"albums_wanted"`
 	AlbumsMissing int `json:"albums_missing"`
 }
@@ -70,14 +72,13 @@ func (a *api) dashboardMusic(ctx context.Context) *dashboardMusic {
 		return nil
 	}
 	out := &dashboardMusic{musicCounts: a.musicCounts(ctx), NewReleases: []dashboardNewRelease{}, Imports: []activityEvent{}}
-	if list, err := a.deps.Music.NewReleases(ctx, newReleaseDays); err != nil {
+	// The few rows shown and an exact count: the Dashboard reloads on every import, so it
+	// never reads the whole list.
+	if list, total, err := a.deps.Music.RecentReleases(ctx, newReleaseDays, dashboardMusicRows); err != nil {
 		a.deps.Log.Debug("dashboard: new releases unavailable", "err", err)
 	} else {
-		out.NewReleasesTotal = len(list)
-		for i, nr := range list {
-			if i == dashboardMusicRows {
-				break
-			}
+		out.NewReleasesTotal = total
+		for _, nr := range list {
 			out.NewReleases = append(out.NewReleases, dashboardNewRelease{ID: nr.ID, Title: nr.Title, ArtistName: nr.ArtistName,
 				AlbumType: nr.AlbumType, ReleaseDate: nr.ReleaseDate, Monitored: nr.Monitored, FoundAs: nr.FoundAs})
 		}
@@ -114,16 +115,15 @@ func (a *api) musicCounts(ctx context.Context) musicCounts {
 		mc.SizeBytes = size.Int64
 	}
 	if a.deps.Music != nil {
-		// The Wanted page's own list and rules (wantedBuild.albums), so the two agree.
-		if albums, err := a.deps.Music.WantedAlbums(ctx); err != nil {
+		// The Wanted page's list and rules (WantedAlbums, Album.Complete), worked out in one
+		// grouped statement that returns only the incomplete albums' dates; released or not
+		// is the music sweep's own date rule.
+		if albums, err := a.deps.Music.IncompleteWanted(ctx); err != nil {
 			a.deps.Log.Debug("dashboard: wanted albums unavailable", "err", err)
 		} else {
 			today := time.Now().Format("2006-01-02")
+			mc.AlbumsWanted = len(albums)
 			for _, al := range albums {
-				if al.Complete() {
-					continue
-				}
-				mc.AlbumsWanted++
 				if automation.AlbumReleased(al, today) {
 					mc.AlbumsMissing++
 				}

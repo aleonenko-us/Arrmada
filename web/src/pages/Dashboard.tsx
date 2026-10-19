@@ -521,6 +521,11 @@ export function musicTileSub(m: Pick<DashboardMusic, "artists" | "albums_missing
   return m.albums_missing > 0 ? `${m.albums_missing} missing · ${artists}` : artists;
 }
 
+// musicUpcoming is the wanted albums that aren't out yet: the Wanted page's Upcoming tab.
+export function musicUpcoming(m: Pick<DashboardMusic, "albums_wanted" | "albums_missing">): number {
+  return Math.max(0, m.albums_wanted - m.albums_missing);
+}
+
 // releaseLine is a new release's second line: 'Artist · EP · 2026-11-14'.
 export function releaseLine(r: Pick<DashboardNewRelease, "artist_name" | "album_type" | "release_date">): string {
   return [r.artist_name, r.album_type, r.release_date].filter(Boolean).join(" · ");
@@ -535,8 +540,10 @@ function MusicCard({ m }: { m: DashboardMusic }) {
         <Stat k="Albums" v={String(m.albums)} />
         <Stat k="Tracks" v={String(m.tracks)} />
         <Stat k="Size" v={bytes(m.size_bytes)} />
-        <Stat k="Wanted" v={String(m.albums_wanted)} to={LINKS.downloadsSearching} />
-        <Stat k="Missing" v={String(m.albums_missing)} tone={m.albums_missing > 0 ? "avoid" : undefined} to={LINKS.downloadsSearching} />
+        {/* The wanted albums, split as the Wanted page splits them, each opening the tab
+            that lists it: released ones (searching) and ones not out yet (upcoming). */}
+        <Stat k="Missing" v={String(m.albums_missing)} tone={m.albums_missing > 0 ? "avoid" : undefined} to={`${LINKS.downloadsSearching}?show=searching`} />
+        <Stat k="Upcoming" v={String(musicUpcoming(m))} to={`${LINKS.downloadsSearching}?show=upcoming`} />
       </dl>
       <div className="mt-5 grid gap-5 sm:grid-cols-2">
         <section aria-labelledby="dash-new-releases" className="min-w-0">

@@ -36,6 +36,9 @@ for (const [width, height] of [[1280, 900], [375, 812]] as const) {
       await expect(page.getByText("Tracks", { exact: true })).toBeVisible();
       await expect(page.getByText("112", { exact: true })).toBeVisible();
       await expect(page.getByText("3.2 GB", { exact: true })).toBeVisible();
+      // Missing and Upcoming each open the Wanted tab that lists them.
+      await expect(page.getByRole("link", { name: "2", exact: true })).toHaveAttribute("href", "/activity/wanted?show=searching");
+      await expect(page.getByRole("link", { name: "1", exact: true })).toHaveAttribute("href", "/activity/wanted?show=upcoming");
 
       const releases = page.getByRole("region", { name: "New releases · 2 in 30 days" });
       const soon = releases.getByRole("link").filter({ hasText: "Low Tide Sessions" });

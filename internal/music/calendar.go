@@ -25,29 +25,33 @@ func (s *Service) CalendarAlbums(ctx context.Context, start, end string) ([]Cale
 	return s.repo.CalendarAlbums(ctx, start, end)
 }
 
-// CalendarAlbums is Service.CalendarAlbums.
+// CalendarAlbums is Service.CalendarAlbums: one statement, the artist's name and switch
+// read in the same join.
 func (r *Repo) CalendarAlbums(ctx context.Context, start, end string) ([]CalendarAlbum, error) {
-	albums, err := r.albums(ctx, `
-		JOIN artists ar ON ar.id = al.artist_id
-		WHERE ar.in_library = 1 AND al.stale_since IS NULL
-		  AND length(al.release_date) = 10 AND date(al.release_date) = al.release_date
-		  AND al.release_date >= ? AND al.release_date <= ?
-		ORDER BY al.release_date, al.id
-		LIMIT ?`, start, end, calendarLimit)
+	rows, err := r.db.QueryContext(ctx, albumHead+albumCounts+`, ar.name, ar.monitored
+		  FROM albums al
+		  JOIN artists ar ON ar.id = al.artist_id
+		 WHERE ar.in_library = 1 AND al.stale_since IS NULL
+		   AND length(al.release_date) = 10 AND date(al.release_date) = al.release_date
+		   AND al.release_date >= ? AND al.release_date <= ?
+		 ORDER BY al.release_date, al.id
+		 LIMIT ?`, start, end, calendarLimit)
 	if err != nil {
 		return nil, err
 	}
-	artists := map[int64]Artist{}
-	out := make([]CalendarAlbum, 0, len(albums))
-	for _, al := range albums {
-		a, ok := artists[al.ArtistID]
-		if !ok {
-			if a, err = r.GetArtist(ctx, al.ArtistID); err != nil {
-				return nil, err
-			}
-			artists[al.ArtistID] = a
+	defer rows.Close()
+	out := []CalendarAlbum{}
+	for rows.Next() {
+		var (
+			ca  CalendarAlbum
+			mon int
+		)
+		al, err := scanAlbum(rowsWith{rows: rows, extra: []any{&ca.ArtistName, &mon}})
+		if err != nil {
+			return nil, err
 		}
-		out = append(out, CalendarAlbum{Album: al, ArtistName: a.Name, ArtistMonitored: a.Monitored})
+		ca.Album, ca.ArtistMonitored = al, mon != 0
+		out = append(out, ca)
 	}
-	return out, nil
+	return out, rows.Err()
 }

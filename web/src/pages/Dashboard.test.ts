@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { downloadingSub, musicTileSub, releaseLine } from "./Dashboard";
+import { downloadingSub, musicTileSub, musicUpcoming, releaseLine } from "./Dashboard";
 import type { QueueSummary } from "../lib/api";
 
 const q = (over: Partial<QueueSummary> = {}): QueueSummary => ({ downloading: 0, seeding: 0, paused: 0, errored: 0, down_speed: 0, up_speed: 0, ...over });
@@ -24,6 +24,11 @@ describe("music lines", () => {
   it("leads the Albums tile with what's missing, then the artists", () => {
     expect(musicTileSub({ artists: 12, albums_missing: 3 })).toBe("3 missing · 12 artists");
     expect(musicTileSub({ artists: 1, albums_missing: 0 })).toBe("1 artist");
+  });
+
+  it("counts the wanted albums not out yet as Upcoming", () => {
+    expect(musicUpcoming({ albums_wanted: 5, albums_missing: 2 })).toBe(3);
+    expect(musicUpcoming({ albums_wanted: 0, albums_missing: 0 })).toBe(0);
   });
 
   it("writes a new release's artist, kind and date, skipping what's unknown", () => {
