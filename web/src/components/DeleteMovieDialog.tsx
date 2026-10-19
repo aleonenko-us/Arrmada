@@ -31,6 +31,7 @@ export function DeleteMovieDialog({ movie, onClose, onDeleted }: {
 
   const binMode = preview?.recycle ?? mode;
   const pending = preview?.pending_downloads ?? [];
+  const folderFiles = preview?.folder_files ?? [];
 
   const confirm = async () => {
     setBusy(true); setErr(null);
@@ -50,12 +51,12 @@ export function DeleteMovieDialog({ movie, onClose, onDeleted }: {
   };
 
   const filesHint = !deleteFiles
-    ? (binMode && !binMode.enabled ? "Permanently deletes the movie's files and subtitles — the recycle bin is switched off." : "Moves the movie's files and subtitles to the recycle bin.")
+    ? (binMode && !binMode.enabled ? "Permanently deletes the movie's files, subtitles, artwork and metadata — the recycle bin is switched off." : "Moves the movie's files, subtitles, artwork and metadata to the recycle bin.")
     : !preview
       ? "Listing the movie's files…"
-      : preview.versions.length === 0
+      : preview.versions.length === 0 && folderFiles.length === 0
         ? "This movie has no files on disk."
-        : `${preview.versions.map((v) => v.file_name).join(", ")}${preview.sidecars ? ` and ${plural(preview.sidecars, "subtitle")}` : ""}. ${disposalLine(preview.bytes, binMode)}.`;
+        : `${[...preview.versions.map((v) => v.file_name), ...folderFiles.map((f) => f.file_name)].join(", ")}${preview.sidecars ? ` and ${plural(preview.sidecars, "subtitle")}` : ""}. ${disposalLine(preview.bytes, binMode)}.`;
 
   const box = (on: boolean) => ({ border: `1px solid ${on ? "var(--reject)" : "var(--line)"}`, background: on ? "var(--reject-soft)" : "var(--panel-2)", cursor: "pointer" });
 

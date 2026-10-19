@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/library"
@@ -110,6 +111,40 @@ func (s *Service) removeAllFiles(ctx context.Context, m Movie) error {
 	for _, v := range extras {
 		add(v.ID, v.FilePath)
 	}
+	// Movie artwork and metadata are stored beside the video, not as version rows. Move
+	// the known movie sidecars too when the folder contains no other untracked video.
+	tracked := map[string]bool{}
+	folders := map[string]bool{}
+	for _, f := range files {
+		tracked[filepath.Clean(f.path)] = true
+		folders[filepath.Dir(f.path)] = true
+	}
+	for _, dir := range sortedMovieFolders(folders) {
+		if s.isRoot(dir) {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		untrackedVideo := false
+		for _, entry := range entries {
+			p := filepath.Join(dir, entry.Name())
+			if !entry.IsDir() && isVideoFile(entry.Name()) && !tracked[filepath.Clean(p)] {
+				untrackedVideo = true
+				break
+			}
+		}
+		if untrackedVideo {
+			continue
+		}
+		for _, name := range folderSidecars {
+			p := filepath.Join(dir, name)
+			if _, err := os.Lstat(p); err == nil {
+				add(-1, p) // supporting file; it has no movie-file row to clear
+			}
+		}
+	}
 	if len(files) == 0 {
 		return nil
 	}
@@ -120,14 +155,23 @@ func (s *Service) removeAllFiles(ctx context.Context, m Movie) error {
 	}
 	var moved []movieFile
 	for _, f := range files {
-		if err := s.removeFile(f.path, nil); err != nil {
+		var removeErr error
+		if f.versionID < 0 {
+			_, removeErr = library.RemoveToBin(s.bin, f.path)
+			if removeErr == nil {
+				s.fileRemoved(f.path)
+			}
+		} else {
+			removeErr = s.removeFile(f.path, nil)
+		}
+		if removeErr != nil {
 			// The moved files are in the bin now; their tracks must read as missing.
 			names := make([]string, 0, len(moved))
 			for _, mf := range moved {
 				names = append(names, filepath.Base(mf.path))
 				if mf.versionID == 0 {
 					_ = s.repo.ClearFile(ctx, m.ID)
-				} else {
+				} else if mf.versionID > 0 {
 					_ = s.repo.ClearVersionFile(ctx, mf.versionID)
 				}
 				s.publish("movie.file_deleted", map[string]any{"id": m.ID, "version_id": mf.versionID, "path": mf.path})
@@ -136,10 +180,15 @@ func (s *Service) removeAllFiles(ctx context.Context, m Movie) error {
 				s.enqueueChange(ctx, outbox.MovieChanged{MovieID: m.ID, VersionID: moved[0].versionID, Change: outbox.ChangeFileDeleted, Path: moved[0].path})
 			}
 			_ = s.repo.AddEvent(ctx, m.ID, "delete.failed",
-				fmt.Sprintf("Stopped deleting after %d file(s): %v", len(moved), err))
-			return &FilesNotRemovedError{Moved: names, Failed: []string{filepath.Base(f.path)}, Err: err}
+				fmt.Sprintf("Stopped deleting after %d file(s): %v", len(moved), removeErr))
+			return &FilesNotRemovedError{Moved: names, Failed: []string{filepath.Base(f.path)}, Err: removeErr}
 		}
 		moved = append(moved, f)
+	}
+	for _, dir := range sortedMovieFolders(folders) {
+		if !s.isRoot(dir) {
+			_ = os.Remove(dir) // only removes it when empty; unrelated files keep the folder
+		}
 	}
 	return nil
 }
@@ -400,14 +449,15 @@ type PlanFile struct {
 // DeletePlan is what deleting a movie with its files would touch, for the dialog to state
 // before anything happens.
 type DeletePlan struct {
-	Versions []PlanFile `json:"versions"` // only files actually on disk
-	Sidecars int        `json:"sidecars"` // subtitles that travel with them
-	Bytes    int64      `json:"bytes"`    // videos plus subtitles
+	Versions    []PlanFile `json:"versions"`     // only files actually on disk
+	Sidecars    int        `json:"sidecars"`     // subtitles that travel with them
+	FolderFiles []PlanFile `json:"folder_files"` // artwork and metadata in a dedicated movie folder
+	Bytes       int64      `json:"bytes"`         // videos, subtitles and folder files
 }
 
 // DeletePlan lists a movie's files and their subtitles without changing anything.
 func (s *Service) DeletePlan(ctx context.Context, id int64) (DeletePlan, error) {
-	plan := DeletePlan{Versions: []PlanFile{}}
+	plan := DeletePlan{Versions: []PlanFile{}, FolderFiles: []PlanFile{}}
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return plan, err
@@ -440,5 +490,49 @@ func (s *Service) DeletePlan(ctx context.Context, id int64) (DeletePlan, error) 
 			}
 		}
 	}
+	tracked := map[string]bool{}
+	folders := map[string]bool{}
+	for _, v := range all {
+		if v.FilePath != "" {
+			tracked[filepath.Clean(v.FilePath)] = true
+			folders[filepath.Dir(v.FilePath)] = true
+		}
+	}
+	for _, dir := range sortedMovieFolders(folders) {
+		if s.isRoot(dir) {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		untrackedVideo := false
+		for _, entry := range entries {
+			p := filepath.Join(dir, entry.Name())
+			if !entry.IsDir() && isVideoFile(entry.Name()) && !tracked[filepath.Clean(p)] {
+				untrackedVideo = true
+				break
+			}
+		}
+		if untrackedVideo {
+			continue
+		}
+		for _, name := range folderSidecars {
+			p := filepath.Join(dir, name)
+			if fi, err := os.Stat(p); err == nil {
+				plan.FolderFiles = append(plan.FolderFiles, PlanFile{FileName: name, SizeBytes: fi.Size()})
+				plan.Bytes += fi.Size()
+			}
+		}
+	}
 	return plan, nil
+}
+
+func sortedMovieFolders(folders map[string]bool) []string {
+	dirs := make([]string, 0, len(folders))
+	for dir := range folders {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+	return dirs
 }

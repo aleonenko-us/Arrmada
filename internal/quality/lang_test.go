@@ -125,23 +125,17 @@ func TestLanguageMustRefusesByName(t *testing.T) {
 		d := engineIn(mode).Decide(p, []Candidate{
 			enCand("Film.2021.1080p.BluRay.x264-ENG", 12),
 			enCand("Film.2021.German.DL.1080p.WEB-DL.x264-GER", 6),
-			enCand("Film.2021.MULTi.1080p.BluRay.x264-MUL", 11), // MULTi alone may carry German
+			enCand("Film.2021.MULTi.1080p.BluRay.x264-MUL", 11), // an unnamed language can't satisfy a Must
 			enCand("Film.2021.GERMAN.1080p.WEB-DL.x264-GO", 5),
 			enCand("Film.2021.iTALiAN.1080p.WEB-DL.x264-IT", 5),
 		})
-		if len(d.Eligible) != 3 || len(d.Rejected) != 2 {
-			t.Fatalf("eligible %d rejected %d, want the two German releases and the MULTi one", len(d.Eligible), len(d.Rejected))
+		if len(d.Eligible) != 2 || len(d.Rejected) != 3 {
+			t.Fatalf("eligible %d rejected %d, want only the two releases that name German", len(d.Eligible), len(d.Rejected))
 		}
 		for _, ev := range d.Rejected {
-			if ev.RejectCode != RejectMissingLanguage || !strings.HasPrefix(ev.RejectReason, "Missing German audio") {
+			if ev.RejectCode != RejectMissingLanguage || !(strings.HasPrefix(ev.RejectReason, "Missing German audio") || strings.HasPrefix(ev.RejectReason, "Could not verify German audio")) {
 				t.Errorf("%s: %s %q", ev.Candidate.Name, ev.RejectCode, ev.RejectReason)
 			}
-		}
-		// A MULTi that doesn't name German isn't refused, and earns no German credit: the
-		// releases that say German rank above it.
-		last := d.Eligible[2]
-		if last.Candidate.Name != "Film.2021.MULTi.1080p.BluRay.x264-MUL" || containsStr(last.Matched, "German audio") {
-			t.Errorf("MULTi ranked %+v", last)
 		}
 		// German with the original beats German alone on nothing language-wise (both have
 		// the Must); the heavier one wins as it would without the rule.
@@ -151,9 +145,8 @@ func TestLanguageMustRefusesByName(t *testing.T) {
 	})
 }
 
-// DUAL / Dual Audio on a foreign title is the original plus English, so an English Must
-// grabs anime dual-audio releases; a MULTi that names nothing is the original and unnamed
-// others, so a French Must doesn't refuse a French film's MULTi either.
+// Named audio satisfies a Must; MULTi and DUAL releases whose other audio is unnamed do
+// not prove that a required language is present.
 func TestDualAudioAndMultiUnderAMust(t *testing.T) {
 	forEachRanking(t, func(t *testing.T, mode string) {
 		en := Profile{AllowedResolutions: []parser.Resolution{parser.Res1080p}, Languages: map[string]string{"en": PrefMust}}
@@ -164,16 +157,16 @@ func TestDualAudioAndMultiUnderAMust(t *testing.T) {
 			}
 		}
 		multi := engineIn(mode).Evaluate(en, NewCandidate("Show.S01E05.1080p.WEB.x264.MULTi-GRP", 1, 50).WithLanguage("ja"))
-		if !multi.Eligible || containsStr(multi.Matched, "English audio") {
+		if multi.Eligible || multi.RejectCode != RejectMissingLanguage {
 			t.Errorf("MULTi on a Japanese title: eligible %v %q, matched %v", multi.Eligible, multi.RejectReason, multi.Matched)
 		}
 		fr := Profile{Languages: map[string]string{"fr": PrefMust}}
-		if ev := engineIn(mode).Evaluate(fr, NewCandidate("Film.2021.MULTi.1080p.BluRay.x264-GRP", 8, 50).WithLanguage("en")); !ev.Eligible {
-			t.Errorf("French Must refused an English film's MULTi: %q", ev.RejectReason)
+		if ev := engineIn(mode).Evaluate(fr, NewCandidate("Film.2021.MULTi.1080p.BluRay.x264-GRP", 8, 50).WithLanguage("en")); ev.Eligible {
+			t.Errorf("French Must accepted an English film's unverified MULTi: %q", ev.RejectReason)
 		}
-		// Dual Audio on an English title names only English: German stays unknown.
+		// Dual Audio on an English title names only English: German stays unverified.
 		de := Profile{Languages: map[string]string{"de": PrefMust}}
-		if ev := engineIn(mode).Evaluate(de, NewCandidate("Film.2021.1080p.BluRay.x264.Dual-Audio-GRP", 8, 50).WithLanguage("en")); !ev.Eligible || ev.AudioLangsNote == "" {
+		if ev := engineIn(mode).Evaluate(de, NewCandidate("Film.2021.1080p.BluRay.x264.Dual-Audio-GRP", 8, 50).WithLanguage("en")); ev.Eligible || ev.RejectCode != RejectMissingLanguage {
 			t.Errorf("Dual Audio on an English film: %+v", ev)
 		}
 	})

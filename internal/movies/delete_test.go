@@ -166,13 +166,18 @@ func TestDeleteBinOffRemoves(t *testing.T) {
 func TestDeleteBinOnRecyclesWithSidecarsAndPublishes(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "bin")
 	f := newDeleteFixture(t, bin)
+	folderFiles := []string{
+		writeFixture(t, filepath.Join(filepath.Dir(f.main), "movie.nfo")),
+		writeFixture(t, filepath.Join(filepath.Dir(f.main), "poster.jpg")),
+		writeFixture(t, filepath.Join(filepath.Dir(f.main), "fanart.jpg")),
+	}
 	events, cancel := f.bus.Subscribe("file.removed")
 	defer cancel()
 	ctx := context.Background()
 	if err := f.svc.Delete(ctx, f.id, true); err != nil {
 		t.Fatal(err)
 	}
-	all := append([]string{f.main, f.extra, f.extraSub}, f.subs...)
+	all := append(append([]string{f.main, f.extra, f.extraSub}, f.subs...), folderFiles...)
 	for _, p := range all {
 		if exists(p) {
 			t.Errorf("%s is still in the library", filepath.Base(p))

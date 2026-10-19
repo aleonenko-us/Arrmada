@@ -1147,7 +1147,7 @@ func (a *api) handleMovieDeletePreview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{
-		"versions": plan.Versions, "sidecars": plan.Sidecars, "bytes": plan.Bytes,
+		"versions": plan.Versions, "sidecars": plan.Sidecars, "folder_files": plan.FolderFiles, "bytes": plan.Bytes,
 		"recycle":           a.recycleMode(r.Context()),
 		"pending_downloads": pending,
 	})

@@ -1640,6 +1640,7 @@ export interface OrganizeSummary {
 export interface MovieDeletePreview {
   versions: { id: number; label: string; file_name: string; size_bytes: number }[];
   sidecars: number;
+  folder_files?: { file_name: string; size_bytes: number }[];
   bytes: number;
   recycle: RecycleMode;
   // Downloads still in flight for it; progress 0..1 (0 when the client doesn't list it).

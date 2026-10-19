@@ -602,10 +602,12 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	// and music profiles (NoUnwanted) have none: their names are titles, not video tags.
 	var audio langSet
 	var lv langVerdict
+	var languageRules map[string]string
 	if !p.NoUnwanted {
 		audio = c.audioLangs()
 		ev.AudioLangs, ev.AudioLangsNote = audio.describe()
-		lv = judgeLangs(p.languageRules(c), audio)
+		languageRules = p.languageRules(c)
+		lv = judgeLangs(languageRules, audio)
 		ev.langShort, ev.langPrefCodes, ev.langUnknown = lv.short, lv.prefs, lv.unknown
 	}
 
@@ -679,6 +681,22 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	if len(lv.missing) > 0 && !p.noLangGate {
 		ev.reject(RejectMissingLanguage, "Missing "+langNames(lv.missing)+" audio — your profile requires it")
 		return ev
+	}
+	// A required language has to be named by the release. MULTi or an untagged release
+	// cannot prove it carries the Must language, so accepting it can import the wrong dub.
+	// Existing files with untagged tracks remain unknown rather than being replaced on a
+	// guess.
+	if !c.onDisk && !p.noLangGate {
+		var unverified []string
+		for _, code := range lv.unknown {
+			if languageRules[code] == PrefMust {
+				unverified = append(unverified, code)
+			}
+		}
+		if len(unverified) > 0 {
+			ev.reject(RejectMissingLanguage, "Could not verify "+langNames(unverified)+" audio — your profile requires it")
+			return ev
+		}
 	}
 
 	ev.QualityScore = qualityScore(r)
