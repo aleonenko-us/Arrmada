@@ -117,12 +117,19 @@ func (r *Repo) monitorForRequest(ctx context.Context, id int64, seasons []int, w
 			}
 			return nil
 		}
-		// Some seasons turned on by a request: no preset's rule says that.
-		if err := markCustomTx(ctx, tx, id); err != nil {
-			return err
-		}
 		in, args := seasonIn(seasons)
 		withID := append([]any{id}, args...)
+		// Each write changes only rows whose flag really flips, so a request for seasons
+		// already monitored leaves the remembered preset alone; one that changes any makes
+		// it Custom (no preset's rule says "these seasons").
+		var flipped bool
+		write := func(q string, args ...any) error {
+			res, err := tx.ExecContext(ctx, q, args...)
+			if err == nil && changed(res) {
+				flipped = true
+			}
+			return err
+		}
 		if wasPaused {
 			var others int
 			if err := tx.QueryRowContext(ctx,
@@ -132,22 +139,27 @@ func (r *Repo) monitorForRequest(ctx context.Context, id int64, seasons []int, w
 			}
 			turnedOff = others > 0
 			for _, q := range []string{
-				`UPDATE episodes SET monitored = 0 WHERE series_id = ? AND season_number > 0 AND NOT ` + in,
-				`UPDATE seasons SET monitored = 0 WHERE series_id = ? AND season_number > 0 AND NOT ` + in,
+				`UPDATE episodes SET monitored = 0 WHERE series_id = ? AND season_number > 0 AND monitored = 1 AND NOT ` + in,
+				`UPDATE seasons SET monitored = 0 WHERE series_id = ? AND season_number > 0 AND monitored = 1 AND NOT ` + in,
 			} {
-				if _, err := tx.ExecContext(ctx, q, withID...); err != nil {
+				if err := write(q, withID...); err != nil {
 					return err
 				}
 			}
-			if _, err := tx.ExecContext(ctx, `UPDATE series SET monitor_new_seasons = 0 WHERE id = ?`, id); err != nil {
+			if err := write(`UPDATE series SET monitor_new_seasons = 0 WHERE id = ? AND monitor_new_seasons = 1`, id); err != nil {
 				return err
 			}
 		}
 		for _, q := range []string{
-			`UPDATE seasons SET monitored = 1 WHERE series_id = ? AND ` + in,
-			`UPDATE episodes SET monitored = 1 WHERE series_id = ? AND ` + in,
+			`UPDATE seasons SET monitored = 1 WHERE series_id = ? AND monitored = 0 AND ` + in,
+			`UPDATE episodes SET monitored = 1 WHERE series_id = ? AND monitored = 0 AND ` + in,
 		} {
-			if _, err := tx.ExecContext(ctx, q, withID...); err != nil {
+			if err := write(q, withID...); err != nil {
+				return err
+			}
+		}
+		if flipped {
+			if err := markCustomTx(ctx, tx, id); err != nil {
 				return err
 			}
 		}

@@ -55,6 +55,58 @@ func presetNewSeasons(p string) bool {
 // airedSQL matches automation's aired(): an episode with no air date hasn't aired.
 const airedSQL = `(air_date <> '' AND date(air_date) <= date('now'))`
 
+// presetRule is a preset's rule as an SQL condition on an episodes row of show id, with its
+// arguments: true for an episode the preset monitors.
+func presetRule(preset string, id int64) (string, []any) {
+	switch preset {
+	case PresetFuture:
+		return `NOT ` + airedSQL, nil
+	case PresetMissing:
+		return `(has_file = 0 OR NOT ` + airedSQL + `)`, nil
+	case PresetExisting:
+		return `(has_file = 1 OR NOT ` + airedSQL + `)`, nil
+	case PresetFirstSeason, PresetLatestSeason:
+		agg := "MIN"
+		if preset == PresetLatestSeason {
+			agg = "MAX"
+		}
+		return `season_number = (SELECT ` + agg + `(season_number) FROM episodes WHERE series_id = ? AND season_number > 0)`, []any{id}
+	case PresetNone:
+		return "0", nil
+	}
+	return "1", nil
+}
+
+// markCustomIfRenumberedTx keeps the remembered preset honest after a renumber moved
+// episodes: the flags travel with each episode, so a season-based preset (First or Latest
+// season) can stop describing them — S01E09 renumbered to S02E01 stays monitored outside
+// "the first season". All and None are checked the same way. Missing, Existing and Future
+// are left alone: their rules follow files and air dates, which drift from the flags with
+// time anyway, and a renumber changes neither.
+func markCustomIfRenumberedTx(ctx context.Context, tx *sql.Tx, id int64) error {
+	var preset string
+	if err := tx.QueryRowContext(ctx, `SELECT monitor_preset FROM series WHERE id = ?`, id).Scan(&preset); err != nil {
+		return err
+	}
+	switch preset {
+	case PresetAll, PresetNone, PresetFirstSeason, PresetLatestSeason:
+	default:
+		return nil
+	}
+	rule, args := presetRule(preset, id)
+	var one int
+	err := tx.QueryRowContext(ctx,
+		`SELECT 1 FROM episodes WHERE series_id = ? AND season_number > 0
+		   AND monitored <> (CASE WHEN `+rule+` THEN 1 ELSE 0 END) LIMIT 1`, append([]any{id}, args...)...).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // the preset still describes every flag
+	}
+	if err != nil {
+		return err
+	}
+	return markCustomTx(ctx, tx, id)
+}
+
 // ApplyMonitorPreset sets every regular episode's monitored flag by the preset's rule, sets
 // "monitor new seasons" (the preset's own choice unless newSeasons overrides it) and derives
 // each season's flag from its episodes and remembers the preset — all in one transaction.
@@ -76,25 +128,7 @@ func (r *Repo) ApplyMonitorPreset(ctx context.Context, id int64, preset string, 
 			}
 			return err
 		}
-		rule := "1"
-		var args []any
-		switch preset {
-		case PresetFuture:
-			rule = `NOT ` + airedSQL
-		case PresetMissing:
-			rule = `(has_file = 0 OR NOT ` + airedSQL + `)`
-		case PresetExisting:
-			rule = `(has_file = 1 OR NOT ` + airedSQL + `)`
-		case PresetFirstSeason, PresetLatestSeason:
-			agg := "MIN"
-			if preset == PresetLatestSeason {
-				agg = "MAX"
-			}
-			rule = `season_number = (SELECT ` + agg + `(season_number) FROM episodes WHERE series_id = ? AND season_number > 0)`
-			args = append(args, id)
-		case PresetNone:
-			rule = "0"
-		}
+		rule, args := presetRule(preset, id)
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE episodes SET monitored = CASE WHEN `+rule+` THEN 1 ELSE 0 END
 			 WHERE series_id = ? AND season_number > 0`, append(args, id)...); err != nil {
@@ -109,6 +143,11 @@ func (r *Repo) ApplyMonitorPreset(ctx context.Context, id int64, preset string, 
 			return err
 		}
 		if monitored != nil {
+			if *monitored {
+				if err := markPacedTx(ctx, tx, id); err != nil {
+					return err
+				}
+			}
 			if _, err := tx.ExecContext(ctx, `UPDATE series SET monitored = ? WHERE id = ?`, b2i(*monitored), id); err != nil {
 				return err
 			}
@@ -141,6 +180,13 @@ func syncSeasonsTx(ctx context.Context, tx *sql.Tx, seriesID int64, season int, 
 // It doesn't touch the pause gate.
 func (s *Service) ApplyMonitorPreset(ctx context.Context, id int64, preset string, newSeasons *bool) error {
 	return s.repo.ApplyMonitorPreset(ctx, id, preset, newSeasons, nil)
+}
+
+// changed reports whether a write changed any row (an UPDATE written with
+// "AND monitored <> ?" changes only the rows whose flag really flips).
+func changed(res sql.Result) bool {
+	n, _ := res.RowsAffected()
+	return n > 0
 }
 
 // markCustomTx records that a show's seasons or episodes were changed one by one, so the

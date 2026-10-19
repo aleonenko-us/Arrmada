@@ -472,6 +472,11 @@ func (a *api) handleSetSeriesMonitored(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusNotFound, "series not found")
 		return
 	}
+	if err != nil {
+		// Without the show as it was, "resumed" can't be told: change nothing.
+		a.writeError(w, http.StatusInternalServerError, "could not load series")
+		return
+	}
 	err = a.deps.Series.SetMonitoring(ctx, id, series.MonitorChange{
 		Monitored: req.Monitored, Preset: req.Preset, NewSeasons: req.MonitorNewSeasons,
 	})

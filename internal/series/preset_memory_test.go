@@ -1,6 +1,11 @@
 package series
 
-import "testing"
+import (
+	"database/sql"
+	"testing"
+
+	"github.com/tristenlammi/arrmada/internal/store"
+)
 
 // GH-53: picking a preset on a show whose searching is off turns searching on, in the same
 // write, and the show remembers the preset. Monitored false given with it keeps it off.
@@ -26,6 +31,11 @@ func TestPresetTurnsSearchingOn(t *testing.T) {
 	}
 	if eps, _ := monitoredSet(t, svc.repo, sr.ID); eps != "S01E01 S01E02 S02E01" {
 		t.Errorf("missing: monitored = %q", eps)
+	}
+	// Review (GH-53): turned on, it waits its turn like a show a Sonarr import added, so a
+	// whole scanned library turned on at once isn't one burst of searches.
+	if marked, err := svc.PacedSearchIDs(ctx); err != nil || !marked[sr.ID] {
+		t.Errorf("a preset turning searching on should give the paced-search mark: %v (%v)", marked, err)
 	}
 
 	off := false
@@ -158,6 +168,143 @@ func TestUpcomingEpisodesSearchState(t *testing.T) {
 	got = state()
 	if got["S01E01"] != [2]bool{false, true} || got["S02E01"] != [2]bool{false, false} {
 		t.Errorf("searching off: %v; want S01E01 wanted with searching off, S02E01 not wanted", got)
+	}
+}
+
+// Turning searching on marks a show to wait its turn; a show already searching, or one
+// being turned off, isn't marked.
+func TestSearchingOnMarksPaced(t *testing.T) {
+	repo, id := presetShow(t) // searching on
+	ctx := t.Context()
+	marked := func() bool {
+		t.Helper()
+		m, err := repo.PacedSearchIDs(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m[id]
+	}
+	on, off := true, false
+	if err := repo.SetMonitored(ctx, id, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ApplyMonitorPreset(ctx, id, PresetAll, nil, &on); err != nil {
+		t.Fatal(err)
+	}
+	if marked() {
+		t.Fatal("a show whose searching was already on was marked")
+	}
+	if err := repo.SetMonitored(ctx, id, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ApplyMonitorPreset(ctx, id, PresetAll, nil, &off); err != nil {
+		t.Fatal(err)
+	}
+	if marked() {
+		t.Fatal("turning searching off marked the show")
+	}
+	if err := repo.SetMonitored(ctx, id, true); err != nil {
+		t.Fatal(err)
+	}
+	if !marked() {
+		t.Fatal("turning searching on should mark the show")
+	}
+}
+
+// Review: seasons announced with no episodes yet change only their own flag; doing that by
+// hand still makes the show Custom (it decides what a refresh will want).
+func TestEmptySeasonByHandIsCustom(t *testing.T) {
+	repo, id := presetShow(t)
+	ctx := t.Context()
+	if err := repo.InsertSeasons(ctx, id, []Season{{SeasonNumber: 4}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ApplyMonitorPreset(ctx, id, PresetFirstSeason, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetSeasonMonitored(ctx, id, 4, true); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := repo.Get(ctx, id); s.MonitorPreset != PresetCustom {
+		t.Errorf("after monitoring an empty season by hand, preset = %q, want custom", s.MonitorPreset)
+	}
+	// Again: nothing changes, nothing more to say — but it stays Custom.
+	if err := repo.ApplyMonitorPreset(ctx, id, PresetFirstSeason, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetSeasonMonitored(ctx, id, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := repo.Get(ctx, id); s.MonitorPreset != PresetFirstSeason {
+		t.Errorf("monitoring a season already monitored made the show %q", s.MonitorPreset)
+	}
+}
+
+// Review: a request for seasons already monitored changes nothing, so the remembered preset
+// stays; one that turns a season on makes it Custom.
+func TestRequestChangingNothingKeepsPreset(t *testing.T) {
+	repo, id := presetShow(t)
+	ctx := t.Context()
+	if err := repo.ApplyMonitorPreset(ctx, id, PresetAll, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := monitoredSet(t, repo, id)
+	if _, err := repo.monitorForRequest(ctx, id, []int{2}, false, false); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := monitoredSet(t, repo, id)
+	if before != after {
+		t.Fatalf("a request for a monitored season changed flags: %q → %q", before, after)
+	}
+	if s, _ := repo.Get(ctx, id); s.MonitorPreset != PresetAll {
+		t.Errorf("a request that changed nothing made the preset %q", s.MonitorPreset)
+	}
+	if err := repo.ApplyMonitorPreset(ctx, id, PresetFirstSeason, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.monitorForRequest(ctx, id, []int{2}, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := repo.Get(ctx, id); s.MonitorPreset != PresetCustom {
+		t.Errorf("a request turning season 2 on = %q, want custom", s.MonitorPreset)
+	}
+}
+
+// Review: after a renumber moved episodes, a season-based preset whose rule no longer
+// matches the flags (they travel with each episode) becomes Custom; one that still matches,
+// or a file- or date-based preset, is left alone.
+func TestRenumberKeepsPresetHonest(t *testing.T) {
+	repo, id := presetShow(t)
+	ctx := t.Context()
+	check := func() string {
+		t.Helper()
+		if err := store.WithTx(ctx, repo.db, func(tx *sql.Tx) error { return markCustomIfRenumberedTx(ctx, tx, id) }); err != nil {
+			t.Fatal(err)
+		}
+		s, _ := repo.Get(ctx, id)
+		return s.MonitorPreset
+	}
+	if err := repo.ApplyMonitorPreset(ctx, id, PresetFirstSeason, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if p := check(); p != PresetFirstSeason {
+		t.Fatalf("flags still match the rule, preset = %q", p)
+	}
+	// An episode that moved into season 2 kept its flag.
+	if _, err := repo.db.Exec(`UPDATE episodes SET monitored = 1 WHERE series_id = ? AND season_number = 2 AND episode_number = 1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if p := check(); p != PresetCustom {
+		t.Errorf("a moved monitored episode outside the first season = %q, want custom", p)
+	}
+	if err := repo.ApplyMonitorPreset(ctx, id, PresetMissing, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.db.Exec(`UPDATE episodes SET monitored = 0 WHERE series_id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if p := check(); p != PresetMissing {
+		t.Errorf("a file-based preset was judged after a renumber: %q", p)
 	}
 }
 

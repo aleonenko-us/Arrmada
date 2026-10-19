@@ -7,7 +7,7 @@ import (
 	"testing/fstest"
 )
 
-// 0335 gives shows a remembered monitoring preset. Shows already in the library get an
+// 0338 gives shows a remembered monitoring preset. Shows already in the library get an
 // empty one (not known) and keep every other flag: the migration changes nothing they search.
 func TestSeriesMonitorPresetMigration(t *testing.T) {
 	ctx := context.Background()
@@ -18,7 +18,7 @@ func TestSeriesMonitorPresetMigration(t *testing.T) {
 	}
 	before := fstest.MapFS{}
 	for _, n := range names {
-		if n >= "0335" {
+		if n >= "0338" {
 			break
 		}
 		b, err := fs.ReadFile(full, n)
@@ -29,7 +29,7 @@ func TestSeriesMonitorPresetMigration(t *testing.T) {
 	}
 	db := testDB(t, 1)
 	if err := runMigrations(ctx, db, before); err != nil {
-		t.Fatalf("migrate to 0334: %v", err)
+		t.Fatalf("migrate to 0337: %v", err)
 	}
 	if _, err := db.Exec(`INSERT INTO series (id, tmdb_id, title, monitored, monitor_new_seasons) VALUES (1, 1, 'On', 1, 1), (2, 2, 'Off', 0, 0)`); err != nil {
 		t.Fatal(err)

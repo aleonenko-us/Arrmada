@@ -1,4 +1,4 @@
--- 0335_series_monitor_preset: a show remembers the monitoring preset last applied to it,
+-- 0338_series_monitor_preset: a show remembers the monitoring preset last applied to it,
 -- so the series page's Monitor menu can tick it.
 --
 --   ''        not known: shows added before this was recorded. The menu ticks nothing.
