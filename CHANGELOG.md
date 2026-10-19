@@ -183,6 +183,10 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Fixed
 
+- **Music (Preview) has a new library model:** albums have editions, discs and credited artists,
+  and each track file keeps its measured quality. Your existing music moves over on update with
+  nothing lost; anything that can't map one-to-one (two tracks claiming one file) shows as a note on
+  the album page with a Resolve button, and that album isn't searched automatically until then.
 - **Music (Preview) is safer while it's rebuilt.** Artist and album names fold properly
   (Björk, AC/DC, R.E.M., "The The") without matching the wrong band ("Fall Out Boy" is no
   longer The Fall); words like "Escape" no longer read as lossless; quality is measured from

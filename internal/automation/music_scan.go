@@ -69,7 +69,7 @@ func (c *Coordinator) ScanMusicLibrary(ctx context.Context, progress func(done, 
 
 	// Cache the library and each artist's albums across the whole scan: a big collection
 	// would otherwise re-read the artist list once per folder.
-	known, err := c.music.ListArtists(ctx)
+	known, err := c.music.LibraryArtists(ctx)
 	if err != nil {
 		return res, err
 	}
@@ -125,33 +125,34 @@ func (c *Coordinator) ScanMusicLibrary(ctx context.Context, progress func(done, 
 // library recorded before tracks were probed catches up over a few scans.
 const musicMeasurePerScan = 200
 
-// measureUnmeasuredTracks probes up to limit tracks that have a file but no measured
-// bitrate (recorded before imports were probed, or by a scan that couldn't probe) and
-// records their real tier and bitrate. ffprobe only reads; nothing is moved or rewritten.
-// A file that's gone or unreadable is skipped and stays unmeasured; a cursor carries each
-// pass on from where the last one stopped, so files like that never hold the rest back,
-// and it starts over from the top once it reaches the end.
+// measureUnmeasuredTracks probes up to limit music files that haven't been measured with
+// every fact (copied over by the model migration, recorded while ffprobe couldn't run, or
+// by a scan that couldn't probe) and records their real tier, bitrate, codec, sample rate,
+// bit depth, channels and length. ffprobe only reads; nothing is moved or rewritten. A file
+// that's gone or unreadable is skipped and stays unmeasured; a cursor carries each pass on
+// from where the last one stopped, so files like that never hold the rest back, and it
+// starts over from the top once it reaches the end.
 func (c *Coordinator) measureUnmeasuredTracks(ctx context.Context, limit int) int {
 	if c.probeAudioFn == nil && !mediainfo.Available() {
 		return 0
 	}
-	tracks, err := c.music.UnmeasuredTracks(ctx, c.measureCursor.Load(), limit)
+	files, err := c.music.UnmeasuredFiles(ctx, c.measureCursor.Load(), limit)
 	if err != nil {
-		c.log.Warn("music scan: couldn't list unmeasured tracks", "err", err)
+		c.log.Warn("music scan: couldn't list unmeasured files", "err", err)
 		return 0
 	}
-	if len(tracks) < limit {
+	if len(files) < limit {
 		c.measureCursor.Store(0) // the end: the next pass starts from the top again
 	}
 	n := 0
-	for _, t := range tracks {
+	for _, f := range files {
 		if ctx.Err() != nil {
 			break
 		}
-		if len(tracks) == limit {
-			c.measureCursor.Store(t.ID)
+		if len(files) == limit {
+			c.measureCursor.Store(f.ID)
 		}
-		info, err := c.probeAudio(ctx, t.FilePath)
+		info, err := c.probeAudio(ctx, f.Path)
 		if err != nil {
 			continue
 		}
@@ -159,8 +160,8 @@ func (c *Coordinator) measureUnmeasuredTracks(ctx context.Context, limit int) in
 		if q == music.QualityUnknown || info.BitrateKbps <= 0 {
 			continue
 		}
-		if err := c.music.SetTrackMeasured(ctx, t.ID, t.FilePath, string(q), info.BitrateKbps); err != nil {
-			c.log.Warn("music scan: recording a measured tier failed", "track", t.Title, "err", err)
+		if err := c.music.SetFileMeasured(ctx, f.ID, f.Path, q, info); err != nil {
+			c.log.Warn("music scan: recording a measured tier failed", "path", f.Path, "err", err)
 			continue
 		}
 		n++
@@ -233,9 +234,13 @@ func (c *Coordinator) recordAlbumFiles(ctx context.Context, a music.Artist, al m
 			continue // already recorded, or nothing on disk for it
 		}
 		// Measured when it can be (read-only ffprobe), else the extension's tag.
-		tier, bitrate := c.trackTier(ctx, file.Path, music.QualityUnknown)
+		tier, bitrate, probe := c.trackTier(ctx, file.Path, music.QualityUnknown)
+		rec := music.FileRecord{Path: file.Path, SizeBytes: file.SizeBytes, Quality: tier, BitrateKbps: bitrate, Probe: probe}
+		if fi, serr := os.Stat(file.Path); serr == nil {
+			rec.MtimeUnix = fi.ModTime().Unix()
+		}
 		// The file is already in the library — record where it is, don't move it.
-		if err := c.music.MarkTrackImported(ctx, t.ID, file.Path, string(tier), bitrate, file.SizeBytes, ""); err != nil {
+		if err := c.music.RecordTrackFile(ctx, t.ID, rec); err != nil {
 			c.log.Warn("music scan: recording a track failed", "track", t.Title, "err", err)
 			continue
 		}

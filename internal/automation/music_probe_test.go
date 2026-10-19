@@ -43,6 +43,14 @@ func TestImportRecordsMeasuredTier(t *testing.T) {
 		if tr.Format != string(music.QualityMP3V0) || tr.BitrateKbps != 245 || tr.SourceRelease == "" {
 			t.Errorf("track %q: %q at %d kbps (from %q), want MP3-V0 at 245 with the release kept", tr.Title, tr.Format, tr.BitrateKbps, tr.SourceRelease)
 		}
+		// MUS-29: the file row keeps every measured fact, not just the tier.
+		if tr.Codec != "mp3" || tr.SampleRateHz != 44100 || tr.Lossless || tr.TagState != music.TagStateAsFound || tr.FileID == 0 {
+			t.Errorf("track %q's file facts: codec %q, %d Hz, lossless %v, tags %q", tr.Title, tr.Codec, tr.SampleRateHz, tr.Lossless, tr.TagState)
+		}
+	}
+	var files, probed int
+	if err := h.st.DB().QueryRow(`SELECT COUNT(*), COUNT(probed_at) FROM music_track_files WHERE album_id = ?`, al.ID).Scan(&files, &probed); err != nil || files != 2 || probed != 2 {
+		t.Errorf("music_track_files rows = %d, probed %d (err %v), want 2 and 2", files, probed, err)
 	}
 	// Nothing measured as FLAC-quality, so a real FLAC now replaces them.
 	if res := h.importDownload(t, a, al, "Radiohead - OK Computer (1997) [FLAC]", ".flac", 2); res.placed != 2 {
@@ -150,8 +158,8 @@ func TestScanBackfillMeasuresOldTracks(t *testing.T) {
 	}
 	tracks, _ := h.svc.Tracks(h.ctx, al.ID)
 	for _, tr := range tracks {
-		if tr.Format != string(music.QualityFLAC) || tr.BitrateKbps != 900 {
-			t.Errorf("track %q: %q/%d, want FLAC at 900", tr.Title, tr.Format, tr.BitrateKbps)
+		if tr.Format != string(music.QualityFLAC) || tr.BitrateKbps != 900 || tr.Codec != "flac" || tr.BitDepth != 16 || !tr.Lossless {
+			t.Errorf("track %q: %q/%d %q %d-bit, want FLAC at 900, measured 16-bit flac", tr.Title, tr.Format, tr.BitrateKbps, tr.Codec, tr.BitDepth)
 		}
 	}
 }

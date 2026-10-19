@@ -185,7 +185,7 @@ func (a *api) buildSearchEntries(ctx context.Context, booksOn, musicOn bool) ([]
 		}
 	}
 	if musicOn {
-		err := read(`SELECT id, name, image_url FROM artists`, func(rows searchRow) (searchEntry, error) {
+		err := read(`SELECT id, name, image_url FROM artists WHERE in_library = 1`, func(rows searchRow) (searchEntry, error) {
 			h := searchHit{Kind: "artist"}
 			if err := rows.Scan(&h.ID, &h.Title, &h.PosterURL); err != nil {
 				return searchEntry{}, err

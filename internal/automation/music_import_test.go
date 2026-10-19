@@ -404,7 +404,7 @@ func TestImportedAlbumGrabNotBlockedWhenGone(t *testing.T) {
 	h := newStallHarness(t)
 	withMusic(t, h)
 	mustExec(t, h.c, `INSERT INTO albums (id, artist_id, mbid, title, monitored) VALUES (9, 5, 'rg9', 'OK Computer', 1)`)
-	mustExec(t, h.c, `INSERT INTO tracks (album_id, disc_number, track_number, title) VALUES (9, 1, 1, 'Airbag'), (9, 1, 2, 'Paranoid Android')`)
+	putTracks(t, h.c, 9, "Airbag", "Paranoid Android")
 	const release = "Radiohead - OK Computer (1997) [FLAC]"
 	gid := h.addGoneGrab(t, "music", 9, release, grabStatusGrabbed)
 	mustExec(t, h.c, `INSERT INTO imports (download_hash, source_path, target_path, title) VALUES (?, '', '', ?)`, hashFor(release), release)

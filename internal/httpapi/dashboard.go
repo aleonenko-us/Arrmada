@@ -384,7 +384,9 @@ func (a *api) libraryCounts(ctx context.Context) libraryCounts {
 		  AND e.season_number > 0 AND e.air_date <> '' AND date(e.air_date) <= date('now')`)
 	count(&lc.Books, `SELECT COUNT(*) FROM books`)
 	count(&lc.BooksMissing, `SELECT COUNT(*) FROM books WHERE monitored = 1 AND has_file = 0`)
-	count(&lc.Artists, `SELECT COUNT(*) FROM artists`)
+	// Library artists only: one that is just credited (featured on someone else's album)
+	// isn't in the library.
+	count(&lc.Artists, `SELECT COUNT(*) FROM artists WHERE in_library = 1`)
 	count(&lc.Albums, `SELECT COUNT(*) FROM albums`)
 	return lc
 }

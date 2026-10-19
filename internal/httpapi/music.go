@@ -206,6 +206,24 @@ func (a *api) handleSetAlbumMonitored(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"monitored": req.Monitored})
 }
 
+// handleResolveAlbumNote marks one of an album's upgrade notes as looked at (the files
+// were fixed, or the gap is accepted), so the sweep searches the album again.
+func (a *api) handleResolveAlbumNote(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+	noteID, ok := a.pathValueID(w, r, "note")
+	if !ok {
+		return
+	}
+	if err := a.deps.Music.ResolveNote(r.Context(), id, noteID); err != nil {
+		a.musicErr(w, err, "could not resolve the note")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"status": "resolved"})
+}
+
 // musicErr maps a module error to a status, so a missing id is a 404 rather than a 500 —
 // the mistake the Books handlers made on seven endpoints.
 func (a *api) musicErr(w http.ResponseWriter, err error, msg string) {

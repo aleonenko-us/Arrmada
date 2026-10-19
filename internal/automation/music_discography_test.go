@@ -18,9 +18,29 @@ func withMusic(t *testing.T, h *stallHarness) *music.Service {
 	h.c.music = svc
 	mustExec(t, h.c, `INSERT INTO artists (id, mbid, name, monitored) VALUES (5, 'a5', 'Radiohead', 1), (6, 'a6', 'Portishead', 1)`)
 	mustExec(t, h.c, `INSERT INTO albums (id, artist_id, mbid, title, monitored) VALUES (5, 6, 'rg5', 'Dummy', 1)`)
-	mustExec(t, h.c, `INSERT INTO tracks (album_id, disc_number, track_number, title, has_file, file_path, format)
-		VALUES (5, 1, 1, 'Mysterons', 1, '/m/1.flac', 'FLAC')`)
+	putTracks(t, h.c, 5, "Mysterons")
+	repo := music.NewRepo(h.c.db)
+	tracks, err := repo.TracksFor(t.Context(), 5)
+	if err != nil || len(tracks) != 1 {
+		t.Fatalf("tracks: %v %v", tracks, err)
+	}
+	if err := repo.SetTrackFile(t.Context(), tracks[0].ID, "/m/1.flac", "FLAC", 0, 0, ""); err != nil {
+		t.Fatal(err)
+	}
 	return svc
+}
+
+// putTracks gives an album a one-disc listing with the given titles (through the music
+// repository: tests don't write the music tables by hand).
+func putTracks(t *testing.T, c *Coordinator, albumID int64, titles ...string) {
+	t.Helper()
+	tracks := make([]music.Track, 0, len(titles))
+	for i, title := range titles {
+		tracks = append(tracks, music.Track{DiscNumber: 1, TrackNumber: i + 1, Title: title})
+	}
+	if err := music.NewRepo(c.db).UpsertTracks(t.Context(), albumID, tracks); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func artistEvents(t *testing.T, svc *music.Service, artistID int64, substr string) int {

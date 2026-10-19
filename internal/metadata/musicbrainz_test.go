@@ -103,7 +103,7 @@ func TestAlbumTracksPicksEarliestOfficialRelease(t *testing.T) {
 				t.Errorf("read the listing from %q, want the earliest official release", r.URL.Path)
 			}
 			_, _ = io.WriteString(w, `{"media":[{"position":1,"tracks":[
-			  {"id":"t1","title":"Airbag","position":1,"length":284000},
+			  {"id":"t1","title":"Airbag","number":"1","position":1,"length":284000,"recording":{"id":"rec-airbag"}},
 			  {"id":"t2","title":"Paranoid Android","position":2,"length":383000}]}]}`)
 		default:
 			_, _ = io.WriteString(w, `{"releases":[
@@ -122,6 +122,10 @@ func TestAlbumTracksPicksEarliestOfficialRelease(t *testing.T) {
 	}
 	if tracks[0].Title != "Airbag" || tracks[0].Disc != 1 || tracks[0].Number != 1 {
 		t.Errorf("track 1 = %+v", tracks[0])
+	}
+	// The release track's id, the recording's and the release's, all from the one answer.
+	if tracks[0].MBID != "t1" || tracks[0].RecordingMBID != "rec-airbag" || tracks[0].ReleaseMBID != "original" {
+		t.Errorf("track 1 ids = %q / %q / %q", tracks[0].MBID, tracks[0].RecordingMBID, tracks[0].ReleaseMBID)
 	}
 	if tracks[1].DurationSec != 383 {
 		t.Errorf("duration should be seconds, got %d", tracks[1].DurationSec)

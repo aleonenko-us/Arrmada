@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/tristenlammi/arrmada/internal/mediainfo"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 )
 
@@ -37,7 +38,8 @@ func (s *Service) ListArtists(ctx context.Context) ([]Artist, error) { return s.
 // existing install keeps the Music module on now that it's off by default.
 func (s *Service) HasArtists(ctx context.Context) (bool, error) { return s.repo.HasArtists(ctx) }
 
-// GetArtist returns one artist with its albums.
+// GetArtist returns one artist with its albums, the albums it appears on, and its stats
+// (summed from the albums, so they equal the library list's).
 func (s *Service) GetArtist(ctx context.Context, id int64) (Artist, error) {
 	a, err := s.repo.GetArtist(ctx, id)
 	if err != nil {
@@ -48,6 +50,10 @@ func (s *Service) GetArtist(ctx context.Context, id int64) (Artist, error) {
 		return Artist{}, err
 	}
 	a.Albums = albums
+	a.Stats = statsFromAlbums(albums)
+	if a.AppearsOn, err = s.repo.AppearsOn(ctx, id); err != nil {
+		return Artist{}, err
+	}
 	return a, nil
 }
 
@@ -57,14 +63,16 @@ func (s *Service) AlbumRecord(ctx context.Context, id int64) (Album, error) {
 	return s.repo.GetAlbum(ctx, id)
 }
 
-// GetAlbum returns one album with its track listing, fetching the listing from MusicBrainz
-// the first time it's asked for (see EnsureTracks).
+// GetAlbum returns one album in full: its target edition's tracks with their files, its
+// editions, the target's discs and its extra files. The listing is fetched from
+// MusicBrainz the first time it's asked for (see EnsureTracks). A fixed number of queries,
+// however big the album.
 func (s *Service) GetAlbum(ctx context.Context, id int64) (Album, error) {
 	al, err := s.repo.GetAlbum(ctx, id)
 	if err != nil {
 		return Album{}, err
 	}
-	if al.TrackCount == 0 {
+	if al.EditionTracks == 0 {
 		if err := s.EnsureTracks(ctx, al); err != nil {
 			s.log.Warn("music: couldn't fetch the track listing", "album", al.Title, "err", err)
 		}
@@ -78,7 +86,49 @@ func (s *Service) GetAlbum(ctx context.Context, id int64) (Album, error) {
 	}
 	al.Tracks = tracks
 	al.HeldTier, _ = lowestHeld(tracks)
+	if al.Editions, err = s.repo.Editions(ctx, id); err != nil {
+		return Album{}, err
+	}
+	if al.TargetEditionID > 0 {
+		if al.Discs, err = s.repo.Discs(ctx, al.TargetEditionID); err != nil {
+			return Album{}, err
+		}
+	}
+	files, err := s.repo.AlbumFiles(ctx, id)
+	if err != nil {
+		return Album{}, err
+	}
+	onTarget := make(map[int64]bool, len(tracks))
+	for _, t := range tracks {
+		if t.FileID > 0 {
+			onTarget[t.FileID] = true
+		}
+	}
+	for _, f := range files {
+		if !onTarget[f.ID] {
+			al.Extras = append(al.Extras, f)
+		}
+	}
+	if al.Notes, err = s.repo.OpenNotes(ctx, id); err != nil {
+		return Album{}, err
+	}
 	return al, nil
+}
+
+// ResolveNote marks an album's migration note as looked at, so the sweep searches the
+// album again.
+func (s *Service) ResolveNote(ctx context.Context, albumID, noteID int64) error {
+	return s.repo.ResolveNote(ctx, albumID, noteID)
+}
+
+// LibraryArtists lists the library's artists without their stats (see Repo.LibraryArtists).
+func (s *Service) LibraryArtists(ctx context.Context) ([]Artist, error) {
+	return s.repo.LibraryArtists(ctx)
+}
+
+// FileOwner is the track a file path is recorded for (0: none, or an album extra).
+func (s *Service) FileOwner(ctx context.Context, path string) (int64, error) {
+	return s.repo.FileOwner(ctx, path)
 }
 
 // AddArtist adds an artist and its album list.
@@ -96,6 +146,7 @@ func (s *Service) AddArtist(ctx context.Context, mbid, qualityProfile string, mo
 	created, err := s.repo.CreateArtist(ctx, Artist{
 		MBID: d.MBID, Name: d.Name, SortName: d.SortName, Overview: d.Overview,
 		Genres: d.Genres, Monitored: monitored, QualityProfile: qualityProfile,
+		Disambiguation: d.Disambiguation, Type: d.Type, Country: d.Country,
 	})
 	if err != nil {
 		return Artist{}, err
@@ -132,10 +183,10 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, monitored bool) (int
 	return len(albums), nil
 }
 
-// EnsureTracks fills in an album's track listing when it has none yet. Safe to call
-// repeatedly — an album that already has tracks costs nothing.
+// EnsureTracks fills in an album's track listing when its target edition has none yet.
+// Safe to call repeatedly — an album that already has a listing costs nothing.
 func (s *Service) EnsureTracks(ctx context.Context, al Album) error {
-	if al.TrackCount > 0 {
+	if al.EditionTracks > 0 {
 		return nil
 	}
 	tracks, err := s.meta.AlbumTracks(ctx, al.MBID)
@@ -145,14 +196,17 @@ func (s *Service) EnsureTracks(ctx context.Context, al Album) error {
 	if len(tracks) == 0 {
 		return nil // no official release carries a listing yet (a future album, say)
 	}
-	rows := make([]Track, 0, len(tracks))
+	l := Listing{Tracks: make([]EditionTrack, 0, len(tracks))}
 	for _, t := range tracks {
-		rows = append(rows, Track{
-			MBID: t.MBID, DiscNumber: t.Disc, TrackNumber: t.Number,
-			Title: t.Title, DurationSec: t.DurationSec,
+		if l.ReleaseMBID == "" {
+			l.ReleaseMBID = t.ReleaseMBID
+		}
+		l.Tracks = append(l.Tracks, EditionTrack{
+			Disc: t.Disc, Position: t.Number, Number: t.Printed, Title: t.Title,
+			MBID: t.MBID, RecordingMBID: t.RecordingMBID, LengthMs: t.DurationSec * 1000,
 		})
 	}
-	return s.repo.UpsertTracks(ctx, al.ID, rows)
+	return s.repo.UpsertListing(ctx, al.ID, l)
 }
 
 // Refresh re-pulls an artist's metadata and album list.
@@ -162,7 +216,7 @@ func (s *Service) Refresh(ctx context.Context, id int64) (Artist, error) {
 		return Artist{}, err
 	}
 	if d, derr := s.meta.GetArtist(ctx, a.MBID); derr == nil {
-		if err := s.repo.UpdateArtistMeta(ctx, id, d.Overview, a.ImageURL, d.Genres); err != nil {
+		if err := s.repo.UpdateArtistMeta(ctx, id, d.Overview, a.ImageURL, d.Genres, d.Disambiguation, d.Type, d.Country); err != nil {
 			s.log.Warn("music: updating artist metadata failed", "artist", a.Name, "err", err)
 		}
 	} else {
@@ -181,7 +235,7 @@ func (s *Service) Refresh(ctx context.Context, id int64) (Artist, error) {
 	return s.GetArtist(ctx, id)
 }
 
-// Albums returns an artist's albums.
+// Albums returns the albums filed under an artist.
 func (s *Service) Albums(ctx context.Context, artistID int64) ([]Album, error) {
 	return s.repo.AlbumsFor(ctx, artistID)
 }
@@ -216,9 +270,14 @@ func (s *Service) FilePaths(ctx context.Context) ([]string, error) {
 	return s.repo.FilePaths(ctx)
 }
 
-// Tracks returns an album's tracks.
+// Tracks returns an album's target-edition tracks, each with its file.
 func (s *Service) Tracks(ctx context.Context, albumID int64) ([]Track, error) {
 	return s.repo.TracksFor(ctx, albumID)
+}
+
+// Editions lists an album's editions, the target first.
+func (s *Service) Editions(ctx context.Context, albumID int64) ([]Edition, error) {
+	return s.repo.Editions(ctx, albumID)
 }
 
 // SetArtistMonitored toggles an artist (cascading to its albums and tracks).
@@ -236,9 +295,14 @@ func (s *Service) SetQualityProfile(ctx context.Context, id int64, profile strin
 	return s.repo.SetArtistQualityProfile(ctx, id, profile)
 }
 
-// MarkTrackImported records a track's file on disk.
+// MarkTrackImported records a track's file on disk with just its tier and bitrate.
 func (s *Service) MarkTrackImported(ctx context.Context, trackID int64, path, format string, bitrate int, size int64, sourceRelease string) error {
 	return s.repo.SetTrackFile(ctx, trackID, path, format, bitrate, size, sourceRelease)
+}
+
+// RecordTrackFile records a track's file on disk with everything known about it.
+func (s *Service) RecordTrackFile(ctx context.Context, trackID int64, rec FileRecord) error {
+	return s.repo.RecordTrackFile(ctx, trackID, rec)
 }
 
 // HeldTiers is the lowest tier the album holds (ok false when it holds nothing).
@@ -246,22 +310,23 @@ func (s *Service) HeldTiers(ctx context.Context, albumID int64) (Quality, bool, 
 	return s.repo.HeldTiers(ctx, albumID)
 }
 
-// UnmeasuredTracks lists tracks with a file but no measured bitrate (see the scan).
-func (s *Service) UnmeasuredTracks(ctx context.Context, afterID int64, limit int) ([]Track, error) {
-	return s.repo.UnmeasuredTracks(ctx, afterID, limit)
+// UnmeasuredFiles lists files not yet measured with every fact (see the scan).
+func (s *Service) UnmeasuredFiles(ctx context.Context, afterID int64, limit int) ([]TrackFile, error) {
+	return s.repo.UnmeasuredFiles(ctx, afterID, limit)
 }
 
-// SetTrackMeasured records a held file's measured tier and bitrate.
-func (s *Service) SetTrackMeasured(ctx context.Context, trackID int64, path, format string, bitrate int) error {
-	return s.repo.SetTrackMeasured(ctx, trackID, path, format, bitrate)
+// SetFileMeasured records a held file's measured tier and facts.
+func (s *Service) SetFileMeasured(ctx context.Context, fileID int64, path string, q Quality, info mediainfo.AudioInfo) error {
+	return s.repo.SetFileMeasured(ctx, fileID, path, q, info)
 }
 
-// ClearTrackFile flips a track back to wanted.
+// ClearTrackFile flips a track back to wanted (its file row stays, as an album extra).
 func (s *Service) ClearTrackFile(ctx context.Context, trackID int64) error {
 	return s.repo.ClearTrackFile(ctx, trackID)
 }
 
-// Delete removes an artist; its albums and tracks cascade away.
+// Delete removes an artist from the library: rows only, never files. Albums another
+// library artist is credited on stay (see Repo.DeleteArtist).
 func (s *Service) Delete(ctx context.Context, id int64) error { return s.repo.DeleteArtist(ctx, id) }
 
 // AddEvent appends an artist timeline event.

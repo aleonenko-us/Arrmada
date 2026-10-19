@@ -60,12 +60,21 @@ export function ArtistDetail() {
 
   const done = a.stats?.have_tracks ?? 0;
   const all = a.stats?.tracks ?? 0;
-  // The chip is the artist's library status; the Monitored toggle below says whether it's searched.
-  const st = libraryStatus({ multi: true, hasFile: done > 0, monitored: a.monitored, have: done, total: all });
+  const albums = a.stats?.albums ?? 0;
+  const albumsDone = a.stats?.albums_complete ?? 0;
+  const monitoredAlbums = a.stats?.albums_monitored ?? 0;
+  const withFiles = a.stats?.albums_with_files ?? 0;
+  // The chip is the artist's library status, by album: complete only when every monitored
+  // album is (one with no listing yet is unknown), partial once anything is on disk. The
+  // Monitored toggle below says whether it's searched.
+  let monitoredDone = monitoredAlbums - (a.stats?.albums_wanted ?? 0);
+  if (monitoredDone === 0 && withFiles > 0 && monitoredAlbums > 0) monitoredDone = 0.5;
+  const st = libraryStatus({ multi: true, hasFile: withFiles > 0, monitored: a.monitored, have: monitoredDone, total: monitoredAlbums });
   // A discography is one torrent spanning every album, which fights per-album upgrades and
   // seeding. Only offer it where it's genuinely the better tool: you own little or nothing
-  // by this artist. Topping up is what the per-album sweep is for.
-  const mostlyMissing = (a.albums?.length ?? 0) > 1 && (all === 0 || done / Math.max(all, 1) < 0.25);
+  // by this artist (files on fewer than a quarter of its albums). Topping up is what the
+  // per-album sweep is for.
+  const mostlyMissing = albums > 1 && withFiles / albums < 0.25;
 
   return (
     <>
@@ -83,7 +92,7 @@ export function ArtistDetail() {
             {st.label}
           </StatusChip>
           <span className="font-mono text-xs text-ink-faint">
-            {a.stats?.albums ?? 0} albums · {done}/{all} tracks
+            {albumsDone}/{albums} albums · {done}/{all} tracks
             {a.stats?.size_bytes ? ` · ${formatBytes(a.stats.size_bytes)}` : ""}
           </span>
           <a
@@ -153,6 +162,18 @@ export function ArtistDetail() {
           </div>
         )}
 
+        {a.appears_on && a.appears_on.length > 0 && (
+          <>
+            {/* Albums filed under another artist that credit this one (a feature, a duet). */}
+            <h2 className="m-0 mb-3 mt-8 text-md font-bold">Appears on</h2>
+            <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
+              {a.appears_on.map((al) => (
+                <AlbumRow key={al.id} al={al} onChange={load} credit />
+              ))}
+            </div>
+          </>
+        )}
+
         <HistoryPanel artistId={a.id} refreshKey={a.stats?.have_tracks} />
       </Page>
 
@@ -160,10 +181,13 @@ export function ArtistDetail() {
   );
 }
 
-function AlbumRow({ al, onChange }: { al: MusicAlbum; onChange: () => void }) {
+// AlbumRow is one album in a list. credit shows whose album it is (the "Appears on" shelf,
+// where it's filed under someone else).
+function AlbumRow({ al, onChange, credit }: { al: MusicAlbum; onChange: () => void; credit?: boolean }) {
   const [busy, setBusy] = useState(false);
-  // track_count is 0 until the listing is fetched, which happens when the album is opened.
-  const known = al.track_count > 0;
+  // The listing is unknown until it's fetched, which happens when the album is opened.
+  const known = (al.edition_tracks ?? al.track_count) > 0;
+  // Complete as the server counts it: a known listing with every wanted track on disk.
   const complete = known && al.have_tracks >= al.track_count;
   const tone = !known ? "var(--ink-faint)" : complete ? "var(--good)" : al.monitored ? "var(--avoid)" : "var(--ink-faint)";
   return (
@@ -171,7 +195,7 @@ function AlbumRow({ al, onChange }: { al: MusicAlbum; onChange: () => void }) {
       <Link to={`/music/album/${al.id}`} className="min-w-0 flex-1 hover:underline">
         <div className="truncate text-base font-medium">{al.title}</div>
         <div className="truncate font-mono text-xs text-ink-faint">
-          {[al.year || "", al.album_type || ""].filter(Boolean).join(" · ")}
+          {[credit ? al.artist_credit || "" : "", al.year || "", al.album_type || ""].filter(Boolean).join(" · ")}
         </div>
       </Link>
       <span className="flex-none font-mono text-xs" style={{ color: tone }}>

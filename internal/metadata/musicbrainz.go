@@ -206,12 +206,19 @@ type AlbumResult struct {
 	CoverURL    string `json:"cover_url,omitempty"`
 }
 
-// TrackResult is one recording on an album.
+// TrackResult is one track of an album's listing.
 type TrackResult struct {
-	MBID        string `json:"mbid,omitempty"`
+	// MBID is the release track's own id (MusicBrainz's media[].tracks[].id), not the
+	// recording's: RecordingMBID is that.
+	MBID          string `json:"mbid,omitempty"`
+	RecordingMBID string `json:"recording_mbid,omitempty"`
+	// ReleaseMBID is the release the listing was read from (the same on every track).
+	ReleaseMBID string `json:"release_mbid,omitempty"`
 	Title       string `json:"title"`
 	Disc        int    `json:"disc"`
 	Number      int    `json:"number"`
+	// Printed is the number as the release prints it ("A1" on vinyl), when it says.
+	Printed     string `json:"printed,omitempty"`
 	DurationSec int    `json:"duration_sec,omitempty"`
 }
 
@@ -376,10 +383,14 @@ func (m *MusicBrainz) AlbumTracks(ctx context.Context, releaseGroupMBID string) 
 		Media []struct {
 			Position int `json:"position"`
 			Tracks   []struct {
-				ID       string `json:"id"`
-				Title    string `json:"title"`
-				Position int    `json:"position"`
-				Length   int    `json:"length"` // milliseconds
+				ID        string `json:"id"` // the release track's MBID
+				Title     string `json:"title"`
+				Number    string `json:"number"`
+				Position  int    `json:"position"`
+				Length    int    `json:"length"` // milliseconds
+				Recording struct {
+					ID string `json:"id"`
+				} `json:"recording"`
 			} `json:"tracks"`
 		} `json:"media"`
 	}
@@ -394,7 +405,8 @@ func (m *MusicBrainz) AlbumTracks(ctx context.Context, releaseGroupMBID string) 
 		}
 		for _, t := range md.Tracks {
 			out = append(out, TrackResult{
-				MBID: t.ID, Title: t.Title, Disc: disc, Number: t.Position,
+				MBID: t.ID, RecordingMBID: t.Recording.ID, ReleaseMBID: pick,
+				Title: t.Title, Disc: disc, Number: t.Position, Printed: t.Number,
 				DurationSec: t.Length / 1000,
 			})
 		}

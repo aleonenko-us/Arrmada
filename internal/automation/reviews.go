@@ -787,6 +787,8 @@ func (c *Coordinator) importContentInto(ctx context.Context, r Review, dest int6
 			return fmt.Errorf("no audio files found in the download for %q", al.Title)
 		case res.refused > 0:
 			return fmt.Errorf("the recycle bin couldn't take the files %d better track(s) would replace in %q", res.refused, al.Title)
+		case res.taken > 0:
+			return fmt.Errorf("%d track(s) would land on a file another track of %q already has; nothing was replaced", res.taken, al.Title)
 		case res.placed == 0 && res.kept == 0:
 			return fmt.Errorf("no track could be placed into %q", al.Title)
 		}
