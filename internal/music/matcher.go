@@ -569,8 +569,14 @@ func (r *MatchResult) place(win *Scored, in MatchInput, files []*MatchFile, s Ma
 	// translate maps a track of the winner onto the edition the files go to (ok false:
 	// it has no place there).
 	translate := func(ti int) (int64, bool) { return tracks[ti].ID, true }
+	chosen := in.ForceEditionID != 0 && in.ForceEditionID == win.Cand.Edition.ID
 	switch {
-	case win.Cand.Target || target == nil:
+	case win.Cand.Target:
+	case target == nil && win.Cand.Pinned && !chosen:
+		// Pinned to an edition whose tracks couldn't be read: nowhere to put anything.
+		translate = func(int) (int64, bool) { return 0, false }
+	case target == nil:
+		r.Switch = true // the album has no target edition yet: this one becomes it
 	case EditionsEquivalent(win.Cand.Edition, target.Edition):
 		// The same tracks in the same order: any equivalent edition satisfies the album.
 		tt := target.trackList()
@@ -581,7 +587,7 @@ func (r *MatchResult) place(win *Scored, in MatchInput, files []*MatchFile, s Ma
 			}
 			return 0, false
 		}
-	case win.Cand.Pinned && (in.ForceEditionID == 0 || in.ForceEditionID != win.Cand.Edition.ID):
+	case win.Cand.Pinned && !chosen:
 		tt := target.trackList()
 		r.EditionID = target.Edition.ID
 		translate = func(ti int) (int64, bool) { return sameRecording(tracks[ti], tt) }

@@ -510,6 +510,12 @@ func TestMatchDecisions(t *testing.T) {
 			decision: MatchReview, reason: MatchReasonUnmatched, placed: p(0),
 		},
 		{
+			name: "an album with no target edition yet: the one that fits becomes it",
+			in: MatchInput{Files: filesFor("/dl/okc", okc, plainTags("OK Computer", "Radiohead")),
+				Candidates: []MatchCandidate{stdNotTarget}, GrabbedAlbumID: 1},
+			decision: MatchImport, edition: std.ID, switched: true, placed: p(12),
+		},
+		{
 			name:     "forced: a person chose the album, the fitting files go in",
 			in:       MatchInput{Files: filesFor("/dl/okc", okc[:3], nil), Candidates: []MatchCandidate{stdC}, Forced: true},
 			decision: MatchImport, placed: p(3),
