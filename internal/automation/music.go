@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -517,6 +518,7 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 		c.log.Warn("music import: couldn't list completed downloads — skipping this cycle", "err", err)
 		return
 	}
+	c.pruneMusicRetry(completed)
 	for _, it := range completed {
 		if it.ContentPath == "" {
 			continue
@@ -526,6 +528,9 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 		}
 		if c.hasReview(ctx, it.Hash) {
 			continue // already held for review — don't re-flag or import
+		}
+		if !c.musicRetryDue(it.Hash) {
+			continue // failed on our side lately; waiting before the next try
 		}
 		// A discography covers many albums, so it takes a different import path: each folder
 		// inside is resolved to its own album. Routed on the release name because that's what
@@ -541,15 +546,10 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 			}
 			res := c.importDiscographyContent(ctx, art, it.ContentPath, it.Name)
 			switch {
-			case res.refused > 0:
-				if c.noteUnmatched(it.Hash) == 1 {
-					c.log.Warn("music import: the recycle bin can't take the files a better copy would replace — leaving them and retrying",
-						"artist", art.Name, "release", it.Name, "tracks", res.refused)
-				}
+			case res.refused > 0 || res.failed > 0:
+				c.musicImportRetry(ctx, it, res, 0, art.Name+" (discography)")
 			case res.placed > 0 || res.kept > 0:
-				c.recordImportedHash(ctx, it.Hash, it.Name, it.SizeBytes)
-				// Imported: its seed rule applies from here on.
-				c.setMusicGrabStatus(ctx, mediaMusicArtist, art.ID, it.Hash, it.Name, grabStatusImported)
+				c.settleMusicImport(ctx, it, mediaMusicArtist, art.ID, art.ID, res)
 			case res.found:
 				c.log.Warn("music import: discography held albums but none matched the library — will retry",
 					"artist", art.Name, "release", it.Name)
@@ -595,20 +595,13 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 		}
 		res := c.importAlbumContent(ctx, artist, album, it.ContentPath, it.Name)
 		switch {
-		case res.refused > 0:
-			// A better copy couldn't replace what's held because the recycle bin can't
-			// take the old file. Nothing was lost; the download stays, and the next cycle
-			// tries again (tracks already placed are then simply kept).
-			if c.noteUnmatched(it.Hash) == 1 {
-				c.log.Warn("music import: the recycle bin can't take the files a better copy would replace — leaving them and retrying",
-					"album", album.Title, "release", it.Name, "tracks", res.refused)
-			}
+		case res.refused > 0 || res.failed > 0:
+			// A better copy couldn't replace what's held (the recycle bin can't take the
+			// old file), or a track couldn't be placed. Nothing was lost; the download
+			// stays and is tried again later (tracks already placed are then kept).
+			c.musicImportRetry(ctx, it, res, album.ID, album.Title)
 		case res.placed > 0 || res.kept > 0:
-			// Something landed, or everything it held is no better than what the album
-			// has: either way this download is done with. The grab is imported, so its
-			// seed rule applies — a partial album used to stay 'grabbed' and seed forever.
-			c.recordImportedHash(ctx, it.Hash, it.Name, it.SizeBytes)
-			c.setMusicGrabStatus(ctx, "music", album.ID, it.Hash, it.Name, grabStatusImported)
+			c.settleMusicImport(ctx, it, "music", album.ID, artist.ID, res)
 			c.afterAlbumImport(ctx, artist, album)
 		case res.found:
 			c.log.Warn("music import: found audio but placed nothing — will retry next sweep",
@@ -630,6 +623,103 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// settleMusicImport closes out a download whose import is done: something landed, or
+// what it held is no better than what the album has. Its hash is recorded so it isn't
+// imported again, and its grab is closed:
+//   - everything in it accounted for: 'imported', so its seed rule applies (removing the
+//     torrent at its goal may take its data with it — nothing in it is still needed);
+//   - files that matched no track (left for a person to look at), or discography folders
+//     that matched no album: 'dismissed', which seed cleanup removes at its goal while
+//     KEEPING the files. Marking it imported would let seed cleanup delete the only copy
+//     of what the import deliberately left alone.
+func (c *Coordinator) settleMusicImport(ctx context.Context, it download.Item, mediaType string, id, artistID int64, res albumImport) {
+	c.clearMusicRetry(it.Hash)
+	c.recordImportedHash(ctx, it.Hash, it.Name, it.SizeBytes)
+	status := grabStatusImported
+	if res.unmatched > 0 {
+		status = grabStatusDismissed
+		c.log.Info("music import: some files matched nothing and stay in the download — its torrent keeps its files at the seed goal",
+			"release", it.Name, "left", res.unmatched)
+		c.music.AddEvent(ctx, artistID, "imported", fmt.Sprintf(
+			"%d file(s) or folder(s) in %s matched nothing and were left in the download for you; its files are kept when it stops seeding",
+			res.unmatched, it.Name))
+	}
+	c.setMusicGrabStatus(ctx, mediaType, id, it.Hash, it.Name, status)
+}
+
+// musicRetryState is one held-back music download (see Coordinator.musicRetry).
+type musicRetryState struct {
+	tries int
+	next  time.Time
+}
+
+// musicRetryReviewAfter is how many failed tries in a row send a music download to Review
+// instead of trying again: by then the recycle bin (or the disk) needs a person.
+const musicRetryReviewAfter = 5
+
+// musicRetryDue reports whether a download held back after a failure may be tried again.
+func (c *Coordinator) musicRetryDue(hash string) bool {
+	c.unmatchedMu.Lock()
+	defer c.unmatchedMu.Unlock()
+	st, ok := c.musicRetry[hash]
+	return !ok || !c.clock().Before(st.next)
+}
+
+// pruneMusicRetry forgets held-back downloads that have left the client.
+func (c *Coordinator) pruneMusicRetry(completed []download.Item) {
+	active := make(map[string]bool, len(completed))
+	for _, it := range completed {
+		active[it.Hash] = true
+	}
+	c.unmatchedMu.Lock()
+	defer c.unmatchedMu.Unlock()
+	for h := range c.musicRetry {
+		if !active[h] {
+			delete(c.musicRetry, h)
+		}
+	}
+}
+
+func (c *Coordinator) clearMusicRetry(hash string) {
+	c.unmatchedMu.Lock()
+	delete(c.musicRetry, hash)
+	c.unmatchedMu.Unlock()
+}
+
+// musicImportRetry holds a download back after an import that failed on our side (the
+// recycle bin couldn't take a file a better copy replaces, or a track couldn't be placed),
+// for longer each time (30 min doubling to 12 h). After musicRetryReviewAfter tries it goes
+// to Review, which stops the retries: something there needs a person. Nothing is lost
+// meanwhile — what's held stays held, and the download stays in the client.
+func (c *Coordinator) musicImportRetry(ctx context.Context, it download.Item, res albumImport, albumID int64, title string) {
+	c.unmatchedMu.Lock()
+	if c.musicRetry == nil {
+		c.musicRetry = map[string]musicRetryState{}
+	}
+	st := c.musicRetry[it.Hash]
+	st.tries++
+	st.next = c.clock().Add(searchBackoff(st.tries))
+	c.musicRetry[it.Hash] = st
+	c.unmatchedMu.Unlock()
+
+	why := fmt.Sprintf("%d track(s) couldn't be placed", res.failed)
+	if res.refused > 0 {
+		why = fmt.Sprintf("the recycle bin couldn't take the %d file(s) a better copy would replace", res.refused)
+	}
+	if st.tries < musicRetryReviewAfter {
+		c.log.Warn("music import: failed on our side — keeping everything and trying again later",
+			"what", title, "release", it.Name, "why", why, "try", st.tries, "next", st.next)
+		return
+	}
+	c.clearMusicRetry(it.Hash)
+	c.log.Warn("music import: still failing — sending to review", "what", title, "release", it.Name, "why", why)
+	c.addReview(ctx, Review{
+		Hash: it.Hash, Name: it.Name, ContentPath: it.ContentPath, MediaType: "music", ReasonCode: ReasonImportFailed,
+		ExpectedID: albumID, ExpectedTitle: title, SizeBytes: it.SizeBytes,
+		Reason: "Couldn't import: " + why + " (nothing was changed)",
+	})
 }
 
 // AlbumMatcher resolves release names (torrents in the music category) to the library
@@ -728,7 +818,7 @@ func (c *Coordinator) importAlbumContent(ctx context.Context, a music.Artist, al
 
 	quality := music.DetectQuality(release)
 	res = c.placeAlbumTracks(ctx, a, al, tracks, matched, quality, release)
-	res.found = true
+	res.found, res.unmatched = true, len(unmatched)
 	if res.placed > 0 {
 		c.log.Info("music: imported tracks", "artist", a.Name, "album", al.Title,
 			"placed", res.placed, "kept", res.kept, "of", len(tracks), "quality", quality)
@@ -746,10 +836,22 @@ func (c *Coordinator) importAlbumContent(ctx context.Context, a music.Artist, al
 
 // albumImport is what importing one download into one album came to.
 type albumImport struct {
-	placed  int  // tracks that landed
-	kept    int  // tracks left as they were: the file held is as good or better
-	refused int  // better copies not placed because the recycle bin couldn't take the old file
-	found   bool // the download held any audio at all
+	placed  int // tracks that landed
+	kept    int // tracks left as they were: the file held is as good or better
+	refused int // better copies not placed because the recycle bin couldn't take the old file
+	failed  int // tracks that couldn't be placed or recorded for any other reason
+	// unmatched counts files that matched no track (and, for a discography, folders that
+	// matched no album): left in the download for a person, so its files must be kept.
+	unmatched int
+	found     bool // the download held any audio at all
+}
+
+func (r *albumImport) add(o albumImport) {
+	r.placed += o.placed
+	r.kept += o.kept
+	r.refused += o.refused
+	r.failed += o.failed
+	r.unmatched += o.unmatched
 }
 
 // placeAlbumTracks places a download's matched files onto an album's tracks.
@@ -780,6 +882,8 @@ func (c *Coordinator) placeAlbumTracks(ctx context.Context, a music.Artist, al m
 		if err := c.imp.Using(ctx).PlaceAlbumTrack(f.Path, target, old); err != nil {
 			if errors.Is(err, library.ErrReplacementRefused) {
 				res.refused++
+			} else {
+				res.failed++
 			}
 			c.log.Warn("music import: placing a track failed", "track", t.Title, "err", err)
 			continue
@@ -789,6 +893,7 @@ func (c *Coordinator) placeAlbumTracks(ctx context.Context, a music.Artist, al m
 			size = fi.Size()
 		}
 		if err := c.music.MarkTrackImported(ctx, t.ID, target, string(tier), bitrate, size, release); err != nil {
+			res.failed++
 			c.log.Warn("music import: recording a track failed", "track", t.Title, "err", err)
 			continue
 		}
@@ -906,10 +1011,24 @@ func findAudioFiles(contentPath string) []music.AudioFile {
 		if ierr != nil || info.Size() < 256<<10 {
 			return nil // under 256 KB is a jingle or a broken file, not a track
 		}
-		out = append(out, music.AudioFile{Path: p, SizeBytes: info.Size()})
+		out = append(out, music.AudioFile{Path: p, SizeBytes: info.Size(), Disc: discOfFolder(filepath.Base(filepath.Dir(p)))})
 		return nil
 	})
 	return out
+}
+
+// reDiscFolder is a folder named for one disc of an album: "CD2", "Disc 1", "disk03".
+var reDiscFolder = regexp.MustCompile(`(?i)^(?:cd|dis[ck])[\s._-]*0*(\d{1,2})\b`)
+
+// discOfFolder is the disc a folder name says its tracks are on (0: it doesn't say). It's
+// what lets "CD2/03 - X.flac" land on disc 2 rather than on disc 1's track 3.
+func discOfFolder(name string) int {
+	m := reDiscFolder.FindStringSubmatch(name)
+	if m == nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(m[1])
+	return n
 }
 
 // recordMusicGrab records a grab so the pending guard, seed rules and stall fail-over can
@@ -1117,8 +1236,9 @@ func (c *Coordinator) importDiscographyContent(ctx context.Context, a music.Arti
 			continue
 		}
 		r := c.importAlbumFolder(ctx, a, al, f, release)
-		res.placed, res.kept, res.refused = res.placed+r.placed, res.kept+r.kept, res.refused+r.refused
+		res.add(r)
 	}
+	res.unmatched += len(skipped)
 	if len(skipped) > 0 {
 		c.log.Warn("music import: discography folders that match no album in the library — left alone",
 			"artist", a.Name, "folders", strings.Join(skipped, ", "))
@@ -1134,13 +1254,13 @@ func (c *Coordinator) importDiscographyContent(ctx context.Context, a music.Arti
 func (c *Coordinator) importAlbumFolder(ctx context.Context, a music.Artist, al music.Album, f albumFolder, release string) albumImport {
 	if err := c.music.EnsureTracks(ctx, al); err != nil {
 		c.log.Warn("music import: couldn't fetch a track listing", "album", al.Title, "err", err)
-		return albumImport{found: true}
+		return albumImport{found: true, unmatched: len(f.files)} // nothing to place them against: left for a person
 	}
 	tracks, err := c.music.Tracks(ctx, al.ID)
 	if err != nil || len(tracks) == 0 {
-		return albumImport{found: true}
+		return albumImport{found: true, unmatched: len(f.files)}
 	}
-	matched, _ := music.MatchTracks(tracks, f.files)
+	matched, unmatched := music.MatchTracks(tracks, f.files)
 	q := music.DetectQuality(release)
 	if fq := music.DetectQuality(filepath.Base(f.path)); fq != music.QualityUnknown {
 		// A mixed-quality pack often tags each album folder; that's more specific than the
@@ -1148,7 +1268,7 @@ func (c *Coordinator) importAlbumFolder(ctx context.Context, a music.Artist, al 
 		q = fq
 	}
 	res := c.placeAlbumTracks(ctx, a, al, tracks, matched, q, release)
-	res.found = true
+	res.found, res.unmatched = true, len(unmatched)
 	if res.placed > 0 {
 		c.log.Info("music: imported album from discography", "artist", a.Name, "album", al.Title,
 			"placed", res.placed, "kept", res.kept, "of", len(tracks), "quality", q)

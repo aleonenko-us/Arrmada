@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/library"
@@ -166,6 +167,32 @@ func TestBetterTierWithoutBinKeepsOld(t *testing.T) {
 	}
 }
 
+// A download split into CD1/CD2 folders gives each file its disc, so "CD2/01 - X" lands on
+// disc 2 rather than taking disc 1's first track.
+func TestFindAudioFilesDiscFolders(t *testing.T) {
+	dl := t.TempDir()
+	blobTrack(t, filepath.Join(dl, "CD1"), "01 - Opening.flac", 1)
+	blobTrack(t, filepath.Join(dl, "Disc 02"), "01 - Closing.flac", 1)
+	blobTrack(t, filepath.Join(dl, "Scans"), "01 - Not a disc.flac", 1)
+	discs := map[string]int{}
+	for _, f := range findAudioFiles(dl) {
+		discs[filepath.Base(f.Path)] = f.Disc
+	}
+	if discs["01 - Opening.flac"] != 1 || discs["01 - Closing.flac"] != 2 || discs["01 - Not a disc.flac"] != 0 {
+		t.Fatalf("discs = %v", discs)
+	}
+	tracks := []music.Track{
+		{ID: 11, DiscNumber: 1, TrackNumber: 1, Title: "Opening"},
+		{ID: 21, DiscNumber: 2, TrackNumber: 1, Title: "Closing"},
+	}
+	// Titles that don't help, so only the disc hint can tell the two "01"s apart.
+	files := []music.AudioFile{{Path: "/d/CD1/01 - x.flac", Disc: 1}, {Path: "/d/CD2/01 - y.flac", Disc: 2}}
+	m, _ := music.MatchTracks(tracks, files)
+	if m[11].Path != "/d/CD1/01 - x.flac" || m[21].Path != "/d/CD2/01 - y.flac" {
+		t.Errorf("matched = %v", m)
+	}
+}
+
 // PlaceAlbumTrack refuses (errors.Is ErrReplacementRefused) rather than delete.
 func TestPlaceAlbumTrackRefusesWithoutBin(t *testing.T) {
 	root := t.TempDir()
@@ -208,7 +235,20 @@ func TestAlbumSearchDropsBelowHeldTier(t *testing.T) {
 
 // MUS-08 end to end: a partial album's download is marked imported (so its seed rule runs),
 // the album backs off, and its history names what's missing.
-func TestPartialImportMarksGrabImported(t *testing.T) {
+// importRig is a stall harness with Music, a three-track album (One, Two, Three) and a
+// finished download in the music category holding the given files.
+type importRig struct {
+	h       *stallHarness
+	svc     *music.Service
+	artist  music.Artist
+	album   music.Album
+	release string
+	dl      string
+	bin     string
+}
+
+func newImportRig(t *testing.T, bin bool, files ...string) *importRig {
+	t.Helper()
 	h := newStallHarness(t)
 	fake := &fakeMusicProvider{
 		artists: map[string]metadata.ArtistDetails{"a1": {ArtistResult: metadata.ArtistResult{MBID: "a1", Name: "Radiohead"}}},
@@ -220,7 +260,11 @@ func TestPartialImportMarksGrabImported(t *testing.T) {
 	svc := music.NewService(h.c.db, fake, h.c.log)
 	h.c.music = svc
 	h.c.imp = library.NewImporter(t.TempDir(), h.c.log)
-	h.c.imp.SetRecycleDir(t.TempDir())
+	r := &importRig{h: h, svc: svc, release: "Radiohead - OK Computer (1997) [FLAC]"}
+	if bin {
+		r.bin = t.TempDir()
+		h.c.imp.SetRecycleDir(r.bin)
+	}
 	if err := os.MkdirAll(h.c.imp.MusicDir(), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -228,28 +272,118 @@ func TestPartialImportMarksGrabImported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	al := a.Albums[0]
-	if err := svc.EnsureTracks(h.ctx, al); err != nil {
+	r.artist, r.album = a, a.Albums[0]
+	if err := svc.EnsureTracks(h.ctx, r.album); err != nil {
 		t.Fatal(err)
 	}
-
-	const release = "Radiohead - OK Computer (1997) [FLAC]"
-	dl := filepath.Join(t.TempDir(), release)
-	blobTrack(t, dl, "01 - One.flac", 1)
-	blobTrack(t, dl, "02 - Two.flac", 1)
-	h.c.recordMusicGrab(h.ctx, "music", al.ID, release, "Fake", "", hashFor(release))
+	r.dl = filepath.Join(t.TempDir(), r.release)
+	for _, f := range files {
+		blobTrack(t, r.dl, f, 1)
+	}
+	h.c.recordMusicGrab(h.ctx, "music", r.album.ID, r.release, "Fake", "", hashFor(r.release))
 	h.qbit.mu.Lock()
 	h.qbit.torrents = append(h.qbit.torrents, map[string]any{
-		"hash": hashFor(release), "name": release, "state": "uploading", "progress": 1.0,
-		"size": 600 << 10, "amount_left": 0, "category": download.CategoryMusic, "content_path": dl,
+		"hash": hashFor(r.release), "name": r.release, "state": "uploading", "progress": 1.0,
+		"size": 600 << 10, "amount_left": 0, "category": download.CategoryMusic, "content_path": r.dl,
 	})
 	h.qbit.mu.Unlock()
+	return r
+}
+
+func (r *importRig) grabStatus(t *testing.T) string {
+	t.Helper()
+	var status string
+	if err := r.h.c.db.QueryRow(`SELECT status FROM grabs WHERE info_hash = ?`, hashFor(r.release)).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	return status
+}
+
+// A download whose import left files that matched no track is closed so seed cleanup
+// keeps its files ('dismissed'): those files were left for a person, and 'imported' lets
+// the torrent go with its data at its seed goal.
+func TestPartialImportWithLeftoversKeepsFiles(t *testing.T) {
+	r := newImportRig(t, true, "01 - One.flac", "02 - Two.flac", "bonus - Untitled Jam.flac")
+	r.h.c.ImportMusicDownloads(r.h.ctx)
+	if s := r.grabStatus(t); s != grabStatusDismissed {
+		t.Fatalf("grab status = %q, want dismissed (files kept at the seed goal)", s)
+	}
+	if !r.h.c.hashAlreadyImported(r.h.ctx, hashFor(r.release)) {
+		t.Error("what did land is still recorded as imported")
+	}
+	if _, err := os.Stat(filepath.Join(r.dl, "bonus - Untitled Jam.flac")); err != nil {
+		t.Errorf("the unmatched file must still be in the download: %v", err)
+	}
+	if n := artistEvents(t, r.svc, r.artist.ID, "left in the download for you"); n != 1 {
+		t.Errorf("history lines about the leftovers = %d, want 1", n)
+	}
+}
+
+// A better copy the recycle bin can't make room for isn't retried every 30 s: it backs off,
+// and after a few tries goes to Review. Nothing held is touched meanwhile.
+func TestBinRefusalBacksOffThenReviews(t *testing.T) {
+	r := newImportRig(t, false, "01 - One.flac", "02 - Two.flac")
+	// The album already holds MP3s, so these FLACs would replace them — and there's no bin.
+	tracks, _ := r.svc.Tracks(r.h.ctx, r.album.ID)
+	for _, tr := range tracks[:2] {
+		p := blobTrack(t, filepath.Join(r.h.c.imp.MusicDir(), "Radiohead", "OK Computer (1997)"), tr.Title+".mp3", 9)
+		if err := r.svc.MarkTrackImported(r.h.ctx, tr.ID, p, string(music.QualityMP3320), 320, 1, "old"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.h.c.ImportMusicDownloads(r.h.ctx)
+	if s := r.grabStatus(t); s != grabStatusGrabbed {
+		t.Fatalf("after a refusal: status %q, want still grabbed", s)
+	}
+	if r.h.c.musicRetryDue(hashFor(r.release)) {
+		t.Fatal("a refused download must wait before the next try")
+	}
+	// Time moves on: each try is refused again, until the fifth goes to Review.
+	for i := 0; i < musicRetryReviewAfter-1; i++ {
+		r.h.later(13 * time.Hour)
+		r.h.c.ImportMusicDownloads(r.h.ctx)
+	}
+	if !r.h.c.hasReview(r.h.ctx, hashFor(r.release)) {
+		t.Error("after repeated refusals the download should be in Review")
+	}
+	tracks, _ = r.svc.Tracks(r.h.ctx, r.album.ID)
+	for _, tr := range tracks[:2] {
+		if tr.Format != string(music.QualityMP3320) || !strings.HasSuffix(tr.FilePath, ".mp3") {
+			t.Errorf("track %q changed to %q at %s", tr.Title, tr.Format, tr.FilePath)
+		}
+		if _, err := os.Stat(tr.FilePath); err != nil {
+			t.Errorf("the held MP3 must still be there: %v", err)
+		}
+	}
+}
+
+// An in-flight grab for an album another download has since completed is closed keeping
+// its files, never as 'imported' (whose seed cleanup may take its data).
+func TestCompleteAlbumInFlightGrabKeepsFiles(t *testing.T) {
+	h := newStallHarness(t)
+	withMusic(t, h) // album 5 is complete
+	const release = "Portishead - Dummy (1994) [FLAC]"
+	res, err := h.c.db.Exec(`INSERT INTO grabs (movie_id, title, indexer, stall_minutes, media_type, info_hash)
+		VALUES (5, ?, 'Fake', 60, 'music', ?)`, release, hashFor(release))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gid, _ := res.LastInsertId()
+	h.qbit.stalledTorrent(hashFor(release), release, download.CategoryMusic)
+	h.observe()
+	if s := h.status(t, gid); s != grabStatusDismissed {
+		t.Errorf("status = %q, want dismissed", s)
+	}
+}
+
+func TestPartialImportMarksGrabImported(t *testing.T) {
+	r := newImportRig(t, true, "01 - One.flac", "02 - Two.flac")
+	h, svc, a, release := r.h, r.svc, r.artist, r.release
 
 	h.c.ImportMusicDownloads(h.ctx)
 
-	var status string
-	if err := h.c.db.QueryRow(`SELECT status FROM grabs WHERE info_hash = ?`, hashFor(release)).Scan(&status); err != nil || status != grabStatusImported {
-		t.Errorf("grab status = %q (err %v), want imported after a partial import", status, err)
+	if status := r.grabStatus(t); status != grabStatusImported {
+		t.Errorf("grab status = %q, want imported after a clean partial import", status)
 	}
 	if !h.c.hashAlreadyImported(h.ctx, hashFor(release)) {
 		t.Error("the download's hash should be recorded as imported")
@@ -265,7 +399,7 @@ func TestPartialImportMarksGrabImported(t *testing.T) {
 }
 
 // MUS-08: a music grab whose download was already imported isn't failed over (or
-// blocklisted) when its torrent leaves the client: it's imported.
+// blocklisted) when its torrent leaves the client: it's closed, keeping its files.
 func TestImportedAlbumGrabNotBlockedWhenGone(t *testing.T) {
 	h := newStallHarness(t)
 	withMusic(t, h)
@@ -276,8 +410,8 @@ func TestImportedAlbumGrabNotBlockedWhenGone(t *testing.T) {
 	mustExec(t, h.c, `INSERT INTO imports (download_hash, source_path, target_path, title) VALUES (?, '', '', ?)`, hashFor(release), release)
 
 	h.goneForTheGrace()
-	if s := h.status(t, gid); s != grabStatusImported {
-		t.Errorf("status = %q, want imported", s)
+	if s := h.status(t, gid); s != grabStatusDismissed {
+		t.Errorf("status = %q, want dismissed: done with, files kept", s)
 	}
 	if n := h.blocklistCount(t); n != 0 {
 		t.Errorf("blocklist rows = %d, want none", n)

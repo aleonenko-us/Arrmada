@@ -121,6 +121,13 @@ type Coordinator struct {
 	// under one of its names in another language (seriesKnownAs), so a seeding download
 	// isn't re-checked every sweep. Also guarded by unmatchedMu, and pruned the same way.
 	knownNames map[string]int64
+	// musicRetry holds back a music download whose import failed for a reason of ours (the
+	// recycle bin refusing, a placement error), keyed by torrent hash: how many times in a
+	// row, and when to try again. Guarded by unmatchedMu.
+	musicRetry map[string]musicRetryState
+	// measureCursor is the last track id the music scan's measuring pass reached, so a file
+	// that can't be measured doesn't hold every later one back (see measureUnmeasuredTracks).
+	measureCursor atomic.Int64
 
 	// The stall clock — when each pending grab's download last moved forward — and when a
 	// stalled one last found no replacement are kept on its grab row (acquisitions.go), so

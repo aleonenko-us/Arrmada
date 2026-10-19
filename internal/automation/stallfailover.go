@@ -604,11 +604,14 @@ func (c *Coordinator) detectStalledMusic(ctx context.Context, g grab, queue []do
 		c.closeStale(ctx, g, grabStatusFailed, tick)
 		return
 	}
-	// Something from this download was already imported (a partial album, say): it is
-	// imported, and its seed rule applies. A seeding torrent removed afterwards mustn't read
-	// as stalled and get its good release blocklisted.
+	// Something from this download was already imported (a partial album, say): it is done
+	// with, and a seeding torrent removed afterwards mustn't read as stalled and get its good
+	// release blocklisted. The import closes its own grab, knowing whether it left files in
+	// the download for a person; reaching it here means that didn't happen, so it's closed
+	// the way that keeps the files ('dismissed': removed at its seed goal, files kept), never
+	// as 'imported', which can take the data with it.
 	if c.hashAlreadyImported(ctx, g.InfoHash) {
-		c.closeStale(ctx, g, grabStatusImported, tick)
+		c.closeStale(ctx, g, grabStatusDismissed, tick)
 		return
 	}
 	al, err := c.music.GetAlbum(ctx, g.MovieID) // album id lives in movie_id on the shared table
@@ -617,7 +620,9 @@ func (c *Coordinator) detectStalledMusic(ctx context.Context, g grab, queue []do
 		return
 	}
 	if al.Complete() {
-		c.closeStale(ctx, g, grabStatusImported, tick)
+		// Another download completed the album while this one was still in flight. Nothing
+		// of it was imported, so it is closed keeping its files rather than as 'imported'.
+		c.closeStale(ctx, g, grabStatusDismissed, tick)
 		return
 	}
 	c.judgeStall(ctx, g, queue, tick, func(ctx context.Context) (stallTarget, bool) { return c.musicStallTarget(ctx, al, g) })
@@ -629,7 +634,7 @@ func (c *Coordinator) detectStalledMusic(ctx context.Context, g grab, queue []do
 // rules with nothing to replace it by — a discography is only ever grabbed on request.
 func (c *Coordinator) detectStalledDiscography(ctx context.Context, g grab, queue []download.Item, tick *stallTick) {
 	if c.hashAlreadyImported(ctx, g.InfoHash) {
-		c.closeStale(ctx, g, grabStatusImported, tick)
+		c.closeStale(ctx, g, grabStatusDismissed, tick) // files kept, as for an album (above)
 		return
 	}
 	if c.music == nil {

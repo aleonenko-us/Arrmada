@@ -7,8 +7,8 @@ import (
 	"testing/fstest"
 )
 
-// 0336 marks a 'grabbed' album grab imported when its download's hash is already in
-// imports, and leaves every other row alone.
+// 0336 closes a 'grabbed' album grab as dismissed (files kept at its seed goal) when its
+// download's hash is already in imports, and leaves every other row alone.
 func TestMusicPartialGrabsMigration(t *testing.T) {
 	ctx := context.Background()
 	db := testDB(t, 1)
@@ -34,7 +34,7 @@ func TestMusicPartialGrabsMigration(t *testing.T) {
 	for _, q := range []string{
 		`INSERT INTO imports (download_hash, source_path, target_path, title) VALUES ('AAAA', '', '', 'partial album')`,
 		`INSERT INTO imports (download_hash, source_path, target_path, title) VALUES ('cccc', '', '', 'a movie')`,
-		// Imported by hash (case differs), still 'grabbed': healed.
+		// Imported by hash (case differs), still 'grabbed': closed, keeping its files.
 		`INSERT INTO grabs (id, movie_id, title, media_type, info_hash, status) VALUES (1, 3, 'A - B [FLAC]', 'music', 'aaaa', 'grabbed')`,
 		// Not imported: left downloading.
 		`INSERT INTO grabs (id, movie_id, title, media_type, info_hash, status) VALUES (2, 3, 'A - B [MP3]', 'music', 'bbbb', 'grabbed')`,
@@ -52,7 +52,7 @@ func TestMusicPartialGrabsMigration(t *testing.T) {
 	if err := runMigrations(ctx, db, all); err != nil {
 		t.Fatalf("migrate the rest: %v", err)
 	}
-	for id, want := range map[int]string{1: "imported", 2: "grabbed", 3: "grabbed", 4: "failed", 5: "grabbed"} {
+	for id, want := range map[int]string{1: "dismissed", 2: "grabbed", 3: "grabbed", 4: "failed", 5: "grabbed"} {
 		var got string
 		if err := db.QueryRow(`SELECT status FROM grabs WHERE id = ?`, id).Scan(&got); err != nil || got != want {
 			t.Errorf("grab %d: status %q (err %v), want %q", id, got, err, want)

@@ -90,11 +90,11 @@ func TestDiscographyStallNotJudgedByAnAlbum(t *testing.T) {
 	if s := h.status(t, gid); s != grabStatusGrabbed {
 		t.Fatalf("status = %q, want still grabbed — album 5 being complete says nothing about the discography", s)
 	}
-	// Once something from it has been imported, it's imported (and its seed rule applies).
+	// Once something from it has been imported it is done with — closed keeping its files (dismissed).
 	mustExec(t, h.c, `INSERT INTO imports (download_hash, source_path, target_path, title) VALUES (?, '', '', ?)`, hashFor(pack), pack)
 	h.observe()
-	if s := h.status(t, gid); s != grabStatusImported {
-		t.Errorf("status = %q, want imported once its hash is in imports", s)
+	if s := h.status(t, gid); s != grabStatusDismissed {
+		t.Errorf("status = %q, want dismissed (files kept) once its hash is in imports", s)
 	}
 }
 
