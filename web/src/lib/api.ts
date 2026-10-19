@@ -3693,7 +3693,9 @@ export interface MusicTrack {
   monitored: boolean;
   has_file: boolean;
   file_path?: string;
+  /** The measured tier ("FLAC-24", "MP3-320"), or an extension tag ("MP3") when unmeasured. */
   format?: string;
+  bitrate_kbps?: number;
   size_bytes?: number;
 }
 export interface MusicAlbum {
@@ -3710,6 +3712,8 @@ export interface MusicAlbum {
   track_count: number;
   have_tracks: number;
   size_bytes: number;
+  /** The lowest tier among the tracks on disk (album detail only). */
+  held_tier?: string;
 }
 export interface Artist {
   id: number;

@@ -77,6 +77,7 @@ func (s *Service) GetAlbum(ctx context.Context, id int64) (Album, error) {
 		return Album{}, err
 	}
 	al.Tracks = tracks
+	al.HeldTier, _ = lowestHeld(tracks)
 	return al, nil
 }
 

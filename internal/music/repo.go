@@ -470,6 +470,13 @@ func (r *Repo) HeldTiers(ctx context.Context, albumID int64) (lowest Quality, ok
 	if err != nil {
 		return QualityUnknown, false, err
 	}
+	lowest, ok = lowestHeld(tracks)
+	return lowest, ok, nil
+}
+
+// lowestHeld is the lowest tier among the tracks that have a file (unknown ranks lowest
+// of all); ok is false when none has one.
+func lowestHeld(tracks []Track) (lowest Quality, ok bool) {
 	for _, t := range tracks {
 		if !t.HasFile {
 			continue
@@ -480,7 +487,7 @@ func (r *Repo) HeldTiers(ctx context.Context, albumID int64) (lowest Quality, ok
 		}
 		ok = true
 	}
-	return lowest, ok, nil
+	return lowest, ok
 }
 
 // UnmeasuredTracks lists up to limit tracks that have a file but no measured bitrate:
