@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { shownTitle } from "../lib/displayTitle";
 import { NumberingBanner } from "./series/NumberingReviewModal";
+import { MisplacedBanner } from "./series/MisplacedFiles";
 import { usePoll } from "../lib/usePoll";
 import { useLiveConnected, useLiveEvent } from "../lib/live";
 import { QUEUE_CHANGED, QUEUE_PROGRESS, progressByHash, queueChangedFor } from "../lib/queueLive";
@@ -165,6 +166,7 @@ export function SeriesDetail() {
       </Hero>
 
       <Page className="pb-10">
+        <MisplacedBanner seriesId={s.id} title={s.title} refreshKey={s.last_event_id} onChange={load} />
         <Tabs tabs={tabs} value={tab} onChange={setTab} idPrefix="series" label="Series sections" className="mb-4 mt-1 border-b" />
 
         {tab === "episodes" && (

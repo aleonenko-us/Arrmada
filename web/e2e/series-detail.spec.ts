@@ -244,6 +244,38 @@ test.describe("desktop tabs", () => {
   });
 });
 
+test.describe("desktop misplaced files", () => {
+  test.skip(({ isMobile }) => isMobile, "desktop project only");
+
+  // #56: files an import put in a folder named like a season. The banner opens a preview;
+  // putting back sends exactly the previewed moves and recycles, never the ones left alone.
+  test("the banner opens the preview, and Put back sends what it showed", async ({ page, api }) => {
+    await page.goto("/series/1");
+    await expect(page.getByText(/outside its folder/)).toHaveCount(0);
+
+    await page.goto("/series/4");
+    await expect(page.getByText("2 files of this show are outside its folder, in a folder named like a season.")).toBeVisible();
+    await page.getByRole("button", { name: "Review" }).click();
+    const dialog = page.getByRole("dialog", { name: "Put misplaced files back" });
+    await expect(dialog).toContainText("1 file to move back");
+    await expect(dialog).toContainText("/tv/Anchor Point");
+    await expect(dialog).toContainText("A better copy is already in the show's folder");
+    await dialog.getByRole("button", { name: "Put back 2 files" }).click();
+    await expect(dialog).toContainText("Moved 1 file back · 1 file sent to the recycle bin");
+    const sent = api.callsTo("POST", "/api/v1/series/4/misplaced")[0].body as { items: { action: string }[] };
+    expect(sent.items.map((it) => it.action)).toEqual(["move", "recycle"]);
+    await dialog.getByRole("button", { name: "Close" }).last().click();
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test("the health check's link opens the preview straight away", async ({ page }) => {
+    await page.goto("/series/4?fix=misplaced");
+    await expect(page.getByRole("dialog", { name: "Put misplaced files back" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page).not.toHaveURL(/fix=misplaced/);
+  });
+});
+
 test.describe("phone", () => {
   test.skip(({ isMobile }) => !isMobile, "phone project only");
 

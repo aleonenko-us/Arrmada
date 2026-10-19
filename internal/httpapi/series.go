@@ -1127,6 +1127,48 @@ func (a *api) handleSeriesRename(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, res)
 }
 
+// handleSeriesMisplaced previews putting the show's misplaced episode files back into its
+// folder; handleSeriesMisplacedApply does exactly the previewed items it's sent.
+func (a *api) handleSeriesMisplaced(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+	plan, err := a.deps.Automation.MisplacedPreview(r.Context(), id)
+	if errors.Is(err, series.ErrNotFound) {
+		a.writeError(w, http.StatusNotFound, "series not found")
+		return
+	}
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not check the show's files")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, plan)
+}
+
+func (a *api) handleSeriesMisplacedApply(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Items []automation.MisplacedItem `json:"items"`
+	}
+	if !a.decodeJSON(w, r, &req) {
+		return
+	}
+	res, err := a.deps.Automation.MoveMisplacedBack(r.Context(), id, req.Items)
+	if errors.Is(err, series.ErrNotFound) {
+		a.writeError(w, http.StatusNotFound, "series not found")
+		return
+	}
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not put the files back")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, res)
+}
+
 // --- blocklist + per-episode actions (mirrors the movie surface) ---
 
 func (a *api) handleSeriesBlocklist(w http.ResponseWriter, r *http.Request) {

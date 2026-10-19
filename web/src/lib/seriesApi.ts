@@ -1,5 +1,24 @@
 import { req, type BlockEntry, type DeletePreview, type JobRef, type ManualImportList, type RenameSkip, type SceneOverride, type SeriesImportCandidate, type SeriesNumbering, type SeriesRenameItem } from "./api";
 
+/** One episode file outside its show's folder, and what putting it back does with it:
+ * move it into the show's season folder; recycle it (the folder already has this episode,
+ * as good or better); or leave it for you (it isn't clear which copy to keep). */
+export interface MisplacedItem {
+  from: string;
+  to?: string;
+  season: number;
+  episode: number;
+  action: "move" | "recycle" | "leave";
+  existing?: string;
+  note?: string;
+}
+
+/** GET /series/{id}/misplaced: where the show's misplaced files go. why: nothing can go back. */
+export interface MisplacedPlan { show_folder: string; new_folder?: boolean; why?: string; items: MisplacedItem[] }
+
+/** POST /series/{id}/misplaced's answer. */
+export interface MisplacedResult { moved: number; recycled: number; skipped: RenameSkip[]; removed_folders: string[] }
+
 /** PUT /series/{id}/monitor's answer. resumed: this change turned the show's searching on. */
 export interface MonitorReply { monitored: boolean; monitor_new_seasons: boolean; monitor_preset?: string; resumed?: boolean }
 
@@ -17,6 +36,11 @@ export const seriesApi = {
   // and reported, never moved blind.
   renameSeries: (id: number, items: SeriesRenameItem[]) =>
     req<{ renamed: number; skipped: RenameSkip[] }>(`/api/v1/series/${id}/rename`, { method: "POST", body: JSON.stringify({ items }) }),
+  // Episode files outside the show's folder (#56): a preview, then putting back exactly the
+  // previewed items — anything that changed in between is skipped and reported.
+  misplacedPreview: (id: number) => req<MisplacedPlan>(`/api/v1/series/${id}/misplaced`),
+  putMisplacedBack: (id: number, items: MisplacedItem[]) =>
+    req<MisplacedResult>(`/api/v1/series/${id}/misplaced`, { method: "POST", body: JSON.stringify({ items }) }),
   // A numbering change waiting for review (pending: null when there's none).
   seriesNumbering: (id: number) => req<SeriesNumbering>(`/api/v1/series/${id}/numbering`),
   // Applies the reviewed plan as a job (its result is a NumberingApplied). A plan that
