@@ -302,6 +302,24 @@ func (r Request) InLibrary() int64 { return r.libID }
 // ErrUnknownProfile is returned when a supplied quality profile doesn't resolve.
 var ErrUnknownProfile = errors.New("unknown quality profile")
 
+// ErrProfileMedia is returned when a supplied quality profile is for another kind of media
+// (a series profile for a movie).
+var ErrProfileMedia = errors.New("that quality profile is for another kind of media")
+
+// profileFits reports whether a known profile ref may be used for media: a movie on a movie
+// profile, a show on a series one. Books pick theirs from the formats and aren't checked,
+// and "n/a" (no profile) fits anything.
+func (s *Service) profileFits(ctx context.Context, ref, media string) bool {
+	if s.quality == nil || media == "book" || ref == "n/a" {
+		return true
+	}
+	sp, err := s.quality.GetStored(ctx, ref)
+	if err != nil {
+		return true // Known already said it exists; a read that failed isn't a mismatch
+	}
+	return sp.MediaType == media
+}
+
 // Get returns one request by id.
 func (s *Service) Get(ctx context.Context, id int64) (Request, error) {
 	return s.repo.Get(ctx, id)
@@ -359,6 +377,9 @@ func (s *Service) Create(ctx context.Context, in Request, opts CreateOptions) (c
 	}
 	if in.QualityProfile != "" && s.quality != nil && !s.quality.Known(ctx, in.QualityProfile) {
 		return Request{}, false, ErrUnknownProfile
+	}
+	if in.QualityProfile != "" && !s.profileFits(ctx, in.QualityProfile, in.MediaType) {
+		return Request{}, false, ErrProfileMedia
 	}
 	if in.MediaType == "series" {
 		// A show can have several requests, one per ask for more seasons.
@@ -779,6 +800,9 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 	if profile != "" && s.quality != nil && !s.quality.Known(ctx, profile) {
 		return Request{}, ErrUnknownProfile
 	}
+	if profile != "" && !s.profileFits(ctx, profile, req.MediaType) {
+		return Request{}, ErrProfileMedia
+	}
 	explicit := profile != ""
 	trimmed := false
 	if req.MediaType == "series" && len(o.Seasons) > 0 {
@@ -795,7 +819,8 @@ func (s *Service) Approve(ctx context.Context, id int64, o ApproveOptions) (Requ
 		// The profile stored on the request may have been deleted since it was made. The
 		// approver didn't pick it, so fall to the default rather than adding the title
 		// on a ref that no longer exists (an explicit unknown pick is still refused above).
-		if profile != "" && s.quality != nil && !s.quality.Known(ctx, profile) {
+		// Nor one for another kind of media, from before that was checked.
+		if profile != "" && s.quality != nil && (!s.quality.Known(ctx, profile) || !s.profileFits(ctx, profile, req.MediaType)) {
 			profile = ""
 		}
 	}

@@ -142,3 +142,44 @@ func TestStaffProfileOnFollowedSeriesRequest(t *testing.T) {
 		t.Errorf("followed request = id %d profile %q, want %d on %q", got.ID, got.QualityProfile, pending.ID, hd720)
 	}
 }
+
+// A profile for another kind of media is refused, on a new request and on approve; one
+// stored on a request from before that was checked falls back to the default on approve.
+func TestProfileMustFitTheMedia(t *testing.T) {
+	s, _, _ := quietFixture(t)
+	ctx := context.Background()
+	sp, err := s.quality.Create(ctx, quality.StoredProfile{MediaType: quality.MediaSeries, Name: "TV 720p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tv := "custom:" + strconv.FormatInt(sp.ID, 10)
+	hd := movieProfile(t, s, "HD 1080p")
+	if err := s.quality.SetDefaultProfile(ctx, quality.MediaMovie, hd); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := s.Create(ctx, Request{MediaType: "movie", TMDBID: 701, Title: "Heat", QualityProfile: tv, RequestedBy: 1}, CreateOptions{QuotaExempt: true}); err != ErrProfileMedia {
+		t.Fatalf("movie request on a series profile: err = %v, want ErrProfileMedia", err)
+	}
+	pending, _, err := s.Create(ctx, Request{MediaType: "movie", TMDBID: 702, Title: "Ronin", RequestedBy: 7}, CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Approve(ctx, pending.ID, ApproveOptions{Profile: tv}); err != ErrProfileMedia {
+		t.Fatalf("approve on a series profile: err = %v, want ErrProfileMedia", err)
+	}
+	// A mismatched profile already stored on the request isn't the approver's pick.
+	if _, err := s.repo.db.ExecContext(ctx, `UPDATE requests SET quality_profile = ? WHERE id = ?`, tv, pending.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Approve(ctx, pending.ID, ApproveOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.QualityProfile != hd {
+		t.Errorf("approved on %q, want the movie default %q", got.QualityProfile, hd)
+	}
+	if m, _ := s.movies.GetByTMDB(ctx, 702); m.QualityProfile != hd {
+		t.Errorf("movie added on %q, want %q", m.QualityProfile, hd)
+	}
+}

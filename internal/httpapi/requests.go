@@ -444,6 +444,10 @@ func (a *api) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "unknown quality profile")
 		return
 	}
+	if errors.Is(err, requests.ErrProfileMedia) {
+		a.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if errors.Is(err, requests.ErrSeasonsNotRequested) {
 		a.writeError(w, http.StatusBadRequest, err.Error())
 		return

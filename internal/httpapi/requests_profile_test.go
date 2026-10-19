@@ -64,6 +64,19 @@ func TestCreateRequestProfileIsStaffOnly(t *testing.T) {
 	if rec := s.doJSON("POST", "/api/v1/requests", mgr, `{"media_type":"movie","tmdb_id":14,"title":"Collateral","year":2004,"quality_profile":"custom:9999"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("manager's unknown profile: HTTP %d, want 400", rec.Code)
 	}
+	// A profile for another kind of media is refused, on create and on approve.
+	tvp, err := q.Create(ctx, quality.StoredProfile{MediaType: quality.MediaSeries, Name: "TV 720p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tv := "custom:" + strconv.FormatInt(tvp.ID, 10)
+	if rec := s.doJSON("POST", "/api/v1/requests", mgr, `{"media_type":"movie","tmdb_id":15,"title":"Manhunter","year":1986,"quality_profile":"`+tv+`"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("manager's series profile on a movie: HTTP %d, want 400", rec.Code)
+	}
+	pending := createRequestAs(t, s, kid, `{"media_type":"movie","tmdb_id":16,"title":"Miami Vice","year":2006}`)
+	if rec := s.doJSON("POST", "/api/v1/requests/"+strconv.FormatInt(pending.ID, 10)+"/approve", mgr, `{"quality_profile":"`+tv+`"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("approve on a series profile: HTTP %d, want 400: %s", rec.Code, rec.Body)
+	}
 
 	// Books: the formats choose the profile, whatever profile rode along.
 	listen := createRequestAs(t, s, kid, `{"media_type":"book","ol_key":"OL1W","title":"Dune","author":"Frank Herbert","year":1965,"formats":"audiobook","quality_profile":"`+hd720+`"}`)
