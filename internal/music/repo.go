@@ -490,12 +490,13 @@ func lowestHeld(tracks []Track) (lowest Quality, ok bool) {
 	return lowest, ok
 }
 
-// UnmeasuredTracks lists up to limit tracks that have a file but no measured bitrate:
-// files recorded before tracks were probed, or by a scan that couldn't probe them.
-func (r *Repo) UnmeasuredTracks(ctx context.Context, limit int) ([]Track, error) {
+// UnmeasuredTracks lists up to limit tracks, after track afterID, that have a file but no
+// measured bitrate: files recorded before tracks were probed, or by a scan that couldn't
+// probe them. The cursor lets a pass move past files that can't be measured.
+func (r *Repo) UnmeasuredTracks(ctx context.Context, afterID int64, limit int) ([]Track, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+trackCols+` FROM tracks WHERE has_file = 1 AND bitrate_kbps = 0 AND file_path != ''
-		  ORDER BY id LIMIT ?`, limit)
+		`SELECT `+trackCols+` FROM tracks WHERE has_file = 1 AND bitrate_kbps = 0 AND file_path != '' AND id > ?
+		  ORDER BY id LIMIT ?`, afterID, limit)
 	if err != nil {
 		return nil, err
 	}

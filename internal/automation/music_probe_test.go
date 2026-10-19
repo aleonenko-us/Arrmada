@@ -106,6 +106,29 @@ func TestHeldUnknownIsMeasuredBeforeReplacing(t *testing.T) {
 	}
 }
 
+// A file that can't be measured doesn't hold every later one back: the pass moves on.
+func TestScanBackfillMovesPastUnmeasurable(t *testing.T) {
+	h, _ := musicImportHarness(t)
+	a := h.addArtist(t, "Radiohead", "", []string{"OK Computer"}, nil, "1997-05-21")
+	al := h.album(t, a.ID, "OK Computer")
+	h.c.probeAudioFn = func(context.Context, string) (mediainfo.AudioInfo, error) { return mediainfo.AudioInfo{}, errNoFFprobe }
+	h.importDownload(t, a, al, "Radiohead - OK Computer (1997) [FLAC]", ".flac", 1)
+	// The first track's file can't be read; the second can.
+	h.c.probeAudioFn = func(_ context.Context, path string) (mediainfo.AudioInfo, error) {
+		if strings.Contains(path, "One") {
+			return mediainfo.AudioInfo{}, errors.New("unreadable")
+		}
+		return mediainfo.AudioInfo{Codec: "flac", BitsPerSample: 16, SampleRateHz: 44100, BitrateKbps: 900}, nil
+	}
+	got := 0
+	for i := 0; i < 3; i++ {
+		got += h.c.measureUnmeasuredTracks(h.ctx, 1)
+	}
+	if got != 1 {
+		t.Errorf("measured %d over three passes of one, want the readable track", got)
+	}
+}
+
 // The scan's backfill measures tracks recorded before probing existed, read-only, capped.
 func TestScanBackfillMeasuresOldTracks(t *testing.T) {
 	h, _ := musicImportHarness(t)

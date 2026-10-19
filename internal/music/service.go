@@ -247,8 +247,8 @@ func (s *Service) HeldTiers(ctx context.Context, albumID int64) (Quality, bool, 
 }
 
 // UnmeasuredTracks lists tracks with a file but no measured bitrate (see the scan).
-func (s *Service) UnmeasuredTracks(ctx context.Context, limit int) ([]Track, error) {
-	return s.repo.UnmeasuredTracks(ctx, limit)
+func (s *Service) UnmeasuredTracks(ctx context.Context, afterID int64, limit int) ([]Track, error) {
+	return s.repo.UnmeasuredTracks(ctx, afterID, limit)
 }
 
 // SetTrackMeasured records a held file's measured tier and bitrate.

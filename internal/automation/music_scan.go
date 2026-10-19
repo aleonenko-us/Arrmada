@@ -128,20 +128,28 @@ const musicMeasurePerScan = 200
 // measureUnmeasuredTracks probes up to limit tracks that have a file but no measured
 // bitrate (recorded before imports were probed, or by a scan that couldn't probe) and
 // records their real tier and bitrate. ffprobe only reads; nothing is moved or rewritten.
-// A file that's gone or unreadable is skipped and stays unmeasured.
+// A file that's gone or unreadable is skipped and stays unmeasured; a cursor carries each
+// pass on from where the last one stopped, so files like that never hold the rest back,
+// and it starts over from the top once it reaches the end.
 func (c *Coordinator) measureUnmeasuredTracks(ctx context.Context, limit int) int {
 	if c.probeAudioFn == nil && !mediainfo.Available() {
 		return 0
 	}
-	tracks, err := c.music.UnmeasuredTracks(ctx, limit)
+	tracks, err := c.music.UnmeasuredTracks(ctx, c.measureCursor.Load(), limit)
 	if err != nil {
 		c.log.Warn("music scan: couldn't list unmeasured tracks", "err", err)
 		return 0
+	}
+	if len(tracks) < limit {
+		c.measureCursor.Store(0) // the end: the next pass starts from the top again
 	}
 	n := 0
 	for _, t := range tracks {
 		if ctx.Err() != nil {
 			break
+		}
+		if len(tracks) == limit {
+			c.measureCursor.Store(t.ID)
 		}
 		info, err := c.probeAudio(ctx, t.FilePath)
 		if err != nil {
