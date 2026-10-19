@@ -63,6 +63,8 @@ export interface MusicScanSummary {
   walk_ms: number;
   read_ms: number;
   total_ms: number;
+  /** The file check that runs after the scan (MUS-15). */
+  verify?: { checked: number; not_found: number; missing: number; back: number; changed: number; skipped: number; refused?: string };
 }
 
 /** Which release groups an artist lists (MUS-14): the primary type must be allowed AND

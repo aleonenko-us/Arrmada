@@ -312,8 +312,14 @@ const albumHead = `SELECT al.id, al.artist_id, al.mbid, al.title, al.year, al.al
 	COALESCE((SELECT c.display FROM music_artist_credits c WHERE c.id = al.artist_credit_id), ''),
 	COALESCE(al.target_release_id, 0), al.edition_pinned, al.found_at, al.found_as, al.stale_since, al.source, al.departure_checked_at,`
 
+// albumMarks are an album row's verify-pass markers (MUS-15): its track files gone from
+// disk, and those changed outside Arrmada. Indexed by album, like the counts.
+const albumMarks = `,
+	(SELECT COUNT(*) FROM music_track_files f WHERE f.album_id = al.id AND f.release_track_id IS NOT NULL AND f.missing_since IS NOT NULL),
+	(SELECT COUNT(*) FROM music_track_files f WHERE f.album_id = al.id AND f.changed_at IS NOT NULL AND f.missing_since IS NULL)`
+
 // albumSelect reads album rows with their counts.
-const albumSelect = albumHead + albumCounts + ` FROM albums al`
+const albumSelect = albumHead + albumCounts + albumMarks + ` FROM albums al`
 
 func scanAlbum(row interface{ Scan(...any) error }) (Album, error) {
 	var (
@@ -324,7 +330,7 @@ func scanAlbum(row interface{ Scan(...any) error }) (Album, error) {
 	if err := row.Scan(&al.ID, &al.ArtistID, &al.MBID, &al.Title, &al.Year, &al.AlbumType, &al.CoverURL,
 		&al.ReleaseDate, &mon, &al.AddedAt, &last, &al.SearchMisses, &al.PrimaryType, &al.SecondaryTypes,
 		&al.CreditID, &al.ArtistCredit, &al.TargetEditionID, &pinned, &found, &al.FoundAs, &stale, &al.Source, &departed,
-		&al.TrackCount, &al.HaveTracks, &al.SizeBytes, &al.EditionTracks); err != nil {
+		&al.TrackCount, &al.HaveTracks, &al.SizeBytes, &al.EditionTracks, &al.MissingTracks, &al.ChangedTracks); err != nil {
 		return Album{}, err
 	}
 	al.Monitored, al.EditionPinned = mon != 0, pinned != 0
@@ -590,7 +596,8 @@ func (r *Repo) TracksFor(ctx context.Context, albumID int64) ([]Track, error) {
 		       COALESCE(f.id, 0), COALESCE(f.path, ''), COALESCE(f.quality, ''), COALESCE(f.bitrate_kbps, 0),
 		       COALESCE(f.size_bytes, 0), COALESCE(f.source_release, ''), COALESCE(f.codec, ''),
 		       COALESCE(f.lossless, 0), COALESCE(f.sample_rate_hz, 0), COALESCE(f.bit_depth, 0),
-		       COALESCE(f.channels, 0), COALESCE(f.tag_state, ''), f.missing_since IS NOT NULL
+		       COALESCE(f.channels, 0), COALESCE(f.tag_state, ''), f.missing_since IS NOT NULL,
+		       COALESCE(f.missing_seen_at, ''), COALESCE(f.changed_at, '')
 		  FROM albums al
 		  JOIN music_releases r ON r.id = al.target_release_id
 		  JOIN music_media m ON m.release_id = r.id
@@ -613,7 +620,8 @@ func (r *Repo) TracksFor(ctx context.Context, albumID int64) ([]Track, error) {
 		if err := rows.Scan(&t.ID, &t.AlbumID, &t.MBID, &t.DiscNumber, &t.TrackNumber, &t.Number, &t.Title,
 			&lengthMs, &mon, &t.ArtistCredit, &t.RecordingID, &t.RecordingMBID,
 			&t.FileID, &t.FilePath, &t.Format, &t.BitrateKbps, &t.SizeBytes, &t.SourceRelease, &t.Codec,
-			&lossless, &t.SampleRateHz, &t.BitDepth, &t.Channels, &t.TagState, &missing); err != nil {
+			&lossless, &t.SampleRateHz, &t.BitDepth, &t.Channels, &t.TagState, &missing,
+			&t.NotFoundSince, &t.ChangedAt); err != nil {
 			return nil, err
 		}
 		t.DurationSec = lengthMs / 1000
@@ -795,6 +803,7 @@ func recordTrackFileTx(ctx context.Context, tx *sql.Tx, trackID int64, rec FileR
 		  download_hash = CASE WHEN ? != '' THEN ? ELSE download_hash END,
 		  tags_json = ?, tag_state = ?,
 		  tagged_at = CASE WHEN ? = 'house' THEN CURRENT_TIMESTAMP ELSE NULL END, missing_since = NULL,
+		  missing_seen_at = NULL, changed_at = NULL,
 		  added_at = CURRENT_TIMESTAMP
 		 WHERE id = ?`,
 		albumID, trackID, rec.Path, rec.SizeBytes, rec.MtimeUnix, rec.FileID, containerOf(rec.Path),

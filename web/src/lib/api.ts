@@ -3737,6 +3737,10 @@ export interface MusicTrack {
   has_file: boolean;
   /** A file is recorded but has gone missing from disk. */
   missing?: boolean;
+  /** The last file check couldn't find the file (not missing until the next one agrees). */
+  not_found_since?: string;
+  /** The file check found it changed outside Arrmada (measured again since). */
+  changed_at?: string;
   file_path?: string;
   /** The measured tier ("FLAC-24", "MP3-320"), or an extension tag ("MP3") when unmeasured. */
   format?: string;
@@ -3803,6 +3807,9 @@ export interface MusicAlbum {
   edition_tracks?: number;
   /** The lowest tier among the tracks on disk (album detail only). */
   held_tier?: string;
+  /** Track files the file check found gone from disk, and changed outside Arrmada (MUS-15). */
+  missing_tracks?: number;
+  changed_tracks?: number;
   primary_type?: string;
   secondary_types?: string;
   /** The album's credit as it reads ("Daft Punk feat. Pharrell Williams"). */

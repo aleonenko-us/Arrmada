@@ -24,7 +24,7 @@ func tagState(s string) string {
 // the tags it had before, unless an earlier retag already kept the ones it arrived with.
 func (r *Repo) SetFileRetagged(ctx context.Context, path string, size, mtime int64, tagsFound string) error {
 	res, err := r.db.ExecContext(ctx, `
-		UPDATE music_track_files SET size_bytes = ?, mtime_unix = ?, tag_state = ?, tagged_at = CURRENT_TIMESTAMP,
+		UPDATE music_track_files SET size_bytes = ?, mtime_unix = ?, tag_state = ?, tagged_at = CURRENT_TIMESTAMP, changed_at = NULL,
 		       tags_json = CASE WHEN tags_json = '' THEN ? ELSE tags_json END
 		 WHERE path = ?`, size, mtime, TagStateHouse, tagsFound, path)
 	return affected(res, err)

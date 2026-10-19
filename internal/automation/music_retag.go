@@ -6,11 +6,63 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/audiotag"
 	"github.com/tristenlammi/arrmada/internal/music"
 	"github.com/tristenlammi/arrmada/internal/music/stage"
 )
+
+// houseTagsHold reports whether a library file still carries exactly the house tags its
+// track would be written with (MUS-33): the verify pass's check on a file changed outside
+// Arrmada (MUS-15). Only the house keys are compared; the cover isn't. ok is false when it
+// can't be told: the track isn't on the album's edition, or the file's tags can't be read.
+func houseTagsHold(tc music.TagContext, trackID int64, path string) (hold, ok bool) {
+	got, err := audiotag.Read(path)
+	if err != nil {
+		return false, false
+	}
+	want, ok := tc.HouseTags(trackID, got)
+	if !ok {
+		return false, false
+	}
+	for _, k := range audiotag.HouseKeys() {
+		if !sameTagValues(got[k], want[k]) {
+			return false, true
+		}
+	}
+	return true, true
+}
+
+// sameTagValues compares one key's values as a reader reports them: trimmed, blanks
+// dropped, numbers without leading zeros.
+func sameTagValues(a, b []string) bool {
+	norm := func(vs []string) []string {
+		var out []string
+		for _, v := range vs {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				continue
+			}
+			if n, err := strconv.Atoi(v); err == nil {
+				v = strconv.Itoa(n)
+			}
+			out = append(out, v)
+		}
+		return out
+	}
+	x, y := norm(a), norm(b)
+	if len(x) != len(y) {
+		return false
+	}
+	for i := range x {
+		if x[i] != y[i] {
+			return false
+		}
+	}
+	return true
+}
 
 // MusicRetagResult is what retagging an album did.
 type MusicRetagResult struct {

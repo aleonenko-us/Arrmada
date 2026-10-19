@@ -70,6 +70,8 @@ type MusicScanResult struct {
 	Measured  int      `json:"measured"`  // tracks on record measured with ffprobe afterwards
 	Workers   int      `json:"workers"`
 	Full      bool     `json:"full,omitempty"`
+	// Verify is the file check that runs after the scan (MUS-15).
+	Verify *MusicVerifyResult `json:"verify,omitempty"`
 	// Timings, in milliseconds: the walk, the reading of new files (summed over the
 	// workers), and the whole scan.
 	WalkMs  int64 `json:"walk_ms"`
@@ -215,6 +217,13 @@ func (c *Coordinator) ScanMusicLibraryWith(ctx context.Context, opt MusicScanOpt
 		return res, fmt.Errorf("the scan stopped after %d of %d album folders: %w", finished, total, stopped)
 	}
 	res.Measured = c.measureUnmeasuredTracks(ctx, musicMeasurePerScan)
+	// Then the verify pass (MUS-15), after moved files were followed: files gone from disk
+	// and files changed outside Arrmada, with its guards.
+	if v, err := c.VerifyMusicFiles(ctx); err == nil {
+		res.Verify = &v
+	} else if ctx.Err() == nil {
+		c.log.Warn("music scan: the file check after the scan failed", "err", err)
+	}
 	res.TotalMs = time.Since(started).Milliseconds()
 	if raw, err := json.Marshal(res); err == nil {
 		if err := c.music.SaveScanRun(context.WithoutCancel(ctx), started, time.Now(), string(raw)); err != nil {

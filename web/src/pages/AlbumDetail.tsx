@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EditionPicker } from "../components/music/EditionPicker";
+import { trackFileMark } from "../components/music/fileMarks";
 import { api, type MusicAlbum, type MusicEdition, type MusicNote, type MusicTrack } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { MusicRenameModal } from "../components/music/MusicRenameModal";
@@ -327,6 +328,8 @@ function UpgradeNotes({ albumId, notes, onResolved }: { albumId: number; notes: 
 
 function TrackRow({ t }: { t: MusicTrack }) {
   const lossless = t.lossless ?? (t.format ? isLosslessTier(t.format) : false);
+  // The file check's marker (MUS-15): gone from disk, not found once, or changed elsewhere.
+  const mark = trackFileMark(t);
   return (
     <div
       className="flex items-center gap-3 border-b px-4 py-2 last:border-b-0 text-base"
@@ -340,6 +343,15 @@ function TrackRow({ t }: { t: MusicTrack }) {
         {/* The track's own artist, only when it isn't the album's ("feat." on one song). */}
         {t.artist_credit ? <span className="block truncate text-xs text-ink-faint">{t.artist_credit}</span> : null}
       </span>
+      {mark && (
+        <span
+          className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-semibold uppercase"
+          title={mark[1]}
+          style={{ background: "var(--panel-2)", color: t.missing ? "var(--reject-text)" : "var(--avoid-text)" }}
+        >
+          {mark[0]}
+        </span>
+      )}
       {t.format ? (
         // Green only for lossless: the tier is measured from the file, so an MP3 in a
         // release labelled FLAC shows as the MP3 it is.

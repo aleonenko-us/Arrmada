@@ -120,6 +120,43 @@ test.describe("Music on the kit", () => {
     await expect(page.getByText("hidden track.flac")).toBeVisible();
   });
 
+  // MUS-37: the scan results drawer says what the last scan found and links the folders
+  // waiting to be matched.
+  test("the last scan's results open from Library tools", async ({ page }) => {
+    await mockMusic(page);
+    await page.route((u) => u.pathname === "/api/v1/music/scan", (route) => json(route, {
+      last: {
+        folders: 1200, skipped: 1150, artists: 2, albums: 40, tracks: 480, moved: 12, unmatched: [], reviews: 3, failed: 0,
+        waiting: 0, remaining: 0, opened: 520, measured: 0, workers: 4, walk_ms: 850, read_ms: 4100, total_ms: 6200,
+        verify: { checked: 9000, not_found: 1, missing: 2, back: 0, changed: 1, skipped: 0 },
+      },
+      started_at: "2026-10-20T08:00:00Z", finished_at: "2026-10-20T08:00:06Z",
+    }));
+    await page.goto("/music");
+    await page.getByRole("button", { name: "Library tools" }).click();
+    await page.getByRole("menuitem", { name: "Last scan results" }).click();
+    const drawer = page.getByRole("dialog", { name: "Library scan" });
+    await expect(drawer.getByText("Unchanged since the last scan")).toBeVisible();
+    await expect(drawer.getByText("Track files gone from disk")).toBeVisible();
+    await expect(drawer.getByRole("link", { name: /Match the 3 folders in Reviews/ })).toHaveAttribute("href", "/activity/needs-you");
+  });
+
+  // MUS-15: the file check's markers on track rows.
+  test("the album page marks tracks gone from disk or changed elsewhere", async ({ page }) => {
+    await mockMusic(page);
+    await page.route((u) => u.pathname === "/api/v1/music/albums/51", (route) => json(route, {
+      ...album,
+      tracks: [
+        { ...album.tracks![0], changed_at: "2026-10-20T08:00:00Z" },
+        album.tracks![1],
+        { ...album.tracks![2], missing: true, file_path: "/music/The Quiet Harbours/Low Tide/03 Lantern.flac" },
+      ],
+    }));
+    await page.goto("/music/album/51");
+    await expect(page.getByText("gone from disk", { exact: true })).toBeVisible();
+    await expect(page.getByText("changed", { exact: true })).toBeVisible();
+  });
+
   test("the album page explains an upgrade note and resolves it", async ({ page }) => {
     const state = await mockMusic(page);
     await page.goto("/music/album/51");

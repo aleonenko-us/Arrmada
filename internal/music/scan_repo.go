@@ -219,7 +219,8 @@ func (s *Service) RecordScanned(ctx context.Context, files []ScannedTrack) (int,
 // missing mark ends. False when the row changed meanwhile or another row holds the path.
 func (s *Service) FollowMovedFile(ctx context.Context, id int64, from, to string, size, mtime int64, fileID string) (bool, error) {
 	res, err := s.repo.db.ExecContext(ctx, `
-		UPDATE music_track_files SET path = ?, size_bytes = ?, mtime_unix = ?, file_id = ?, missing_since = NULL
+		UPDATE music_track_files SET path = ?, size_bytes = ?, mtime_unix = ?, file_id = ?, missing_since = NULL,
+		       missing_seen_at = NULL
 		 WHERE id = ? AND path = ? AND NOT EXISTS (SELECT 1 FROM music_track_files o WHERE o.path = ?)`,
 		to, size, mtime, fileID, id, from, to)
 	if err != nil {

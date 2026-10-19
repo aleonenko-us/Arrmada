@@ -894,6 +894,15 @@ func main() {
 		coordinator.SearchMusicMissing(ctx)
 		return nil
 	}, scheduler.Label("Search for missing albums"), scheduler.Description("Searches the indexers for monitored albums that are missing tracks."))
+	// Check recorded music files against the disk (MUS-15). Daily: it stats every recorded
+	// file, which can wake array disks. It only marks; it never deletes or forgets a file.
+	sched.Register("verify-music-files", 24*time.Hour, false, func(ctx context.Context) error {
+		_, err := coordinator.VerifyMusicFiles(ctx)
+		if errors.Is(err, automation.ErrModuleOff) {
+			return nil
+		}
+		return err
+	}, scheduler.Label("Check music files"), scheduler.Description("Notices music files that vanished from disk or changed outside Arrmada. A file not found twice, a day apart, is marked missing and its track wanted again; a changed one is measured again. Never deletes anything; if the music folder looks unmounted it marks nothing and raises a health warning."))
 	// Bring stale MusicBrainz answers up to date, slowly, on the background lane: cached
 	// answers are never removed, and a page open never waits on this.
 	sched.Register("refresh-music-cache", 6*time.Hour, false, func(ctx context.Context) error {
