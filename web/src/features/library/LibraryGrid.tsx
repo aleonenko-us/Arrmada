@@ -104,9 +104,17 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
   // joins it while it's in use, so the menu always names the order on screen.
   const menuChoices = config.sorts.some((s) => s.key === sortState.key) || !choice ? config.sorts : [...config.sorts, { key: choice.key, label: choice.label }];
 
-  // Only titles still in the library count as selected: one removed meanwhile (here or
-  // elsewhere) drops out instead of failing the next bulk action.
-  const chosen = list.filter((it) => selected.has(it.id));
+  // Another folder is another set of titles: the selection starts again, so a bulk action
+  // never reaches titles picked in a folder that's no longer on screen.
+  const scopeKey = p.scope?.picker.value ?? "";
+  const [selScope, setSelScope] = useState(scopeKey);
+  if (selScope !== scopeKey) {
+    setSelScope(scopeKey);
+    setSelected(new Set());
+  }
+  // Only titles still in the library, and in the folder shown, count as selected: one
+  // removed meanwhile (here or elsewhere) drops out instead of failing the next bulk action.
+  const chosen = scoped.filter((it) => selected.has(it.id));
   const sel: LibrarySelection<T> = {
     active: multi,
     ids: new Set(chosen.map((it) => it.id)),
@@ -122,7 +130,7 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
   return (
     <Page width="wide">
       <LibraryToolbar
-        count={items ? list.length : null}
+        count={items ? scoped.length : null}
         lead={p.lead}
         segments={view.canTable ? [{ label: "View", value: view.mode, options: VIEW_OPTIONS, onChange: (v) => view.set(v as LibraryViewMode) }] : []}
         pickers={p.scope ? [p.scope.picker] : []}

@@ -15,11 +15,13 @@ export function compareValues(a: SortValue, b: SortValue, dir: SortDir): number 
   return dir === "asc" ? r : -r;
 }
 
-// parseSortPref reads a remembered "key:dir" ("size:desc"), falling back to the first
-// allowed key ascending when it names a column that no longer exists.
-export function parseSortPref(pref: string, keys: readonly string[], fallback: string): SortState {
+// parseSortPref reads a remembered "key:dir" ("size:desc"). One naming a column that no
+// longer exists falls back to the fallback key in its own direction: a remembered
+// "descending" was about the old column, not the title.
+export function parseSortPref(pref: string, keys: readonly string[], fallback: string, fallbackDir: SortDir = "asc"): SortState {
   const [k, d] = pref.split(":");
-  return { key: keys.includes(k) ? k : fallback, dir: d === "desc" ? "desc" : "asc" };
+  if (!keys.includes(k)) return { key: fallback, dir: fallbackDir };
+  return { key: k, dir: d === "desc" ? "desc" : "asc" };
 }
 
 /** One way to order a library: the Sort menu's entries and the table's sortable columns. */
@@ -70,15 +72,37 @@ export function sortItems<T>(items: readonly T[], choice: SortChoice<T> | undefi
   return arr;
 }
 
+// LEGACY_SORT_KEYS are the two remembered sorts the menu and the table had before they
+// shared one; carried over once, then removed.
+export const LEGACY_SORT_KEYS = (storageKey: string) => [`${storageKey}.grid.sort`, `${storageKey}.table.sort`];
+
 // legacySortPref is the order someone had before the menu and the table shared one: the
 // table's "key:dir" when the table was their view, else the grid menu's key in its first
-// direction. Read once, so nobody's remembered order is lost by the change.
+// direction — the order they were actually looking at. A grid user never inherits a
+// table sort they no longer saw; with nothing to carry over it's null (Title A→Z).
 export function legacySortPref(read: (k: string) => string | null, storageKey: string, choices: readonly { key: string; dir: SortDir }[]): string | null {
   const view = read(`${storageKey}.view`);
-  const table = read(`${storageKey}.table.sort`);
-  const grid = read(`${storageKey}.grid.sort`);
-  if (view === "table" && table) return table;
-  const g = choices.find((c) => c.key === grid);
-  if (g) return `${g.key}:${g.dir}`;
-  return table;
+  const [gridKey, tableKey] = LEGACY_SORT_KEYS(storageKey);
+  const table = read(tableKey);
+  if (view === "table") return table && choices.some((c) => c.key === table.split(":")[0]) ? table : null;
+  const g = choices.find((c) => c.key === read(gridKey));
+  return g ? `${g.key}:${g.dir}` : null;
+}
+
+export interface PrefStore {
+  get(k: string): string | null;
+  set(k: string, v: string): void;
+  remove(k: string): void;
+}
+
+// migrateSortPref moves the old remembered sorts onto the shared one ("movies.sort") once:
+// the carried-over order is saved there and the old keys are removed, so a later visit
+// reads the same order rather than working it out again from what's left.
+export function migrateSortPref(store: PrefStore, storageKey: string, choices: readonly { key: string; dir: SortDir }[]): void {
+  const key = `${storageKey}.sort`;
+  if (store.get(key) === null) {
+    const legacy = legacySortPref((k) => store.get(k), storageKey, choices);
+    if (legacy) store.set(key, legacy);
+  }
+  for (const k of LEGACY_SORT_KEYS(storageKey)) store.remove(k);
 }

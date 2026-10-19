@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { usePersisted } from "../../lib/persist";
-import { legacySortPref, nextSort, parseSortPref, sortChoices, type SortChoice, type SortState } from "./sort";
+import { migrateSortPref, nextSort, parseSortPref, sortChoices, type PrefStore, type SortChoice, type SortState } from "./sort";
 import type { LibraryConfig, LibraryItem } from "./types";
 
 export interface LibraryOrder<T> {
@@ -16,19 +16,26 @@ export interface LibraryOrder<T> {
   reverse: () => void;
 }
 
-function readStorage(k: string): string | null {
-  try { return localStorage.getItem(k); } catch { return null; }
-}
+// Storage can be blocked (private windows, strict settings): then nothing is carried over
+// or remembered, and the order starts at Title.
+const local: PrefStore = {
+  get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* blocked */ } },
+  remove: (k) => { try { localStorage.removeItem(k); } catch { /* blocked */ } },
+};
 
 // useLibrarySort is the library's one order, shared by the grid's Sort menu and the
 // table's column headers ("movies.sort" = "year:desc"). Before they shared it each had its
-// own remembered sort; the first visit after the change carries the old one over.
+// own remembered sort; the first visit after the change carries the one on screen over,
+// saves it and drops the old two.
 export function useLibrarySort<T extends LibraryItem>(config: LibraryConfig<T>): LibraryOrder<T> {
   const choices = useMemo(() => sortChoices(config), [config]);
-  const [initial] = useState(() => legacySortPref(readStorage, config.storageKey, choices) ?? `${choices[0]?.key ?? "title"}:${choices[0]?.dir ?? "asc"}`);
-  const [pref, setPref] = usePersisted<string>(`${config.storageKey}.sort`, initial);
+  // Runs before usePersisted reads the key below (hooks run in order), once per mount.
+  useState(() => migrateSortPref(local, config.storageKey, choices));
+  const first = choices[0];
+  const [pref, setPref] = usePersisted<string>(`${config.storageKey}.sort`, `${first?.key ?? "title"}:${first?.dir ?? "asc"}`);
   const keys = choices.map((c) => c.key);
-  const state = parseSortPref(pref, keys, "title");
+  const state = parseSortPref(pref, keys, first?.key ?? "title", first?.dir ?? "asc");
   const choice = choices.find((c) => c.key === state.key) ?? choices[0];
   const save = (s: SortState) => setPref(`${s.key}:${s.dir}`);
   const firstDir = (key: string) => choices.find((c) => c.key === key)?.dir ?? "asc";

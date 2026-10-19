@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { legacySortPref, nextSort, sortChoices, sortItems } from "./sort";
+import { legacySortPref, migrateSortPref, nextSort, parseSortPref, sortChoices, sortItems, type PrefStore } from "./sort";
 import { shortDate } from "./format";
 import type { LibraryColumn, LibrarySort } from "./types";
 
@@ -78,6 +78,51 @@ describe("legacySortPref", () => {
   });
   it("has nothing to carry over on a first visit", () => {
     expect(legacySortPref(store({}), "movies", choices)).toBeNull();
+  });
+  it("never hands a grid user the table sort they weren't looking at", () => {
+    expect(legacySortPref(store({ "movies.view": "grid", "movies.table.sort": "codec:desc" }), "movies", choices)).toBeNull();
+    expect(legacySortPref(store({ "movies.table.sort": "codec:desc" }), "movies", choices)).toBeNull(); // no view saved: the grid
+    expect(legacySortPref(store({ "movies.view": "grid", "movies.grid.sort": "gone", "movies.table.sort": "codec:desc" }), "movies", choices)).toBeNull();
+  });
+  it("drops a table sort on a column that no longer exists", () => {
+    expect(legacySortPref(store({ "movies.view": "table", "movies.table.sort": "gone:desc" }), "movies", choices)).toBeNull();
+  });
+});
+
+describe("migrateSortPref", () => {
+  const choices = sortChoices({ sorts, columns });
+  const fake = (init: Record<string, string>) => {
+    const m = new Map(Object.entries(init));
+    const s: PrefStore = { get: (k) => m.get(k) ?? null, set: (k, v) => void m.set(k, v), remove: (k) => void m.delete(k) };
+    return { s, m };
+  };
+  it("saves the carried-over order and removes the old keys, so the next visit agrees", () => {
+    const { s, m } = fake({ "movies.view": "grid", "movies.grid.sort": "year", "movies.table.sort": "codec:desc" });
+    migrateSortPref(s, "movies", choices);
+    expect(Object.fromEntries(m)).toEqual({ "movies.view": "grid", "movies.sort": "year:desc" });
+    migrateSortPref(s, "movies", choices); // a later visit changes nothing
+    expect(m.get("movies.sort")).toBe("year:desc");
+  });
+  it("leaves a saved shared sort alone and still tidies the old keys", () => {
+    const { s, m } = fake({ "movies.sort": "added:asc", "movies.grid.sort": "year" });
+    migrateSortPref(s, "movies", choices);
+    expect(Object.fromEntries(m)).toEqual({ "movies.sort": "added:asc" });
+  });
+  it("writes nothing when there's nothing to carry over", () => {
+    const { s, m } = fake({ "movies.table.sort": "codec:desc" });
+    migrateSortPref(s, "movies", choices);
+    expect(m.size).toBe(0);
+  });
+});
+
+describe("parseSortPref", () => {
+  it("reads a known key with its direction", () => {
+    expect(parseSortPref("year:desc", ["title", "year"], "title")).toEqual({ key: "year", dir: "desc" });
+    expect(parseSortPref("year", ["title", "year"], "title")).toEqual({ key: "year", dir: "asc" });
+  });
+  it("falls back to the fallback in its own direction for an unknown key", () => {
+    expect(parseSortPref("gone:desc", ["title", "year"], "title")).toEqual({ key: "title", dir: "asc" });
+    expect(parseSortPref("gone:asc", ["added", "year"], "added", "desc")).toEqual({ key: "added", dir: "desc" });
   });
 });
 

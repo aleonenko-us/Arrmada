@@ -135,6 +135,28 @@ test.describe("library order", () => {
     await expect(page).not.toHaveURL(/folder=/);
   });
 
+  test("movies: switching folders clears the selection, and bulk actions reach only the folder shown", async ({ page, api }) => {
+    await override(page, api, [multi]);
+    await page.goto("/movies");
+    await expect(page.getByText("5 in library")).toBeVisible();
+    await page.getByRole("button", { name: "Select", exact: true }).click();
+    await page.getByRole("button", { name: "Select all (5)" }).click();
+    await expect(page.getByText("5 selected")).toBeVisible();
+
+    await page.getByRole("combobox", { name: "Folder", exact: true }).selectOption({ label: "Kids" });
+    await expect(page.getByText("0 selected")).toBeVisible();
+    await expect(page.getByText("1 in library")).toBeVisible(); // the count follows the folder
+
+    // Select all now means the one Kids film, and a bulk delete sends only it.
+    await page.getByRole("button", { name: "Select all (1)" }).click();
+    await expect(page.getByText("1 selected")).toBeVisible();
+    await page.getByRole("button", { name: "Delete…" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("Remove 1 movie?")).toBeVisible();
+    await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect.poll(() => api.callsTo("DELETE", "/api/v1/movies/bulk").map((c) => (c.body as { ids: number[] }).ids)).toEqual([[4]]);
+  });
+
   test("series: the picker filters and Add sends the folder shown", async ({ page, api }) => {
     await override(page, api, [
       multi,

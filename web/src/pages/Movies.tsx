@@ -133,8 +133,11 @@ export function Movies() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [fits, queueKnown]);
 
-  const judged = useMemo(() => movies.filter((m) => fits.get(m.id)?.fit).length, [movies, fits]);
-  const misfits = useMemo(() => movies.filter((m) => isMisfit(fits.get(m.id))).length, [movies, fits]);
+  // The fit legend counts the folder shown, like the filter pills.
+  const scopeMatch = folder.scope?.match;
+  const inScope = useMemo(() => (scopeMatch ? movies.filter(scopeMatch) : movies), [movies, scopeMatch]);
+  const judged = useMemo(() => inScope.filter((m) => fits.get(m.id)?.fit).length, [inScope, fits]);
+  const misfits = useMemo(() => inScope.filter((m) => isMisfit(fits.get(m.id))).length, [inScope, fits]);
 
   return (
     <>
