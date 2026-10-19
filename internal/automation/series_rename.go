@@ -236,7 +236,13 @@ func (c *Coordinator) restoreRenameTemps(s series.Series) {
 }
 
 // seriesRenameRows lists every episode row with a file, and its canonical path.
-func (c *Coordinator) seriesRenameRows(ctx context.Context, s series.Series, folder string) []renameRow {
+//
+// fromRelease names each file from its recorded release as well as its name (the Rename
+// button, whose preview the owner reviews). Without it the name alone is used, as the
+// rename after a renumber always has: that runs unattended, so it only carries a file to
+// its new episode and never rewrites the tokens the name carries. A preview and the apply
+// it confirms must use the same setting, or every confirmed move reads as changed.
+func (c *Coordinator) seriesRenameRows(ctx context.Context, s series.Series, folder string, fromRelease bool) []renameRow {
 	imp := c.tvImp(ctx, s)
 	var rows []renameRow
 	for _, sn := range s.Seasons {
@@ -251,15 +257,20 @@ func (c *Coordinator) seriesRenameRows(ctx context.Context, s series.Series, fol
 			if orig, ok := renameTempOriginal(name); ok {
 				name = orig
 			}
-			// The release facts ({quality}, {codec}, {group}) come from the recorded release,
-			// as the import's did, with the name filling gaps and Convert's probed codec
-			// winning after a re-encode (library.RenameSource.Release has the rule). The
-			// episode numbers stay the file's: a season pack's release names no episode.
-			src := library.RenameSource{FileName: filepath.Base(name), SourceRelease: e.SourceRelease}
-			if f := c.factsFor(ctx, e.FilePath, e.SizeBytes); f != nil {
-				src.Resolution, src.Codec = f.Resolution, f.Codec
+			var target string
+			if fromRelease {
+				// The quality, codec and group a name written under an older scheme dropped
+				// can come from the recorded release, unless it contradicts the name; Convert's
+				// probed codec wins after a re-encode; the episode numbers stay the file's
+				// (library.RenameSource.Release has the rule).
+				src := library.RenameSource{FileName: filepath.Base(name), SourceRelease: e.SourceRelease}
+				if f := c.factsFor(ctx, e.FilePath, e.SizeBytes); f != nil {
+					src.Resolution, src.Codec = f.Resolution, f.Codec
+				}
+				target = imp.EpisodeRenameTarget(folder, s.Title, s.Year, e.SeasonNumber, e.EpisodeNumber, src, filepath.Ext(name))
+			} else {
+				target = imp.EpisodeTargetIn(folder, s.Title, s.Year, e.SeasonNumber, e.EpisodeNumber, filepath.Base(name), filepath.Ext(name))
 			}
-			target := imp.EpisodeRenameTarget(folder, s.Title, s.Year, e.SeasonNumber, e.EpisodeNumber, src, filepath.Ext(name))
 			rows = append(rows, renameRow{Season: e.SeasonNumber, Episode: e.EpisodeNumber, Path: e.FilePath, Target: target, Size: e.SizeBytes})
 		}
 	}
@@ -274,8 +285,13 @@ func (c *Coordinator) seriesRenameRows(ctx context.Context, s series.Series, fol
 
 // SeriesRenamePreview computes which episode files aren't at their canonical library
 // path yet, with the moves that can't happen flagged. It moves nothing; SeriesRename
-// applies the same plan.
+// applies the same plan. It's the Rename button's preview: names are read from the
+// recorded releases too (seriesRenameRows).
 func (c *Coordinator) SeriesRenamePreview(ctx context.Context, seriesID int64) ([]SeriesRenameItem, error) {
+	return c.seriesRenamePreview(ctx, seriesID, true)
+}
+
+func (c *Coordinator) seriesRenamePreview(ctx context.Context, seriesID int64, fromRelease bool) ([]SeriesRenameItem, error) {
 	if c.series == nil || c.imp == nil {
 		return nil, nil
 	}
@@ -283,7 +299,7 @@ func (c *Coordinator) SeriesRenamePreview(ctx context.Context, seriesID int64) (
 	if err != nil {
 		return nil, err
 	}
-	steps, conflicts := planSeriesRename(c.seriesRenameRows(ctx, s, c.series.ExistingFolderName(ctx, seriesID)), renameOccupied)
+	steps, conflicts := planSeriesRename(c.seriesRenameRows(ctx, s, c.series.ExistingFolderName(ctx, seriesID), fromRelease), renameOccupied)
 	items := make([]SeriesRenameItem, 0, len(steps)+len(conflicts))
 	for _, st := range steps {
 		items = append(items, SeriesRenameItem{From: st.From, To: st.To, Season: st.Rows[0].Season, Episode: st.Rows[0].Episode})
@@ -306,8 +322,13 @@ func (c *Coordinator) SeriesRenamePreview(ctx context.Context, seriesID int64) (
 //
 // Chained sources are first moved aside to temporary names, then everything moves to its
 // target. A move that fails puts its file back. The database follows only files that
-// actually moved.
+// actually moved. It applies the Rename button's preview (SeriesRenamePreview), so it
+// names from the recorded releases too.
 func (c *Coordinator) SeriesRename(ctx context.Context, seriesID int64, only []SeriesRenameItem) (SeriesRenameResult, error) {
+	return c.seriesRename(ctx, seriesID, only, true)
+}
+
+func (c *Coordinator) seriesRename(ctx context.Context, seriesID int64, only []SeriesRenameItem, fromRelease bool) (SeriesRenameResult, error) {
 	res := SeriesRenameResult{Skipped: []RenameSkip{}}
 	if c.series == nil || c.imp == nil {
 		return res, fmt.Errorf("series module not ready")
@@ -317,7 +338,7 @@ func (c *Coordinator) SeriesRename(ctx context.Context, seriesID int64, only []S
 		return res, err
 	}
 	c.restoreRenameTemps(s)
-	rows := c.seriesRenameRows(ctx, s, c.series.ExistingFolderName(ctx, seriesID))
+	rows := c.seriesRenameRows(ctx, s, c.series.ExistingFolderName(ctx, seriesID), fromRelease)
 
 	if only != nil {
 		rows, res.Skipped = holdUnpreviewed(rows, only)
@@ -464,6 +485,10 @@ func holdUnpreviewed(rows []renameRow, only []SeriesRenameItem) ([]renameRow, []
 // through the collision-safe rename — the moves the owner reviewed, and nothing else. A
 // file that's merely named off-scheme stays as it is: that's the Rename button's job, with
 // its own preview. Moves that can't happen come back as skips.
+//
+// The files are named from their current names alone, never their recorded releases: this
+// runs unattended, so it moves a file to its new episode without rewriting anything else in
+// its name. The preview and the apply use the same naming, or every move reads as changed.
 func (c *Coordinator) RenameRemapped(ctx context.Context, seriesID int64, remaps []series.EpisodeRemap) (SeriesRenameResult, error) {
 	moved := map[string]bool{}
 	for _, r := range remaps {
@@ -471,7 +496,7 @@ func (c *Coordinator) RenameRemapped(ctx context.Context, seriesID int64, remaps
 			moved[r.FilePath] = true
 		}
 	}
-	preview, err := c.SeriesRenamePreview(ctx, seriesID)
+	preview, err := c.seriesRenamePreview(ctx, seriesID, false)
 	if err != nil {
 		return SeriesRenameResult{Skipped: []RenameSkip{}}, err
 	}
@@ -481,7 +506,7 @@ func (c *Coordinator) RenameRemapped(ctx context.Context, seriesID int64, remaps
 			only = append(only, it)
 		}
 	}
-	return c.SeriesRename(ctx, seriesID, only)
+	return c.seriesRename(ctx, seriesID, only, false)
 }
 
 // LogRenameSkips warns about each file a rename after a renumber left alone. Those

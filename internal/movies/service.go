@@ -760,6 +760,11 @@ func (s *Service) attachExisting(ctx context.Context, m Movie, video, eventPrefi
 		if err := r.ClearConvertedFrom(ctx, m.ID, 0); err != nil {
 			return err
 		}
+		// A found file has no known release (clearing the file cleared it already; this
+		// makes sure no older record's release is inherited).
+		if err := r.SetSourceRelease(ctx, m.ID, ""); err != nil {
+			return err
+		}
 		_ = r.AddEvent(ctx, m.ID, "detected", eventPrefix+filepath.Base(video))
 		return s.enqueue(ctx, tx, outbox.TopicMovieImported,
 			outbox.MovieImported{MovieID: m.ID, VersionID: 0, Path: video}, movieKey(m.ID))
@@ -1574,6 +1579,31 @@ func (s *Service) setDefaultFileWith(ctx context.Context, id int64, path string,
 	})
 }
 
+// adoptDefaultFile records the file a rescan found in m's folder in place of the one m
+// recorded. Unless it's the same content under a new name (the cached size matches: renamed
+// outside Arrmada), it's another file, and the release and pre-conversion baseline recorded
+// for the old one are cleared in the same transaction. Kept, they'd describe the wrong
+// file to upgrades — and a rename would write the old file's quality, codec and group into
+// this one's name, over the only record of what it really is.
+func (s *Service) adoptDefaultFile(ctx context.Context, m Movie, path string) error {
+	info := s.probeTrack(path)
+	same := m.File != nil && !m.File.Missing && m.File.SizeBytes > 0 &&
+		info != nil && !info.Missing && info.SizeBytes == m.File.SizeBytes
+	media := mediaJSONOf(info)
+	return s.repo.inTx(ctx, func(_ *sql.Tx, r *Repo) error {
+		if err := setDefaultFileIn(ctx, r, m.ID, path, media); err != nil {
+			return err
+		}
+		if same {
+			return nil
+		}
+		if err := r.SetSourceRelease(ctx, m.ID, ""); err != nil {
+			return err
+		}
+		return r.ClearConvertedFrom(ctx, m.ID, 0)
+	})
+}
+
 // backfillRetry is how long a movie whose probe was tried waits before the list asks for
 // it again. A file ffprobe can't read stays "stale"; without the wait every poll of the
 // Movies grid would start another backfill for it.
@@ -1766,7 +1796,7 @@ func (s *Service) rescan(ctx context.Context, m *Movie) (adopted bool) {
 	case err == nil && found != "":
 		if found != m.MovieFilePath {
 			old := m.MovieFilePath
-			if err := s.setDefaultFile(ctx, m.ID, found); err != nil {
+			if err := s.adoptDefaultFile(ctx, *m, found); err != nil {
 				s.log.Warn("rescan: couldn't record the file on disk", "movie", m.Title, "path", found, "err", err)
 				return false
 			}

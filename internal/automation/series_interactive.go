@@ -588,7 +588,8 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 				"series", s.Title, "episode", fmt.Sprintf("S%02dE%02d", key[0], key[1]),
 				"keeping", filepath.Base(best.Path), "duplicates", strings.Join(others, ", "))
 		}
-		_ = c.series.MarkEpisodeImported(ctx, seriesID, key[0], key[1], best.Path, best.Size)
+		// A different file than the episode recorded doesn't inherit the old one's release.
+		_ = c.series.AdoptFoundEpisodeFile(ctx, seriesID, key[0], key[1], best.Path, best.Size)
 	}
 	if dupes > 0 {
 		c.log.Warn("series rescan: duplicate episode files on disk", "series", s.Title, "extra_files", dupes)

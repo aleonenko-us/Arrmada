@@ -1229,15 +1229,11 @@ func (im *Importer) ImportEpisodeAs(seriesFolder, seriesTitle string, year, seas
 	return &EpisodeImport{Season: season, Episode: episode, Episodes: []int{episode}, SourcePath: videoPath, TargetPath: target, SizeBytes: size, Method: method}, true, nil
 }
 
-// EpisodeTarget builds the library path an episode file should live at, deriving the
-// quality tag from sourceName alone. A rename uses EpisodeRenameTarget, which reads the
-// recorded release too.
-func (im *Importer) EpisodeTarget(title string, year, season, episode int, sourceName, ext string) string {
-	return im.episodeTarget(title, year, season, episode, parser.Parse(sourceName), ext)
-}
-
-// EpisodeTargetIn is EpisodeTarget scoped to an explicit series folder (empty =
-// derive "<Title> (<Year>)").
+// EpisodeTargetIn is the canonical library path for an episode file, in an explicit series
+// folder (empty = derive it from the scheme), with the quality tokens read from sourceName
+// alone. The rename after a renumber still names files this way: it runs unattended, so it
+// only moves a file to its new episode and never rewrites the tokens its name carries. The
+// Rename button uses EpisodeRenameTarget, which reads the recorded release too.
 func (im *Importer) EpisodeTargetIn(seriesFolder, title string, year, season, episode int, sourceName, ext string) string {
 	return im.episodeTargetIn(seriesFolder, title, year, season, episode, parser.Parse(sourceName), ext, true)
 }
@@ -1447,12 +1443,6 @@ func (im *Importer) SeriesLibraryFilesIn(seriesFolder, title string, year int) [
 		}
 	}
 	return out
-}
-
-// episodeTarget builds "<root>/<Series (Year)>/Season N/<Series - SxxExx - q>.ext". Used
-// by rename, so it targets the canonical (unpadded) season folder.
-func (im *Importer) episodeTarget(title string, year, season, episode int, rel parser.Release, ext string) string {
-	return im.episodeTargetIn("", title, year, season, episode, rel, ext, true)
 }
 
 // episodeTargetIn builds the episode path under an explicit series folder, rendering

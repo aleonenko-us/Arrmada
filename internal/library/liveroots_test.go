@@ -88,7 +88,7 @@ func TestImporterLiveRootsConcurrent(t *testing.T) {
 					}
 				}
 				_ = im.MovieTarget("Film", 2000, "", ".mkv")
-				_ = im.EpisodeTarget("Show", 2000, 1, 1, "", ".mkv")
+				_ = im.EpisodeTargetIn("", "Show", 2000, 1, 1, "", ".mkv")
 				_ = im.MusicDir()
 			}
 		}(i)

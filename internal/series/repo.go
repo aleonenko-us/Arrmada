@@ -1238,10 +1238,12 @@ func (r *Repo) SetEpisodeFile(ctx context.Context, seriesID int64, season, episo
 
 // SetEpisodeFileIfEmpty records path as an episode's file only when the episode has none:
 // false (no error) when it already had one, or doesn't exist. Adopting files from another
-// app must never replace one Arrmada recorded meanwhile.
+// app must never replace one Arrmada recorded meanwhile. The adopted file's release isn't
+// known, so none an earlier file left on the row is kept.
 func (r *Repo) SetEpisodeFileIfEmpty(ctx context.Context, seriesID int64, season, episode int, path string, size int64) (bool, error) {
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE episodes SET has_file = 1, file_path = ?, size_bytes = ?
+		`UPDATE episodes SET has_file = 1, file_path = ?, size_bytes = ?,
+		        source_release = '', converted_from_release = '', converted_from_size = 0
 		  WHERE series_id = ? AND season_number = ? AND episode_number = ? AND has_file = 0`,
 		path, size, seriesID, season, episode)
 	if err != nil {
@@ -1249,6 +1251,39 @@ func (r *Repo) SetEpisodeFileIfEmpty(ctx context.Context, seriesID int64, season
 	}
 	n, err := res.RowsAffected()
 	return n > 0, err
+}
+
+// AdoptFoundEpisodeFile records the file a rescan found for an episode. Another path with
+// another size is another file, and the release and pre-conversion baseline recorded for
+// the old one are cleared with it, in the same statement; the same path, or the same size
+// under a new name (renamed outside Arrmada), keeps them.
+func (r *Repo) AdoptFoundEpisodeFile(ctx context.Context, seriesID int64, season, episode int, path string, size int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE episodes SET
+		        source_release = CASE WHEN file_path = ? OR (size_bytes > 0 AND size_bytes = ?) THEN source_release ELSE '' END,
+		        converted_from_release = CASE WHEN file_path = ? OR (size_bytes > 0 AND size_bytes = ?) THEN converted_from_release ELSE '' END,
+		        converted_from_size = CASE WHEN file_path = ? OR (size_bytes > 0 AND size_bytes = ?) THEN converted_from_size ELSE 0 END,
+		        has_file = 1, file_path = ?, size_bytes = ?
+		  WHERE series_id = ? AND season_number = ? AND episode_number = ?`,
+		path, size, path, size, path, size, path, size, seriesID, season, episode)
+	return err
+}
+
+// SupersedeEpisodeFile records a newly imported file and the release it came from in one
+// statement, so a failure can never leave the old file under the new release (or the new
+// file under the old one). release "" (not known) keeps the recorded one only when the path
+// is unchanged. A new path ends the upgrade hold; the pre-conversion baseline always goes —
+// it described whatever was there before this import.
+func (r *Repo) SupersedeEpisodeFile(ctx context.Context, seriesID int64, season, episode int, path string, size int64, release string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE episodes SET
+		        source_release = CASE WHEN ? != '' THEN ? WHEN file_path = ? THEN source_release ELSE '' END,
+		        upgrade_hold = CASE WHEN file_path = ? THEN upgrade_hold ELSE 0 END,
+		        converted_from_release = '', converted_from_size = 0,
+		        has_file = 1, file_path = ?, size_bytes = ?
+		  WHERE series_id = ? AND season_number = ? AND episode_number = ?`,
+		release, release, path, path, path, size, seriesID, season, episode)
+	return err
 }
 
 // RepointEpisodeFile moves EVERY episode currently pointing at oldPath to newPath.
@@ -1281,15 +1316,6 @@ func (r *Repo) SetConvertedFromForPath(ctx context.Context, seriesID int64, path
 	return err
 }
 
-// ClearEpisodeConvertedFrom forgets an episode's pre-conversion baseline: a new file was
-// imported for it.
-func (r *Repo) ClearEpisodeConvertedFrom(ctx context.Context, seriesID int64, season, episode int) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE episodes SET converted_from_release = '', converted_from_size = 0
-		  WHERE series_id = ? AND season_number = ? AND episode_number = ?`, seriesID, season, episode)
-	return err
-}
-
 // SetEpisodeSourceRelease records the release name an episode's file was imported from.
 // Kept separate from SetEpisodeFile so path-only updates (rename, transcode) preserve it.
 func (r *Repo) SetEpisodeSourceRelease(ctx context.Context, seriesID int64, season, episode int, release string) error {
@@ -1300,9 +1326,11 @@ func (r *Repo) SetEpisodeSourceRelease(ctx context.Context, seriesID int64, seas
 }
 
 // ClearEpisodeFile flips an episode back to wanted (no file), e.g. after deleting its file.
+// The file's release goes with it: left behind, the next file the episode gets — a hand
+// placed one adopted by a rescan — would inherit a release that isn't its own.
 func (r *Repo) ClearEpisodeFile(ctx context.Context, seriesID int64, season, episode int) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE episodes SET has_file = 0, file_path = '', size_bytes = 0, upgrade_hold = 0, converted_from_release = '', converted_from_size = 0
+		`UPDATE episodes SET has_file = 0, file_path = '', size_bytes = 0, upgrade_hold = 0, source_release = '', converted_from_release = '', converted_from_size = 0
 		  WHERE series_id = ? AND season_number = ? AND episode_number = ?`,
 		seriesID, season, episode)
 	return err
@@ -1435,14 +1463,6 @@ func (r *Repo) ResumeUpgrades(ctx context.Context, seriesID int64, season int) (
 	}
 	n, _ := res.RowsAffected()
 	return int(n), nil
-}
-
-// ClearEpisodeHold ends one episode's upgrade hold (a new file was imported for it).
-func (r *Repo) ClearEpisodeHold(ctx context.Context, seriesID int64, season, episode int) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE episodes SET upgrade_hold = 0 WHERE series_id = ? AND season_number = ? AND episode_number = ?`,
-		seriesID, season, episode)
-	return err
 }
 
 func (r *Repo) EpisodeFilePath(ctx context.Context, seriesID int64, season, episode int) (string, error) {

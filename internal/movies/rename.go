@@ -136,7 +136,14 @@ func (s *Service) planMovie(m Movie, versions []Version) []RenameItem {
 			}
 		}
 	}
-	targets := s.trackTargets(m, versions)
+	// One stat per file, shared by the naming (is the cached probe still this file's?) and
+	// the judging (is the file there?).
+	stats := map[string]fileStat{}
+	for path := range owned {
+		fi, err := s.statFile(path)
+		stats[path] = fileStat{fi, err}
+	}
+	targets := s.trackTargets(m, versions, stats)
 	var items []RenameItem
 	claimed := map[string]bool{}
 	for _, v := range versions {
@@ -145,7 +152,7 @@ func (s *Service) planMovie(m Movie, versions []Version) []RenameItem {
 		}
 		it := RenameItem{Media: "movie", MovieID: m.ID, VersionID: v.ID, Title: m.Title, Year: m.Year,
 			Label: v.Label, Current: v.FilePath, Proposed: targets[v.ID]}
-		it.Status, it.Reason = s.judgeRename(it, owned, claimed)
+		it.Status, it.Reason = s.judgeRename(it, stats[v.FilePath], owned, claimed)
 		if it.Status == RenameOK {
 			claimed[it.Proposed] = true
 		}
@@ -154,9 +161,19 @@ func (s *Service) planMovie(m Movie, versions []Version) []RenameItem {
 	return items
 }
 
+// fileStat is one stat of a track's file.
+type fileStat struct {
+	fi  os.FileInfo
+	err error
+}
+
 // judgeRename decides one item's status against the disk and the movie's other tracks.
-func (s *Service) judgeRename(it RenameItem, owned map[string]int64, claimed map[string]bool) (string, string) {
-	cur, err := s.statFile(it.Current)
+// st is the stat of the item's current file.
+func (s *Service) judgeRename(it RenameItem, st fileStat, owned map[string]int64, claimed map[string]bool) (string, string) {
+	cur, err := st.fi, st.err
+	if err == nil && cur == nil {
+		err = fs.ErrNotExist
+	}
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return RenameMissing, reasonNotOnDisk
@@ -191,11 +208,12 @@ func (s *Service) judgeRename(it RenameItem, owned map[string]int64, claimed map
 // where an import would have put it. Tracks are named in order, default first, and each
 // one's planned name is kept clear of by the tracks after it, as their files would be.
 //
-// The release facts ({quality}, {codec}, {group}, the release's edition) come from the
-// track's recorded release, as the import's did, with the file's name filling gaps and
-// its probed codec winning after a re-encode (library.RenameSource.Release has the rule).
-// The current file name alone can't say what a scheme it was never named under asks for.
-func (s *Service) trackTargets(m Movie, versions []Version) map[int64]string {
+// The quality, codec and group can also come from the track's recorded release, which
+// still has what a name written under an older, shorter scheme dropped. That release is
+// the download's name while an import named the file from the media file inside it, so a
+// rename can now propose a fuller name than the import gave — and a release that
+// contradicts the file's name is ignored (library.RenameSource.Release has the rule).
+func (s *Service) trackTargets(m Movie, versions []Version, stats map[string]fileStat) map[int64]string {
 	out := map[int64]string{}
 	var planned []string
 	for _, v := range versions {
@@ -204,7 +222,7 @@ func (s *Service) trackTargets(m Movie, versions []Version) map[int64]string {
 		}
 		t := s.TrackNaming(m, versions, v)
 		t.Protected = append(t.Protected, planned...)
-		target := s.imp.MovieRenameTarget(t, renameSource(v), filepath.Ext(v.FilePath))
+		target := s.imp.MovieRenameTarget(t, renameSource(v, stats[v.FilePath].fi), filepath.Ext(v.FilePath))
 		out[v.ID] = target
 		planned = append(planned, target)
 	}
@@ -212,11 +230,12 @@ func (s *Service) trackTargets(m Movie, versions []Version) map[int64]string {
 }
 
 // renameSource is what track v's file is renamed from: its name, its recorded release, and
-// the facts read from the file when the cached read is of this file. RepointMovieFile keeps
-// the release current through a Convert swap and a rename, and re-reads a changed file.
-func renameSource(v Version) library.RenameSource {
+// the cached probe when it still describes the file stat'd as fi (same size and mtime).
+// RepointMovieFile keeps the release current through a Convert swap and a rename, and
+// re-reads a changed file.
+func renameSource(v Version, fi os.FileInfo) library.RenameSource {
 	src := library.RenameSource{FileName: filepath.Base(v.FilePath), SourceRelease: v.SourceRelease}
-	if f := v.File; f != nil && f.Probed && !f.Missing && (f.Path == "" || f.Path == v.FilePath) {
+	if f := v.File; f != nil && f.Probed && fi != nil && cacheCurrent(f, fi) {
 		src.Resolution, src.Codec = f.Resolution, f.Codec
 	}
 	return src

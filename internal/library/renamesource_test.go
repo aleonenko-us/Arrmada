@@ -20,13 +20,61 @@ func TestMovieRenameTargetFromSourceRelease(t *testing.T) {
 		want  string // file base name
 	}{
 		{
-			// Issue #48, first example. The release says UNRATED, so {plexedition} carries it,
-			// exactly as an import of this release under this scheme names the file.
+			// Issue #48, first example. The release says UNRATED, but editions belong to the
+			// track: the release never supplies one.
 			name:  "american psycho",
 			track: MovieTrack{Title: "American Psycho", Year: 2000},
 			src: RenameSource{FileName: "American Psycho (2000).mkv",
 				SourceRelease: "American.Psycho.2000.UNRATED.German.DTSHD.DL.2160p.UHD.BluRay.DV.HDR.x265-VECTOR"},
-			want: "American Psycho (2000) {edition-Unrated} [2160p BluRay][x265]-VECTOR.mkv",
+			want: "American Psycho (2000) [2160p BluRay][x265]-VECTOR.mkv",
+		},
+		{
+			// An edition the file's name carries stays, and a release naming another edition
+			// isn't this file's: the name alone is used.
+			name:  "name's edition stays",
+			track: MovieTrack{Title: "Blade Runner", Year: 1982},
+			src: RenameSource{FileName: "Blade Runner (1982) {edition-Final Cut} [2160p BluRay][x265]-GRP.mkv",
+				SourceRelease: "Blade.Runner.1982.REMASTERED.2160p.UHD.BluRay.x265-GRP"},
+			want: "Blade Runner (1982) {edition-Final Cut} [2160p BluRay][x265]-GRP.mkv",
+		},
+		{
+			name:  "name's edition with a release naming none",
+			track: MovieTrack{Title: "Blade Runner", Year: 1982},
+			src: RenameSource{FileName: "Blade Runner (1982) {edition-Final Cut}.mkv",
+				SourceRelease: "Blade.Runner.1982.2160p.UHD.BluRay.x265-GRP"},
+			want: "Blade Runner (1982) {edition-Final Cut} [2160p BluRay][x265]-GRP.mkv",
+		},
+		{
+			// A group in the name that isn't the release's: the record is another file's
+			// (swapped in by hand, or an old backfill's guess). Nothing of it is used.
+			name:  "name's group contradicts the release",
+			track: MovieTrack{Title: "Aliens", Year: 1986},
+			src: RenameSource{FileName: "Aliens.1986.1080p.REMUX.AVC-NEWGRP.mkv",
+				SourceRelease: "Aliens.1986.1080p.WEB-DL.x264-OLDGRP"},
+			want: "Aliens (1986) [1080p Remux][x264]-NEWGRP.mkv",
+		},
+		{
+			name:  "name's source contradicts the release",
+			track: MovieTrack{Title: "Aliens", Year: 1986},
+			src:   RenameSource{FileName: "Aliens (1986) [1080p BluRay].mkv", SourceRelease: "Aliens.1986.1080p.WEB-DL.x264-OLDGRP"},
+			want:  "Aliens (1986) [1080p BluRay].mkv",
+		},
+		{
+			// Radarr-style "Bluray-1080p" reads as group "1080p": that's no group, so it
+			// neither rejects the release nor lands in the new name.
+			name:  "quality after a dash is no group",
+			track: MovieTrack{Title: "Heat", Year: 1995},
+			src:   RenameSource{FileName: "Heat (1995) Bluray-1080p.mkv", SourceRelease: "Heat.1995.1080p.BluRay.x264-GRP"},
+			want:  "Heat (1995) [1080p BluRay][x264]-GRP.mkv",
+		},
+		{
+			// The codec alone never rejects a release (Convert changes it); the name's
+			// codec beats the release's when the file wasn't read.
+			name:  "name's codec beats the release's",
+			track: MovieTrack{Title: "Dune", Year: 2021},
+			src: RenameSource{FileName: "Dune (2021) [2160p WEB-DL][AV1].mkv",
+				SourceRelease: "Dune.2021.2160p.WEB-DL.DDP5.1.x265-FLUX"},
+			want: "Dune (2021) [2160p WEB-DL][AV1]-FLUX.mkv",
 		},
 		{
 			// Issue #48, second example: the old name kept the quality but lost codec and group.
@@ -78,7 +126,7 @@ func TestMovieRenameTargetFromSourceRelease(t *testing.T) {
 			track: MovieTrack{Title: "Léon: The Professional", Year: 1994},
 			src: RenameSource{FileName: "Leon (1994).mkv",
 				SourceRelease: "Leon.1994.Extended.Cut.1080p.BluRay.x264-AMIABLE"},
-			want: "Léon The Professional (1994) {edition-Extended} [1080p BluRay][x264]-AMIABLE.mkv",
+			want: "Léon The Professional (1994) [1080p BluRay][x264]-AMIABLE.mkv",
 		},
 		{
 			// A release stating another resolution than the file has isn't this file's (the
@@ -154,8 +202,22 @@ func TestMovieRenameTargetFromSourceRelease(t *testing.T) {
 	}
 }
 
+// A release's edition never moves a film into another folder, even when the folder scheme
+// names the edition.
+func TestMovieRenameTargetEditionKeepsFolder(t *testing.T) {
+	im := NewImporter("/lib", slog.Default())
+	im.SetNaming(fixedNaming{Naming{Folder: "{title} ({year}) {plexedition}", File: "{title} ({year}) - {quality}"}})
+	got := im.MovieRenameTarget(MovieTrack{Title: "American Psycho", Year: 2000},
+		RenameSource{FileName: "American Psycho (2000) - 2160p BluRay.mkv", SourceRelease: "American.Psycho.2000.UNRATED.2160p.UHD.BluRay.x265-VECTOR"}, ".mkv")
+	want := filepath.Join("/lib", "American Psycho (2000)", "American Psycho (2000) - 2160p BluRay.mkv")
+	if got != want {
+		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+}
+
 // A rename of a file in the library with its recorded release lands where an import of that
-// release would have put it.
+// release would have put it (when the media file inside the download was named like the
+// download, as it usually is).
 func TestMovieRenameTargetMatchesImport(t *testing.T) {
 	im := NewImporter("/lib", slog.Default())
 	im.SetNaming(fixedNaming{Naming{Folder: "{title} ({year})", File: issue48Scheme}})

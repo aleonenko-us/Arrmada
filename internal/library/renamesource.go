@@ -1,6 +1,7 @@
 package library
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/parser"
@@ -16,51 +17,86 @@ type RenameSource struct {
 	Codec         string // probed video codec, as mediainfo ("x265", "AV1") or Convert ("hevc", "av1") names it
 }
 
-// Release is the release a renamed file is named from — what an import names it from.
+// Release is the release a renamed file is named from.
 //
-// An import names a file from its release, and the library name keeps only what the scheme
-// of the day asked for: a film imported as "American Psycho (2000).mkv" has lost its
-// release's quality, codec and group for good. A rename that read only the file name could
-// never fill tokens added to the scheme later, so the rule is:
+// A library name keeps only what the scheme of its day asked for: a film imported as
+// "American Psycho (2000).mkv" has lost its release's quality, codec and group for good, so
+// a rename that read only the file name could never fill tokens added to the scheme later.
+// The recorded release still has them. It is the download's name, though, and an import
+// names a file from the media file inside the download, so a rename can now produce a
+// fuller (or differently spelled) name than the import did. The rule:
 //
-//   - The recorded release speaks first for every release fact a name uses: resolution,
-//     source, codec, group and edition. The file's name fills in any it doesn't state, so a
-//     release that doesn't parse leaves the name exactly as the file name alone would.
-//   - A release that can't be about this file is ignored and the file name alone is used:
-//     one stating a different resolution from the file's (probed, else named). The file was
-//     replaced outside Arrmada and the record kept the old file's release.
-//   - The probed codec wins over both names when it's a different codec. Convert re-encodes
-//     files: it restamps the recorded release, but a file with no release keeps its old
-//     codec in its name. When they agree, nothing changes.
-//   - Season and episode numbers always come from the file's name, never the release: a
-//     season pack's release names no episode.
-//   - The title comes from neither. Names use the library's metadata title.
+//   - The release is trusted only when nothing the file's name states contradicts it: a
+//     different resolution (or a different probed one), group, source or edition means the
+//     record describes another file — one swapped in outside Arrmada, or a release guessed
+//     by an old backfill — and the file's name alone is used. The name was the only true
+//     record of that file; a rename must never overwrite it with another file's facts.
+//   - A trusted release fills the resolution, source and group the name doesn't state.
+//   - The codec is the probed one when the file was read (Convert re-encodes files), else
+//     the one the name states, else the release's. The name beats the release because
+//     Convert's facts are keyed by path and a rename loses them until the next index: a
+//     name written from the probe must not be pulled back to a release Convert never
+//     restamped.
+//   - The edition never comes from the release. Editions belong to tracks: the track's
+//     edition, else whatever the file's name already says.
+//   - Season and episode numbers always come from the file's name (a season pack's release
+//     names no episode), and the title from the library's metadata.
 func (s RenameSource) Release() parser.Release {
 	file := parser.Parse(s.FileName)
+	file.Group = nameGroup(file.Group)
 	rel := file
 	if src := strings.TrimSpace(s.SourceRelease); src != "" {
 		if r := parser.Parse(src); s.describes(r, file) {
 			rel = overlayRelease(file, r)
 		}
 	}
-	if c := probedCodec(s.Codec); c != parser.CodecUnknown && c != rel.Codec {
+	if c := probedCodec(s.Codec); c != parser.CodecUnknown {
 		rel.Codec = c
 	}
 	return rel
 }
 
-// describes reports whether release r can be about this file: it states no resolution, or
-// the same class as the file has (read from the file when it was probed, else as named).
+// describes reports whether release r can be about this file: nothing the file's name
+// states — resolution (or the probed one), group, source, edition — says otherwise. A fact
+// only one side states is no contradiction. The codec is left out: Convert changes it.
 func (s RenameSource) describes(r, file parser.Release) bool {
-	stated := r.StatedResolution()
-	if stated == parser.ResUnknown {
-		return true
+	if stated := r.StatedResolution(); stated != parser.ResUnknown {
+		have := s.Resolution
+		if have == "" {
+			have = string(file.StatedResolution())
+		}
+		if have != "" && resolutionClass(have) != resolutionClass(string(stated)) {
+			return false
+		}
 	}
-	have := s.Resolution
-	if have == "" {
-		have = string(file.StatedResolution())
+	if file.Group != "" && r.Group != "" && !strings.EqualFold(file.Group, r.Group) {
+		return false
 	}
-	return have == "" || resolutionClass(have) == resolutionClass(string(stated))
+	if fs, rs := statedSource(file), statedSource(r); fs != "" && rs != "" && fs != rs {
+		return false
+	}
+	if fe, re := parser.NormalizeEdition(file.Edition), parser.NormalizeEdition(r.Edition); fe != "" && re != "" && fe != re {
+		return false
+	}
+	return true
+}
+
+// reNumbering is a "group" that is really an episode or part number.
+var reNumbering = regexp.MustCompile(`(?i)^(s\d+)?e\d+$|^\d+$`)
+
+// nameGroup is the release group a library file's name states, or "" when what the parser
+// read as one is part of the name's other tokens: library names put a dash before the
+// quality ("Bluray-1080p", Radarr's style) or a second episode ("S01E01-E02"), which reads
+// as "-GROUP". Trusted, such a group would both reject a true release and be written back
+// into the new name.
+func nameGroup(g string) string {
+	if g == "" || reNumbering.MatchString(g) {
+		return ""
+	}
+	if p := parser.Parse("x " + g); p.Resolution != parser.ResUnknown || p.Source != parser.SourceUnknown || p.Codec != parser.CodecUnknown {
+		return ""
+	}
+	return g
 }
 
 // resolutionClass puts the SD resolutions together: a PAL DVD is 576p to the probe and may
@@ -73,24 +109,21 @@ func resolutionClass(r string) string {
 	return r
 }
 
-// overlayRelease is file with every naming fact release r states laid over it. Only the
-// facts names are built from move across; numbering and the title stay the file's.
+// overlayRelease is file with the facts release r states and the file's name doesn't laid
+// over it: resolution, source, codec and group. Numbering, title and edition stay the file's.
 func overlayRelease(file, r parser.Release) parser.Release {
 	out := file
-	if r.StatedResolution() != parser.ResUnknown {
+	if file.StatedResolution() == parser.ResUnknown && r.StatedResolution() != parser.ResUnknown {
 		out.Resolution, out.ResolutionInferred = r.Resolution, false
 	}
-	if statedSource(r) != "" {
+	if statedSource(file) == "" && statedSource(r) != "" {
 		out.Source, out.SourceInferred = r.Source, false
 	}
-	if r.Codec != parser.CodecUnknown {
+	if file.Codec == parser.CodecUnknown {
 		out.Codec = r.Codec
 	}
-	if r.Group != "" {
+	if file.Group == "" {
 		out.Group = r.Group
-	}
-	if r.Edition != "" {
-		out.Edition = r.Edition
 	}
 	return out
 }
@@ -105,15 +138,14 @@ func probedCodec(c string) parser.Codec {
 	return parser.Parse("x " + c).Codec
 }
 
-// MovieRenameTarget is MovieTrackTarget for a file already in the library: named from
-// src.Release() — the recorded release first, then the file's name and probed codec —
-// rather than from one name.
+// MovieRenameTarget is MovieTrackTarget for a file already in the library, named from
+// src.Release() rather than from one name.
 func (im *Importer) MovieRenameTarget(t MovieTrack, src RenameSource, ext string) string {
 	return im.movieTrackTarget(t, src.Release(), ext)
 }
 
-// EpisodeRenameTarget is EpisodeTargetIn for an episode file already in the library:
-// named from src.Release(), with the scheme's canonical season folder.
+// EpisodeRenameTarget is EpisodeTargetIn for an episode file already in the library,
+// named from src.Release().
 func (im *Importer) EpisodeRenameTarget(seriesFolder, title string, year, season, episode int, src RenameSource, ext string) string {
 	return im.episodeTargetIn(seriesFolder, title, year, season, episode, src.Release(), ext, true)
 }

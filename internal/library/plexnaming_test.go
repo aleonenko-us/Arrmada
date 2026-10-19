@@ -69,7 +69,7 @@ func TestEpisodeFolderTVDBTokenFallsBackToTMDB(t *testing.T) {
 		"Nobody Has": "Nobody Has (2022)",
 	}
 	for title, wantFolder := range cases {
-		got := im.EpisodeTarget(title, 2022, 1, 1, "x.1080p.WEB-DL.mkv", ".mkv")
+		got := im.EpisodeTargetIn("", title, 2022, 1, 1, "x.1080p.WEB-DL.mkv", ".mkv")
 		if dir := filepath.Base(filepath.Dir(filepath.Dir(got))); dir != wantFolder {
 			t.Errorf("%s: folder %q, want %q", title, dir, wantFolder)
 		}

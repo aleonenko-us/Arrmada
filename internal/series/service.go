@@ -2054,26 +2054,18 @@ func (s *Service) AdoptEpisodeFile(ctx context.Context, seriesID int64, season, 
 // naming change. Without this, the new file lands at a new name and the old one is
 // left orphaned on disk, so every upgrade/re-grab leaves a duplicate behind.
 // sourceRelease is the release name the file came from (e.g. the downloaded filename);
-// it's recorded so upgrade scoring has a faithful baseline. Pass "" when unknown (a
-// rescan of an existing library file) — the upgrade path skips episodes without one.
+// it's recorded so upgrade scoring has a faithful baseline. Pass "" when unknown: the
+// recorded release stays only if the path is unchanged (a new file can't inherit the old
+// one's), and the upgrade path skips episodes without one.
 func (s *Service) SupersedeEpisodeFile(ctx context.Context, seriesID int64, season, episode int, path string, size int64, sourceRelease string) error {
-	if sourceRelease != "" {
-		if err := s.repo.SetEpisodeSourceRelease(ctx, seriesID, season, episode, sourceRelease); err != nil {
-			s.log.Warn("series: record source release failed", "err", err)
-		}
-	}
 	old, _ := s.repo.EpisodeFilePath(ctx, seriesID, season, episode)
-	if old != path {
-		// A new file ends the episode's upgrade hold: the hold kept the file it had. (Convert
-		// and rename go through RepointEpisodeFile / MarkEpisodeImported and keep it.)
-		if err := s.repo.ClearEpisodeHold(ctx, seriesID, season, episode); err != nil {
-			s.log.Warn("series: clear upgrade hold failed", "err", err)
-		}
-	}
-	// A new file: what an earlier one was before Convert shrank it says nothing about this
-	// one. Convert's own path changes (RepointEpisodeFile, MarkEpisodeImported) keep it.
-	if err := s.repo.ClearEpisodeConvertedFrom(ctx, seriesID, season, episode); err != nil {
-		s.log.Warn("series: clear pre-conversion baseline failed", "err", err)
+	// The new file and its release are recorded together, before the old file is touched:
+	// a failure leaves the record wholly on the old file, never the old file under the new
+	// release. The same write ends the upgrade hold for a new path (the hold kept the file
+	// it had) and drops the pre-conversion baseline, which described the old file. Convert
+	// and rename go through RepointEpisodeFile / MarkEpisodeImported and keep both.
+	if err := s.repo.SupersedeEpisodeFile(ctx, seriesID, season, episode, path, size, sourceRelease); err != nil {
+		return err
 	}
 	if old != "" && old != path {
 		// A double-episode file serves several episode rows. If any sibling still
@@ -2107,7 +2099,15 @@ func (s *Service) SupersedeEpisodeFile(ctx context.Context, seriesID int64, seas
 			}
 		}
 	}
-	return s.MarkEpisodeImported(ctx, seriesID, season, episode, path, size)
+	s.log.Info("series: episode imported", "series_id", seriesID, "s", season, "e", episode)
+	return nil
+}
+
+// AdoptFoundEpisodeFile records the file a rescan found for an episode. A different file
+// (another path and size) drops the release and pre-conversion baseline recorded for the
+// one it replaces; the same file, even renamed outside Arrmada, keeps them.
+func (s *Service) AdoptFoundEpisodeFile(ctx context.Context, seriesID int64, season, episode int, path string, size int64) error {
+	return s.repo.AdoptFoundEpisodeFile(ctx, seriesID, season, episode, path, size)
 }
 
 // EpisodeExists reports whether the series' metadata actually has this episode.
