@@ -107,7 +107,7 @@ func (a *api) handleSetArtistOptions(w http.ResponseWriter, r *http.Request) {
 	}
 	if changed {
 		// Mostly cache answers; a first look at singles is a request or a few.
-		if _, err := a.deps.Music.RefreshArtist(ctx, id, music.RefreshOptions{Scheduled: true}); err != nil {
+		if _, err := a.deps.Music.RefreshArtist(ctx, id, music.RefreshOptions{Scheduled: true, ListOnly: true}); err != nil {
 			a.deps.Log.Warn("music: refreshing after a release-type change failed", "artist_id", id, "err", err)
 		}
 	}

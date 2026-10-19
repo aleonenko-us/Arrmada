@@ -40,6 +40,8 @@ const (
 	musicSinglesChecked = 20
 	musicListingFills   = 30
 	musicEditionPass    = 5
+	// musicUnreachableStop: this many artists in a row with no answer at all ends the run.
+	musicUnreachableStop = 3
 )
 
 // MusicRefreshReport is what one refresh-music-artists run did.
@@ -57,7 +59,7 @@ type MusicRefreshReport struct {
 	EditionsTried   int    // legacy albums the edition pass looked at
 	EditionsRekeyed int    // of those, now on a real edition
 	Calls           int64  // MusicBrainz requests sent over the network
-	Stopped         string // "budget" or "musicbrainz_paused" when the run stopped early
+	Stopped         string // "budget", "musicbrainz_paused" or "musicbrainz_unreachable" when the run stopped early
 }
 
 // RefreshMusicArtists is one run of the refresh-music-artists task.
@@ -78,12 +80,17 @@ func (c *Coordinator) refreshMusicArtists(ctx context.Context, tr *metadata.MBTr
 			rep.Stopped = "musicbrainz_paused"
 			return false
 		}
-		if tr.Fetched.Load() >= c.musicCallBudget() {
+		// Every request counts, answered or not: a failed one cost as much time.
+		if tr.Fetched.Load()+tr.Unanswered() >= c.musicCallBudget() {
 			rep.Stopped = "budget"
 			return false
 		}
 		return true
 	}
+	// unreachable counts artists in a row that MusicBrainz didn't answer for at all; a
+	// few mean it's down (or the network is), and the rest of the run would only wait out
+	// timeouts.
+	unreachable := 0
 
 	artists, err := c.music.ArtistsDueForRefresh(ctx, musicRefreshEvery, musicRefreshArtists)
 	if err != nil {
@@ -97,13 +104,22 @@ func (c *Coordinator) refreshMusicArtists(ctx context.Context, tr *metadata.MBTr
 		if !more() {
 			break
 		}
-		res, err := c.music.RefreshArtist(ctx, a.ID, music.RefreshOptions{Scheduled: true})
+		actx, atr := metadata.WithMBTrace(ctx)
+		res, err := c.music.RefreshArtist(actx, a.ID, music.RefreshOptions{Scheduled: true})
 		if err != nil {
 			return rep, err
 		}
 		rep.Artists++
 		if res.Unanswered {
 			rep.Unanswered++
+		}
+		if atr.Fetched.Load() == 0 && atr.Unanswered() > 0 {
+			if unreachable++; unreachable >= musicUnreachableStop {
+				rep.Stopped = "musicbrainz_unreachable"
+				break
+			}
+		} else {
+			unreachable = 0
 		}
 		rep.Added += len(res.Added)
 		rep.Wanted += len(res.Wanted)

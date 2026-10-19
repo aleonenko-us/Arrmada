@@ -220,7 +220,7 @@ func (s *Service) AddArtistWith(ctx context.Context, mbid, qualityProfile string
 	s.log.Info("music: artist added", "name", created.Name, "mbid", created.MBID)
 	s.repo.AddEvent(ctx, created.ID, "added", "Added to library")
 
-	res, aerr := s.syncAlbums(ctx, created, syncAdd, opt.Monitor)
+	res, aerr := s.syncAlbums(ctx, created, syncAdd, opt.Monitor, false)
 	if aerr != nil || res.Unanswered {
 		// The artist is in the library either way — a failed album pull is something a
 		// refresh can retry, not a reason to fail the add and lose the row.

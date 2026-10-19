@@ -164,7 +164,7 @@ type pendingAlbum struct {
 // groups its types list are added (or their details corrected), albums MusicBrainz merged
 // are re-pointed, and albums it no longer lists are flagged. monitor is the add dialog's
 // choice (syncAdd only).
-func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monitor string) (RefreshResult, error) {
+func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monitor string, listOnly bool) (RefreshResult, error) {
 	res := RefreshResult{ArtistID: a.ID}
 	ctx, tr := metadata.WithMBTrace(ctx)
 	defer func() { res.Calls = tr.Fetched.Load() }()
@@ -269,7 +269,17 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monit
 			switch {
 			case seen[r.MBID]:
 				p.foundAs = FoundNotNew
+			case listOnly:
+				// Asked for because the artist's types just changed: whatever the change
+				// brings in is listed, never wanted on its own.
+				p.foundAs = FoundNotNew
+			case !hasScope(a.seenScopes, scope) && a.seenScopes != "":
+				// A browse the artist has never had (singles just ticked): everything
+				// in it was already on MusicBrainz before anyone asked for it.
+				p.foundAs = FoundNotNew
 			case !hasScope(a.seenScopes, scope):
+				// The artist's very first look (an upgraded library's first refresh):
+				// only the last few months count as new.
 				if recentOrUpcoming(r.ReleaseDate, now, firstLookWindow) {
 					p.foundAs = FoundNew
 				} else {
@@ -486,6 +496,9 @@ func (s *Service) followArtistMerge(ctx context.Context, a *Artist, newMBID stri
 type RefreshOptions struct {
 	// Scheduled refreshes write history only when something changed.
 	Scheduled bool
+	// ListOnly adds what the browse shows without wanting any of it: the refresh that
+	// follows a change of release types, so the change never wants anything by itself.
+	ListOnly bool
 }
 
 // RefreshArtist re-reads an artist and its albums from MusicBrainz (stale cached answers
@@ -509,7 +522,7 @@ func (s *Service) RefreshArtist(ctx context.Context, id int64, opt RefreshOption
 	} else {
 		s.log.Warn("music: artist metadata refresh failed", "artist", a.Name, "err", derr)
 	}
-	res, serr := s.syncAlbums(ctx, a, syncRefresh, "")
+	res, serr := s.syncAlbums(ctx, a, syncRefresh, "", opt.ListOnly)
 	res.Calls = tr.Fetched.Load()
 	if serr != nil && !res.Unanswered {
 		// A database failure: say so, and leave the artist due.

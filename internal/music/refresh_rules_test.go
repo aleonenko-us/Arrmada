@@ -282,13 +282,40 @@ func TestRefreshNeverSurpriseGrabs(t *testing.T) {
 	if al := f.album(t, "rg-live"); al.Monitored || al.FoundAs != FoundNotNew {
 		t.Errorf("after ticking Live: monitored=%v found=%q, want listed as not new", al.Monitored, al.FoundAs)
 	}
+	// Singles ticked later: even a recent one was on MusicBrainz before anyone asked, so
+	// it's listed, not wanted (the singles browse is new to this artist, not the single).
+	withSingles := ReleaseTypes{Primary: []string{"Album", "EP", "Single"}, Secondary: []string{"Live"}}
+	if _, err := f.svc.SetOptions(f.ctx, a.ID, "", &withSingles); err != nil {
+		t.Fatal(err)
+	}
+	f.p.other["mb-rh"] = []metadata.AlbumResult{rg("rg-recent-single", "Recent Single", "Single", "2026-10-01")}
+	if _, err := f.svc.RefreshArtist(f.ctx, a.ID, RefreshOptions{Scheduled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if al := f.album(t, "rg-recent-single"); al.Monitored || al.FoundAs != FoundNotNew {
+		t.Errorf("a single brought in by ticking Single: monitored=%v found=%q, want listed as not new", al.Monitored, al.FoundAs)
+	}
+	// The refresh that follows an options change lists without wanting, even a release
+	// that happens to be new.
+	f.p.main["mb-rh"] = append(f.p.main["mb-rh"], rg("rg-same-day", "Same Day", "Album", "2026-10-15"))
+	if _, err := f.svc.RefreshArtist(f.ctx, a.ID, RefreshOptions{Scheduled: true, ListOnly: true}); err != nil {
+		t.Fatal(err)
+	}
+	if al := f.album(t, "rg-same-day"); al.Monitored || al.FoundAs != FoundNotNew {
+		t.Errorf("list-only refresh: monitored=%v found=%q", al.Monitored, al.FoundAs)
+	}
+	back := ReleaseTypes{Primary: []string{"Album", "EP"}, Secondary: []string{"Live"}}
+	if _, err := f.svc.SetOptions(f.ctx, a.ID, "", &back); err != nil {
+		t.Fatal(err)
+	}
+
 	// "Want matching albums" shows the count first, refuses a stale count, then applies.
 	plan, err := f.svc.ApplyPreview(f.ctx, a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Want) != 2 { // the live album and the back-catalogue EP
-		t.Fatalf("preview wants %d albums (%+v), want 2", len(plan.Want), plan.Want)
+	if len(plan.Want) != 3 { // the live album, the back-catalogue EP and the list-only album
+		t.Fatalf("preview wants %d albums (%+v), want 3", len(plan.Want), plan.Want)
 	}
 	if _, err := f.svc.ApplyOptions(f.ctx, a.ID, 5, 0, 0); !errors.Is(err, ErrPlanChanged) {
 		t.Errorf("apply with a stale count = %v, want ErrPlanChanged", err)
@@ -296,7 +323,7 @@ func TestRefreshNeverSurpriseGrabs(t *testing.T) {
 	if f.album(t, "rg-live").Monitored {
 		t.Fatal("a refused apply changed something")
 	}
-	if _, err := f.svc.ApplyOptions(f.ctx, a.ID, 2, 0, 0); err != nil {
+	if _, err := f.svc.ApplyOptions(f.ctx, a.ID, 3, 0, 0); err != nil {
 		t.Fatal(err)
 	}
 	if !f.album(t, "rg-live").Monitored || !f.album(t, "rg-old").Monitored {

@@ -111,6 +111,7 @@ type mbStubServer struct {
 	srv      *httptest.Server
 	requests atomic.Int64
 	albums   int
+	down     atomic.Bool // answer every request with a 500
 }
 
 func newMBStub(t testing.TB, albumsPerArtist int) *mbStubServer {
@@ -122,6 +123,10 @@ func newMBStub(t testing.TB, albumsPerArtist int) *mbStubServer {
 
 func (s *mbStubServer) handle(w http.ResponseWriter, r *http.Request) {
 	s.requests.Add(1)
+	if s.down.Load() {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	p := strings.TrimPrefix(r.URL.Path, "/ws/2")
 	q := r.URL.Query()
 	var body any
@@ -236,6 +241,33 @@ func TestRefreshMusicArtistsKeepsToItsCallBudget(t *testing.T) {
 	}
 	if rep.Artists != 12 || rep.Calls != 0 || stub.requests.Load() != before {
 		t.Errorf("a run over fresh answers: %+v and %d requests, want 12 artists and none", rep, stub.requests.Load()-before)
+	}
+}
+
+// With MusicBrainz down, a run gives up after a few artists rather than waiting out
+// every request, and changes nothing: no album added or removed, nobody stamped as
+// refreshed beyond those it tried.
+func TestRefreshMusicArtistsStopsWhenMusicBrainzIsDown(t *testing.T) {
+	stub := newMBStub(t, 3)
+	c, svc, st := realMusicCoord(t, stub)
+	seedArtists(t, st, 10)
+	stub.down.Store(true)
+	rep, err := c.RefreshMusicArtists(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Artists != musicUnreachableStop || rep.Stopped != "musicbrainz_unreachable" || rep.Unanswered != rep.Artists || rep.Added != 0 {
+		t.Fatalf("report %+v, want %d artists tried, all unanswered, then a stop", rep, musicUnreachableStop)
+	}
+	if n := stub.requests.Load(); n > int64(2*musicUnreachableStop) {
+		t.Errorf("%d requests, want at most two an artist tried", n)
+	}
+	var albums int
+	if err := st.DB().QueryRow(`SELECT COUNT(*) FROM albums`).Scan(&albums); err != nil || albums != 0 {
+		t.Errorf("%d albums after an outage (%v), want none", albums, err)
+	}
+	if due, _ := svc.ArtistsDueForRefresh(context.Background(), musicRefreshEvery, 100); len(due) != 10-musicUnreachableStop {
+		t.Errorf("%d artists still due, want the %d not tried", len(due), 10-musicUnreachableStop)
 	}
 }
 
