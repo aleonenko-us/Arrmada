@@ -44,6 +44,9 @@ func (c *Coordinator) RetagAlbum(ctx context.Context, albumID int64) (MusicRetag
 	if err != nil {
 		return res, err
 	}
+	if err := c.imp.CheckMusicRoot(); err != nil {
+		return res, err
+	}
 	root := c.imp.MusicDir()
 	var items []stage.Item
 	for _, t := range tracks {
@@ -78,7 +81,8 @@ func (c *Coordinator) RetagAlbum(ctx context.Context, albumID int64) (MusicRetag
 		return res, err
 	}
 	var embed *audiotag.Picture
-	if cover := c.frontCover(ctx, tc, 500); cover != nil {
+	covers := c.albumCovers(tc)
+	if cover := covers.front(ctx, 500); cover != nil {
 		embed = &audiotag.Picture{Data: cover}
 	}
 	var done []string // the folders of the files retagged
@@ -126,7 +130,7 @@ func (c *Coordinator) RetagAlbum(ctx context.Context, albumID int64) (MusicRetag
 		done = append(done, filepath.Dir(it.Final))
 	}
 	if dir := commonDir(done); dir != "" && insideDir(dir, root) && dir != filepath.Clean(root) {
-		if big := c.frontCover(ctx, tc, 1200); big != nil && music.IsJPEG(big) {
+		if big := covers.front(ctx, 1200); big != nil && music.IsJPEG(big) {
 			if _, err := job.PlaceCover(dir, big); err != nil {
 				c.log.Warn("music retag: couldn't write cover.jpg", "album", al.Title, "err", err)
 			}

@@ -317,6 +317,9 @@ func (c *Coordinator) MusicRename(ctx context.Context, albumID int64, only []Mus
 	if len(moves) == 0 {
 		return res, nil
 	}
+	if err := c.imp.CheckMusicRoot(); err != nil {
+		return res, err
+	}
 	items := make([]stage.Item, len(moves))
 	for i, m := range moves {
 		items[i] = stage.Item{Source: m.From, Final: m.To, Ref: m.TrackID}

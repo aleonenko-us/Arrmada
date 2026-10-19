@@ -839,7 +839,7 @@ func (c *Coordinator) importAlbumContent(ctx context.Context, a music.Artist, al
 	}
 
 	quality := music.DetectQuality(release)
-	res = c.placeAlbumTracks(ctx, a, al, tracks, matched, quality, release)
+	res = c.placeAlbumTracks(ctx, a, al, tracks, matched, quality, release, contentPath)
 	res.found, res.unmatched = true, len(unmatched)
 	if res.placed > 0 {
 		c.log.Info("music: imported tracks", "artist", a.Name, "album", al.Title,
@@ -890,8 +890,8 @@ func (r *albumImport) add(o albumImport) {
 
 // placeAlbumTracks places a download's matched files onto an album's tracks: today's
 // filename matching, handed to placement as a match result (music_placement.go).
-func (c *Coordinator) placeAlbumTracks(ctx context.Context, a music.Artist, al music.Album, tracks []music.Track, matched map[int64]music.AudioFile, releaseTier music.Quality, release string) albumImport {
-	return c.placeMatch(ctx, a, al, tracks, music.MatchFromTracks(al, matched, nil), releaseTier, release)
+func (c *Coordinator) placeAlbumTracks(ctx context.Context, a music.Artist, al music.Album, tracks []music.Track, matched map[int64]music.AudioFile, releaseTier music.Quality, release, contentRoot string) albumImport {
+	return c.placeMatch(ctx, a, al, tracks, music.MatchFromTracks(al, matched, nil, contentRoot), releaseTier, release)
 }
 
 // trackTier is the tier and bitrate recorded for an audio file: measured by ffprobe when it
@@ -1260,7 +1260,7 @@ func (c *Coordinator) importAlbumFolder(ctx context.Context, a music.Artist, al 
 		// pack name and is exactly the case where the overall tag would be wrong.
 		q = fq
 	}
-	res := c.placeAlbumTracks(ctx, a, al, tracks, matched, q, release)
+	res := c.placeAlbumTracks(ctx, a, al, tracks, matched, q, release, f.path)
 	res.found, res.unmatched = true, len(unmatched)
 	if res.placed > 0 {
 		c.log.Info("music: imported album from discography", "artist", a.Name, "album", al.Title,

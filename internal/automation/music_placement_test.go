@@ -351,3 +351,24 @@ func TestRetagAlbumSwapsThroughTheBin(t *testing.T) {
 		t.Errorf("the originals aren't in the bin: %v", binned)
 	}
 }
+
+// A format the tag library doesn't write (WAV) goes in as downloaded, hardlinked, even
+// with house tags on; nothing is staged for it.
+func TestUntaggableFormatGoesInAsDownloaded(t *testing.T) {
+	h, _ := musicImportHarness(t)
+	withHouseTags(h, &houseFake{})
+	a := h.addArtist(t, "Radiohead", "", []string{"OK Computer"}, nil, "1997-05-21")
+	al := h.album(t, a.ID, "OK Computer")
+	if res := h.importDownload(t, a, al, "Radiohead - OK Computer (1997) [WAV]", ".wav", 1); res.placed != 2 || res.tagFailed != 0 {
+		t.Fatalf("import %+v", res)
+	}
+	tracks, _ := h.svc.Tracks(h.ctx, al.ID)
+	for _, tr := range tracks {
+		if tr.TagState != music.TagStateAsFound {
+			t.Errorf("track %q: tag state %q", tr.Title, tr.TagState)
+		}
+		if got, _ := (&houseFake{}).Read(tr.FilePath); len(got) != 0 {
+			t.Errorf("track %q was written: %v", tr.Title, got)
+		}
+	}
+}

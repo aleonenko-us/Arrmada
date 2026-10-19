@@ -39,17 +39,18 @@ type CAA struct {
 
 // NewCAA is the Cover Art Archive client the app uses.
 func NewCAA() *CAA {
-	return &CAA{Base: "https://coverartarchive.org", Client: httpua.Client(30 * time.Second)}
+	return &CAA{Base: "https://coverartarchive.org", Client: httpua.Client(15 * time.Second)}
 }
 
-// Front fetches the release's front cover, falling back to its release group's. Only a
-// JPEG or PNG under maxCoverBytes is returned.
+// Front fetches the release's front cover, falling back to its release group's when the
+// release has none. Any other failure (CAA slow or down) ends the try at once, so an
+// outage costs an import one timeout, not one per fallback. Only a JPEG or PNG under
+// maxCoverBytes is returned.
 func (c *CAA) Front(ctx context.Context, releaseMBID, groupMBID string, size int) ([]byte, error) {
 	suffix := "front"
 	if size > 0 {
 		suffix = fmt.Sprintf("front-%d", size)
 	}
-	var lastErr error = ErrNoCoverArt
 	for _, p := range []struct{ kind, id string }{{"release", mbid(releaseMBID)}, {"release-group", mbid(groupMBID)}} {
 		if p.id == "" {
 			continue
@@ -58,9 +59,11 @@ func (c *CAA) Front(ctx context.Context, releaseMBID, groupMBID string, size int
 		if err == nil {
 			return b, nil
 		}
-		lastErr = err
+		if !errors.Is(err, ErrNoCoverArt) {
+			return nil, err
+		}
 	}
-	return nil, lastErr
+	return nil, ErrNoCoverArt
 }
 
 func (c *CAA) get(ctx context.Context, url string) ([]byte, error) {

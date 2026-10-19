@@ -189,11 +189,18 @@ func (c *Coordinator) placeMatch(ctx context.Context, a music.Artist, al music.A
 
 	var placedFrom []placement
 	if prefs.WriteTags && tcErr == nil {
+		if err := c.imp.CheckMusicRoot(); err != nil {
+			// Staging inside a missing (unmounted) music folder would write to the wrong
+			// disk; nothing is placed, and the import is tried again later.
+			res.failed += len(plan)
+			c.log.Warn("music import: the music folder isn't there — nothing placed", "album", al.Title, "err", err)
+			return res
+		}
 		placedFrom = c.placeStaged(ctx, al, tc, plan, release, &res)
 	} else {
 		placedFrom = c.placeLinked(ctx, al, plan, release, &res)
 	}
-	c.bringExtras(al, placedFrom, prefs.Extras)
+	c.bringExtras(al, m.ContentRoot, placedFrom, prefs.Extras)
 	return res
 }
 
@@ -269,6 +276,21 @@ func (c *Coordinator) recordPlaced(ctx context.Context, trackID int64, path stri
 // arrived, hardlinked. A write or check that fails sends the album to Reviews with the
 // reason; the download is never touched.
 func (c *Coordinator) placeStaged(ctx context.Context, al music.Album, tc music.TagContext, plan []placement, release string, res *albumImport) []placement {
+	// Formats the tag library doesn't write (WAV, APE, WavPack…) go straight in as they
+	// arrived, without a pointless copy into staging first.
+	var asIs []placement
+	kept := plan[:0:0]
+	for _, p := range plan {
+		if taggable(p.f.Path) {
+			kept = append(kept, p)
+		} else {
+			asIs = append(asIs, p)
+		}
+	}
+	placedAsIs := c.placeLinked(ctx, al, asIs, release, res)
+	if plan = kept; len(plan) == 0 {
+		return placedAsIs
+	}
 	items := make([]stage.Item, len(plan))
 	for i, p := range plan {
 		items[i] = stage.Item{Source: p.f.Path, Final: p.target, Ref: p.t.ID}
@@ -283,21 +305,22 @@ func (c *Coordinator) placeStaged(ctx context.Context, al music.Album, tc music.
 	if err != nil {
 		res.failed += len(plan)
 		c.log.Warn("music import: couldn't start a staging job", "album", al.Title, "err", err)
-		return nil
+		return placedAsIs
 	}
 	if err := job.CheckSpace(); err != nil {
 		res.failed += len(plan)
 		c.log.Warn("music import: not enough space to stage the copies — trying again later", "album", al.Title, "err", err)
 		_ = job.Abandon("no space")
-		return nil
+		return placedAsIs
 	}
-	cover := c.frontCover(ctx, tc, 500)
+	covers := c.albumCovers(tc)
+	cover := covers.front(ctx, 500)
 	var embed *audiotag.Picture
 	if cover != nil {
 		embed = &audiotag.Picture{Data: cover}
 	}
 
-	var placed []placement
+	placed := placedAsIs
 	for i, p := range plan {
 		if err := job.Stage(i); err != nil {
 			res.failed++
@@ -359,7 +382,7 @@ func (c *Coordinator) placeStaged(ctx context.Context, al music.Album, tc music.
 		placed = append(placed, p)
 	}
 	if len(placed) > 0 {
-		if big := c.frontCover(ctx, tc, 1200); big != nil && music.IsJPEG(big) {
+		if big := covers.front(ctx, 1200); big != nil && music.IsJPEG(big) {
 			if _, err := job.PlaceCover(placed[0].albumDir, big); err != nil {
 				c.log.Warn("music import: couldn't write cover.jpg", "album", al.Title, "err", err)
 			}
@@ -384,6 +407,16 @@ func (c *Coordinator) musicTagReview(ctx context.Context, it download.Item, res 
 	})
 }
 
+// taggable reports whether the tag library writes this kind of file (by extension; the
+// library itself still checks the content, and anything it refuses goes in as it is).
+func taggable(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".flac", ".mp3", ".m4a", ".m4b", ".mp4", ".alac", ".aac", ".ogg", ".oga", ".opus":
+		return true
+	}
+	return false
+}
+
 // setMeta stores what a staged file will be recorded with, so a crash between placing and
 // recording can be finished on the next start.
 func setMeta(job *stage.Job, i int, m placedMeta) error {
@@ -394,16 +427,29 @@ func setMeta(job *stage.Job, i int, m placedMeta) error {
 	return job.SetMeta(i, b)
 }
 
-// frontCover fetches the album's front cover at a size, or nil: a missing cover never
-// stops an import.
-func (c *Coordinator) frontCover(ctx context.Context, tc music.TagContext, size int) []byte {
-	if c.musicPlace.covers == nil {
+// albumCovers fetches one album's front cover at the sizes it needs. A missing cover never
+// stops an import, and after one failure that isn't "no cover" (the Cover Art Archive slow
+// or down) it stops asking, so an outage costs an album one timeout.
+type albumCovers struct {
+	c    *Coordinator
+	tc   music.TagContext
+	down bool
+}
+
+func (c *Coordinator) albumCovers(tc music.TagContext) *albumCovers {
+	return &albumCovers{c: c, tc: tc}
+}
+
+// front is the cover at size, or nil.
+func (a *albumCovers) front(ctx context.Context, size int) []byte {
+	if a.c.musicPlace.covers == nil || a.down {
 		return nil
 	}
-	b, err := c.musicPlace.covers.Front(ctx, tc.Edition.MBID, tc.Album.MBID, size)
+	b, err := a.c.musicPlace.covers.Front(ctx, a.tc.Edition.MBID, a.tc.Album.MBID, size)
 	if err != nil {
 		if !errors.Is(err, music.ErrNoCoverArt) {
-			c.log.Info("music: couldn't fetch the album cover — placing without it", "album", tc.Album.Title, "err", err)
+			a.down = true
+			a.c.log.Info("music: couldn't fetch the album cover — placing without it", "album", a.tc.Album.Title, "err", err)
 		}
 		return nil
 	}

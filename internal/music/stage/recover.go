@@ -93,6 +93,11 @@ func Recover(ctx context.Context, libraryRoot string, d Deps, record Recorder) (
 func (j *Job) recover(ctx context.Context, record Recorder, rep *RecoverReport) error {
 	var errs []error
 	for i, it := range j.Items() {
+		// A copy onto another drive goes through ".<name>.arrmada-part" beside its target;
+		// one a crash left there is ours, and never the only copy of anything.
+		if it.Final != "" {
+			_ = os.Remove(filepath.Join(filepath.Dir(it.Final), "."+filepath.Base(it.Final)+".arrmada-part"))
+		}
 		if j.m.Kind == KindRename {
 			if err := j.recoverRename(ctx, i, record, rep); err != nil {
 				errs = append(errs, err)

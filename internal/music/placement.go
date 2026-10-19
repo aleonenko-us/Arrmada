@@ -21,6 +21,11 @@ type MatchResult struct {
 	Assignments []Assignment
 	Unmatched   []AudioFile
 	Score       *ScoreBreakdown
+	// ContentRoot is the folder the files were found in (the download's folder, or one
+	// album's folder inside a discography). Extras only ever come from inside it; "" (or a
+	// single-file download) brings none, so a download saved straight into the downloads
+	// folder never pulls in its neighbours' files.
+	ContentRoot string
 }
 
 // Assignment is one file placed on one release track.
@@ -39,8 +44,8 @@ type ScoreBreakdown struct {
 
 // MatchFromTracks adapts today's track matching (MatchTracks: release track id → file)
 // to a MatchResult against the album's target edition.
-func MatchFromTracks(al Album, matched map[int64]AudioFile, unmatched []AudioFile) MatchResult {
-	r := MatchResult{AlbumID: al.ID, EditionID: al.TargetEditionID, Unmatched: unmatched}
+func MatchFromTracks(al Album, matched map[int64]AudioFile, unmatched []AudioFile, contentRoot string) MatchResult {
+	r := MatchResult{AlbumID: al.ID, EditionID: al.TargetEditionID, Unmatched: unmatched, ContentRoot: contentRoot}
 	for id, f := range matched {
 		r.Assignments = append(r.Assignments, Assignment{File: f, ReleaseTrackID: id})
 	}

@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -13,8 +14,16 @@ import (
 // the folder the album's audio was in, never over anything already there. A .lrc named
 // like a placed track follows the track's new name. Extras are never written, so they're
 // linked even while the download seeds (copied across drives).
-func (c *Coordinator) bringExtras(al music.Album, placed []placement, allow map[string]bool) {
-	if len(placed) == 0 || len(allow) == 0 {
+//
+// They only ever come from inside contentRoot, the download's own folder: a single-file
+// download saved straight into the downloads folder brings none, rather than its
+// neighbours' files. Audio is never an extra, whatever the allowlist says: the album's
+// audio is placed as tracks, and a stray copy beside them would be a duplicate.
+func (c *Coordinator) bringExtras(al music.Album, contentRoot string, placed []placement, allow map[string]bool) {
+	if len(placed) == 0 || len(allow) == 0 || contentRoot == "" {
+		return
+	}
+	if fi, err := os.Stat(contentRoot); err != nil || !fi.IsDir() {
 		return
 	}
 	var dirs []string
@@ -25,10 +34,16 @@ func (c *Coordinator) bringExtras(al music.Album, placed []placement, allow map[
 	}
 	base := commonDir(dirs)
 	albumDir := placed[0].albumDir
-	if base == "" || albumDir == "" || !insideDir(albumDir, c.imp.MusicDir()) || filepath.Clean(albumDir) == filepath.Clean(c.imp.MusicDir()) {
+	if base == "" || !insideDir(base, contentRoot) || albumDir == "" || !insideDir(albumDir, c.imp.MusicDir()) ||
+		filepath.Clean(albumDir) == filepath.Clean(c.imp.MusicDir()) {
 		return
 	}
-	extras := stage.PlanExtras(base, albumDir, allow, lyrics)
+	var extras []stage.Extra
+	for _, e := range stage.PlanExtras(base, albumDir, allow, lyrics) {
+		if !music.IsAudioFile(e.From) {
+			extras = append(extras, e)
+		}
+	}
 	if len(extras) == 0 {
 		return
 	}
