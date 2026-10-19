@@ -18,8 +18,9 @@
 // DefaultBackend picks the one the package-level functions use. Note that it
 // only picks behaviour: while taglib.go exists, the LGPL module is linked into
 // any binary that imports this package (THIRD_PARTY_NOTICES.md says how to
-// replace it). Nothing outside this package imports either library; the music
-// import (internal/automation) reads tags through this package.
+// replace it). Nothing outside this package imports either library. The music
+// import reads tags through this package anywhere; only its staging package
+// (internal/music/stage) writes them, which an archtest holds it to.
 //
 // ffmpeg was evaluated and rejected as a writer: "-metadata KEY=a -metadata
 // KEY=b" keeps only the last value in every format, and its MP4 muxer cannot

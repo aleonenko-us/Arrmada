@@ -317,8 +317,25 @@ func inspectMP4(f io.ReadSeeker) (*mp4Layout, error) {
 // amount so it still points at the same, unmoved audio bytes.
 func writeMP4(src *os.File, dst io.Writer, m Tags, opts WriteOptions) error {
 	m = applyGenreJoin(m, opts.MP4GenreSeparator)
+	var cover []byte
+	if opts.FrontCover != nil {
+		var err error
+		if cover, err = mp4CoverItem(opts.FrontCover); err != nil {
+			return err
+		}
+	}
 	return rewriteMP4(src, dst, func(items []ilstItem) []byte {
-		return buildIlst(items, m)
+		if cover == nil {
+			return buildIlst(items, m)
+		}
+		// MP4 has no picture types: the house cover replaces covr whole.
+		kept := items[:0:0]
+		for _, it := range items {
+			if it.typ != atomCover {
+				kept = append(kept, it)
+			}
+		}
+		return append(buildIlst(kept, m), cover...)
 	})
 }
 

@@ -811,11 +811,14 @@ func (c *Coordinator) importContentInto(ctx context.Context, r Review, dest int6
 			return fmt.Errorf("the recycle bin couldn't take the files %d better track(s) would replace in %q", res.refused, al.Title)
 		case res.taken > 0:
 			return fmt.Errorf("%d track(s) would land on a file another track of %q already has; nothing was replaced", res.taken, al.Title)
+		case res.tagFailed > 0:
+			return fmt.Errorf("house tags couldn't be written into %d file(s) of %q (%s); the download is untouched", res.tagFailed, al.Title, res.tagWhy)
 		case res.placed == 0 && res.kept == 0:
 			return fmt.Errorf("no track could be placed into %q", al.Title)
 		}
 		if left, ok := ctx.Value(importLeftoversKey{}).(*importLeftovers); ok {
-			left.files += res.unmatched
+			// A track that failed to place left its file in the download too.
+			left.files += res.unmatched + res.failed
 		}
 		c.afterAlbumImport(ctx, art, al)
 	case "book":

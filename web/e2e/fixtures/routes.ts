@@ -254,6 +254,9 @@ export function routes(p: PersonaInfo): MockRoute[] {
     // from the templates sent, so a spec can type and watch it follow.
     get("/api/v1/books/naming/presets", sys.bookNamingPresets),
     { method: "GET", path: "/api/v1/books/naming/preview", respond: ({ url }) => sys.bookNamingPreview(url) },
+    // ...and Music naming & tags, the same way.
+    get("/api/v1/music/naming/presets", sys.musicNamingPresets),
+    { method: "GET", path: "/api/v1/music/naming/preview", respond: ({ url }) => sys.musicNamingPreview(url) },
     // Settings → Users: two accounts, one a Plex sign-in that still auto-approves shows.
     get("/api/v1/users/plex-blocks", { blocks: [] }),
     // People & access → Personal API keys: nobody has made one.

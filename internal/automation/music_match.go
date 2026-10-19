@@ -353,6 +353,7 @@ func (c *Coordinator) importMusicDownload(ctx context.Context, it download.Item)
 	var placedAlbum music.Album
 	var placedArtist music.Artist
 	for _, res := range results {
+		res.ContentRoot = it.ContentPath
 		al, art, r, err := c.applyMatch(ctx, res, it.Name, it.Hash)
 		if err != nil {
 			c.log.Warn("music import: couldn't apply the match — will retry", "release", it.Name, "err", err)
@@ -365,6 +366,10 @@ func (c *Coordinator) importMusicDownload(ctx context.Context, it download.Item)
 	switch {
 	case total.taken > 0:
 		c.musicTakenReview(ctx, it, total, placedAlbum.ID, placedAlbum.Title)
+	case total.tagFailed > 0:
+		// House tags couldn't be written into a staged copy, or it didn't check out
+		// (MUS-33): the download is untouched; a person looks.
+		c.musicTagReview(ctx, it, total, placedAlbum.ID, placedAlbum.Title)
 	case total.refused > 0 || total.failed > 0:
 		// A better copy couldn't replace what's held (the recycle bin can't take the old
 		// file), or a track couldn't be placed. Nothing was lost; the download stays and is
@@ -407,6 +412,7 @@ func (c *Coordinator) applyMatch(ctx context.Context, res music.MatchResult, rel
 	if err != nil {
 		return al, music.Artist{}, albumImport{}, err
 	}
+	before := al
 	if res.Switch {
 		if _, err := c.music.SwitchEdition(ctx, al.ID, res.EditionID, "to match the download"); err != nil {
 			return al, art, albumImport{}, fmt.Errorf("switch the edition: %w", err)
@@ -421,7 +427,7 @@ func (c *Coordinator) applyMatch(ctx context.Context, res music.MatchResult, rel
 	if err != nil {
 		return al, art, albumImport{}, err
 	}
-	matched, unmatched := assignmentsOnto(tracks, res)
+	_, unmatched := assignmentsOnto(tracks, res)
 	if len(unmatched) > 0 {
 		names := make([]string, 0, len(unmatched))
 		for _, u := range unmatched {
@@ -432,10 +438,36 @@ func (c *Coordinator) applyMatch(ctx context.Context, res music.MatchResult, rel
 		c.log.Warn("music import: some files were left in the download", "album", al.Title, "files", strings.Join(names, ", "))
 	}
 	quality := music.DetectQuality(release)
-	r := c.placeAlbumTracks(ctx, art, al, tracks, matched, quality, release)
+	r := c.placeMatch(ctx, art, al, tracks, res, quality, release)
 	r.found, r.unmatched = true, len(unmatched)
+	if c.switchBack(ctx, before, r) {
+		if back, err := c.music.AlbumRecord(ctx, al.ID); err == nil {
+			al = back
+		}
+	}
 	c.reportPlaced(ctx, art, al, r, len(tracks), quality, release)
 	return al, art, r, nil
+}
+
+// switchBack puts an album back on the edition (and pin) it had before a match, when the
+// match switched it and then nothing was placed or kept: no space, the music folder
+// missing, a tag that didn't check out. The switch only stands with files to show for it.
+// It reports whether it switched back.
+func (c *Coordinator) switchBack(ctx context.Context, before music.Album, r albumImport) bool {
+	if r.placed > 0 || r.kept > 0 || before.TargetEditionID == 0 {
+		return false
+	}
+	now, err := c.music.AlbumRecord(ctx, before.ID)
+	if err != nil || (now.TargetEditionID == before.TargetEditionID && now.EditionPinned == before.EditionPinned) {
+		return false
+	}
+	if _, err := c.music.RestoreEdition(ctx, before.ID, before.TargetEditionID, before.EditionPinned); err != nil {
+		c.log.Warn("music import: couldn't put the album back on its edition after placing nothing",
+			"album", before.Title, "edition", before.TargetEditionID, "err", err)
+		return false
+	}
+	c.log.Info("music import: nothing placed, so the album stays on its edition", "album", before.Title)
+	return true
 }
 
 // assignmentsOnto turns a match's assignments into placeAlbumTracks' map over the album's

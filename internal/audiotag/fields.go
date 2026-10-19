@@ -5,15 +5,18 @@ import "strconv"
 // Fields is a typed view of the house tags, for callers that would rather not
 // work with keys. Tags is the source of truth; Fields converts both ways.
 type Fields struct {
-	Title        string
-	Artist       string
-	Artists      []string
-	Album        string
-	AlbumArtist  string
-	AlbumArtists []string
+	Title           string
+	Artist          string
+	Artists         []string
+	ArtistSort      string
+	Album           string
+	AlbumArtist     string
+	AlbumArtists    []string
+	AlbumArtistSort string
 
 	TrackNumber, TrackTotal int
 	DiscNumber, DiscTotal   int
+	DiscSubtitle            string
 
 	Date         string
 	OriginalDate string
@@ -26,6 +29,7 @@ type Fields struct {
 	MusicBrainzReleaseGroupID string
 	MusicBrainzArtistIDs      []string
 	MusicBrainzAlbumArtistIDs []string
+	AcoustID                  string
 
 	ReleaseType    []string
 	ReleaseStatus  string
@@ -45,7 +49,8 @@ type Fields struct {
 func (f *Fields) strs() map[string]*string {
 	return map[string]*string{
 		KeyTitle: &f.Title, KeyArtist: &f.Artist, KeyAlbum: &f.Album, KeyAlbumArtist: &f.AlbumArtist,
-		KeyDate: &f.Date, KeyOriginalDate: &f.OriginalDate,
+		KeyArtistSort: &f.ArtistSort, KeyAlbumArtistSort: &f.AlbumArtistSort, KeyDiscSubtitle: &f.DiscSubtitle,
+		KeyAcoustID: &f.AcoustID, KeyDate: &f.Date, KeyOriginalDate: &f.OriginalDate,
 		KeyMBRecordingID: &f.MusicBrainzRecordingID, KeyMBReleaseTrackID: &f.MusicBrainzReleaseTrackID,
 		KeyMBReleaseID: &f.MusicBrainzReleaseID, KeyMBReleaseGroupID: &f.MusicBrainzReleaseGroupID,
 		KeyReleaseStatus: &f.ReleaseStatus, KeyReleaseCountry: &f.ReleaseCountry, KeyLabel: &f.Label,

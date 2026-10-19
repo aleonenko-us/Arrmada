@@ -34,7 +34,8 @@ const (
 // DefaultBackend is what the package-level functions use: the owner's decision
 // (2026-10-19) is the permissive libraries everywhere they reach, and TagLib only
 // for Ogg. Nothing outside this package imports either library. The music import
-// reads tags through this package, so TagLib is linked into the binary (see
+// reads tags through this package and writes them only from its staging step
+// (internal/music/stage), so TagLib is linked into the binary (see
 // THIRD_PARTY_NOTICES.md, which ships in the image).
 const DefaultBackend = Auto
 
@@ -65,6 +66,9 @@ type WriteOptions struct {
 	// (e.g. "; "), for players that show only the first of several. Empty
 	// writes one value per genre, as Picard does. Other formats ignore it.
 	MP4GenreSeparator string
+	// FrontCover, when set, replaces the file's embedded front cover (other
+	// pictures are kept). Nil leaves every picture as it is.
+	FrontCover *Picture
 }
 
 // Tagger reads and writes tags through one backend. The zero value uses
@@ -152,6 +156,12 @@ func (tg *Tagger) Write(path string, t Tags, opts WriteOptions) error {
 	if err != nil {
 		return err
 	}
+	if opts.FrontCover != nil {
+		// Checked before anything is touched, so a bad image fails the write whole.
+		if _, err := pictureMIME(opts.FrontCover); err != nil {
+			return err
+		}
+	}
 	src, ft, err := tg.open(path)
 	if err != nil {
 		return fmt.Errorf("audiotag: write %s: %w", path, err)
@@ -228,8 +238,11 @@ func sniff(f *os.File) (format, error) {
 	case len(head) >= 8 && string(head[4:8]) == "ftyp":
 		return formatMP4, nil
 	case bytes.HasPrefix(head, []byte("ID3")):
-		// ID3v2 is also (wrongly) prepended to some FLAC files; those fail later
-		// in the MP3 path rather than being misparsed.
+		// ID3v2 is also (wrongly) put in front of some FLAC files: a FLAC is what
+		// follows the tag there, and players read it as one (flacid3.go).
+		if flacAfterID3(f) {
+			return formatFLAC, nil
+		}
 		return formatMP3, nil
 	case len(head) >= 2 && head[0] == 0xFF && head[1]&0xE0 == 0xE0:
 		// Bare MPEG audio frame sync with no ID3 tag yet.

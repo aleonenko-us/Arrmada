@@ -147,6 +147,10 @@ func (a *api) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	for k, v := range a.bookNamingSettings(ctx) {
 		out[k] = v
 	}
+	// The music templates, house tags and extras (music_naming.go).
+	for k, v := range a.musicSettings(ctx) {
+		out[k] = v
+	}
 	a.writeJSON(w, http.StatusOK, out)
 }
 
@@ -203,14 +207,20 @@ type settingsUpdate struct {
 	NamingAudiobookTrack  *string `json:"naming_audiobook_track"`
 	NamingEbookFolder     *string `json:"naming_ebook_folder"`
 	NamingEbookFile       *string `json:"naming_ebook_file"`
-	WriteNFO              *bool   `json:"write_nfo"`
-	DownloadArtwork       *bool   `json:"download_artwork"`
-	BooksEnabled          *bool   `json:"books_enabled"`
-	MusicEnabled          *bool   `json:"music_enabled"`
-	PlexLoginEnabled      *bool   `json:"plex_login_enabled"`
-	PlexSignInStaff       *bool   `json:"plex_signin_staff"`
-	TMDBRegion            *string `json:"tmdb_region"`
-	PlexLoginAutoApprove  *bool   `json:"plex_login_auto_approve"` // legacy: every type or none
+	// Music placement (music_naming.go): templates checked before anything is saved.
+	NamingMusicFolder      *string `json:"naming_music_folder"`
+	NamingMusicTrack       *string `json:"naming_music_track"`
+	NamingMusicCompilation *string `json:"naming_music_compilation"`
+	MusicWriteTags         *bool   `json:"music_write_tags"`
+	MusicExtras            *string `json:"music_extras"`
+	WriteNFO               *bool   `json:"write_nfo"`
+	DownloadArtwork        *bool   `json:"download_artwork"`
+	BooksEnabled           *bool   `json:"books_enabled"`
+	MusicEnabled           *bool   `json:"music_enabled"`
+	PlexLoginEnabled       *bool   `json:"plex_login_enabled"`
+	PlexSignInStaff        *bool   `json:"plex_signin_staff"`
+	TMDBRegion             *string `json:"tmdb_region"`
+	PlexLoginAutoApprove   *bool   `json:"plex_login_auto_approve"` // legacy: every type or none
 	// PlexLoginAutoApproveTypes wins over the legacy bool when both are sent.
 	PlexLoginAutoApproveTypes *string   `json:"plex_login_auto_approve_types"`
 	JellyfinLoginEnabled      *bool     `json:"jellyfin_login_enabled"`
@@ -419,6 +429,10 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	if msg := checkMusicSettings(&req); msg != "" {
+		a.writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	if msg := validQuota(req.QuotaDays, req.QuotaMovies, req.QuotaSeasons, req.QuotaBooks); msg != "" {
 		a.writeError(w, http.StatusBadRequest, msg)
 		return
@@ -512,6 +526,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		if p := bookNamingUpdate(&req)[f.key]; p != nil && !save(a.deps.Settings.Set(ctx, f.key, *p)) {
 			return
 		}
+	}
+	if !save(a.saveMusicSettings(ctx, &req)) {
+		return
 	}
 	if req.WriteNFO != nil && !save(a.deps.Settings.SetBool(ctx, keyWriteNFO, *req.WriteNFO)) {
 		return

@@ -6,9 +6,10 @@ beyond the ordinary attribution in `go.mod` and `web/package.json`.
 ## Audio tags (`internal/audiotag`)
 
 `internal/audiotag` reads and writes music tags. The music import reads downloads' tags
-through it (the matcher, from the music rebuild's Phase 2), so it and the libraries below
-are linked into the `arrmada` binary, and this file ships in the Docker image at
-`/usr/share/doc/arrmada/THIRD_PARTY_NOTICES.md`.
+through it (the matcher) and writes its house tag style through it (placement, in a
+staging copy), both from the music rebuild's Phase 2, so it and the libraries below are
+linked into the `arrmada` binary, and this file ships in the Docker image at
+`/usr/share/doc/arrmada/THIRD_PARTY_NOTICES.md`, beside Arrmada's own `LICENSE`.
 
 By the owner's decision of 2026-10-19 the package writes FLAC, MP3 and MP4/M4A with
 permissively licensed libraries, and uses TagLib only for Ogg Vorbis and Opus, which none

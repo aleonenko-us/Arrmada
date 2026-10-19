@@ -1177,6 +1177,14 @@ export interface AppSettings {
   naming_audiobook_track: string;
   naming_ebook_folder: string;
   naming_ebook_file: string;
+  /** Music naming: the album folder ("/" between levels), a track's file, a compilation's track file. */
+  naming_music_folder: string;
+  naming_music_track: string;
+  naming_music_compilation: string;
+  /** Music: write the house tag style (into a copy; a seeding download is never written). Off keeps files as downloaded. */
+  music_write_tags: boolean;
+  /** Music: file types brought along beside an album (".jpg .pdf .lrc …"), space-separated. */
+  music_extras: string;
   write_nfo: boolean;
   download_artwork: boolean;
   books_enabled: boolean;

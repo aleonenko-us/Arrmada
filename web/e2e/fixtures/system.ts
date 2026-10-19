@@ -222,6 +222,11 @@ export const settings: AppSettings = {
   naming_audiobook_track: "{Original}",
   naming_ebook_folder: "{Author}/{Title}",
   naming_ebook_file: "{Title}",
+  naming_music_folder: "{Album Artist}/{Album Title} ({Original Year})",
+  naming_music_track: "{Disc Prefix}{Track:00} - {Track Title}",
+  naming_music_compilation: "{Disc Prefix}{Track:00} - {Track Artist} - {Track Title}",
+  music_write_tags: true,
+  music_extras: ".accurip .cue .gif .jpeg .jpg .log .lrc .m3u .m3u8 .nfo .pdf .png .txt .webp",
   write_nfo: false,
   download_artwork: true,
   books_enabled: true,
@@ -397,6 +402,34 @@ export const bookNamingPresets = {
   ],
   tokens: ["Author", "Author Sort", "Title", "Series", "Series Position", "Year", "Narrator", "Edition", "Format", "Part", "Part Count", "Original"],
 };
+
+// Music naming's presets, as GET /music/naming/presets answers them.
+export const musicNamingPresets = {
+  presets: [
+    {
+      id: "default", label: "Artist/Album (Year) (default)", description: "One folder per album artist, one per album inside it.",
+      naming: { folder: "{Album Artist}/{Album Title} ({Original Year})", track: "{Disc Prefix}{Track:00} - {Track Title}", compilation: "{Disc Prefix}{Track:00} - {Track Artist} - {Track Title}" },
+    },
+    {
+      id: "disc-folders", label: "Disc folders", description: "A folder per disc inside the album folder.",
+      naming: { folder: "{Album Artist}/{Album Title} ({Original Year})", track: "Disc {Disc}/{Track:00} - {Track Title}", compilation: "Disc {Disc}/{Track:00} - {Track Artist} - {Track Title}" },
+    },
+  ],
+  tokens: ["Album Artist", "Album Title", "Original Year", "Disc", "Disc Prefix", "Track", "Track Title", "Track Artist"],
+};
+
+// A stand-in for the server's renderer (library.PreviewMusicNaming).
+export function musicNamingPreview(url: URL) {
+  const folder = url.searchParams.get("folder") ?? "";
+  const track = url.searchParams.get("track") ?? "";
+  if (!folder.includes("{Album Title}")) {
+    return { samples: [], error: { field: "folder", message: "the last folder must have {Album Title} in it (outside any < >), so every album gets a folder of its own" } };
+  }
+  const fill = (t: string) => t
+    .split("{Album Artist}").join("Radiohead").split("{Album Title}").join("OK Computer").split("{Original Year}").join("1997")
+    .split("{Disc Prefix}").join("").split("{Disc}").join("1").split("{Track:00}").join("01").split("{Track Title}").join("Airbag");
+  return { samples: [{ label: "An album", paths: [`${fill(folder)}/${fill(track)}.flac`] }] };
+}
 
 // A stand-in for the server's renderer (library.PreviewBookNaming): enough for a spec to
 // see the preview follow the template, and a broken folder template explained.

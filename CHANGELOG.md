@@ -26,6 +26,10 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Before you update
 
+- **Music imports are copies now, not hardlinks,** because Arrmada writes clean tags (Settings →
+  Naming & metadata → Music naming & tags → Write house tags, on by default). While a torrent
+  seeds, its album takes up space twice. Turn Write house tags off to keep hardlinks.
+
 - **A show's "Monitored" switch is now called "Searching: On / Off".** Library scans add
   shows with searching off (nothing is searched until you turn it on), and so does the Sonarr
   import for shows Sonarr had unmonitored. Picking a "Monitor: …" option now also turns
@@ -183,6 +187,13 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Fixed
 
+- **Music (Preview) writes proper tags and follows your naming.** Each import is copied into a
+  hidden staging folder, given clean tags (every artist, MusicBrainz IDs, compilation flag,
+  embedded cover plus `cover.jpg`), checked so the audio is unchanged, then moved into place in one
+  step; your downloads are never written to, and a crash at any point recovers on the next start.
+  Settings → Naming & metadata has music naming templates with a live preview, and albums get
+  Rename files… (preview first) and Write house tags. Artwork, booklets, cue sheets, logs and
+  lyrics move with the album.
 - **Music (Preview) matches downloads like a person would.** Every edition of an album is known,
   with the earliest official release picked by default and a Change edition… picker. Downloads are
   scored against each edition (the beets method), partial albums import what fits, and close calls

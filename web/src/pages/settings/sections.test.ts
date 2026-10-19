@@ -131,7 +131,7 @@ describe("searchSettings", () => {
     expect(labels("jellyfin public address")).toEqual(["Jellyfin connection", "Jellyfin Watch links"]);
     expect(labels("quick connect")).toEqual(["Jellyfin sign-in"]);
     // The section name counts too, so "naming" also lists the rest of Naming & metadata.
-    expect(labels("naming")).toEqual(["Plex recommended naming", "Movie naming", "Series naming", "Book naming", "Metadata", "Music matching"]);
+    expect(labels("naming")).toEqual(["Plex recommended naming", "Movie naming", "Series naming", "Book naming", "Music naming & tags", "Metadata", "Music matching"]);
   });
 
   // GitHub #3: people looking for a second Movies or TV folder search in their own words.

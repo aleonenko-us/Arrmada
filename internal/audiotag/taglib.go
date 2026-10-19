@@ -40,6 +40,17 @@ func writeTagLib(src *os.File, dst *os.File, ft format, t Tags, opts WriteOption
 	if err := taglib.WriteTags(dst.Name(), toTagLib(ft, t), 0); err != nil {
 		return fmt.Errorf("taglib: %w", err)
 	}
+	if p := opts.FrontCover; p != nil {
+		mime, err := pictureMIME(p)
+		if err != nil {
+			return err
+		}
+		// go-taglib addresses pictures by position, not type: the house cover takes
+		// the first slot (an Ogg file's METADATA_BLOCK_PICTURE), as a front cover.
+		if err := taglib.WriteImageOptions(dst.Name(), p.Data, 0, "Front Cover", "", mime); err != nil {
+			return fmt.Errorf("taglib: cover: %w", err)
+		}
+	}
 	if ft == formatMP3 {
 		// TagLib saves MP3s with "duplicate tags", which creates or updates an
 		// ID3v1 tag (and keeps any APE tag). The house rule is ID3v2.4 only.
@@ -48,6 +59,16 @@ func writeTagLib(src *os.File, dst *os.File, ft format, t Tags, opts WriteOption
 		}
 	}
 	return nil
+}
+
+// readCoverTagLib returns the first embedded picture (go-taglib can't say which
+// type a picture is).
+func readCoverTagLib(path string) ([]byte, error) {
+	img, err := taglib.ReadImage(path)
+	if err != nil {
+		return nil, fmt.Errorf("taglib: %w", err)
+	}
+	return img, nil
 }
 
 func propertiesTagLib(path string) (AudioProperties, error) {

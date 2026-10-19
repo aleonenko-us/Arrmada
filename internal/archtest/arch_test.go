@@ -305,12 +305,19 @@ func TestAudiotagNoticeShips(t *testing.T) {
 	}
 }
 
-// TestAudiotagImportersKnown: only the music import reads tags (the matcher); anything
-// else that starts importing internal/audiotag is a new place LGPL code is used, which the
-// notices should account for. Add it here when it's deliberate.
+// TestAudiotagImportersKnown: only the music import uses tags — the matcher reads them,
+// placement builds the house set and its staging step writes it; anything else that starts
+// importing internal/audiotag is a new place LGPL code is used, which the notices should
+// account for. Add it here when it's deliberate.
 func TestAudiotagImportersKnown(t *testing.T) {
 	root := repoRoot(t)
-	allowed := map[string]bool{"internal/automation/music_match.go": true}
+	allowed := map[string]bool{
+		"internal/automation/music_match.go":     true,
+		"internal/automation/music_placement.go": true,
+		"internal/automation/music_retag.go":     true,
+		"internal/music/housetags.go":            true,
+		"internal/music/stage/job.go":            true,
+	}
 	const pkg = `"github.com/tristenlammi/arrmada/internal/audiotag"`
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {

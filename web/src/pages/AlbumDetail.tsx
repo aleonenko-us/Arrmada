@@ -4,9 +4,12 @@ import { PageHeader } from "../components/PageHeader";
 import { EditionPicker } from "../components/music/EditionPicker";
 import { api, type MusicAlbum, type MusicEdition, type MusicNote, type MusicTrack } from "../lib/api";
 import { formatBytes } from "../lib/format";
+import { MusicRenameModal } from "../components/music/MusicRenameModal";
 import { musicApi } from "../lib/musicApi";
+import { musicNamingApi } from "../lib/musicNamingApi";
 import { libraryStatus } from "../lib/status";
-import { Button, StatusChip, useToast } from "../ui";
+import { jobFailed, jobToast, useJob } from "../lib/useJob";
+import { Button, StatusChip, useConfirm, useToast } from "../ui";
 import { Page } from "../ui/Page";
 
 // isLosslessTier reads a track's stored format: a tier name ("FLAC-24") or an extension tag
@@ -155,7 +158,7 @@ export function AlbumDetail() {
                 </button>
               </div>
             )}
-            <div className="mt-4">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
                 disabled={busy}
@@ -173,6 +176,7 @@ export function AlbumDetail() {
               >
                 {al.monitored ? "Monitored" : "Monitor"}
               </Button>
+              {al.have_tracks > 0 && <FileActions albumId={al.id} onChanged={load} />}
             </div>
           </div>
         </div>
@@ -231,6 +235,49 @@ export function AlbumDetail() {
           </>
         )}
       </Page>
+    </>
+  );
+}
+
+// FileActions are the album's file actions (MUS-33, MUS-34): rename its files to the
+// current music naming (a preview first; nothing moves until it's applied), and write the
+// house tags into its files (staged copies swapped in, originals to the recycle bin).
+function FileActions({ albumId, onChanged }: { albumId: number; onChanged: () => void }) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [renaming, setRenaming] = useState(false);
+  const [jobId, setJobId] = useState<number | null>(null);
+  const [starting, setStarting] = useState(false);
+  const job = useJob(jobId, {
+    giveUpMs: 2 * 60 * 60 * 1000,
+    onDone: (j) => {
+      toast(jobToast(j, "House tags written."), { tone: jobFailed(j) ? "error" : undefined });
+      setJobId(null);
+      onChanged();
+    },
+  });
+  const retag = async () => {
+    const ok = await confirm({
+      title: "Write house tags into this album's files?",
+      body: "Each file is copied, tagged in the house style (every MusicBrainz id, each credited artist, the cover) and checked, then swapped in. The originals go to the recycle bin. Files that are still seeding aren't touched: their copies in the library are replaced, not edited.",
+      confirmLabel: "Write tags",
+    });
+    if (!ok) return;
+    setStarting(true);
+    try {
+      const r = await musicNamingApi.retag(albumId);
+      if (r.job_id) setJobId(r.job_id);
+    } catch (e) {
+      toast((e as Error).message, { tone: "error" });
+    } finally {
+      setStarting(false);
+    }
+  };
+  return (
+    <>
+      <Button size="sm" variant="secondary" onClick={() => setRenaming(true)}>Rename files…</Button>
+      <Button size="sm" variant="secondary" onClick={retag} busy={starting || job.running} busyLabel="Writing tags…">Write house tags</Button>
+      {renaming && <MusicRenameModal albumId={albumId} onClose={() => setRenaming(false)} onRenamed={onChanged} />}
     </>
   );
 }

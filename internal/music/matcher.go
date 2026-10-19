@@ -381,6 +381,10 @@ type MatchResult struct {
 	Assignments        []Assignment
 	Unplaced           []Unplaced
 	Report             MatchReport
+	// ContentRoot is the download folder the files came from, set by the import, not the
+	// matcher: placement takes an album's extras only from inside it (MUS-36), and none
+	// from a single-file download or a shared folder.
+	ContentRoot string
 }
 
 // Match weighs the files against every candidate and decides.

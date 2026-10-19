@@ -1072,7 +1072,7 @@ _Every edition of an album is stored and a target edition is chosen by policy; f
   - **Risk:** AcoustID is free for non-commercial use only, and coverage of obscure music is thin; it's a second pass, never required. Fingerprinting costs a decode of the first two minutes per file.
   - **Resolves:** 
 <a id="mus-33"></a>
-- [ ] **MUS-33 · House-style tags written in staging; copy instead of hardlink when the file is still seeding; then one move into the library** — `P1` · `L` · Phase 15 · R2
+- [x] **MUS-33 · House-style tags written in staging; copy instead of hardlink when the file is still seeding; then one move into the library** — `P1` · `L` · Phase 15 · R2
   - **Problem:** Files land with whatever tags they arrived with, so Plex, Jellyfin and Navidrome group albums and artists inconsistently, featured artists and compilations break, and no MBIDs protect future re-matches. Lidarr's tag writer flattens artists to one name and writes into hardlinked files, which changes the bytes a torrent is still seeding.
   - **Approach:** 1. **Staging.** `<root>/.arrmada-staging/<job-id>/` on the music root's drive, made with library.PrepareHiddenDir (with `.plexignore`), skipped by every scanner (SkipScanDir). A job writes `manifest.json` first: for each file its source, staging path, final path, and whether staging holds the **only** copy.
     2. **Into staging**, per file:
@@ -1101,7 +1101,7 @@ _Every edition of an album is stored and a target edition is chosen by policy; f
   - **Risk:** Copies double disk use while torrents seed (the owner accepted this; "see if it becomes an issue"). Decode-verify costs a few seconds per album at idle priority. Plex may need a metadata refresh to pick up retagged albums (MUS-41 triggers a scan).
   - **Resolves:** 
 <a id="mus-34"></a>
-- [ ] **MUS-34 · Music naming templates, built on the books naming engine, with a safe rename of existing albums** — `P2` · `M` · Phase 15 · R2
+- [x] **MUS-34 · Music naming templates, built on the books naming engine, with a safe rename of existing albums** — `P2` · `M` · Phase 15 · R2
   - **Problem:** Music paths are hard-coded (`library.Importer.AlbumTrackTarget`: `<Artist>/<Album> (Year)/<NN> - <Title>.<ext>`, disc in the file name). Owners coming from Lidarr or beets have their own layout, compilations need the track artist in the file name, and multi-disc albums want a disc prefix only when there's more than one disc. Books already has a template engine (`internal/library/booknaming.go`: tokens, "/" for folders, `<optional>` and `<A|B>` fallbacks, validation, presets, a rename journal).
   - **Approach:** 1. Lift the engine's parser, validator and renderer so books and music share them (books' behaviour and tests unchanged), and add `musicnaming.go` with music tokens: `{Album Artist}`, `{Album Artist Sort}`, `{Album Artist First Letter}`, `{Album Title}`, `{Release Year}`, `{Original Year}`, `{Album Type}`, `{Edition}` (the release's disambiguation), `{Media}`, `{Disc}`, `{Disc:00}`, `{Disc Count}`, `{Disc Title}`, `{Disc Prefix}` ("1-" only when the edition has more than one disc), `{Track:00}`, `{Track Title}`, `{Track Artist}`, `{Quality}` (measured tier), `{Codec}`, `{Bit Depth}`, `{Sample Rate}`, `{Album MBID}`, `{Release MBID}`.
     2. Three templates: folder (default `{Album Artist}/{Album Title} ({Original Year})< [{Edition}]>`), track file (default `{Disc Prefix}{Track:00} - {Track Title}`), compilation track file (default `{Disc Prefix}{Track:00} - {Track Artist} - {Track Title}`). Presets: the default, Lidarr-style, and "disc folders" (`…/Disc {Disc}/{Track:00} - {Track Title}`). The default reproduces today's paths for single-artist, single-disc albums.
@@ -1139,7 +1139,7 @@ _Every edition of an album is stored and a target edition is chosen by policy; f
   - **Risk:** Odd cues (HTOA, data tracks) — those not handled go to Reviews rather than being guessed.
   - **Resolves:** 
 <a id="mus-36"></a>
-- [ ] **MUS-36 · Extras move with the album: artwork, booklets, logs, cue sheets and lyrics** — `P3` · `S` · Phase 15 · R2
+- [x] **MUS-36 · Extras move with the album: artwork, booklets, logs, cue sheets and lyrics** — `P3` · `S` · Phase 15 · R2
   - **Problem:** Imports today bring only the audio files. Lyrics, artwork scans, booklets, rip logs and cue sheets are left in the download folder (a 2018 Lidarr request with 55 comments).
   - **Approach:** 1. An allowlist setting (`music_extras`), default: `.jpg .jpeg .png .webp .gif` (images), `.pdf` (booklets), `.lrc .txt` (lyrics), `.log .cue .accurip .m3u .m3u8 .nfo`.
     2. Images keep their names in the album folder (a `Scans/` or `Artwork/` subfolder kept as-is); `cover.jpg` is reserved for MUS-33's cover; a downloaded `cover.jpg`/`folder.jpg` is kept as `folder.jpg` unless one exists. A `.lrc` that names a placed track (same base name) is renamed with it. Cue sheets of a split image go to the album folder unchanged (they describe the original rip).

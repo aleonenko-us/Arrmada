@@ -74,6 +74,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Movie naming", keywords: "folder file name format template tokens rename", section: "media", anchor: "movie-naming" },
   { label: "Series naming", keywords: "tv show season episode folder file name format template tokens specials rename", section: "media", anchor: "series-naming" },
   { label: "Book naming", keywords: "book books audiobook audiobooks ebook ebooks author series narrator folder file name format template tokens rename audiobookshelf abs", section: "media", anchor: "book-naming" },
+  { label: "Music naming & tags", keywords: "music album albums artist track tracks disc compilation various artists folder file name format template tokens rename lidarr navidrome tags tag tagging house style musicbrainz picard cover extras booklet lyrics lrc log cue artwork seeding", section: "media", anchor: "music-naming" },
   { label: "Metadata", keywords: "nfo movie.nfo artwork poster fanart kodi plex jellyfin emby sidecar", section: "media", anchor: "metadata" },
   { label: "Music matching", keywords: "music album albums edition editions deluxe original remaster pressing match matcher matching threshold distance partial reviews identify tags musicbrainz", section: "media", anchor: "music-matching" },
   { label: "Indexers and Prowlarr", keywords: "indexer indexers tracker trackers torznab prowlarr sync torrentleech 1337x myanonamouse flaresolverr cloudflare search status test", section: "connections", anchor: "search" },

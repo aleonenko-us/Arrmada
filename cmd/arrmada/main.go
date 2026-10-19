@@ -57,6 +57,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/music"
+	"github.com/tristenlammi/arrmada/internal/music/stage"
 	"github.com/tristenlammi/arrmada/internal/notify"
 	"github.com/tristenlammi/arrmada/internal/outbox"
 	"github.com/tristenlammi/arrmada/internal/plexscan"
@@ -107,6 +108,14 @@ func (p libPrefs) EbookNaming() library.BookNaming {
 	return library.BookNaming{
 		Folder: p.s.Get(ctx, "naming_ebook_folder", library.DefaultEbookFolder),
 		File:   p.s.Get(ctx, "naming_ebook_file", library.DefaultEbookFile),
+	}
+}
+func (p libPrefs) MusicNaming() library.MusicNaming {
+	ctx := context.Background()
+	return library.MusicNaming{
+		Folder:      p.s.Get(ctx, settings.KeyNamingMusicFolder, library.DefaultMusicFolder),
+		Track:       p.s.Get(ctx, settings.KeyNamingMusicTrack, library.DefaultMusicTrack),
+		Compilation: p.s.Get(ctx, settings.KeyNamingMusicCompilation, library.DefaultMusicCompilationTrack),
 	}
 }
 func (p libPrefs) WriteNFO() bool { return p.s.GetBool(context.Background(), "write_nfo", false) }
@@ -666,6 +675,21 @@ func main() {
 	}
 	// Music shares the same importer; albums land in their own category.
 	coordinator.SetMusic(musicSvc)
+	// Music placement (MUS-33, MUS-34, MUS-36): the naming templates, house tags written in
+	// a staging copy (a seeding download is never written), covers from the Cover Art
+	// Archive, extras brought along — each read from Settings on every import.
+	bookImporter.SetMusicNaming(prefs)
+	coordinator.SetMusicPlacement(func(ctx context.Context) automation.MusicPlacementPrefs {
+		return automation.MusicPlacementPrefs{
+			WriteTags: settingsSvc.GetBool(ctx, settings.KeyMusicWriteTags, settings.MusicWriteTagsDefault),
+			Extras:    stage.ParseExtras(settingsSvc.Get(ctx, settings.KeyMusicExtras, stage.DefaultExtras)),
+		}
+	}, music.NewCAA(), automation.MusicAudioHash)
+	// A music import, retag or rename a crash stopped part way is finished or rolled back
+	// now, before anything stages music again.
+	if rep, err := coordinator.RecoverMusicStaging(runCtx); err != nil {
+		log.Error("music: some interrupted staging jobs couldn't be settled — they're kept, nothing was deleted", "err", err, "kept", rep.Kept)
+	}
 	// AcoustID, the music matcher's second pass (MUS-32): off until the owner sets a key.
 	acoustidClient := acoustid.New(keyStore.Func(acoustid.KeyID))
 	coordinator.SetMusicFingerprinter(acoustid.NewFingerprinter(acoustidClient))
@@ -1107,6 +1131,9 @@ func main() {
 	// plus the old shared bin while it still holds files, so what's in it stays listed,
 	// restorable, aged and capped until it drains.
 	recycleSvc := recyclebin.NewBins(bins.All, settingsSvc, log)
+	// A music staging job a crash left unsettled may need a replaced file back out of the
+	// bin: the bin never purges, empties or deletes those (MUS-33).
+	recycleSvc.SetHeld(func() map[string]bool { return stage.HeldInBin(bookImporter.MusicDir()) })
 	grp.Loop("convert: runner", convertSvc.Run)
 	// Originals whose undo window has ended leave the hold — the only deletes it makes on
 	// its own, and only by the retention you set.

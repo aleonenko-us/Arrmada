@@ -82,8 +82,14 @@ func RecycleFile(recycleDir, path string) (string, error) {
 		// mtime = deletion time, for accurate retention; the sidecar records the
 		// origin (restore) and the authoritative deletion time. Failures are logged —
 		// silently losing either quietly breaks retention/restore.
-		if err := os.Chtimes(dst, now, now); err != nil {
-			slog.Warn("recycle: stamping deletion time failed — retention will age from content mtime", "dst", dst, "err", err)
+		//
+		// Not for a file with other names, though: its mtime is the inode's, shared with a
+		// torrent client's copy that may still be seeding, which must not change. The
+		// sidecar's deletion time is what the bin's retention reads first anyway.
+		if fi, err := os.Stat(dst); err != nil || linkCount(fi) <= 1 {
+			if err := os.Chtimes(dst, now, now); err != nil {
+				slog.Warn("recycle: stamping deletion time failed — retention will age from content mtime", "dst", dst, "err", err)
+			}
 		}
 		b, err := json.Marshal(RecycleMeta{Orig: path, Deleted: now.Unix()})
 		if err == nil {
