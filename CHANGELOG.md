@@ -183,6 +183,12 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Fixed
 
+- **Music (Preview) matches downloads like a person would.** Every edition of an album is known,
+  with the earliest official release picked by default and a Change edition… picker. Downloads are
+  scored against each edition (the beets method), partial albums import what fits, and close calls
+  go to Reviews with the reason in words ("length off by 45 s") and an Import as <edition> option.
+  Thresholds are in Settings → Naming & metadata → Music matching. Badly tagged files can be
+  identified by sound with your own free AcoustID key (Settings → Connections).
 - **Music (Preview) has a new library model:** albums have editions, discs and credited artists,
   and each track file keeps its measured quality. Your existing music moves over on update with
   nothing lost; anything that can't map one-to-one (two tracks claiming one file) shows as a note on

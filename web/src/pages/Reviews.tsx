@@ -7,7 +7,9 @@ import { refreshAttention } from "../lib/useAttention";
 import { jobDone, jobFailed, jobToast, useJob } from "../lib/useJob";
 import { ConfirmDialog, Modal, StatusChip, useConfirm, useToast, type Tone } from "../ui";
 import { MapFilesModal } from "./reviews/MapFilesModal";
+import { MatchBreakdown } from "./reviews/MatchBreakdown";
 import { guessLabel } from "./reviews/episodes";
+import { musicApi } from "../lib/musicApi";
 
 // What the user calls a library item of each review kind.
 const KIND_LABEL: Record<ReviewKind, string> = { series: "show", movie: "movie", book: "book", music: "album" };
@@ -19,7 +21,17 @@ const REASON: Record<ReviewReason, { label: string; tone: Tone }> = {
   numbering: { label: "Numbering", tone: "accent" },
   import_failed: { label: "Import failing", tone: "reject" },
   no_media: { label: "Nothing to import", tone: "reject" },
+  // The music matcher's (MUS-31): it says in words why underneath.
+  low_confidence: { label: "Not sure", tone: "avoid" },
+  close_editions: { label: "Two editions", tone: "accent" },
+  partial: { label: "Partial album", tone: "avoid" },
+  tag_conflict: { label: "Tags disagree", tone: "avoid" },
+  fingerprint_conflict: { label: "Sound disagrees", tone: "avoid" },
 };
+
+// The music matcher's reasons: each offers importing into the best fit (or one of the
+// editions it weighed), another album, or rejecting.
+const MATCHER_REASONS = new Set<ReviewReason>(["low_confidence", "close_editions", "partial", "tag_conflict", "fingerprint_conflict"]);
 
 // Where a review's title lives in the app.
 function titleLink(r: ImportReview): string | null {
@@ -252,6 +264,7 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
                 selected={selected.has(r.id)}
                 onSelect={() => toggle(r.id)}
                 onImport={() => void startImport(r.id, () => api.importReview(r.id), r.expected_title || undefined)}
+                onImportEdition={(albumId, releaseId, label) => void startImport(r.id, () => musicApi.importReviewEdition(r.id, albumId, releaseId), label)}
                 onReassign={() => setReassign(r)}
                 onReject={(findAnother) => reject(r, findAnother)}
                 onRetry={() => act(r.id, () => api.retryReview(r.id), "Retrying — the import runs again within a minute.")}
@@ -328,6 +341,8 @@ interface CardProps {
   selected: boolean;
   onSelect: () => void;
   onImport: () => void;
+  /** Music: import into one edition of an album the matcher weighed. */
+  onImportEdition: (albumId: number, releaseId: number, label: string) => void;
   onReassign: () => void;
   onReject: (findAnother: boolean) => void;
   onRetry: () => void;
@@ -336,7 +351,7 @@ interface CardProps {
   onDismiss: () => void;
 }
 
-function ReviewCard({ r, busy: acting, importJob, importError, onImportDone, selected, onSelect, onImport, onReassign, onReject, onRetry, onRemove, onMap, onDismiss }: CardProps) {
+function ReviewCard({ r, busy: acting, importJob, importError, onImportDone, selected, onSelect, onImport, onImportEdition, onReassign, onReject, onRetry, onRemove, onMap, onDismiss }: CardProps) {
   const [showFiles, setShowFiles] = useState(false);
   const follow = useJob(importJob, { onDone: onImportDone, giveUpMs: IMPORT_FOLLOW_MS });
   // Importing from the moment the job is known until it ends: every action waits for it.
@@ -364,6 +379,7 @@ function ReviewCard({ r, busy: acting, importJob, importError, onImportDone, sel
             <span className="min-w-0 break-all font-mono text-sm">{r.name}</span>
           </div>
           <div className="mt-2 text-base" style={{ color: "var(--avoid-text)" }}>{r.reason}</div>
+          {r.match && <MatchBreakdown match={r.match} />}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-xs text-ink-faint">
             {linked ? (
               <span>Grabbed for: {link
@@ -418,6 +434,19 @@ function ReviewCard({ r, busy: acting, importJob, importError, onImportDone, sel
         )}
         {r.reason_code === "import_failed" && (
           <button onClick={onRetry} disabled={busy} className={btn} style={primary} title="Fix the cause first — then the import sweep tries again">Retry import</button>
+        )}
+        {MATCHER_REASONS.has(r.reason_code) && (
+          <>
+            {r.reason_code === "close_editions"
+              ? (r.match?.candidates ?? []).slice(0, 2).map((c) => (
+                  <button key={c.release_id} onClick={() => onImportEdition(c.album_id, c.release_id, c.album)} disabled={busy} className={btn} style={primary}>
+                    Import as {c.edition}
+                  </button>
+                ))
+              : linked && <button onClick={onImport} disabled={busy} className={btn} style={primary}>Import anyway</button>}
+            <button onClick={onReassign} disabled={busy} className={btn} style={accent}>Choose different {label}…</button>
+            <button onClick={() => onReject(true)} disabled={busy} className={btn} style={danger}>{linked ? "Reject & find another" : "Reject"}</button>
+          </>
         )}
         {r.reason_code === "no_media" && (
           <button onClick={() => onReject(true)} disabled={busy} className={btn} style={danger}>{linked ? "Reject & find another" : "Reject"}</button>

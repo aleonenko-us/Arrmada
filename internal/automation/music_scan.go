@@ -212,14 +212,27 @@ func (c *Coordinator) scanResolveArtist(ctx context.Context, f albumFolder, byNa
 
 // recordAlbumFiles matches a folder's audio onto the album's tracks and records them.
 func (c *Coordinator) recordAlbumFiles(ctx context.Context, a music.Artist, al music.Album, f albumFolder) (int, error) {
-	if err := c.music.EnsureTracks(ctx, al); err != nil {
-		return 0, err
+	// Only files not on record yet are worth matching: reading every file's tags on every
+	// scan of a big library would cost minutes for nothing.
+	if al.Complete() {
+		return 0, nil
 	}
-	tracks, err := c.music.Tracks(ctx, al.ID)
+	var fresh []music.AudioFile
+	for _, file := range f.files {
+		if owner, err := c.music.FileOwner(ctx, file.Path); err == nil && owner > 0 {
+			continue
+		}
+		fresh = append(fresh, file)
+	}
+	if len(fresh) == 0 {
+		return 0, nil
+	}
+	// The folder's place in the library chose the album; the matcher (MUS-31) says which
+	// file is which of its target edition's tracks, from tags, names and lengths.
+	tracks, matched, unmatched, err := c.matchInto(ctx, al, fresh, filepath.Base(f.path), true)
 	if err != nil || len(tracks) == 0 {
 		return 0, err
 	}
-	matched, unmatched := music.MatchTracks(tracks, f.files)
 	if len(unmatched) > 0 {
 		names := make([]string, 0, len(unmatched))
 		for _, u := range unmatched {

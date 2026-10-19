@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
+import { EditionPicker } from "../components/music/EditionPicker";
 import { api, type MusicAlbum, type MusicEdition, type MusicNote, type MusicTrack } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { musicApi } from "../lib/musicApi";
@@ -49,6 +50,7 @@ export function AlbumDetail() {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   const load = useCallback(() => {
     api
@@ -140,9 +142,17 @@ export function AlbumDetail() {
               {al.held_tier ? ` · Held: ${al.held_tier}` : ""}
             </div>
             {target && (
-              <div className="mt-1 text-sm text-ink-faint">
-                Edition: {editionLabel(target)}
-                {(al.editions?.length ?? 0) > 1 ? ` · ${al.editions!.length} editions known` : ""}
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-ink-faint">
+                <span>
+                  Edition: {editionLabel(target)}
+                  {al.edition_pinned ? " (kept)" : ""}
+                  {(al.editions?.length ?? 0) > 1 ? ` · ${al.editions!.length} editions known` : ""}
+                </span>
+                {/* Always offered: opening it lists the album's editions from MusicBrainz
+                    when that hasn't happened yet (the page itself never asks). */}
+                <button className="font-semibold" style={{ color: "var(--accent-text)" }} onClick={() => setPicking(true)}>
+                  Change edition…
+                </button>
               </div>
             )}
             <div className="mt-4">
@@ -174,6 +184,7 @@ export function AlbumDetail() {
         )}
 
         {al.notes && al.notes.length > 0 && <UpgradeNotes albumId={al.id} notes={al.notes} onResolved={load} />}
+        {picking && <EditionPicker albumId={al.id} onClose={() => setPicking(false)} onChanged={load} />}
 
         <h2 className="m-0 mb-3 mt-8 text-md font-bold">Tracks</h2>
         {tracks.length === 0 ? (

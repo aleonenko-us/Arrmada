@@ -105,6 +105,12 @@ type Coordinator struct {
 	musicGrabFn   func(ctx context.Context, indexerName, url, title, category string) (string, error)
 	// probeAudioFn measures an audio file (nil: ffprobe through mediainfo). See probeAudio.
 	probeAudioFn func(ctx context.Context, path string) (mediainfo.AudioInfo, error)
+	// musicTagsFn reads an audio file's tags and length for the matcher (nil: audiotag).
+	// See readMatchFile.
+	musicTagsFn func(path string) (music.FileTags, int, error)
+	// fingerprinter identifies files by sound for the matcher's second pass (MUS-32); nil
+	// leaves it off.
+	fingerprinter MusicFingerprinter
 
 	// unmatched counts how many import sweeps have failed to match a download to a
 	// series, keyed by torrent hash. Without it the 30-second sweep logs the same failure

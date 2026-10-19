@@ -561,71 +561,10 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 			}
 			continue
 		}
-		album, artist, ok := c.albumForRelease(ctx, it.Name)
-
-		// Verify the download really is the album it was grabbed for. Without this the
-		// target is re-derived from the torrent name alone and a mismatch lands silently —
-		// the defect the Books import carried until it was fixed.
-		if gid, idx, grabbed := c.grabbedMediaForHash(ctx, it.Hash, it.Name, "music"); grabbed {
-			if expected, gerr := c.music.GetAlbum(ctx, gid); gerr == nil && (!ok || album.ID != expected.ID) {
-				c.log.Warn("music import: download doesn't look like the album it was grabbed for — sending to review",
-					"expected", expected.Title, "release", it.Name)
-				c.addReview(ctx, Review{
-					Hash: it.Hash, Name: it.Name, ContentPath: it.ContentPath, MediaType: "music", ReasonCode: ReasonMismatch,
-					ExpectedID: expected.ID, ExpectedTitle: expected.Title,
-					ParsedTitle: music.ParseRelease(it.Name).Album,
-					Reason:      fmt.Sprintf("Grabbed for %q but the download doesn't match", expected.Title),
-					SizeBytes:   it.SizeBytes, Indexer: idx,
-				})
-				continue
-			}
-		}
-		if !ok {
-			n := c.noteUnmatched(it.Hash)
-			switch {
-			case n == 1:
-				c.log.Info("music import: no matching album in the library", "release", it.Name)
-			case n >= unmatchedReviewAfter:
-				c.log.Warn("music import: download still matches no album — sending to review", "release", it.Name)
-				c.addReview(ctx, Review{
-					Hash: it.Hash, Name: it.Name, ContentPath: it.ContentPath, MediaType: "music", ReasonCode: ReasonUnmatched,
-					ParsedTitle: music.ParseRelease(it.Name).Album, SizeBytes: it.SizeBytes,
-					Reason: "Matches no album in your library",
-				})
-			}
-			continue
-		}
-		res := c.importAlbumContent(ctx, artist, album, it.ContentPath, it.Name)
-		switch {
-		case res.taken > 0:
-			c.musicTakenReview(ctx, it, res, album.ID, album.Title)
-		case res.refused > 0 || res.failed > 0:
-			// A better copy couldn't replace what's held (the recycle bin can't take the
-			// old file), or a track couldn't be placed. Nothing was lost; the download
-			// stays and is tried again later (tracks already placed are then kept).
-			c.musicImportRetry(ctx, it, res, album.ID, album.Title)
-		case res.placed > 0 || res.kept > 0:
-			c.settleMusicImport(ctx, it, "music", album.ID, artist.ID, res)
-			c.afterAlbumImport(ctx, artist, album)
-		case res.found:
-			c.log.Warn("music import: found audio but placed nothing — will retry next sweep",
-				"album", album.Title, "release", it.Name)
-		default:
-			// No audio at all — a still-archived release, or content the container can't
-			// read. Books had no branch here and silently retried every 30 seconds forever.
-			n := c.noteUnmatched(it.Hash)
-			switch {
-			case n == 1:
-				c.log.Warn("music import: download holds no audio files",
-					"album", album.Title, "release", it.Name, "path", it.ContentPath)
-			case n >= unmatchedReviewAfter:
-				c.addReview(ctx, Review{
-					Hash: it.Hash, Name: it.Name, ContentPath: it.ContentPath, MediaType: "music", ReasonCode: ReasonNoMedia,
-					ExpectedID: album.ID, ExpectedTitle: album.Title, SizeBytes: it.SizeBytes,
-					Reason: "Downloaded but holds no audio files — still archived, or unreadable",
-				})
-			}
-		}
+		// The matcher (MUS-31) decides which album and edition the files are, checks them
+		// against the album the download was grabbed for, and holds anything doubtful for
+		// review with its reasons (music_match.go).
+		c.importMusicDownload(ctx, it)
 	}
 }
 
@@ -816,13 +755,14 @@ func (c *Coordinator) importAlbumContent(ctx context.Context, a music.Artist, al
 	}
 	res.found = true
 
-	tracks, err := c.music.Tracks(ctx, al.ID)
+	// A person chose this album (or a test did): the matcher places what fits, on the
+	// best of its editions (MUS-31).
+	tracks, matched, unmatched, err := c.matchInto(ctx, al, files, release, false)
 	if err != nil || len(tracks) == 0 {
 		c.log.Warn("music import: the album has no track listing to place files against",
 			"album", al.Title, "err", err)
 		return res
 	}
-	matched, unmatched := music.MatchTracks(tracks, files)
 	if len(unmatched) > 0 {
 		names := make([]string, 0, len(unmatched))
 		for _, f := range unmatched {
@@ -1293,11 +1233,10 @@ func (c *Coordinator) importAlbumFolder(ctx context.Context, a music.Artist, al 
 		c.log.Warn("music import: couldn't fetch a track listing", "album", al.Title, "err", err)
 		return albumImport{found: true, unmatched: len(f.files)} // nothing to place them against: left for a person
 	}
-	tracks, err := c.music.Tracks(ctx, al.ID)
+	tracks, matched, unmatched, err := c.matchGrabbedFolder(ctx, al, f.files, filepath.Base(f.path))
 	if err != nil || len(tracks) == 0 {
 		return albumImport{found: true, unmatched: len(f.files)}
 	}
-	matched, unmatched := music.MatchTracks(tracks, f.files)
 	q := music.DetectQuality(release)
 	if fq := music.DetectQuality(filepath.Base(f.path)); fq != music.QualityUnknown {
 		// A mixed-quality pack often tags each album folder; that's more specific than the

@@ -3,6 +3,7 @@ import { OrganizeModal } from "../../components/OrganizeModal";
 import { AutoText, AutoToggle } from "../../components/settings/auto";
 import { Preview, Section, TokenList } from "../../components/settings/ui";
 import { BookNamingSettings } from "./BookNaming";
+import { MusicMatchingSettings } from "./MusicMatching";
 import { Button, useConfirm, useToast } from "../../ui";
 import { renderNaming, seriesIdFormat } from "../../lib/naming";
 import { useSetting } from "../../lib/useSettings";
@@ -141,6 +142,7 @@ export function NamingSettings() {
         <AutoToggle label="Write movie.nfo" hint="A metadata sidecar with title, plot, ids, ratings." save={writeNFO} />
         <AutoToggle label="Download artwork" hint="Save poster.jpg and fanart.jpg next to the movie." save={artwork} />
       </Section>
+      <MusicMatchingSettings />
     </div>
   );
 }

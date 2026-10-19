@@ -385,6 +385,9 @@ COPY --from=hdrtools /usr/local/bin/dovi_tool /usr/local/bin/hdr10plus_tool /usr
 # FROM this stage.
 COPY --from=kepubify /usr/local/bin/kepubify /usr/local/bin/kepubify
 COPY docker/entrypoint.sh /entrypoint.sh
+# The licence and the third-party notices (TagLib, LGPL-2.1, is linked for music tags).
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/arrmada/
+COPY LICENSES/ /usr/share/doc/arrmada/LICENSES/
 RUN chmod +x /entrypoint.sh && whisper-cli --help >/dev/null 2>&1 && kepubify --version
 
 # Runs as root only long enough to fix data-dir ownership, then drops to PUID:PGID.

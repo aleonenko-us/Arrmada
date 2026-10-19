@@ -33,9 +33,9 @@ const (
 
 // DefaultBackend is what the package-level functions use: the owner's decision
 // (2026-10-19) is the permissive libraries everywhere they reach, and TagLib only
-// for Ogg. Nothing outside this package imports either library, and nothing
-// imports this package yet, so the shipped binary holds no LGPL code until the
-// import path starts tagging (see THIRD_PARTY_NOTICES.md).
+// for Ogg. Nothing outside this package imports either library. The music import
+// reads tags through this package, so TagLib is linked into the binary (see
+// THIRD_PARTY_NOTICES.md, which ships in the image).
 const DefaultBackend = Auto
 
 func (b Backend) String() string {
