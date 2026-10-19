@@ -437,6 +437,10 @@ func (c *Coordinator) recordAttempt(ctx context.Context, n *searchNotes, mediaTy
 	if mediaType == AttemptMovie {
 		c.movieSearchedEvent(wctx, id, trigger, kind, *out, err, repeat)
 	}
+	if mediaType == AttemptMusic && scope == ScopeAlbum {
+		// The artist's History covers every album, so only a change of result is news.
+		c.albumSearchedEvent(wctx, id, trigger, kind, *out, err, prev.outcome == kind && prev.topReason == out.TopReason)
+	}
 	if c.bus != nil {
 		// Ids and counts only: staff pages refetch what they show.
 		c.bus.Publish("search.finished", map[string]any{

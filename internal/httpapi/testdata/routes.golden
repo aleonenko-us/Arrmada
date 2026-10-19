@@ -224,6 +224,7 @@ GET /api/v1/movies/{id}/watch-stats staff -
 GET /api/v1/music/albums/{id} staff -
 GET /api/v1/music/albums/{id}/editions staff -
 GET /api/v1/music/albums/{id}/rename staff -
+GET /api/v1/music/albums/{id}/search-state staff -
 GET /api/v1/music/artists staff -
 GET /api/v1/music/artists/{id} staff -
 GET /api/v1/music/artists/{id}/history staff -
@@ -448,6 +449,7 @@ POST /api/v1/music/artists staff -
 POST /api/v1/music/artists/{id}/discography staff -
 POST /api/v1/music/artists/{id}/options/apply staff -
 POST /api/v1/music/artists/{id}/refresh staff -
+POST /api/v1/music/artists/{id}/search staff -
 POST /api/v1/music/organize staff -
 POST /api/v1/music/scan staff -
 POST /api/v1/notifications admin -
