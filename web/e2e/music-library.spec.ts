@@ -104,7 +104,10 @@ test.describe("Music on the kit", () => {
     await expect(page.getByText("0/2 albums")).toBeVisible();
     // Nothing complete, so the Complete filter has nobody.
     await page.getByRole("button", { name: /^Complete/ }).click();
-    await expect(page.getByText("No artists match this filter.")).toBeVisible();
+    await expect(page.getByText("No artists match", { exact: true })).toBeVisible();
+    await expect(page.getByText("There are no complete artists in your library.")).toBeVisible();
+    await page.getByRole("button", { name: "Clear search and filters" }).click();
+    await expect(page.getByRole("link", { name: /The Quiet Harbours/ })).toBeVisible();
   });
 
   test("the album page lists its tracks by disc, with a featured artist named", async ({ page }) => {
