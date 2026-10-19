@@ -144,11 +144,26 @@ function BrowseView({ ctx }: { ctx: BookCtx }) {
       <BookHero ctx={ctx} />
       <RecommendedRows ctx={ctx} />
       <BookRow title="Trending this week" load={() => api.bookDiscoverBrowse("trending")} ctx={ctx} />
+      {ctx.preferredFormat === "audiobook" && <AudiobookRows ctx={ctx} />}
       <BookRow title="New releases" load={() => api.bookDiscoverBrowse("new_releases")} ctx={ctx} hideOnError />
       <BookRow title="Top rated" load={() => api.bookDiscoverBrowse("top_rated")} ctx={ctx} hideOnError />
       <BookRow title="Popular all time" load={() => api.bookDiscoverBrowse("popular")} ctx={ctx} hideOnError />
       <GenreExplorer ctx={ctx} />
     </div>
+  );
+}
+
+// Open Library only supplies a trending list, while Hardcover supplies several catalog
+// lists. Give audiobook discovery a fuller set of horizontal shelves with either source;
+// these are book catalog results whose requests default to the audiobook edition.
+function AudiobookRows({ ctx }: { ctx: BookCtx }) {
+  return (
+    <>
+      <BookRow title="Popular fiction" load={() => api.bookDiscoverSubject("fiction")} ctx={ctx} hideOnError />
+      <BookRow title="Mystery & thrillers" load={() => api.bookDiscoverSubject("mystery")} ctx={ctx} hideOnError />
+      <BookRow title="Science fiction & fantasy" load={() => api.bookDiscoverSubject("science_fiction")} ctx={ctx} hideOnError />
+      <BookRow title="Nonfiction" load={() => api.bookDiscoverSubject("nonfiction")} ctx={ctx} hideOnError />
+    </>
   );
 }
 
