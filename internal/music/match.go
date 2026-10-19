@@ -128,41 +128,16 @@ func tracksWithNumber(tracks []Track, n int) []Track {
 
 // ReleaseIsForAlbum reports whether a release name names this artist and album as whole
 // words — the gate that stops a search for one album grabbing a different one by the same
-// artist, which is exactly the hole the Books module had.
+// artist, which is exactly the hole the Books module had. Names are compared folded (see
+// foldMusic), so "Bjork - Homogenic" is Björk's and "ACDC - Back in Black" is AC/DC's.
 //
 // A discography release is refused outright: grabbing one against a single album would fill
 // that album's folder with the artist's entire catalogue.
 func ReleaseIsForAlbum(releaseName, artist, album string) bool {
-	r := ParseRelease(releaseName)
-	if r.Discography {
+	if ParseRelease(releaseName).Discography {
 		return false
 	}
-	hay := " " + normWords(releaseName) + " "
-	if a := normWords(artist); a != "" && !strings.Contains(hay, " "+a+" ") {
-		return false
-	}
-	al := normWords(album)
-	return al != "" && strings.Contains(hay, " "+al+" ")
-}
-
-// normWords lowercases and reduces every run of non-alphanumerics to one space, preserving
-// word boundaries so "Kid A" can't match inside "Kid Amnesiae".
-func normWords(s string) string {
-	var b strings.Builder
-	space := false
-	for _, r := range strings.ToLower(s) {
-		switch {
-		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
-			if space && b.Len() > 0 {
-				b.WriteByte(' ')
-			}
-			space = false
-			b.WriteRune(r)
-		default:
-			space = true
-		}
-	}
-	return b.String()
+	return artistNamed(releaseName, artist) && containsWords(releaseName, album)
 }
 
 // ReleaseIsDiscographyFor reports whether a release is a whole-catalogue pack for this
@@ -170,12 +145,5 @@ func normWords(s string) string {
 // they're only ever wanted through the explicit "grab discography" action, where a
 // multi-album importer maps each folder to its own album.
 func ReleaseIsDiscographyFor(releaseName, artist string) bool {
-	if !ParseRelease(releaseName).Discography {
-		return false
-	}
-	a := normWords(artist)
-	if a == "" {
-		return false
-	}
-	return strings.Contains(" "+normWords(releaseName)+" ", " "+a+" ")
+	return ParseRelease(releaseName).Discography && artistNamed(releaseName, artist)
 }
