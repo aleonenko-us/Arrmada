@@ -435,7 +435,7 @@ var (
 		"apikey", "api_key", "token", "password", "passwd", "secret", "apprise", "cookie",
 		"credential", "smtp", "webhook", "url", "kindle", "insights_plex_", "jellyfin_",
 	}
-	privateSettingWords = []string{"key", "session", "auth", "mail", "user", "machine", "client_id", "pin"}
+	privateSettingWords = []string{"key", "session", "auth", "mail", "user", "machine", "client_id", "pin", "contact"}
 )
 
 func containsAny(s string, words []string) bool {

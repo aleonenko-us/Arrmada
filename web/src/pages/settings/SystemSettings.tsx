@@ -20,7 +20,7 @@ export function SystemSettings() {
     <div className="flex flex-col gap-6">
       <Section id="modules" title="Modules" subtitle="Turn modules on or off. Disabling hides a module from the navigation and from Discover — nothing is deleted, and it can be re-enabled anytime.">
         <AutoToggle label="Books" hint="Ebook and audiobook library, and the Books tab in Discover. Metadata comes from Hardcover when a key is set, otherwise Open Library." save={books} />
-        <AutoToggle label="Music (preview)" hint="Artists and albums from MusicBrainz with automatic album downloads. Still being hardened. Turning it off hides Music and stops its searches and imports; finished downloads wait until it's back on. Nothing is deleted." save={music} />
+        <AutoToggle label="Music (preview)" hint="Artists and albums from MusicBrainz with automatic album downloads. Still being hardened. Turning it off hides Music and stops its searches and imports; finished downloads wait until it's back on. Nothing is deleted. Its MusicBrainz server is set in Settings → Connections." save={music} />
       </Section>
       <PublicURLSection />
       <HomepageWidgetSection />

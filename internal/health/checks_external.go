@@ -264,6 +264,30 @@ func FlareSolverrCheck(dependents func(ctx context.Context) ([]string, error), c
 	}
 }
 
+// MusicBrainzCheck warns while MusicBrainz is refusing Arrmada's background lookups (a 503
+// or 429 rests that lane for a while): Music keeps working from its cache, but nothing
+// new is learned until it answers again. on says whether Music is switched on (off: quiet);
+// paused reports the rest and when it ends.
+func MusicBrainzCheck(on func(ctx context.Context) bool, paused func() (bool, time.Time)) Check {
+	return Check{
+		Key: "musicbrainz", Name: "MusicBrainz", Category: CategoryIntegrations, Interval: time.Minute, Timeout: time.Second,
+		Run: func(ctx context.Context) []Finding {
+			if !on(ctx) {
+				return nil
+			}
+			p, until := paused()
+			if !p {
+				return nil
+			}
+			return []Finding{{
+				Key: "musicbrainz.refusing", Level: LevelWarning, Fix: FixMusicBrainz,
+				Message: fmt.Sprintf("MusicBrainz is refusing requests; Arrmada is serving cached data and will try again after %s.",
+					until.Local().Format("15:04")),
+			}}
+		},
+	}
+}
+
 // joinNames is "TorrentLeech", "TorrentLeech and 1337x", "A, B and C".
 func joinNames(names []string) string {
 	sorted := append([]string(nil), names...)

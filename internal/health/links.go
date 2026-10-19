@@ -9,6 +9,7 @@ var (
 	// Prowlarr and FlareSolverr each have a card; no LINKS key, so the link keeps its anchor.
 	FixProwlarr        = &Fix{Path: "/settings/connections#prowlarr", Label: "Prowlarr sync"}
 	FixFlareSolverr    = &Fix{Path: "/settings/connections#flaresolverr", Label: "FlareSolverr setting"}
+	FixMusicBrainz     = &Fix{Path: "/settings/connections#musicbrainz", Label: "MusicBrainz settings"}
 	FixDownloadClients = &Fix{Key: "downloadClients", Path: "/settings/connections#download-clients", Label: "Check download clients"}
 	FixLibraryFolders  = &Fix{Key: "libraryFolders", Path: "/settings/library#media-folders", Label: "Choose folders"}
 	// The extra Movies and TV folders, and each folder's own downloads folder.

@@ -3,6 +3,7 @@ package music
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -167,7 +168,12 @@ func (s *Service) Refresh(ctx context.Context, id int64) (Artist, error) {
 		s.log.Warn("music: artist metadata refresh failed", "artist", a.Name, "err", derr)
 	}
 	if n, aerr := s.syncAlbums(ctx, a, a.Monitored); aerr != nil {
+		// Nothing is removed, unmonitored or relisted on a failed answer: the albums the
+		// library has stay exactly as they were.
 		s.log.Warn("music: album refresh failed", "artist", a.Name, "err", aerr)
+		if errors.Is(aerr, metadata.ErrMusicBrainzUnavailable) {
+			s.repo.AddEvent(ctx, id, "refreshed", "MusicBrainz didn't answer; kept what we had")
+		}
 	} else {
 		s.repo.AddEvent(ctx, id, "refreshed", fmt.Sprintf("Refreshed — %d album(s) listed", n))
 	}

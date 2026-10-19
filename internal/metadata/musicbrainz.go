@@ -2,8 +2,12 @@ package metadata
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -11,42 +15,162 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
 // MusicBrainz is the music metadata provider. Like Open Library for books it needs no API
 // key and is open data, which keeps the Music module off a single proprietary dependency.
+// Arrmada talks to it directly (or to a mirror the owner runs), never through a hosted
+// proxy of its own.
 //
 // Two hard requirements the service enforces and will block you for ignoring:
 //   - every request must carry a descriptive User-Agent with contact info;
-//   - anonymous clients get ONE request per second.
+//   - anonymous clients get ONE request per second, from the whole address.
 //
-// Both are handled here rather than left to callers.
+// Both are handled here rather than left to callers: one app-wide limiter (mblimit.go) and
+// a permanent cache of every answer (mbcache.go), so a page opened twice costs one call and
+// an outage costs nothing that was already known. main builds the only client (an archtest
+// forbids a second).
 type MusicBrainz struct {
 	http *http.Client
-	base string // musicbrainz.org web-service root; overridden in tests
+	base string // web-service root override (tests); "" reads the configured address
 	art  string // Cover Art Archive root; overridden in tests
 
-	mu sync.Mutex
-	// minInterval is the pacing gap. A field rather than a constant so tests can run
-	// without sleeping a second between every request.
+	config func() MBConfig // the Settings → Connections values, read on every call
+	cache  mbCache
+	gate   *mbLimiter // mbGate: shared by every client in the process
+	log    *slog.Logger
+	now    func() time.Time
+
+	// minInterval overrides the pacing gap when >= 0, so tests needn't sleep a second
+	// between requests. Below zero the gap comes from the address (see interval).
 	minInterval time.Duration
-	last        time.Time
+
+	refreshing sync.Map       // cache keys being refreshed in the background
+	bg         sync.WaitGroup // those refreshes, for tests
+}
+
+// MBConfig is how Arrmada reaches MusicBrainz.
+type MBConfig struct {
+	// BaseURL is the server: https://musicbrainz.org, or a self-hosted mirror ("" is the
+	// public one). The web-service path /ws/2 is added when it's left off.
+	BaseURL string
+	// MirrorRate is requests a second allowed to a mirror (0 = one, like the public
+	// server). The public server always gets one per 1.1 s, whatever this says.
+	MirrorRate int
+	// Contact is an email for the User-Agent, so MusicBrainz can reach the owner instead of
+	// blocking the address. Optional.
+	Contact string
 }
 
 const (
-	mbBaseURL     = "https://musicbrainz.org/ws/2"
-	caaBaseURL    = "https://coverartarchive.org"
-	mbUserAgent   = "Arrmada/1.0 ( https://github.com/tristenlammi/Arrmada )"
-	mbMinInterval = 1100 * time.Millisecond // the documented limit is 1/sec; leave headroom
-	mbTimeout     = 20 * time.Second
+	// MBDefaultBaseURL is the public MusicBrainz server.
+	MBDefaultBaseURL = "https://musicbrainz.org"
+	// MBMaxMirrorRate bounds the mirror rate setting.
+	MBMaxMirrorRate = 50
+	caaBaseURL      = "https://coverartarchive.org"
+	mbTimeout       = 20 * time.Second
+	// mbRefreshTimeout bounds one background refresh of a stale answer.
+	mbRefreshTimeout = 2 * time.Minute
 )
 
-// NewMusicBrainz builds the provider.
-func NewMusicBrainz() *MusicBrainz {
-	return &MusicBrainz{
-		http: &http.Client{Timeout: mbTimeout},
-		base: mbBaseURL, art: caaBaseURL, minInterval: mbMinInterval,
+// NewMusicBrainz builds the provider over the cache table in db (nil: no cache) with the
+// configured address and contact from cfg (nil: the public server, no contact).
+func NewMusicBrainz(db *sql.DB, cfg func() MBConfig) *MusicBrainz {
+	if cfg == nil {
+		cfg = func() MBConfig { return MBConfig{} }
 	}
+	return &MusicBrainz{
+		http: &http.Client{Timeout: mbTimeout}, art: caaBaseURL,
+		config: cfg, cache: mbCache{db: db}, gate: mbGate, log: slog.Default(), now: time.Now,
+		minInterval: -1,
+	}
+}
+
+// SetLogger sets where cache and refresh notes are logged.
+func (m *MusicBrainz) SetLogger(l *slog.Logger) {
+	if l != nil {
+		m.log = l
+	}
+}
+
+// mbWSRoot is the web-service root for a configured base URL.
+func mbWSRoot(base string) string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	if base == "" {
+		base = MBDefaultBaseURL
+	}
+	if strings.HasSuffix(base, "/ws/2") {
+		return base
+	}
+	return base + "/ws/2"
+}
+
+// NormalizeMBBaseURL checks a MusicBrainz address from Settings: an http(s) URL with a host
+// and nothing after the path ("" means the public server). A LAN or private address is
+// fine — a self-hosted mirror usually is one — which is why only an admin may set it.
+func NormalizeMBBaseURL(raw string) (string, error) {
+	s := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if s == "" {
+		return "", nil
+	}
+	u, err := url.Parse(s)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", fmt.Errorf("the MusicBrainz address must be an http:// or https:// URL, like %s", MBDefaultBaseURL)
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", errors.New("the MusicBrainz address can't carry a user name, a query or a fragment")
+	}
+	return s, nil
+}
+
+// isPublicMB reports whether a web-service root is the public MusicBrainz service, which
+// always gets the public pacing.
+func isPublicMB(root string) bool {
+	u, err := url.Parse(root)
+	if err != nil {
+		return true // unparseable: pace it as if it were
+	}
+	h := strings.ToLower(u.Hostname())
+	return h == "musicbrainz.org" || strings.HasSuffix(h, ".musicbrainz.org")
+}
+
+// root is the web-service root in effect.
+func (m *MusicBrainz) root() string {
+	if m.base != "" {
+		return m.base
+	}
+	return mbWSRoot(m.config().BaseURL)
+}
+
+// interval is the pacing gap for the address in effect: 1.1 s for musicbrainz.org, and a
+// mirror's own rate otherwise (one a second unless the owner raised it).
+func (m *MusicBrainz) interval(root string) time.Duration {
+	if m.minInterval >= 0 {
+		return m.minInterval
+	}
+	if isPublicMB(root) {
+		return mbPublicInterval
+	}
+	rate := m.config().MirrorRate
+	if rate <= 1 {
+		return mbPublicInterval
+	}
+	if rate > MBMaxMirrorRate {
+		rate = MBMaxMirrorRate
+	}
+	return time.Second / time.Duration(rate)
+}
+
+// userAgent says which program asks and how to reach whoever runs it, in MusicBrainz's
+// "Name/version ( contact )" form, with the build's real version.
+func (m *MusicBrainz) userAgent() string {
+	contact := httpua.Homepage
+	if c := strings.TrimSpace(m.config().Contact); c != "" {
+		contact += "; " + c
+	}
+	return "Arrmada/" + httpua.Version() + " ( " + contact + " )"
 }
 
 // Available is always true — no key required.
@@ -118,7 +242,7 @@ func (m *MusicBrainz) SearchArtists(ctx context.Context, query string) ([]Artist
 			Type           string `json:"type"`
 		} `json:"artists"`
 	}
-	if err := m.get(ctx, "/artist", url.Values{"query": {q}, "limit": {"15"}}, &body); err != nil {
+	if err := m.lookup(ctx, mbKindSearch, "/artist", url.Values{"query": {strings.ToLower(strings.Join(strings.Fields(q), " "))}, "limit": {"15"}}, &body); err != nil {
 		return nil, err
 	}
 	out := make([]ArtistResult, 0, len(body.Artists))
@@ -148,7 +272,7 @@ func (m *MusicBrainz) GetArtist(ctx context.Context, mbid string) (*ArtistDetail
 			Count int    `json:"count"`
 		} `json:"genres"`
 	}
-	if err := m.get(ctx, "/artist/"+url.PathEscape(mbid), url.Values{"inc": {"genres"}}, &body); err != nil {
+	if err := m.lookup(ctx, mbKindArtist, "/artist/"+url.PathEscape(mbid), url.Values{"inc": {"genres"}}, &body); err != nil {
 		return nil, err
 	}
 	// Genres come back unordered with a vote count; the most-voted few are the useful ones.
@@ -191,7 +315,7 @@ func (m *MusicBrainz) ArtistAlbums(ctx context.Context, mbid string) ([]AlbumRes
 			"artist": {mbid}, "type": {"album|ep"},
 			"limit": {"100"}, "offset": {strconv.Itoa(offset)},
 		}
-		if err := m.get(ctx, "/release-group", q, &body); err != nil {
+		if err := m.lookup(ctx, mbKindReleaseGroup, "/release-group", q, &body); err != nil {
 			return nil, err
 		}
 		for _, rg := range body.ReleaseGroups {
@@ -230,7 +354,7 @@ func (m *MusicBrainz) AlbumTracks(ctx context.Context, releaseGroupMBID string) 
 		} `json:"releases"`
 	}
 	q := url.Values{"release-group": {releaseGroupMBID}, "limit": {"25"}}
-	if err := m.get(ctx, "/release", q, &list); err != nil {
+	if err := m.lookup(ctx, mbKindReleases, "/release", q, &list); err != nil {
 		return nil, err
 	}
 	pick := ""
@@ -258,7 +382,7 @@ func (m *MusicBrainz) AlbumTracks(ctx context.Context, releaseGroupMBID string) 
 			} `json:"tracks"`
 		} `json:"media"`
 	}
-	if err := m.get(ctx, "/release/"+url.PathEscape(pick), url.Values{"inc": {"recordings"}}, &rel); err != nil {
+	if err := m.lookup(ctx, mbKindRelease, "/release/"+url.PathEscape(pick), url.Values{"inc": {"recordings"}}, &rel); err != nil {
 		return nil, err
 	}
 	var out []TrackResult
@@ -283,70 +407,267 @@ func (m *MusicBrainz) AlbumTracks(ctx context.Context, releaseGroupMBID string) 
 // this client got one on its second call.
 const mbRetries = 3
 
-// get performs a paced, JSON web-service request, retrying a 503 with backoff.
-func (m *MusicBrainz) get(ctx context.Context, path string, q url.Values, out any) error {
-	if q == nil {
-		q = url.Values{}
+// mbMaxBody bounds one answer; the biggest real ones (a release with every recording) are
+// a few hundred KB.
+const mbMaxBody = 8 << 20
+
+// fetch performs one paced web-service request against root and returns the body and
+// status: 200, or 404 for "no such thing" (an answer, not a failure). Interactive calls
+// retry a 503 or 429 with backoff; a background call gives up at once and rests the
+// background lane, so a refresh never keeps pushing at a service that is refusing us.
+// Every failure wraps ErrMusicBrainzUnavailable.
+func (m *MusicBrainz) fetch(ctx context.Context, root, path string, q url.Values) ([]byte, int, error) {
+	qq := url.Values{}
+	for k, v := range q {
+		qq[k] = v
 	}
-	q.Set("fmt", "json")
+	qq.Set("fmt", "json")
+	lane := mbLaneOf(ctx)
+	interval := m.interval(root)
+	retries := mbRetries
+	if lane == MBBackground {
+		retries = 0
+	}
 
 	var lastStatus string
-	for attempt := 0; attempt <= mbRetries; attempt++ {
+	for attempt := 0; attempt <= retries; attempt++ {
 		if attempt > 0 {
 			// Back off progressively on top of the normal pacing. Scaled off the pacing
 			// interval so a test that disables pacing doesn't sleep for seconds either.
-			backoff := time.Duration(attempt) * m.minInterval
-			if backoff > 0 {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(backoff):
-				}
+			if err := sleepCtx(ctx, time.Duration(attempt)*interval); err != nil {
+				return nil, 0, err
 			}
 		}
-		m.pace()
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.base+path+"?"+q.Encode(), nil)
+		if err := m.gate.wait(ctx, lane, interval); err != nil {
+			return nil, 0, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, root+path+"?"+qq.Encode(), nil)
 		if err != nil {
-			return err
+			return nil, 0, err
 		}
 		// MusicBrainz blocks requests without a descriptive User-Agent outright.
-		req.Header.Set("User-Agent", mbUserAgent)
+		req.Header.Set("User-Agent", m.userAgent())
 		req.Header.Set("Accept", "application/json")
 
 		resp, err := m.http.Do(req)
 		if err != nil {
-			return fmt.Errorf("musicbrainz: %w", err)
+			if ctx.Err() != nil {
+				return nil, 0, ctx.Err()
+			}
+			return nil, 0, errMusicBrainzUnavailable(err.Error())
 		}
-		if resp.StatusCode == http.StatusNotFound {
-			resp.Body.Close()
-			return errNotFound
-		}
-		if resp.StatusCode == http.StatusServiceUnavailable {
-			resp.Body.Close()
-			lastStatus = resp.Status
-			continue // rate-limited or briefly overloaded — wait and try again
-		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return fmt.Errorf("musicbrainz: %s returned %s", path, resp.Status)
-		}
-		err = json.NewDecoder(resp.Body).Decode(out)
+		body, rerr := io.ReadAll(io.LimitReader(resp.Body, mbMaxBody))
 		resp.Body.Close()
-		return err
+		switch {
+		case resp.StatusCode == http.StatusNotFound:
+			m.gate.answered()
+			return body, http.StatusNotFound, nil
+		case resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusTooManyRequests:
+			lastStatus = resp.Status
+			if lane == MBBackground {
+				m.gate.refused()
+			}
+			continue // rate-limited or briefly overloaded — wait and try again
+		case resp.StatusCode != http.StatusOK:
+			return nil, 0, errMusicBrainzUnavailable(fmt.Sprintf("%s returned %s", path, resp.Status))
+		case rerr != nil:
+			return nil, 0, errMusicBrainzUnavailable(rerr.Error())
+		case !json.Valid(body):
+			return nil, 0, errMusicBrainzUnavailable(path + " answered with something that isn't JSON")
+		}
+		m.gate.answered()
+		return body, http.StatusOK, nil
 	}
-	return fmt.Errorf("musicbrainz: %s still returning %s after %d retries", path, lastStatus, mbRetries)
+	return nil, 0, errMusicBrainzUnavailable(fmt.Sprintf("%s still returning %s after %d retries", path, lastStatus, retries))
 }
 
-// pace holds anonymous clients to one request per second, which is what the service asks
-// for and enforces with blocks.
-func (m *MusicBrainz) pace() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if wait := m.minInterval - time.Since(m.last); wait > 0 {
-		time.Sleep(wait)
+// mbKey is the cache key for a question: its kind, path and query (without fmt). The host
+// isn't in it, so a switch to or from a mirror keeps the cache.
+func mbKey(k mbKind, path string, q url.Values) string {
+	return k.name + ":" + path + "?" + q.Encode()
+}
+
+// lookup answers a question from the cache when it can, from MusicBrainz otherwise:
+//   - fresh in the cache: the cached answer, no call;
+//   - stale in the cache: the cached answer now, refetched in the background;
+//   - not cached: fetched on the caller's lane and kept;
+//   - not cached and MusicBrainz can't be asked: ErrMusicBrainzUnavailable.
+//
+// A 404 decodes as errNotFound.
+func (m *MusicBrainz) lookup(ctx context.Context, k mbKind, path string, q url.Values, out any) error {
+	key := mbKey(k, path, q)
+	if e, ok := m.cache.get(ctx, key); ok {
+		if !e.fresh(k, m.now()) {
+			m.refreshLater(key)
+		}
+		return decodeMB(e.status, e.body, out)
 	}
-	m.last = time.Now()
+	root := m.root()
+	body, status, err := m.fetch(ctx, root, path, q)
+	if err != nil {
+		return err
+	}
+	m.keep(ctx, key, status, body)
+	return decodeMB(status, body, out)
+}
+
+func decodeMB(status int, body []byte, out any) error {
+	if status == http.StatusNotFound {
+		return errNotFound
+	}
+	return json.Unmarshal(body, out)
+}
+
+// keep stores an answer, unless it would lose something the cache already has: a 404 or an
+// empty list where the cached answer had content is MusicBrainz having a bad moment (or an
+// entity being merged), not the music going away, so the old answer stays and is marked as
+// checked. That's the difference from Lidarr, which emptied libraries on an empty answer.
+func (m *MusicBrainz) keep(ctx context.Context, key string, status int, body []byte) {
+	now := m.now()
+	if old, ok := m.cache.get(ctx, key); ok && old.status == http.StatusOK {
+		k, _ := mbKindOfKey(key)
+		switch {
+		case status == http.StatusNotFound:
+			m.log.Warn("musicbrainz: an answer we had now says not found — keeping what we had", "key", key)
+			m.cache.touch(ctx, key, now)
+			return
+		case k.list != "" && mbListLen(body, k.list) == 0 && mbListLen(old.body, k.list) > 0:
+			m.log.Warn("musicbrainz: answered with an empty list where we had entries — keeping what we had", "key", key)
+			m.cache.touch(ctx, key, now)
+			return
+		}
+	}
+	if err := m.cache.put(ctx, key, status, body, now); err != nil {
+		m.log.Warn("musicbrainz: couldn't cache an answer", "key", key, "err", err)
+	}
+	m.keepUnderNewID(ctx, key, status, body, now)
+}
+
+// keepUnderNewID also files an entity answer under the id it came back with, when that
+// differs from the one asked for: MusicBrainz merged it, and the new id is what later
+// lookups will use.
+func (m *MusicBrainz) keepUnderNewID(ctx context.Context, key string, status int, body []byte, now time.Time) {
+	if status != http.StatusOK {
+		return
+	}
+	k, ok := mbKindOfKey(key)
+	if !ok || (k != mbKindArtist && k != mbKindRelease) {
+		return
+	}
+	var ent struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(body, &ent) != nil || ent.ID == "" {
+		return
+	}
+	// key: "<kind>:/<entity>/<mbid>?<query>"
+	rest := strings.TrimPrefix(key, k.name+":")
+	path, query, _ := strings.Cut(rest, "?")
+	i := strings.LastIndex(path, "/")
+	if i < 0 || path[i+1:] == ent.ID {
+		return
+	}
+	newKey := k.name + ":" + path[:i+1] + ent.ID + "?" + query
+	_ = m.cache.put(ctx, newKey, status, body, now)
+}
+
+// mbListLen is how many entries a list field of an answer holds (0 when unreadable).
+func mbListLen(body []byte, field string) int {
+	var v map[string]json.RawMessage
+	if json.Unmarshal(body, &v) != nil {
+		return 0
+	}
+	var list []json.RawMessage
+	if json.Unmarshal(v[field], &list) != nil {
+		return 0
+	}
+	return len(list)
+}
+
+// refreshLater refetches a stale answer in the background, once per key at a time. The
+// caller already has the cached answer; this only brings the cache up to date.
+func (m *MusicBrainz) refreshLater(key string) {
+	if _, busy := m.refreshing.LoadOrStore(key, true); busy {
+		return
+	}
+	m.bg.Add(1)
+	go func() {
+		defer m.bg.Done()
+		defer m.refreshing.Delete(key)
+		ctx, cancel := context.WithTimeout(WithMBLane(context.Background(), MBBackground), mbRefreshTimeout)
+		defer cancel()
+		_ = m.refreshKey(ctx, key)
+	}()
+}
+
+// refreshKey refetches one cached question. A failure leaves the cached answer as it is.
+func (m *MusicBrainz) refreshKey(ctx context.Context, key string) error {
+	k, ok := mbKindOfKey(key)
+	if !ok {
+		return nil
+	}
+	path, query, _ := strings.Cut(strings.TrimPrefix(key, k.name+":"), "?")
+	q, err := url.ParseQuery(query)
+	if err != nil {
+		return nil
+	}
+	body, status, err := m.fetch(ctx, m.root(), path, q)
+	if err != nil {
+		return err
+	}
+	m.keep(ctx, key, status, body)
+	return nil
+}
+
+// RefreshStale refetches up to limit cached answers past their freshness, longest
+// unchecked first, on the background lane. It stops early when MusicBrainz starts refusing
+// (the background lane is then resting); nothing cached is ever removed. It returns how
+// many answers were checked.
+func (m *MusicBrainz) RefreshStale(ctx context.Context, limit int) (int, error) {
+	keys, err := m.cache.stalest(ctx, m.now(), limit)
+	if err != nil {
+		return 0, err
+	}
+	ctx = WithMBLane(ctx, MBBackground)
+	n := 0
+	for _, key := range keys {
+		if err := m.refreshKey(ctx, key); err != nil {
+			if ctx.Err() != nil || errors.Is(err, errMBPaused) {
+				return n, nil
+			}
+			continue
+		}
+		n++
+	}
+	return n, nil
+}
+
+// CacheStats is how many answers are cached, their size and how many are stale.
+func (m *MusicBrainz) CacheStats(ctx context.Context) (MBCacheStats, error) {
+	return m.cache.stats(ctx, m.now())
+}
+
+// mbTestArtist is a well-known artist (Radiohead) the connection test looks up.
+const mbTestArtist = "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+
+// Test checks that a MusicBrainz address answers, looking up a well-known artist there
+// (not from the cache). base "" tests the public server.
+func (m *MusicBrainz) Test(ctx context.Context, base string) error {
+	root := mbWSRoot(base)
+	body, status, err := m.fetch(WithMBLane(ctx, MBInteractive), root, "/artist/"+mbTestArtist, url.Values{})
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("%s answered, but doesn't know a well-known artist: is it a MusicBrainz server?", root)
+	}
+	var a struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(body, &a) != nil || a.ID == "" {
+		return fmt.Errorf("%s answered with something that isn't a MusicBrainz artist", root)
+	}
+	return nil
 }
 
 func mbOrDefault(s, def string) string {

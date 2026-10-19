@@ -31,6 +31,16 @@ const (
 // lives here because the reset-2fa command switches it off for a locked-out owner too.
 const KeyTwoFactorAdmins = "two_factor_admins"
 
+// How Arrmada reaches MusicBrainz (Settings → Connections → MusicBrainz, admin only): the
+// server ("" = the public musicbrainz.org; a self-hosted mirror otherwise), a mirror's
+// request rate per second ("" = one, like the public server; the public server is always
+// one), and a contact email for the User-Agent ("" = none).
+const (
+	KeyMusicBrainzURL        = "music_mb_url"
+	KeyMusicBrainzMirrorRate = "music_mb_mirror_rate"
+	KeyMusicBrainzContact    = "music_mb_contact"
+)
+
 // ModuleMusicDefault is off: Music is a preview, and a fresh install shouldn't start
 // searching indexers for albums before the owner has chosen to try it.
 const ModuleMusicDefault = false

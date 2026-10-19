@@ -36,7 +36,7 @@ func musicGateServer(t *testing.T) (http.Handler, *settings.Service, string) {
 	set := settings.NewService(st.DB())
 	srv := New(Deps{
 		Log: slog.Default(), Store: st, Auth: authSvc, Settings: set,
-		Music: music.NewService(st.DB(), metadata.NewMusicBrainz(), slog.Default()),
+		Music: music.NewService(st.DB(), metadata.NewMusicBrainz(nil, nil), slog.Default()),
 	})
 	return srv.Handler, set, session
 }

@@ -5,6 +5,7 @@ import { ConnectionCard, type CardFix, type CardTest } from "../../components/co
 import { ConnectionSection } from "../../components/connections/ConnectionSection";
 import { IndexerEditor, indexerBody } from "../../components/connections/IndexerEditor";
 import { MediaServerCard } from "../../components/connections/MediaServerCard";
+import { MusicBrainzCard } from "../../components/connections/MusicBrainzCard";
 import { DiscoveryRegion, KeyEditor, keyRowsFor, useAPIKeys } from "../../components/connections/KeyEditor";
 import { ProwlarrPanel } from "../../components/connections/ProwlarrPanel";
 import { type DownloadClient, type Indexer } from "../../lib/api";
@@ -347,7 +348,14 @@ export function ConnectionsSettings() {
 
   const below = (id: ConnectionSectionId): ReactNode => {
     if (id === "downloads" && dl.data?.categories) return <CategoryLine c={dl.data.categories} usenet={usenet} />;
-    if (id === "metadata" && admin) return <DiscoveryRegion />;
+    if (id === "metadata" && admin) {
+      return (
+        <>
+          <DiscoveryRegion />
+          <MusicBrainzCard />
+        </>
+      );
+    }
     return undefined;
   };
 

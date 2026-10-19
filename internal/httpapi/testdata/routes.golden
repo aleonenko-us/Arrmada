@@ -266,6 +266,7 @@ GET /api/v1/series/{id}/scene-map staff -
 GET /api/v1/series/{id}/title-choices staff -
 GET /api/v1/series/{id}/watch-stats staff -
 GET /api/v1/settings staff -
+GET /api/v1/settings/musicbrainz admin -
 GET /api/v1/settings/smtp admin -
 GET /api/v1/setup admin -
 GET /api/v1/setup/checklist admin -
@@ -487,6 +488,7 @@ POST /api/v1/series/{id}/rename staff -
 POST /api/v1/series/{id}/resume-upgrades staff -
 POST /api/v1/series/{id}/search staff -
 POST /api/v1/series/{id}/seasons/{season}/episodes/{episode}/regrab staff -
+POST /api/v1/settings/musicbrainz/test admin -
 POST /api/v1/settings/smtp/test admin -
 POST /api/v1/setup/checklist/dismiss admin -
 POST /api/v1/setup/complete admin -
@@ -570,6 +572,7 @@ PUT /api/v1/series/{id}/scene-map staff -
 PUT /api/v1/series/{id}/seasons/{season}/monitor staff -
 PUT /api/v1/series/{id}/type staff -
 PUT /api/v1/settings staff -
+PUT /api/v1/settings/musicbrainz admin -
 PUT /api/v1/settings/smtp admin -
 PUT /api/v1/subtitles/overrides/{kind}/{id} staff -
 PUT /api/v1/subtitles/profiles/{id} staff -
