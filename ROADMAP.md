@@ -66,7 +66,7 @@ Every module (Series, Movies, Books, Convert, Subtitles, Audiobooks, and Music i
 
 ## Decisions needed from you
 
-- [ ] Music (MUS-03, end of Phase 1). Options: Rebuild it as a Lidarr-lite (Phase 15), Park it (off, labelled Preview, no further work), or Cut it (MUS-25 in Phase 2; data stays, can be restored from git). Recommendation: Park, unless the soak shows the family actually uses it.
+- [x] Music (MUS-03). **Decided 2026-10-19: Rebuild**, to be better than Lidarr rather than a Lidarr-lite: MusicBrainz direct with a permanent cache and an optional self-hosted mirror (never a central proxy), Deezer gap-fill on by default and Discogs opt-in, Cover Art Archive then Fanart.tv, AcoustID as a second pass, house-style tags with copies (not hardlinks) when a seeding file is retagged, no Soulseek/YouTube/streaming-rip sources, Plex first. See [docs/decisions/music.md](docs/decisions/music.md) and Phase 15. MUS-25 (Cut) is won't-do.
 - [ ] Usenet. Either officially torrent-only, meaning INT-12 stops advertising and querying Newznab and MOV-11 never recommends usenet, or plan a usenet client later. Recommendation: torrent-only.
 - [ ] ARRMADA_BASE_URL. Either remove it in Phase 2 (CFG-08), or make reverse-proxy sub-paths work end to end (FE-29 in Phase 16). Recommendation: remove it. The router migration and push URLs are simpler without a basename.
 - [ ] Stall fail-over defaults (ACQ-06): confirm on by default, a 6-hour no-progress threshold and at most 3 replacements per check, or pick other numbers.
@@ -113,7 +113,7 @@ Every module (Series, Movies, Books, Convert, Subtitles, Audiobooks, and Music i
 | [Phase 12 — Subtitles rebuilt](#phase-12--subtitles-rebuilt) | Provenance and attempt ledgers, honest provider status, scored and sync-checked downloads, a persistent two-lane queue, per-file control, language profiles, and fixing problems that family members report | 29 | 0 | 16 | 63 | 4.5–5.5 weeks (12 S, 17 M ≈ 22–27 working days) |
 | [Phase 13 — Books and the audiobook library rebuilt](#phase-13--books-and-the-audiobook-library-rebuilt) | Lossless merges, editions and languages, release dates, authors, OPDS and Send to Kindle, admin screens that fit, and audiobook library polish | 21 | 0 | 3 | 49 | 3.5–4 weeks (7 S, 14 M ≈ 17–21 working days) |
 | [Phase 14 — Smarter grabbing: Quality v2 and power tools](#phase-14--smarter-grabbing-quality-v2-and-power-tools) | Explainable profiles, the Unwanted pack, ordered-key ranking v2 behind shadow mode, the custom-format engine, more series coverage, and indexer and path power tools | 18 | 0 | 0 | 48 | 3–4 weeks of work (3 S, 15 M ≈ 16–20 working days), plus at least 2 weeks of ranking v2 in shadow mode before QUAL-23 |
-| [Phase 15 — Music: Lidarr-lite (only if MUS-03 chose Rebuild)](#phase-15--music-lidarr-lite-only-if-mus-03-chose-rebuild) | Correct matching and importing, honest outcomes, graduation from Preview, staying current, owner tools, and artwork | 21 | 0 | 7 | 49 | 3.5–4 weeks (9 S, 11 M, 1 L ≈ 17–21 working days) plus a 7-day soak; zero if MUS-03 chose Park or Cut |
+| [Phase 15 — Music rebuilt: better than Lidarr](#phase-15--music-rebuilt-better-than-lidarr) | Five steps: R1 Safety, R2 Core model (editions, credits, files, the matcher, house tags), R3 Stay current, R4 Household (Discover, requests, Plex), R5 Beyond Lidarr | 42 | 0 | 14 | 130 | Estimate: 22–28 weeks (12 S, 23 M, 7 L ≈ 107–137 working days) plus a 14-day soak after R2; R5 is optional and can be split |
 | [Phase 16 — First run, releases, logs and a consistent UI](#phase-16--first-run-releases-logs-and-a-consistent-ui) | A guided first run, published images and 'update available', support-grade logs, and frontend consolidation | 19 | 0 | 0 | 39 | 3–4 weeks (9 S, 10 M, 1 L ≈ 16–20 working days) |
 | [Phase 17 — Backlog: Insights depth, alert extras and engine extras](#phase-17--backlog-insights-depth-alert-extras-and-engine-extras) | Tautulli-depth Insights, a personal calendar feed, alert refinements, and the remaining Convert and Subtitles big bets | 14 | 0 | 0 | 34 | 2.5–3 weeks (6 S, 7 M, 1 L ≈ 12–15 working days) |
 
@@ -277,8 +277,11 @@ flowchart LR
   AUD3 --> AUD4
   BOOK5 --> APP5
   MUS1 --> MUS2["MUS M2 Decide"]
-  MUS2 --> MUS3["MUS M3-M7 Rebuild"]
-  MUS2 --> MUS4["MUS Cut path"]
+  MUS2 --> MUS3["MUS R1 Safety"]
+  MUS3 --> MUS5["MUS R2 Core model"]
+  MUS5 --> MUS6["MUS R3 Stay current"]
+  MUS5 --> MUS7["MUS R4 Household"]
+  MUS5 --> MUS8["MUS R5 Beyond Lidarr"]
   ACQ4 --> MUS3
   SAFE4 --> MUS3
 ```
@@ -341,7 +344,7 @@ flowchart LR
 
 ### Phase 1 — Finish the P0s and add the safety net
 
-> **Status: shipped 2026-10-09** — 29 of 30 tasks merged to main (full race suite, lint and frontend tests green). MUS-03 (the Music decision) waits for its 3-week usage soak.
+> **Status: shipped 2026-10-09** — 29 of 30 tasks merged to main (full race suite, lint and frontend tests green). MUS-03 (the Music decision) waited for its usage soak; the owner decided it on 2026-10-19: Rebuild ([docs/decisions/music.md](docs/decisions/music.md)).
 
 **Theme:** The remaining P0 correctness work, plus the P1 rails every later phase relies on  
 **Goal:** Close the rest of the P0s: series grab planner and numbering, book identity, subtitle source ladder and coverage, and safe stall fail-over. Add the P1 rails that protect files and listening places:
@@ -1369,69 +1372,89 @@ Family members can report a bad file, and the owner fixes it in one click.
 | [INT-21](docs/roadmap/INT.md#int-21) | User-started searches jump the Torznab queue; waiting in the throttle doesn't use up the deadline | INT | P3 | M |
 | [INT-25](docs/roadmap/INT.md#int-25) | Remote path mapping and a path-aware download client Test | INT | P3 | M |
 
-### Phase 15 — Music: Lidarr-lite (only if MUS-03 chose Rebuild)
+### Phase 15 — Music rebuilt: better than Lidarr
 
-**Theme:** Correct matching and importing, honest outcomes, graduation from Preview, staying current, owner tools, and artwork  
-**Goal:** If the owner chose Rebuild, Music becomes trustworthy unattended:
-- it grabs the right album at the right quality
-- it imports without downgrades or duplicates
-- it says why an album isn't downloading, reading ACQ-16's attempts and ACQ-18's Wanted shape
-- it keeps itself current
-- it looks like the rest of Arrmada
+> **Status: planned** — MUS-03 decided **Rebuild** on 2026-10-19 ([docs/decisions/music.md](docs/decisions/music.md)). The Lidarr-lite plan is replaced by a rebuild in five steps, R1–R5; the full plan, schema, matcher spec and house tag style are in [docs/roadmap/MUS.md](docs/roadmap/MUS.md). Nothing in this phase has shipped yet. MUS-10, MUS-18, MUS-19 and MUS-20 are superseded by the new model; MUS-25 (Cut) is won't-do. Music stays off by default and labelled Preview until MUS-12.
 
-If MUS-03 chose Park, this phase is skipped. If it chose Cut, MUS-25 already shipped in Phase 2 and this phase is dropped.  
-**Why now:** Music is off by default and contained since Phase 0, so it costs nothing while it waits. Rebuilding it on the finished acquisition core, the per-root bins, the Connections pattern and the kit is much cheaper than rebuilding it earlier. Putting it after the video, Convert, Subtitles and Books rebuilds keeps owner time on the modules the family uses.  
-**Estimate:** 3.5–4 weeks (9 S, 11 M, 1 L ≈ 17–21 working days) plus a 7-day soak; zero if MUS-03 chose Park or Cut
+**Theme:** Own the metadata, model editions, import in tiers, measure files, write one house tag style safely, then serve the household and go beyond Lidarr  
+**Goal:** Music becomes a first-class module the owner can leave running:
+- it talks to MusicBrainz directly through one limiter, caches every answer for good, and can use a self-hosted mirror; no upstream outage can block it or delete anything
+- it stores every edition of an album and lets any acceptable edition satisfy it
+- it imports confident matches automatically, imports the tracks that match from partial downloads, and explains the doubtful ones in Reviews
+- it measures real files and writes house-style tags in a staging copy, never touching a seeding file
+- the family can request albums and songs from Discover, and Plex sees every change
+
+**Why now:** The containment work (Phase 0) has held, and the acquisition core, per-root bins, job runner, outbox, Connections hub, Requests 2.0 and the FE kit it builds on have all shipped. The research showed Lidarr's worst failures are design choices (a single metadata proxy, one edition picked by size, fixed all-or-nothing gates, flattened artist tags, retagging seeding files) that a rebuild can simply not make.  
+**Estimate (judgement, not measurement):** 22–28 weeks (12 S, 23 M, 7 L ≈ 107–137 working days) plus a 14-day soak after R2. R1 ≈ 3–3.5 weeks, R2 ≈ 7–9 weeks, R3 ≈ 5–6 weeks, R4 ≈ 3–4 weeks, R5 ≈ 4–5 weeks (optional, can be split).
 
 **Exit criteria**
 
-- Matching and import:
-- Accented, punctuated and scene-style names match through the shared fold helper.
-- Quality tiers are read from whole tokens (no 'Escape' or 'Palace' false hits).
-- '99 Problems' lands on the right track.
-- Discography grabs stall, blocklist and seed as music_artist.
-- A held track is never downgraded or duplicated, and replaced siblings go to the per-root bin.
-- Outcomes and stats: every wanted album shows its last search, why nothing was grabbed, its next try and Search now. Artist and library stats are real, and each track records its real codec and bitrate from ffprobe.
-- Graduation: after a 7-day soak with no wrong imports, the Preview label is removed.
-- Staying current:
-- New releases from monitored artists are found and searched within a day.
-- Add-artist offers a profile, monitor mode and release types.
-- CD1/CD2 folders scan as one album, and vanished files go back to Wanted.
-- Upgrades follow the profile ladder and honour upgrades_enabled.
-- Owner tools:
-- Interactive album search with plain-words reasons and manual grabs into the chosen album.
-- A Music Wanted view.
-- MusicBrainz edition switching by track count.
-- Scan results show unmatched folders with Match….
-- Video and implausibly sized releases are filtered out.
-- Look and reach:
-- A cover-art grid and artist shelves.
-- Artist images and bios from fanart.tv or TheAudioDB (keys entered in Connections), with a Wikipedia fallback.
-- Music on the Dashboard and Calendar.
+- R1 Safety:
+- Accented, punctuated and scene-style names match; quality tiers come from whole tokens; '99 Problems' lands on the right track.
+- Discography grabs stall, blocklist and seed as music_artist; a held track is never downgraded or duplicated, and replaced files go to the bin.
+- Each track records its real codec and bitrate (ffprobe, shared with the audiobook server's probe).
+- MusicBrainz is called through one app-wide limiter with the real build version and a contact in its User-Agent; every answer is cached permanently; a self-hosted mirror can be set; an outage changes nothing.
+- The tag library is chosen, licence signed off, and proven on FLAC, ID3v2.4 and MP4 (amd64 and arm64).
+- R2 Core model:
+- Editions, discs, recordings, artist credits, track files and external ids are stored; today's data migrated with no file path, monitored flag, profile or event lost.
+- The tiered matcher imports confident matches, imports partial albums by rule, and sends doubtful ones to Reviews with a per-field breakdown; AcoustID is the second pass.
+- House-style tags are written in staging and moved in once; a seeding file is copied, never retagged; naming templates, cue-sheet albums and extras work.
+- After a 14-day soak the Preview label comes off (MUS-12).
+- R3 Stay current: new releases found within a day with AND-logic type rules and a singles dedupe; outcomes and Search now on album pages; the upgrade sweep; interactive search; a fast incremental scan that reads tags; vanished files back to Wanted; aliases; music on the Dashboard and Calendar.
+- R4 Household: a Music tab in Discover, album and song requests that turn ready only once Plex has them, Plex scans after every music change, locally cached artwork and bios.
+- R5 Beyond Lidarr: Deezer (default) and Discogs (opt-in) gap-fill with automatic re-linking, LRCLIB lyrics, soundtracks of the library's films and shows, similar artists, listening-based suggestions with approval, playlist import, ReplayGain.
 
 | Task | Title | Epic | Priority | Effort |
 |---|---|---|---|---|
+| **R1 Safety** | | | | |
 | [MUS-04](docs/roadmap/MUS.md#mus-04) | One music text-folding function for release matching and scan keys (accents, apostrophes, &, +, slashes, acronyms) | MUS | P1 | S |
 | [MUS-05](docs/roadmap/MUS.md#mus-05) | Token-based DetectQuality so 'Escape', 'Palace', 'New Wave', 'Mixtape', 'Isaac' and 'Doggystyle' can't set the tier | MUS | P1 | S |
 | [MUS-06](docs/roadmap/MUS.md#mus-06) | Safer track-number parsing so '99 Problems', '7 Rings' and '4 Minutes' land on the right track | MUS | P1 | S |
 | [MUS-07](docs/roadmap/MUS.md#mus-07) | Record discography grabs as media_type 'music_artist' so stall, blocklist and seeding act on the artist | MUS | P1 | S |
 | [MUS-08](docs/roadmap/MUS.md#mus-08) | Partial albums: mark the grab imported, never overwrite a track with a worse copy, recycle replaced siblings | MUS | P1 | M |
-| [MUS-09](docs/roadmap/MUS.md#mus-09) | Say why an album isn't downloading: persisted search outcomes, History events, and Search now | MUS | P1 | M |
-| [MUS-10](docs/roadmap/MUS.md#mus-10) | Count completeness by album, and show real stats on the artist page | MUS | P1 | S |
 | [MUS-11](docs/roadmap/MUS.md#mus-11) | Record each track's real codec and bitrate with ffprobe; keep the release tier separate | MUS | P2 | M |
-| [MUS-12](docs/roadmap/MUS.md#mus-12) | Graduate Music out of Preview after a 7-day soak | MUS | P2 | S |
+| [MUS-26](docs/roadmap/MUS.md#mus-26) | MusicBrainz client: one app-wide limiter, an honest User-Agent, a permanent local cache, and an optional self-hosted mirror | MUS | P1 | M |
+| [MUS-27](docs/roadmap/MUS.md#mus-27) | Choose the tag library and prove it on FLAC, ID3v2.4 and MP4 before anything depends on it | MUS | P1 | M |
+| **R2 Core model** | | | | |
+| [MUS-28](docs/roadmap/MUS.md#mus-28) | New music schema (editions, discs, recordings, credits, track files, external ids) and a lossless migration from today's four tables | MUS | P1 | L |
+| [MUS-29](docs/roadmap/MUS.md#mus-29) | Cut everything over to the new model: services, import, scan, stats, API and pages | MUS | P1 | L |
+| [MUS-30](docs/roadmap/MUS.md#mus-30) | Editions: store every release, pick a target by policy, let any acceptable edition satisfy the album, and switch by hand without losing files | MUS | P1 | M |
+| [MUS-31](docs/roadmap/MUS.md#mus-31) | A beets-style tiered matcher: confident imports go in, partial albums import what matches, doubtful ones go to Reviews with a per-field breakdown | MUS | P1 | L |
+| [MUS-32](docs/roadmap/MUS.md#mus-32) | AcoustID fingerprints as the matcher's second pass | MUS | P2 | M |
+| [MUS-33](docs/roadmap/MUS.md#mus-33) | House-style tags written in staging; copy instead of hardlink when the file is still seeding; then one move into the library | MUS | P1 | L |
+| [MUS-34](docs/roadmap/MUS.md#mus-34) | Music naming templates, built on the books naming engine, with a safe rename of existing albums | MUS | P2 | M |
+| [MUS-35](docs/roadmap/MUS.md#mus-35) | Cue-sheet albums: a single FLAC/APE/WavPack image plus a .cue imports as tracks | MUS | P2 | M |
+| [MUS-36](docs/roadmap/MUS.md#mus-36) | Extras move with the album: artwork, booklets, logs, cue sheets and lyrics | MUS | P3 | S |
+| [MUS-12](docs/roadmap/MUS.md#mus-12) | Graduate Music out of Preview after R1 and R2 and a 14-day soak | MUS | P2 | S |
+| **R3 Stay current** | | | | |
 | [MUS-13](docs/roadmap/MUS.md#mus-13) | Scheduled artist refresh that finds new releases, searches them, and fills missing listings | MUS | P2 | M |
-| [MUS-15](docs/roadmap/MUS.md#mus-15) | Scan reads CD1/CD2 folders as one album, and tracks whose files vanish go back to Wanted | MUS | P2 | M |
-| [MUS-16](docs/roadmap/MUS.md#mus-16) | Music upgrade sweep that honours upgrades_enabled | MUS | P2 | M |
-| [MUS-18](docs/roadmap/MUS.md#mus-18) | Music Wanted view: every missing album, its last outcome, next try and Search now | MUS | P2 | S |
-| [MUS-19](docs/roadmap/MUS.md#mus-19) | Pick the MusicBrainz edition that matches the download's track count | MUS | P2 | M |
 | [MUS-14](docs/roadmap/MUS.md#mus-14) | Add-artist options (quality profile, monitor mode, release types, search now) and a seeded default music profile | MUS | P2 | L |
-| [MUS-21](docs/roadmap/MUS.md#mus-21) | Drop video and implausibly sized releases from album searches | MUS | P3 | S |
+| [MUS-09](docs/roadmap/MUS.md#mus-09) | Say why an album isn't downloading on its own page: latest outcome, next try, Search now (outcomes already recorded by ACQ-16) | MUS | P1 | S |
+| [MUS-15](docs/roadmap/MUS.md#mus-15) | Tracks whose files vanish go back to Wanted, safely (disc folders move to the matcher) | MUS | P2 | M |
+| [MUS-16](docs/roadmap/MUS.md#mus-16) | Music upgrade sweep that honours upgrades_enabled | MUS | P2 | M |
 | [MUS-17](docs/roadmap/MUS.md#mus-17) | Interactive album search with reasons, and manual grabs that import into the chosen album | MUS | P2 | M |
-| [MUS-20](docs/roadmap/MUS.md#mus-20) | Scan results the owner can see and act on: unmatched folders with reasons, and Match… | MUS | P2 | M |
-| [MUS-22](docs/roadmap/MUS.md#mus-22) | Artwork-first music library: cover grid, album shelves on the artist page, sorting and a type filter | MUS | P3 | M |
-| [MUS-23](docs/roadmap/MUS.md#mus-23) | Artist images and bios from fanart.tv or TheAudioDB (keys entered in the app), with a keyless Wikipedia fallback | MUS | P3 | M |
+| [MUS-21](docs/roadmap/MUS.md#mus-21) | Drop video and implausibly sized releases from album searches | MUS | P3 | S |
+| [MUS-37](docs/roadmap/MUS.md#mus-37) | Library scan v2: parallel, incremental and throttled; reads tags and MBIDs; unmatched folders go to Reviews | MUS | P2 | L |
+| [MUS-38](docs/roadmap/MUS.md#mus-38) | Find artists by any of their names: aliases, other scripts and old names | MUS | P2 | S |
 | [MUS-24](docs/roadmap/MUS.md#mus-24) | Show Music on the Dashboard and Calendar | MUS | P3 | S |
+| **R4 Household** | | | | |
+| [MUS-39](docs/roadmap/MUS.md#mus-39) | A Music tab in Discover: search and browse artists and albums, see what's already in the library | MUS | P2 | M |
+| [MUS-40](docs/roadmap/MUS.md#mus-40) | Album and song requests: approval, quotas, and "ready" once Plex has it | MUS | P2 | L |
+| [MUS-41](docs/roadmap/MUS.md#mus-41) | Plex music scans after every music change, and Plex-aware "ready" | MUS | P1 | M |
+| [MUS-22](docs/roadmap/MUS.md#mus-22) | Artwork-first music library: cover grid, album shelves on the artist page, sorting and a type filter | MUS | P3 | M |
+| [MUS-23](docs/roadmap/MUS.md#mus-23) | Album art from Cover Art Archive then Fanart.tv, artist images from Fanart.tv (key entered in the app), keyless Wikipedia bios, all cached locally | MUS | P3 | M |
+| **R5 Beyond Lidarr** | | | | |
+| [MUS-42](docs/roadmap/MUS.md#mus-42) | Gap-fill from Deezer (on by default, no key): releases MusicBrainz doesn't have, marked "not on MusicBrainz" | MUS | P2 | M |
+| [MUS-43](docs/roadmap/MUS.md#mus-43) | Discogs gap-fill, opt-in with the user's own token | MUS | P3 | S |
+| [MUS-44](docs/roadmap/MUS.md#mus-44) | Re-link gap-filled albums to MusicBrainz once they appear there | MUS | P2 | M |
+| [MUS-45](docs/roadmap/MUS.md#mus-45) | Synced lyrics from LRCLIB as .lrc sidecars | MUS | P3 | M |
+| [MUS-46](docs/roadmap/MUS.md#mus-46) | Soundtracks for the films and shows already in the library | MUS | P3 | M |
+| [MUS-47](docs/roadmap/MUS.md#mus-47) | Similar artists, from ListenBrainz (keyless) or Last.fm (the user's key) | MUS | P3 | M |
+| [MUS-48](docs/roadmap/MUS.md#mus-48) | Listening-based suggestions with an approval queue | MUS | P3 | M |
+| [MUS-49](docs/roadmap/MUS.md#mus-49) | Playlist import from CSV, JSPF and M3U | MUS | P3 | M |
+| [MUS-50](docs/roadmap/MUS.md#mus-50) | ReplayGain track and album tags | MUS | P3 | S |
+
+Superseded by the new model (not built): [MUS-10](docs/roadmap/MUS.md#mus-10) → MUS-29, [MUS-18](docs/roadmap/MUS.md#mus-18) → ACQ-18 + MUS-09, [MUS-19](docs/roadmap/MUS.md#mus-19) → MUS-30, [MUS-20](docs/roadmap/MUS.md#mus-20) → MUS-37.
 
 ### Phase 16 — First run, releases, logs and a consistent UI
 
@@ -1564,7 +1587,7 @@ Items can be pulled earlier whenever a phase finishes early.
 | [CONV](docs/roadmap/CONV.md) | Convert | 29 | 2 | Phase 0, Phase 1, Phase 11, Phase 17, Phase 2, Phase 4 |
 | [SUB](docs/roadmap/SUB.md) | Subtitles | 35 | 5 | Phase 1, Phase 12, Phase 17 |
 | [AUD](docs/roadmap/AUD.md) | Audiobook server & listening | 18 | 0 | Phase 1, Phase 13, Phase 8 |
-| [MUS](docs/roadmap/MUS.md) | Music | 25 | 2 | Phase 0, Phase 1, Phase 15, Phase 2 |
+| [MUS](docs/roadmap/MUS.md) | Music (rebuild decided 2026-10-19) | 50 | 2 | Phase 0, Phase 1, Phase 15 |
 | [BE](docs/roadmap/BE.md) | Backend architecture & quality | 13 | 0 | Phase 0, Phase 1, Phase 2, Phase 3, Phase 5 |
 | [COPY](docs/roadmap/COPY.md) | Truthful copy & polish sweep | 15 | 0 | Phase 16, Phase 2, Phase 3, Phase 5 |
 | [FOLDERS](docs/roadmap/FOLDERS.md) | More than one library folder for Movies and TV (user request, issue #3) | 15 | 0 | after the roadmap |
@@ -1576,14 +1599,14 @@ Items can be pulled earlier whenever a phase finishes early.
 - Program length and owner bandwidth. 473 tasks come to roughly 74–90 focused weeks (17–21 months) for one owner with an AI agent, with usage limits and life interrupting. Mitigations:
 - Phases 0–9 carry nearly all P0/P1 value; treat Phases 14–17 as an optional backlog.
 - Re-plan after Phase 5.
-- Parking or cutting Music saves about 4 weeks.
+- Music was decided Rebuild (2026-10-19), a much larger phase than the Lidarr-lite it replaced (22–28 weeks against 3.5–4). R1 ships value on its own; R5 is optional and can be split or dropped.
 - Overlapping tasks across epics get built twice and conflict. Known pairs:
 - BE-01 / SAFE-14
 - SEC-14 / FE-02
 - OBS-03 / BE-08
 - ACQ-22 / BE-13 / FE-26
 - ACQ-15 / MOV-04 / SER-19
-- ACQ-18 / MOV-08 / MUS-18
+- ACQ-18 / MOV-08 / MUS-18 (MUS-18 is superseded by ACQ-18)
 - ACQ-19 / BE-10
 - ACQ-21 / BOOK-06 / MUS-04
 - OBS-10 / PLEX-18 / SEC-08
