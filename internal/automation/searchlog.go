@@ -85,6 +85,12 @@ const (
 	DropWrongLanguage = "wrong_language"
 	// DropNotUsenet is a torrent when the only download clients are usenet ones.
 	DropNotUsenet = "not_usenet"
+	// DropVideo and DropSize are album releases that fail the music sanity check
+	// (music.ReleaseSane): video, or far from the album's size in their tier.
+	DropVideo = "video"
+	DropSize  = "size"
+	// DropNotBetter is a release no better than the album's files (an upgrade search).
+	DropNotBetter = "not_better"
 	// The two "taken" states, never counted as reasons.
 	classEligible = "eligible"
 	classGrabbed  = "grabbed"
@@ -103,7 +109,7 @@ func classRank(code string) int {
 		return 4
 	case classEligible:
 		return 3
-	case DropWrongTitle, DropBlocklisted, DropOutOfScope, DropNotTorrent, DropNotUsenet, DropWrongEdition:
+	case DropWrongTitle, DropBlocklisted, DropOutOfScope, DropNotTorrent, DropNotUsenet, DropWrongEdition, DropVideo, DropSize:
 		return 1
 	}
 	return 2 // a profile rejection
