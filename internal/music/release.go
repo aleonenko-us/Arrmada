@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Quality is an audio quality TIER — codec and bitrate together.
@@ -86,24 +87,56 @@ var (
 	reStdBitrate = regexp.MustCompile(`\b(96|112|128|160|192|224|256|320)\b`)
 )
 
+// reFlacN is a codec token with its bit depth run on: "FLAC24", "flac16".
+var reFlacN = regexp.MustCompile(`^flac(\d+)$`)
+
 // DetectQuality reads the audio tier from a release name.
+//
+// The name is read as whole tokens (split on anything that isn't a letter or a digit), never
+// as substrings. Substring matching read "Escape" and "Roberta Flack" as FLAC, "Palace" as
+// ALAC, "New Wave" as WAV, "Mixtape" as APE, "Isaac" as AAC and "Doggystyle" as OGG, so a
+// "Lossless only" profile grabbed MP3s and they outranked real FLAC on seeders. A name that
+// says only "Lossless" with no codec now reads as unknown, and is refused: the
+// conservative answer. A title word that is exactly a codec ("Ape") still reads as one;
+// that's rare, and the tier is shown wherever a release is.
 //
 // Lossless markers are checked first: a release tagged "FLAC" is lossless whatever else the
 // name contains, and a name like "FLAC / MP3 320" is a dual-format upload whose better half
 // is what we'd take.
 func DetectQuality(name string) Quality {
-	lc := " " + strings.ToLower(name) + " "
+	name = reCodecRunOn.ReplaceAllString(name, "$1 $2")
+	tokens := map[string]bool{}
+	flacDepth := 0
+	for _, tok := range strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		tokens[tok] = true
+		if m := reFlacN.FindStringSubmatch(tok); m != nil {
+			tokens["flac"] = true
+			if n, _ := strconv.Atoi(m[1]); n > flacDepth {
+				flacDepth = n
+			}
+		}
+	}
+	has := func(words ...string) bool {
+		for _, w := range words {
+			if tokens[w] {
+				return true
+			}
+		}
+		return false
+	}
 	switch {
-	case containsAny(lc, "flac"):
-		if reHiRes.MatchString(name) {
+	case has("flac"):
+		if flacDepth >= 24 || reHiRes.MatchString(name) {
 			return QualityFLAC24
 		}
 		return QualityFLAC
-	case containsAny(lc, "alac"):
+	case has("alac"):
 		return QualityALAC
-	case containsAny(lc, "ape ", "wavpack", " wv "):
+	case has("ape", "wv", "wavpack", "tak"):
 		return QualityFLAC // other lossless codecs sit at the lossless tier
-	case containsAny(lc, "wav"):
+	case has("wav"):
 		return QualityWAV
 	}
 
@@ -116,7 +149,7 @@ func DetectQuality(name string) Quality {
 			return QualityMP3V2
 		}
 	}
-	aac := containsAny(lc, "aac", "m4a")
+	aac := has("aac", "m4a")
 	switch br := detectBitrate(name); {
 	case br >= 320:
 		return QualityMP3320
@@ -132,17 +165,21 @@ func DetectQuality(name string) Quality {
 	}
 	// No bitrate stated — fall back to the codec's typical tier.
 	switch {
-	case containsAny(lc, "opus"):
+	case has("opus"):
 		return QualityOpus
-	case containsAny(lc, "ogg", "vorbis"):
+	case has("ogg", "vorbis"):
 		return QualityOGG
 	case aac:
 		return QualityAAC256
-	case containsAny(lc, "mp3"):
+	case has("mp3"):
 		return QualityMP3192 // an untagged MP3 is a coin toss; assume the middle, not the best
 	}
 	return QualityUnknown
 }
+
+// reCodecRunOn is a lossy codec with its rate or preset run on: "MP3320", "MP3V0",
+// "AAC256". DetectQuality splits it into the codec and a separate rate or preset first.
+var reCodecRunOn = regexp.MustCompile(`(?i)\b(mp3|aac)(v\d|\d{2,3})\b`)
 
 // detectBitrate pulls a kbps figure out of a release name (0 when absent).
 func detectBitrate(name string) int {
@@ -161,15 +198,6 @@ func detectBitrate(name string) int {
 		return n
 	}
 	return 0
-}
-
-func containsAny(haystack string, needles ...string) bool {
-	for _, n := range needles {
-		if strings.Contains(haystack, n) {
-			return true
-		}
-	}
-	return false
 }
 
 // Release is what a music release name tells us.
