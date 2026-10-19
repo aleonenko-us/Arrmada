@@ -109,7 +109,26 @@ func (s *Service) GetAlbum(ctx context.Context, id int64) (Album, error) {
 			al.Extras = append(al.Extras, f)
 		}
 	}
+	if al.Notes, err = s.repo.OpenNotes(ctx, id); err != nil {
+		return Album{}, err
+	}
 	return al, nil
+}
+
+// ResolveNote marks an album's migration note as looked at, so the sweep searches the
+// album again.
+func (s *Service) ResolveNote(ctx context.Context, albumID, noteID int64) error {
+	return s.repo.ResolveNote(ctx, albumID, noteID)
+}
+
+// LibraryArtists lists the library's artists without their stats (see Repo.LibraryArtists).
+func (s *Service) LibraryArtists(ctx context.Context) ([]Artist, error) {
+	return s.repo.LibraryArtists(ctx)
+}
+
+// FileOwner is the track a file path is recorded for (0: none, or an album extra).
+func (s *Service) FileOwner(ctx context.Context, path string) (int64, error) {
+	return s.repo.FileOwner(ctx, path)
 }
 
 // AddArtist adds an artist and its album list.

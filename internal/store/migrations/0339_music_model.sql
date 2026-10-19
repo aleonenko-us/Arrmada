@@ -17,7 +17,7 @@
 --     from the distinct disc numbers, one release track per tracks row and one recording
 --     per tracks row. Release tracks and recordings keep the old tracks.id as their own id
 --     (and in legacy_track_id), so any id something held still names the same track;
---   - every has_file = 1 row becomes a music_track_files row with its path, size, stored
+--   - every row with a file (has_file != 0) becomes a music_track_files row with its path, size, stored
 --     tier, bitrate and source_release. A file row the migration can't place one-to-one
 --     (two tracks claiming one path, a file flag with no path, a track of an album that's
 --     gone) is written to music_migration_notes, never dropped.
@@ -179,9 +179,14 @@ CREATE TABLE music_migration_notes (
     path            TEXT NOT NULL DEFAULT '',
     kind            TEXT NOT NULL DEFAULT '',  -- shared_path | no_path | orphan | stale_path
     note            TEXT NOT NULL,
-    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- A person looked at it (fixed the files, or accepted it) on the album page. Until
+    -- then an album with an open shared_path / no_path note is left out of the search
+    -- sweep: the old table said those tracks had a file, so they aren't wanted on a guess.
+    resolved_at     TIMESTAMP
 );
 CREATE INDEX idx_music_migration_notes_track ON music_migration_notes(legacy_track_id);
+CREATE INDEX idx_music_migration_notes_album ON music_migration_notes(album_id);
 
 -- Albums (release groups): same rows, widened. After music_releases, which one references.
 ALTER TABLE albums ADD COLUMN artist_credit_id  INTEGER REFERENCES music_artist_credits(id);
@@ -276,7 +281,7 @@ SELECT x.*,
                     ELSE lower(replace(t.file_path, rtrim(t.file_path, replace(t.file_path, '.', '')), ''))
                END AS ext
           FROM tracks t
-         WHERE t.has_file = 1) x;
+         WHERE t.has_file != 0) x; -- the old code only wrote 0 and 1; anything else non-zero is "has a file" too
 
 INSERT INTO music_track_files (album_id, release_track_id, path, size_bytes, container, lossless,
                                bitrate_kbps, quality, tag_state, source_release)
@@ -331,7 +336,7 @@ CREATE TEMP TABLE music_model_self_check (
         CONSTRAINT "music_model self-check: an old file path is neither mapped to its track nor noted"
         CHECK (file_paths = 0),
     track_values INTEGER
-        CONSTRAINT "music_model self-check: a release track's title, position or monitored flag differs from its old row"
+        CONSTRAINT "music_model self-check: a release track's title, disc, position, monitored flag, MBID or album differs from its old row"
         CHECK (track_values = 0),
     file_values INTEGER
         CONSTRAINT "music_model self-check: a mapped file's path, tier, bitrate, size or source differs from its old row"
@@ -356,7 +361,7 @@ INSERT INTO music_model_self_check VALUES (
                          WHERE r.id = al.target_release_id AND r.album_id = al.id AND r.legacy = 1)),
     -- Per album: mapped files + notes = old has_file rows.
     (SELECT COUNT(*)
-       FROM (SELECT album_id, COUNT(*) AS n FROM tracks WHERE has_file = 1 GROUP BY album_id) h
+       FROM (SELECT album_id, COUNT(*) AS n FROM tracks WHERE has_file != 0 GROUP BY album_id) h
        LEFT JOIN (SELECT album_id, COUNT(*) AS n FROM music_track_files GROUP BY album_id) f
               ON f.album_id = h.album_id
        LEFT JOIN (SELECT album_id, COUNT(*) AS n FROM music_migration_notes
@@ -365,13 +370,16 @@ INSERT INTO music_model_self_check VALUES (
       WHERE COALESCE(f.n, 0) + COALESCE(x.n, 0) != h.n),
     -- Every old file row is either its own track's file, with its path, or noted.
     (SELECT COUNT(*) FROM tracks t
-      WHERE t.has_file = 1
+      WHERE t.has_file != 0
         AND NOT EXISTS (SELECT 1 FROM music_track_files f
                          WHERE f.release_track_id = t.id AND f.path = t.file_path)
         AND NOT EXISTS (SELECT 1 FROM music_migration_notes n WHERE n.legacy_track_id = t.id)),
-    (SELECT COUNT(*) FROM music_release_tracks rt JOIN tracks t ON t.id = rt.legacy_track_id
+    (SELECT COUNT(*) FROM music_release_tracks rt
+       JOIN tracks t ON t.id = rt.legacy_track_id
+       JOIN music_media m ON m.id = rt.medium_id
+       JOIN music_releases r ON r.id = m.release_id
       WHERE rt.title != t.title OR rt.position != t.track_number OR rt.monitored != t.monitored
-         OR rt.mbid != t.mbid),
+         OR rt.mbid != t.mbid OR m.position != t.disc_number OR r.album_id != t.album_id),
     (SELECT COUNT(*) FROM music_track_files f JOIN tracks t ON t.id = f.release_track_id
       WHERE f.path != t.file_path OR f.quality != t.format OR f.bitrate_kbps != t.bitrate_kbps
          OR f.size_bytes != t.size_bytes OR f.source_release != t.source_release

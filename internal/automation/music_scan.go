@@ -69,7 +69,7 @@ func (c *Coordinator) ScanMusicLibrary(ctx context.Context, progress func(done, 
 
 	// Cache the library and each artist's albums across the whole scan: a big collection
 	// would otherwise re-read the artist list once per folder.
-	known, err := c.music.ListArtists(ctx)
+	known, err := c.music.LibraryArtists(ctx)
 	if err != nil {
 		return res, err
 	}

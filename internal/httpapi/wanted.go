@@ -475,7 +475,7 @@ func (b *wantedBuild) albums() (searching, upcoming []wantedRow) {
 	if err != nil {
 		return nil, nil
 	}
-	artists, err := b.a.deps.Music.ListArtists(b.ctx)
+	artists, err := b.a.deps.Music.LibraryArtists(b.ctx)
 	if err != nil {
 		return nil, nil
 	}

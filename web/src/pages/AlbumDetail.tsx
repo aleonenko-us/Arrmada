@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
-import { api, type MusicAlbum, type MusicEdition, type MusicTrack } from "../lib/api";
+import { api, type MusicAlbum, type MusicEdition, type MusicNote, type MusicTrack } from "../lib/api";
 import { formatBytes } from "../lib/format";
+import { musicApi } from "../lib/musicApi";
 import { libraryStatus } from "../lib/status";
-import { Button, StatusChip } from "../ui";
+import { Button, StatusChip, useToast } from "../ui";
 import { Page } from "../ui/Page";
 
 // isLosslessTier reads a track's stored format: a tier name ("FLAC-24") or an extension tag
@@ -172,6 +173,8 @@ export function AlbumDetail() {
           </div>
         )}
 
+        {al.notes && al.notes.length > 0 && <UpgradeNotes albumId={al.id} notes={al.notes} onResolved={load} />}
+
         <h2 className="m-0 mb-3 mt-8 text-md font-bold">Tracks</h2>
         {tracks.length === 0 ? (
           <div className="rounded-xl p-8 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
@@ -218,6 +221,42 @@ export function AlbumDetail() {
         )}
       </Page>
     </>
+  );
+}
+
+// UpgradeNotes explains the tracks the old library said had a file that the upgrade to
+// editions couldn't give one (two tracks recorded one file, or a file with no path), and
+// lets a person resolve each once they've fixed it or accepted it. Until then the search
+// sweep leaves the album alone rather than grab it all again over a mix-up.
+function UpgradeNotes({ albumId, notes, onResolved }: { albumId: number; notes: MusicNote[]; onResolved: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<number | null>(null);
+  const resolve = async (id: number) => {
+    setBusy(id);
+    try {
+      await musicApi.resolveAlbumNote(albumId, id);
+      onResolved();
+    } catch (e) {
+      toast((e as Error).message, { tone: "error" });
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <section aria-label="Notes from the upgrade" className="mt-6 rounded-xl p-4" style={{ border: "1px solid var(--avoid)", background: "var(--panel)" }}>
+      <h2 className="m-0 mb-1 text-md font-bold">Notes from the upgrade</h2>
+      <p className="m-0 mb-3 text-sm text-ink-dim">
+        Your library said these tracks had a file, but it couldn't be given to them. Searching skips this album until each note is resolved.
+      </p>
+      {notes.map((n) => (
+        <div key={n.id} className="flex items-center gap-3 border-t py-2 text-sm" style={{ borderColor: "var(--line-soft)" }}>
+          <span className="min-w-0 flex-1" title={n.path || undefined}>{n.note}</span>
+          <Button size="sm" busy={busy === n.id} busyLabel="Resolving…" disabled={busy !== null} onClick={() => resolve(n.id)}>
+            Resolve
+          </Button>
+        </div>
+      ))}
+    </section>
   );
 }
 

@@ -432,6 +432,7 @@ POST /api/v1/movies/{id}/rename staff -
 POST /api/v1/movies/{id}/resume-upgrades staff -
 POST /api/v1/movies/{id}/search staff -
 POST /api/v1/movies/{id}/versions staff -
+POST /api/v1/music/albums/{id}/notes/{note}/resolve staff -
 POST /api/v1/music/artists staff -
 POST /api/v1/music/artists/{id}/discography staff -
 POST /api/v1/music/artists/{id}/refresh staff -

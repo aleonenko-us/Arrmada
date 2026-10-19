@@ -323,6 +323,7 @@ func TestMusicModelMigrationFailsItsSelfCheck(t *testing.T) {
 		"a lost file":          `DELETE FROM music_track_files WHERE release_track_id = 101;`,
 		"a changed tier":       `UPDATE music_track_files SET quality = 'MP3-128' WHERE release_track_id = 100;`,
 		"a flipped monitor":    `UPDATE music_release_tracks SET monitored = 1 - monitored WHERE id = 102;`,
+		"a moved disc":         `UPDATE music_media SET position = position + 10;`,
 		"no target edition":    `UPDATE albums SET target_release_id = NULL WHERE id = 10;`,
 		"an uncredited album":  `UPDATE albums SET artist_credit_id = NULL WHERE id = 13;`,
 	} {

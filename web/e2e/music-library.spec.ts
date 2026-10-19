@@ -29,6 +29,7 @@ const album: MusicAlbum = {
     { id: 3, album_id: 51, disc_number: 2, track_number: 1, title: "Lantern", monitored: true, has_file: false },
   ],
   extras: [{ id: 9, path: "/music/The Quiet Harbours/Low Tide/hidden track.flac", size_bytes: 20_000_000, quality: "FLAC", lossless: true }],
+  notes: [{ id: 4, legacy_track_id: 3, kind: "shared_path", note: "Track 3 recorded the same file as track 1, which keeps it; this track is listed without a file." }],
 };
 
 const guest: Artist = {
@@ -41,7 +42,11 @@ const guest: Artist = {
 const json = (route: Route, body: unknown) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
 
 async function mockMusic(page: Page) {
-  const state = { deletes: 0 };
+  const state = { deletes: 0, resolved: [] as string[] };
+  await page.route((u) => /^\/api\/v1\/music\/albums\/\d+\/notes\/\d+\/resolve$/.test(u.pathname), (route) => {
+    state.resolved.push(new URL(route.request().url()).pathname);
+    return json(route, { status: "resolved" });
+  });
   await page.route((u) => u.pathname === "/api/v1/music/artists", (route) => json(route, { artists: [artist] }));
   await page.route((u) => u.pathname === "/api/v1/music/artists/5", (route) => {
     if (route.request().method() === "DELETE") { state.deletes++; return route.fulfill({ status: 204 }); }
@@ -113,6 +118,16 @@ test.describe("Music on the kit", () => {
     await expect(disc2.getByRole("heading", { name: "Disc 2 — Bonus" })).toBeVisible();
     await expect(disc2.getByText("Lantern")).toBeVisible();
     await expect(page.getByText("hidden track.flac")).toBeVisible();
+  });
+
+  test("the album page explains an upgrade note and resolves it", async ({ page }) => {
+    const state = await mockMusic(page);
+    await page.goto("/music/album/51");
+    const notes = page.getByRole("region", { name: "Notes from the upgrade" });
+    await expect(notes.getByText(/Searching skips this album/)).toBeVisible();
+    await expect(notes.getByText(/Track 3 recorded the same file as track 1/)).toBeVisible();
+    await notes.getByRole("button", { name: "Resolve" }).click();
+    await expect.poll(() => state.resolved).toEqual(["/api/v1/music/albums/51/notes/4/resolve"]);
   });
 
   test("an artist page shows the albums it appears on", async ({ page }) => {

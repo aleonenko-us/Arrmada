@@ -480,7 +480,7 @@ func (r *Repo) AddExternalID(ctx context.Context, e ExternalID) error {
 // (two tracks claiming one file, a file flag with no path...), oldest first.
 func (r *Repo) MigrationNotes(ctx context.Context, albumID int64) ([]MigrationNote, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT COALESCE(legacy_track_id, 0), path, kind, note FROM music_migration_notes
+		SELECT id, COALESCE(legacy_track_id, 0), path, kind, note, resolved_at IS NOT NULL FROM music_migration_notes
 		 WHERE album_id = ? ORDER BY id`, albumID)
 	if err != nil {
 		return nil, err
@@ -489,7 +489,7 @@ func (r *Repo) MigrationNotes(ctx context.Context, albumID int64) ([]MigrationNo
 	var out []MigrationNote
 	for rows.Next() {
 		var n MigrationNote
-		if err := rows.Scan(&n.LegacyTrackID, &n.Path, &n.Kind, &n.Note); err != nil {
+		if err := rows.Scan(&n.ID, &n.LegacyTrackID, &n.Path, &n.Kind, &n.Note, &n.Resolved); err != nil {
 			return nil, err
 		}
 		out = append(out, n)
@@ -499,10 +499,13 @@ func (r *Repo) MigrationNotes(ctx context.Context, albumID int64) ([]MigrationNo
 
 // MigrationNote is one thing the model migration kept aside rather than dropping.
 type MigrationNote struct {
+	ID int64 `json:"id"`
+	// LegacyTrackID is the old track's id, which its release track kept.
 	LegacyTrackID int64  `json:"legacy_track_id,omitempty"`
 	Path          string `json:"path,omitempty"`
 	Kind          string `json:"kind"`
 	Note          string `json:"note"`
+	Resolved      bool   `json:"resolved,omitempty"`
 }
 
 // discOf is a listing's disc number, 1 when it doesn't say.

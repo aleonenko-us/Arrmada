@@ -49,7 +49,7 @@ func (c *Coordinator) SearchMusicMissing(ctx context.Context) {
 		return
 	}
 	ctx = WithDefaultSearchTrigger(ctx, TriggerSweep)
-	artists, err := c.music.ListArtists(ctx)
+	artists, err := c.music.LibraryArtists(ctx)
 	if err != nil {
 		return
 	}
@@ -287,7 +287,7 @@ func (c *Coordinator) grabAlbumExcluding(ctx context.Context, a music.Artist, al
 		c.log.Warn("music: couldn't fetch the track listing — skipping", "album", al.Title, "err", err)
 		return albumOutcome{Code: outcomeListingError, Detail: err.Error()}
 	}
-	if al.TrackCount == 0 {
+	if al.EditionTracks == 0 {
 		// Still nothing after asking MusicBrainz means no official release carries a
 		// listing. Searching the indexers would be pointless — a download would have
 		// nothing to land against — so it's a miss without the search.
@@ -546,6 +546,8 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 			}
 			res := c.importDiscographyContent(ctx, art, it.ContentPath, it.Name)
 			switch {
+			case res.taken > 0:
+				c.musicTakenReview(ctx, it, res, 0, art.Name+" (discography)")
 			case res.refused > 0 || res.failed > 0:
 				c.musicImportRetry(ctx, it, res, 0, art.Name+" (discography)")
 			case res.placed > 0 || res.kept > 0:
@@ -595,6 +597,8 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 		}
 		res := c.importAlbumContent(ctx, artist, album, it.ContentPath, it.Name)
 		switch {
+		case res.taken > 0:
+			c.musicTakenReview(ctx, it, res, album.ID, album.Title)
 		case res.refused > 0 || res.failed > 0:
 			// A better copy couldn't replace what's held (the recycle bin can't take the
 			// old file), or a track couldn't be placed. Nothing was lost; the download
@@ -722,6 +726,20 @@ func (c *Coordinator) musicImportRetry(ctx context.Context, it download.Item, re
 	})
 }
 
+// musicTakenReview sends a download to Review when some of its tracks would land on a file
+// another track already has. Retrying wouldn't change that, so it goes straight there;
+// tracks already placed stay placed, and nothing else was replaced.
+func (c *Coordinator) musicTakenReview(ctx context.Context, it download.Item, res albumImport, albumID int64, title string) {
+	c.clearMusicRetry(it.Hash)
+	c.log.Warn("music import: tracks would replace another track's file — sending to review",
+		"what", title, "release", it.Name, "tracks", res.taken)
+	c.addReview(ctx, Review{
+		Hash: it.Hash, Name: it.Name, ContentPath: it.ContentPath, MediaType: "music", ReasonCode: ReasonImportFailed,
+		ExpectedID: albumID, ExpectedTitle: title, SizeBytes: it.SizeBytes,
+		Reason: fmt.Sprintf("%d track(s) would land on a file another track of the album already has; nothing was replaced (the album page explains the clash)", res.taken),
+	})
+}
+
 // AlbumMatcher resolves release names (torrents in the music category) to the library
 // album and artist each was grabbed for; false when music is off or nothing matches. It
 // is albumForRelease for many names at once: the artists and their albums are read on the
@@ -740,7 +758,7 @@ func (c *Coordinator) AlbumMatcher(ctx context.Context) func(name string) (music
 		}
 		if !loaded {
 			loaded = true
-			if artists, err := c.music.ListArtists(ctx); err == nil {
+			if artists, err := c.music.LibraryArtists(ctx); err == nil {
 				for _, a := range artists {
 					if albums, err := c.music.Albums(ctx, a.ID); err == nil {
 						lib = append(lib, entry{a, albums})
@@ -761,7 +779,7 @@ func (c *Coordinator) AlbumMatcher(ctx context.Context) func(name string) (music
 
 // albumForRelease resolves a release name to a library album.
 func (c *Coordinator) albumForRelease(ctx context.Context, name string) (music.Album, music.Artist, bool) {
-	artists, err := c.music.ListArtists(ctx)
+	artists, err := c.music.LibraryArtists(ctx)
 	if err != nil {
 		return music.Album{}, music.Artist{}, false
 	}
@@ -840,6 +858,9 @@ type albumImport struct {
 	kept    int // tracks left as they were: the file held is as good or better
 	refused int // better copies not placed because the recycle bin couldn't take the old file
 	failed  int // tracks that couldn't be placed or recorded for any other reason
+	// taken counts tracks whose file would land on a file another track already has:
+	// nothing is replaced, and the download goes to Review rather than retrying.
+	taken int
 	// unmatched counts files that matched no track (and, for a discography, folders that
 	// matched no album): left in the download for a person, so its files must be kept.
 	unmatched int
@@ -851,6 +872,7 @@ func (r *albumImport) add(o albumImport) {
 	r.kept += o.kept
 	r.refused += o.refused
 	r.failed += o.failed
+	r.taken += o.taken
 	r.unmatched += o.unmatched
 }
 
@@ -875,6 +897,19 @@ func (c *Coordinator) placeAlbumTracks(ctx context.Context, a music.Artist, al m
 			continue
 		}
 		target := c.imp.AlbumTrackTarget(a.Name, al.Title, al.Year, t.DiscNumber, t.TrackNumber, t.Title, filepath.Ext(f.Path))
+		// One file is never two tracks. When the name this track's file would get is
+		// already another track's file (an old scan's mix-up the upgrade kept apart), placing
+		// it would replace that track's file; leave both alone and let a person look.
+		if owner, err := c.music.FileOwner(ctx, target); err != nil {
+			res.failed++
+			c.log.Warn("music import: checking who holds a track's path failed", "track", t.Title, "err", err)
+			continue
+		} else if owner != 0 && owner != t.ID {
+			res.taken++
+			c.log.Warn("music import: the file this track would be placed at is another track's — left alone",
+				"album", al.Title, "track", t.Title, "path", target)
+			continue
+		}
 		old := ""
 		if t.HasFile {
 			old = t.FilePath
@@ -1184,7 +1219,7 @@ func (c *Coordinator) GrabDiscography(ctx context.Context, artistID int64) error
 // artistForRelease resolves a release name to a library artist (used for discographies,
 // which name the artist but no single album).
 func (c *Coordinator) artistForRelease(ctx context.Context, name string) (music.Artist, bool) {
-	artists, err := c.music.ListArtists(ctx)
+	artists, err := c.music.LibraryArtists(ctx)
 	if err != nil {
 		return music.Artist{}, false
 	}

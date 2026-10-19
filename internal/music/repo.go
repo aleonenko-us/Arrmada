@@ -44,20 +44,8 @@ func scanArtist(row interface{ Scan(...any) error }) (Artist, error) {
 // ListArtists returns every artist in the library with its holdings summary, newest
 // first. Artists that are only credited (featured on someone else's album) aren't listed.
 func (r *Repo) ListArtists(ctx context.Context) ([]Artist, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+artistCols+` FROM artists WHERE in_library = 1 ORDER BY added_at DESC, id DESC`)
+	out, err := r.LibraryArtists(ctx)
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Artist
-	for rows.Next() {
-		a, err := scanArtist(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, a)
-	}
-	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	stats, err := r.artistStats(ctx)
@@ -72,6 +60,27 @@ func (r *Repo) ListArtists(ctx context.Context) ([]Artist, error) {
 		}
 	}
 	return out, nil
+}
+
+// LibraryArtists returns the library's artists, newest first, without their stats: one
+// cheap read for callers that only need names, profiles and monitoring (the sweep,
+// Wanted, matching a download to an album), where the stats would cost a pass over every
+// album's tracks.
+func (r *Repo) LibraryArtists(ctx context.Context) ([]Artist, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT `+artistCols+` FROM artists WHERE in_library = 1 ORDER BY added_at DESC, id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Artist
+	for rows.Next() {
+		a, err := scanArtist(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 // wantedTrack says whether a release track ("rt") of an album ("al") counts towards the
@@ -118,7 +127,7 @@ func (r *Repo) artistStats(ctx context.Context) (map[int64]*ArtistStats, error) 
 			s = &ArtistStats{}
 			out[id] = s
 		}
-		s.add(tracks, have, size, mon != 0, editionCount == 0)
+		s.add(tracks, have, editionCount, size, mon != 0)
 	}
 	return out, rows.Err()
 }
@@ -433,11 +442,63 @@ func (r *Repo) UpsertAlbum(ctx context.Context, al Album) (int64, error) {
 
 // WantedAlbums returns every monitored album of a monitored artist, each with its track and
 // have counts, in one statement: the sweep's and Wanted's list.
+//
+// An album with an open migration note (openNoteOf) is left out. The old table said
+// those tracks had a file, the upgrade couldn't give them one, and searching would grab
+// the whole album again over what is most likely a scan's mix-up. A person resolves the
+// note on the album page, or the track gets its file, and the album comes back.
 func (r *Repo) WantedAlbums(ctx context.Context) ([]Album, error) {
 	return r.albums(ctx, `
 		JOIN artists ar ON ar.id = al.artist_id
 		WHERE al.monitored = 1 AND ar.monitored = 1
+		  AND NOT EXISTS (SELECT 1 FROM music_migration_notes n WHERE n.album_id = al.id AND `+openNote+`)
 		ORDER BY al.id`)
+}
+
+// openNote says whether a migration note ("n") still explains a track that reads as
+// missing: one the old table said had a file (two tracks on one path, or a file flag with
+// no path), not resolved by a person, and whose track still has no file.
+const openNote = `n.kind IN ('shared_path', 'no_path') AND n.resolved_at IS NULL
+	AND NOT EXISTS (SELECT 1 FROM music_track_files f WHERE f.release_track_id = n.legacy_track_id)`
+
+// OpenNotes lists an album's open migration notes (openNote), oldest first.
+func (r *Repo) OpenNotes(ctx context.Context, albumID int64) ([]MigrationNote, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT n.id, COALESCE(n.legacy_track_id, 0), n.path, n.kind, n.note FROM music_migration_notes n
+		 WHERE n.album_id = ? AND `+openNote+` ORDER BY n.id`, albumID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MigrationNote
+	for rows.Next() {
+		var n MigrationNote
+		if err := rows.Scan(&n.ID, &n.LegacyTrackID, &n.Path, &n.Kind, &n.Note); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+// ResolveNote marks one of an album's migration notes as looked at: the files are fixed,
+// or the gap is accepted. The album is searched again from the next sweep.
+func (r *Repo) ResolveNote(ctx context.Context, albumID, noteID int64) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE music_migration_notes SET resolved_at = CURRENT_TIMESTAMP WHERE id = ? AND album_id = ? AND resolved_at IS NULL`,
+		noteID, albumID)
+	return affected(res, err)
+}
+
+// FileOwner is the track a file path is recorded for: 0 when the path isn't on record, or
+// is only an album extra.
+func (r *Repo) FileOwner(ctx context.Context, path string) (int64, error) {
+	var owner sql.NullInt64
+	err := r.db.QueryRowContext(ctx, `SELECT release_track_id FROM music_track_files WHERE path = ?`, path).Scan(&owner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return owner.Int64, err
 }
 
 // RecordSearchMiss stamps the search time and counts one more search that found nothing

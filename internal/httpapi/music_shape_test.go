@@ -145,6 +145,31 @@ func TestMusicResponseShapes(t *testing.T) {
 		".stats.size_bytes: number", ".stats.albums_monitored: number", ".stats.albums_complete: number",
 		".stats.albums_unlisted: number", ".stats.albums_with_files: number", ".stats.albums_wanted: number",
 	})
+	// An upgrade note on the album (track 2 has no file) shows on the album, and Resolve
+	// closes it once; a second Resolve, or another album's note, is a 404.
+	if _, err := st.DB().Exec(`INSERT INTO music_migration_notes (legacy_track_id, album_id, path, kind, note)
+	                           VALUES (?, ?, '/music/x.flac', 'shared_path', 'Track 2 recorded the same file as track 1')`, tracks[1].ID, albumID); err != nil {
+		t.Fatal(err)
+	}
+	check("album notes", get(fmt.Sprintf("/api/v1/music/albums/%d", albumID)), []string{
+		".notes: array", ".notes[].id: number", ".notes[].kind: string", ".notes[].note: string",
+	})
+	resolve := func(album int64) int {
+		return musicGateCall(h, "POST", fmt.Sprintf("/api/v1/music/albums/%d/notes/1/resolve", album), session).Code
+	}
+	if code := resolve(albumID + 1); code != http.StatusNotFound {
+		t.Errorf("resolving another album's note = %d, want 404", code)
+	}
+	if code := resolve(albumID); code != http.StatusOK {
+		t.Errorf("resolve = %d, want 200", code)
+	}
+	if code := resolve(albumID); code != http.StatusNotFound {
+		t.Errorf("resolving it again = %d, want 404", code)
+	}
+	if got := get(fmt.Sprintf("/api/v1/music/albums/%d", albumID)); got[".notes"] != "" {
+		t.Error("a resolved note still shows on the album")
+	}
+
 	check("library", get("/api/v1/music/artists"), []string{
 		".artists: array", ".artists[].id: number", ".artists[].name: string", ".artists[].monitored: bool",
 		".artists[].stats: object", ".artists[].stats.tracks: number", ".artists[].stats.have_tracks: number",

@@ -187,7 +187,8 @@ function AlbumRow({ al, onChange, credit }: { al: MusicAlbum; onChange: () => vo
   const [busy, setBusy] = useState(false);
   // The listing is unknown until it's fetched, which happens when the album is opened.
   const known = (al.edition_tracks ?? al.track_count) > 0;
-  const complete = al.track_count > 0 && al.have_tracks >= al.track_count;
+  // Complete as the server counts it: a known listing with every wanted track on disk.
+  const complete = known && al.have_tracks >= al.track_count;
   const tone = !known ? "var(--ink-faint)" : complete ? "var(--good)" : al.monitored ? "var(--avoid)" : "var(--ink-faint)";
   return (
     <div className="flex items-center gap-3 border-b px-4 py-2.5 last:border-b-0" style={{ background: "var(--panel)", borderColor: "var(--line-soft)" }}>

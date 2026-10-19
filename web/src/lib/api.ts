@@ -3794,6 +3794,16 @@ export interface MusicAlbum {
   editions?: MusicEdition[];
   discs?: MusicDisc[];
   extras?: MusicExtraFile[];
+  /** The upgrade's open notes: tracks the old library said had a file that it couldn't give one. */
+  notes?: MusicNote[];
+}
+/** A track the upgrade to editions couldn't give its file (two tracks on one file, or a file with no path). */
+export interface MusicNote {
+  id: number;
+  legacy_track_id?: number;
+  path?: string;
+  kind: string;
+  note: string;
 }
 export interface Artist {
   id: number;

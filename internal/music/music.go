@@ -66,17 +66,18 @@ type ArtistStats struct {
 func statsFromAlbums(albums []Album) *ArtistStats {
 	s := &ArtistStats{}
 	for _, al := range albums {
-		s.add(al.TrackCount, al.HaveTracks, al.SizeBytes, al.Monitored, al.EditionTracks == 0)
+		s.add(al.TrackCount, al.HaveTracks, al.EditionTracks, al.SizeBytes, al.Monitored)
 	}
 	return s
 }
 
-func (s *ArtistStats) add(tracks, have int, size int64, monitored, unlisted bool) {
+func (s *ArtistStats) add(tracks, have, editionTracks int, size int64, monitored bool) {
 	s.Albums++
 	s.Tracks += tracks
 	s.HaveTracks += have
 	s.SizeBytes += size
-	complete := tracks > 0 && have >= tracks
+	complete := albumComplete(editionTracks, tracks, have)
+	unlisted := editionTracks == 0
 	if monitored {
 		s.AlbumsMonitored++
 		if !complete {
@@ -144,11 +145,21 @@ type Album struct {
 	Editions []Edition   `json:"editions,omitempty"`
 	Discs    []Medium    `json:"discs,omitempty"`
 	Extras   []TrackFile `json:"extras,omitempty"`
+	// Notes are the upgrade's open notes on this album (detail read): tracks the old
+	// table said had a file that the new model couldn't give one. While any is open the
+	// sweep leaves the album alone (see Repo.WantedAlbums).
+	Notes []MigrationNote `json:"notes,omitempty"`
 }
 
 // Complete reports whether every wanted track of the album's target edition has a file.
-// An album with no listing is never complete: it is unknown.
-func (a Album) Complete() bool { return a.TrackCount > 0 && a.HaveTracks >= a.TrackCount }
+// An album with no listing is never complete: it is unknown. One whose listing is known but
+// with no track wanted has nothing left to get, so it is complete: searching for it would
+// grab a release nothing on it is wanted from.
+func (a Album) Complete() bool { return albumComplete(a.EditionTracks, a.TrackCount, a.HaveTracks) }
+
+func albumComplete(editionTracks, tracks, have int) bool {
+	return editionTracks > 0 && have >= tracks
+}
 
 // Track is one track of an album's target edition (a release track) with its file folded
 // in: the shape imports, the scan and the album page work with. ID is the release track's
