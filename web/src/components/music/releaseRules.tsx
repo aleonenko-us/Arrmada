@@ -12,7 +12,9 @@ const FOUND_WORDS: Record<string, string> = {
   back_catalogue: "Older music MusicBrainz only now lists; not wanted on its own",
   too_many: "One of many MusicBrainz listed at once; not wanted on its own",
   single_pending: "Single: checking whether its songs are already on an album",
+  single_asked: "Single: wanted once it's checked not to be on an album",
   single_on_album: "Single already on an album; not wanted",
+  undated_pending: "No release date yet; wanted only if a date shows it's new",
 };
 
 export function foundWords(foundAs: string | undefined, monitored: boolean): string {

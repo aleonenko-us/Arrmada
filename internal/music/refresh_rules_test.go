@@ -317,13 +317,15 @@ func TestRefreshNeverSurpriseGrabs(t *testing.T) {
 	if len(plan.Want) != 3 { // the live album, the back-catalogue EP and the list-only album
 		t.Fatalf("preview wants %d albums (%+v), want 3", len(plan.Want), plan.Want)
 	}
-	if _, err := f.svc.ApplyOptions(f.ctx, a.ID, 5, 0, 0); !errors.Is(err, ErrPlanChanged) {
-		t.Errorf("apply with a stale count = %v, want ErrPlanChanged", err)
+	ids := []int64{plan.Want[0].ID, plan.Want[1].ID, plan.Want[2].ID}
+	// The same count, other albums: still refused (the plan is compared by album).
+	if _, err := f.svc.ApplyOptions(f.ctx, a.ID, ApplyIDs{Want: []int64{ids[0], ids[1], 999}}); !errors.Is(err, ErrPlanChanged) {
+		t.Errorf("apply with a stale plan = %v, want ErrPlanChanged", err)
 	}
 	if f.album(t, "rg-live").Monitored {
 		t.Fatal("a refused apply changed something")
 	}
-	if _, err := f.svc.ApplyOptions(f.ctx, a.ID, 3, 0, 0); err != nil {
+	if _, err := f.svc.ApplyOptions(f.ctx, a.ID, ApplyIDs{Want: []int64{ids[2], ids[0], ids[1]}}); err != nil {
 		t.Fatal(err)
 	}
 	if !f.album(t, "rg-live").Monitored || !f.album(t, "rg-old").Monitored {
@@ -667,16 +669,32 @@ func TestFirstLookOnlyWantsRecentReleases(t *testing.T) {
 			t.Errorf("%s: found=%q monitored=%v, want %q", id, al.FoundAs, al.Monitored, want)
 		}
 	}
-	// After the first look an undated newcomer is a new release (announcements often
-	// have no date yet).
-	f.p.main["mb-rh"] = append(f.p.main["mb-rh"], rg("rg-announced", "Announced", "Album", ""))
+	// After the first look an undated newcomer waits, listed: an announcement and old
+	// music catalogued without a date look the same until a date says which (owner's
+	// decision, 2026-10-20).
+	f.p.main["mb-rh"] = append(f.p.main["mb-rh"], rg("rg-announced", "Announced", "Album", ""),
+		rg("rg-old-tape", "Old Tape", "Album", ""))
+	if _, err := f.svc.RefreshArtist(f.ctx, a.ID, RefreshOptions{Scheduled: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"rg-announced", "rg-old-tape"} {
+		if al := f.album(t, id); al.FoundAs != FoundUndatedPending || al.Monitored {
+			t.Errorf("undated newcomer %s: found=%q monitored=%v, want listed as undated", id, al.FoundAs, al.Monitored)
+		}
+	}
+	// The dates arrive: the announcement is a new release, wanted; the tape is old.
+	f.p.main["mb-rh"][4] = rg("rg-announced", "Announced", "Album", "2026-11-06")
+	f.p.main["mb-rh"][5] = rg("rg-old-tape", "Old Tape", "Album", "1993-01-01")
 	if _, err := f.svc.RefreshArtist(f.ctx, a.ID, RefreshOptions{Scheduled: true}); err != nil {
 		t.Fatal(err)
 	}
 	if al := f.album(t, "rg-announced"); al.FoundAs != FoundNew || !al.Monitored {
-		t.Errorf("undated newcomer: found=%q monitored=%v", al.FoundAs, al.Monitored)
+		t.Errorf("dated announcement: found=%q monitored=%v, want a wanted new release", al.FoundAs, al.Monitored)
 	}
-	if rel, err := f.svc.NewReleases(f.ctx, 30); err != nil || len(rel) != 4 || rel[0].ArtistName != "Radiohead" {
+	if al := f.album(t, "rg-old-tape"); al.FoundAs != FoundBackCatalogue || al.Monitored {
+		t.Errorf("dated old tape: found=%q monitored=%v, want listed as back catalogue", al.FoundAs, al.Monitored)
+	}
+	if rel, err := f.svc.NewReleases(f.ctx, 30); err != nil || len(rel) != 5 || rel[0].ArtistName != "Radiohead" {
 		t.Errorf("new releases = %d (%v)", len(rel), err)
 	}
 }

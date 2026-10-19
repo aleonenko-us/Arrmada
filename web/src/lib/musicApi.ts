@@ -102,11 +102,11 @@ export const musicApi = {
       method: "PUT",
       body: JSON.stringify(patch),
     }),
-  /** Carry out the plan the person saw (its counts); 409 when it changed. */
+  /** Carry out the plan the person saw (its albums); 409 when it changed. */
   applyArtistOptions: (artistId: number, plan: ApplyPlan) =>
     req<{ applied: ApplyPlan }>(`/api/v1/music/artists/${artistId}/options/apply`, {
       method: "POST",
-      body: JSON.stringify({ want: plan.want.length, unwant: plan.unwant.length, singles: plan.singles.length }),
+      body: JSON.stringify({ want: plan.want.map((a) => a.id), unwant: plan.unwant.map((a) => a.id), singles: plan.singles.map((a) => a.id) }),
     }),
   releaseDefaults: () =>
     req<{ settings: ReleaseDefaults; defaults: ReleaseDefaults; choices: ReleaseTypeChoices }>("/api/v1/music/release-defaults"),

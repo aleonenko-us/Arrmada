@@ -208,20 +208,35 @@ func TestRefreshMusicArtistsKeepsToItsCallBudget(t *testing.T) {
 	stub := newMBStub(t, 3)
 	c, svc, st := realMusicCoord(t, stub)
 	seedArtists(t, st, 12)
-	c.musicRefreshBudget = 10
+	c.musicRefreshBudget = 20
 	ctx := context.Background()
+	// An artist refreshed already, with a wanted album that has no listing yet: the
+	// follow-up step's work.
+	repo := music.NewRepo(st.DB())
+	filler, err := repo.CreateArtist(ctx, music.Artist{MBID: "fill", Name: "Filler", Monitored: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.StampRefreshed(ctx, filler.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertAlbum(ctx, music.Album{ArtistID: filler.ID, MBID: "fill-rg-0", Title: "Wanted", Monitored: true}); err != nil {
+		t.Fatal(err)
+	}
 
 	rep, err := c.RefreshMusicArtists(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Two requests an artist (the artist, its album list): five artists use the budget.
-	if rep.Artists != 5 || rep.Calls != 10 || rep.Stopped != "budget" {
-		t.Fatalf("run 1: %+v, want 5 artists, 10 calls, stopped on the budget", rep)
+	// Two requests an artist (the artist, its album list): the artists' three quarters of
+	// the budget (15) is used up by eight; the rest is kept for the follow-up steps, and
+	// the listing fill gets it (the edition list and the edition's tracks).
+	if rep.Artists != 8 || rep.Stopped != "artist_share" || rep.Listings != 1 || rep.Calls != 18 {
+		t.Fatalf("run 1: %+v, want 8 artists, the listing filled, 18 calls, stopped at the artists' share", rep)
 	}
 	due, _ := svc.ArtistsDueForRefresh(ctx, musicRefreshEvery, 100)
-	if len(due) != 7 || due[0].MBID != "a0005" {
-		t.Fatalf("after run 1, %d due starting %q; want the 7 not yet refreshed, in order", len(due), firstMBID(due))
+	if len(due) != 4 || due[0].MBID != "a0008" {
+		t.Fatalf("after run 1, %d due starting %q; want the 4 not yet refreshed, in order", len(due), firstMBID(due))
 	}
 	for run := 2; run <= 3; run++ {
 		if _, err := c.RefreshMusicArtists(ctx); err != nil {
@@ -232,7 +247,9 @@ func TestRefreshMusicArtistsKeepsToItsCallBudget(t *testing.T) {
 		t.Fatalf("%d artists still due after three runs", len(due))
 	}
 	// Every answer is fresh now: making them all due again costs no request.
-	makeDue(t, st)
+	if _, err := st.DB().Exec(`UPDATE artists SET last_refreshed_at = datetime('now', '-1 day') WHERE mbid != 'fill'`); err != nil {
+		t.Fatal(err)
+	}
 	before := stub.requests.Load()
 	c.musicRefreshBudget = 0
 	rep, err = c.RefreshMusicArtists(ctx)

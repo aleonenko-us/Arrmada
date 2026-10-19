@@ -119,22 +119,20 @@ func (a *api) handleSetArtistOptions(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{"options": opts, "choices": releaseTypeChoices(), "refreshed": changed})
 }
 
-// handleApplyArtistOptions carries out "Want matching albums": the counts the person was
+// handleApplyArtistOptions carries out "Want matching albums": the albums the person was
 // shown must still be the plan, or nothing changes (409, with the new plan).
 func (a *api) handleApplyArtistOptions(w http.ResponseWriter, r *http.Request) {
 	id, ok := a.pathID(w, r)
 	if !ok {
 		return
 	}
-	var req struct {
-		Want    int `json:"want"`
-		Unwant  int `json:"unwant"`
-		Singles int `json:"singles"`
-	}
+	// The album ids of the plan the person saw: the server applies it only when the plan
+	// is still exactly those albums.
+	var req music.ApplyIDs
 	if !a.decodeJSON(w, r, &req) {
 		return
 	}
-	plan, err := a.deps.Music.ApplyOptions(r.Context(), id, req.Want, req.Unwant, req.Singles)
+	plan, err := a.deps.Music.ApplyOptions(r.Context(), id, req)
 	switch {
 	case errors.Is(err, music.ErrPlanChanged):
 		a.writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "apply": plan})

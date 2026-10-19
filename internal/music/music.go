@@ -45,6 +45,9 @@ type Artist struct {
 	StaleSince      string `json:"stale_since,omitempty"`
 	// seenScopes are the browses whose release groups have been seen ("main", "other").
 	seenScopes string
+	// pendingAdd is the add dialog's choice, kept when the add couldn't read the albums,
+	// for the first refresh that can to apply.
+	pendingAdd string
 
 	// Albums is filled by the detail read, not the list read: the albums filed under
 	// this artist.
@@ -78,7 +81,7 @@ type ArtistStats struct {
 func statsFromAlbums(albums []Album) *ArtistStats {
 	s := &ArtistStats{}
 	for _, al := range albums {
-		s.add(al.TrackCount, al.HaveTracks, al.EditionTracks, al.SizeBytes, al.Monitored)
+		s.add(al.TrackCount, al.HaveTracks, al.EditionTracks, al.SizeBytes, al.Monitored && al.StaleSince == "")
 	}
 	return s
 }
@@ -143,6 +146,9 @@ type Album struct {
 	FoundAs    string `json:"found_as,omitempty"`
 	StaleSince string `json:"stale_since,omitempty"`
 	Source     string `json:"-"`
+	// departureChecked is when the album, gone from its artist's list, was found still on
+	// MusicBrainz (credited elsewhere): kept, and looked at again only in turn.
+	departureChecked string
 
 	// Tracks are the target edition's tracks with their files, filled by the detail read.
 	Tracks []Track `json:"tracks,omitempty"`

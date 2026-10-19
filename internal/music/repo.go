@@ -23,7 +23,7 @@ func NewRepo(db *sql.DB) *Repo { return &Repo{db: db} }
 
 const artistCols = `id, mbid, name, sort_name, overview, image_url, genres_json,
 	monitored, quality_profile, added_at, disambiguation, artist_type, country, in_library,
-	last_refreshed_at, stale_since, monitor_new, release_types, rg_seen_scopes`
+	last_refreshed_at, stale_since, monitor_new, release_types, rg_seen_scopes, pending_add_monitor`
 
 func scanArtist(row interface{ Scan(...any) error }) (Artist, error) {
 	var (
@@ -34,7 +34,7 @@ func scanArtist(row interface{ Scan(...any) error }) (Artist, error) {
 	)
 	if err := row.Scan(&a.ID, &a.MBID, &a.Name, &a.SortName, &a.Overview, &a.ImageURL,
 		&genresJSON, &mon, &a.QualityProfile, &a.AddedAt, &a.Disambiguation, &a.Type, &a.Country, &inLib,
-		&refreshed, &stale, &a.MonitorNew, &types, &a.seenScopes); err != nil {
+		&refreshed, &stale, &a.MonitorNew, &types, &a.seenScopes, &a.pendingAdd); err != nil {
 		return Artist{}, err
 	}
 	a.Monitored, a.InLibrary = mon != 0, inLib != 0
@@ -119,7 +119,7 @@ const albumCounts = `
 // counts and arithmetic as statsFromAlbums (which the detail read uses), so list and
 // detail agree. About a third of a second on a 15,000-album, 200,000-track library.
 func (r *Repo) artistStats(ctx context.Context) (map[int64]*ArtistStats, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT al.artist_id, al.monitored,`+albumCounts+` FROM albums al`)
+	rows, err := r.db.QueryContext(ctx, `SELECT al.artist_id, (al.monitored = 1 AND al.stale_since IS NULL),`+albumCounts+` FROM albums al`)
 	if err != nil {
 		return nil, err
 	}
@@ -310,25 +310,25 @@ const albumHead = `SELECT al.id, al.artist_id, al.mbid, al.title, al.year, al.al
 	al.release_date, al.monitored, al.added_at, al.last_search_at, al.search_misses, al.primary_type,
 	al.secondary_types, COALESCE(al.artist_credit_id, 0),
 	COALESCE((SELECT c.display FROM music_artist_credits c WHERE c.id = al.artist_credit_id), ''),
-	COALESCE(al.target_release_id, 0), al.edition_pinned, al.found_at, al.found_as, al.stale_since, al.source,`
+	COALESCE(al.target_release_id, 0), al.edition_pinned, al.found_at, al.found_as, al.stale_since, al.source, al.departure_checked_at,`
 
 // albumSelect reads album rows with their counts.
 const albumSelect = albumHead + albumCounts + ` FROM albums al`
 
 func scanAlbum(row interface{ Scan(...any) error }) (Album, error) {
 	var (
-		al                 Album
-		mon, pinned        int
-		last, found, stale sql.NullString
+		al                           Album
+		mon, pinned                  int
+		last, found, stale, departed sql.NullString
 	)
 	if err := row.Scan(&al.ID, &al.ArtistID, &al.MBID, &al.Title, &al.Year, &al.AlbumType, &al.CoverURL,
 		&al.ReleaseDate, &mon, &al.AddedAt, &last, &al.SearchMisses, &al.PrimaryType, &al.SecondaryTypes,
-		&al.CreditID, &al.ArtistCredit, &al.TargetEditionID, &pinned, &found, &al.FoundAs, &stale, &al.Source,
+		&al.CreditID, &al.ArtistCredit, &al.TargetEditionID, &pinned, &found, &al.FoundAs, &stale, &al.Source, &departed,
 		&al.TrackCount, &al.HaveTracks, &al.SizeBytes, &al.EditionTracks); err != nil {
 		return Album{}, err
 	}
 	al.Monitored, al.EditionPinned = mon != 0, pinned != 0
-	al.LastSearchAt, al.FoundAt, al.StaleSince = last.String, found.String, stale.String
+	al.LastSearchAt, al.FoundAt, al.StaleSince, al.departureChecked = last.String, found.String, stale.String, departed.String
 	return al, nil
 }
 
@@ -466,10 +466,13 @@ func (r *Repo) UpsertAlbum(ctx context.Context, al Album) (int64, error) {
 // those tracks had a file, the upgrade couldn't give them one, and searching would grab
 // the whole album again over what is most likely a scan's mix-up. A person resolves the
 // note on the album page, or the track gets its file, and the album comes back.
+//
+// An album MusicBrainz no longer lists (stale_since) is left out too: it is kept with its
+// files, and a person can still search for it by hand, but nothing searches it by itself.
 func (r *Repo) WantedAlbums(ctx context.Context) ([]Album, error) {
 	return r.albums(ctx, `
 		JOIN artists ar ON ar.id = al.artist_id
-		WHERE al.monitored = 1 AND ar.monitored = 1
+		WHERE al.monitored = 1 AND ar.monitored = 1 AND al.stale_since IS NULL
 		  AND NOT EXISTS (SELECT 1 FROM music_migration_notes n WHERE n.album_id = al.id AND `+openNote+`)
 		ORDER BY al.id`)
 }

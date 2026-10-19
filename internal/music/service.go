@@ -223,8 +223,12 @@ func (s *Service) AddArtistWith(ctx context.Context, mbid, qualityProfile string
 	res, aerr := s.syncAlbums(ctx, created, syncAdd, opt.Monitor, false)
 	if aerr != nil || res.Unanswered {
 		// The artist is in the library either way — a failed album pull is something a
-		// refresh can retry, not a reason to fail the add and lose the row.
+		// refresh can retry, not a reason to fail the add and lose the row. The add's
+		// choice is kept for that refresh, which applies it as the add would have.
 		s.log.Warn("music: couldn't fetch the artist's albums", "artist", created.Name, "err", aerr)
+		if err := s.repo.SetPendingAdd(ctx, created.ID, opt.Monitor); err != nil {
+			return Artist{}, err
+		}
 	} else {
 		s.repo.AddEvent(ctx, created.ID, "refreshed", fmt.Sprintf("Found %d album(s)", res.Listed))
 		_ = s.repo.StampRefreshed(ctx, created.ID, s.clock())
@@ -331,9 +335,13 @@ func (s *Service) SetArtistMonitored(ctx context.Context, id int64, monitored bo
 	return s.repo.SetArtistMonitored(ctx, id, monitored)
 }
 
-// SetAlbumMonitored toggles one album (and its tracks).
+// SetAlbumMonitored toggles one album (and its tracks): a person's choice, so a single
+// waiting for the automatic singles check is taken out of it and stays as they set it.
 func (s *Service) SetAlbumMonitored(ctx context.Context, id int64, monitored bool) error {
-	return s.repo.SetAlbumMonitored(ctx, id, monitored)
+	if err := s.repo.SetAlbumMonitored(ctx, id, monitored); err != nil {
+		return err
+	}
+	return s.repo.ClearPendingSingle(ctx, id)
 }
 
 // SetQualityProfile changes an artist's quality profile.

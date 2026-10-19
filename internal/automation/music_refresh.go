@@ -40,26 +40,32 @@ const (
 	musicSinglesChecked = 20
 	musicListingFills   = 30
 	musicEditionPass    = 5
+	// musicArtistShare is the percentage of a run's budget the artists may use; the rest is
+	// kept for the follow-up steps.
+	musicArtistShare = 75
 	// musicUnreachableStop: this many artists in a row with no answer at all ends the run.
 	musicUnreachableStop = 3
 )
 
 // MusicRefreshReport is what one refresh-music-artists run did.
 type MusicRefreshReport struct {
-	Artists         int    // artists refreshed
-	Unanswered      int    // of those, MusicBrainz didn't answer for (kept as they were)
-	Added           int    // albums added
-	Wanted          int    // of those, new releases now wanted
-	Stale           int    // albums MusicBrainz no longer lists (flagged, kept)
-	Merged          int    // albums re-pointed to a merged release group
-	Searched        int    // new releases searched
-	SinglesSettled  int    // singles checked against the artist's albums
-	SinglesWanted   int    // of those, wanted
-	Listings        int    // listings filled
-	EditionsTried   int    // legacy albums the edition pass looked at
-	EditionsRekeyed int    // of those, now on a real edition
-	Calls           int64  // MusicBrainz requests sent over the network
-	Stopped         string // "budget", "musicbrainz_paused" or "musicbrainz_unreachable" when the run stopped early
+	Artists         int   // artists refreshed
+	Unanswered      int   // of those, MusicBrainz didn't answer for (kept as they were)
+	Added           int   // albums added
+	Wanted          int   // of those, new releases now wanted
+	Stale           int   // albums MusicBrainz no longer lists (flagged, kept)
+	Merged          int   // albums re-pointed to a merged release group
+	Searched        int   // new releases searched
+	SinglesSettled  int   // singles checked against the artist's albums
+	SinglesWanted   int   // of those, wanted
+	Listings        int   // listings filled
+	EditionsTried   int   // legacy albums the edition pass looked at
+	EditionsRekeyed int   // of those, now on a real edition
+	Calls           int64 // MusicBrainz requests sent over the network
+	// Stopped says why the run stopped early: "artist_share" (the artists used their three
+	// quarters of the budget; the follow-ups still ran), "budget", "musicbrainz_paused" or
+	// "musicbrainz_unreachable".
+	Stopped string
 }
 
 // RefreshMusicArtists is one run of the refresh-music-artists task.
@@ -87,6 +93,22 @@ func (c *Coordinator) refreshMusicArtists(ctx context.Context, tr *metadata.MBTr
 		}
 		return true
 	}
+	// The artists may use three quarters of the budget: the rest is kept for the
+	// follow-up steps (singles, listings, editions), so a big library's artists never
+	// starve them.
+	moreArtists := func() bool {
+		if !more() {
+			return false
+		}
+		if tr.Fetched.Load()+tr.Unanswered() >= c.musicCallBudget()*musicArtistShare/100 {
+			rep.Stopped = "artist_share"
+			return false
+		}
+		return true
+	}
+	// followUps reports whether the follow-up steps may run: not after MusicBrainz
+	// stopped answering or the whole budget is spent.
+	followUps := func() bool { return rep.Stopped == "" || rep.Stopped == "artist_share" }
 	// unreachable counts artists in a row that MusicBrainz didn't answer for at all; a
 	// few mean it's down (or the network is), and the rest of the run would only wait out
 	// timeouts.
@@ -101,7 +123,7 @@ func (c *Coordinator) refreshMusicArtists(ctx context.Context, tr *metadata.MBTr
 		if ctx.Err() != nil {
 			return rep, ctx.Err()
 		}
-		if !more() {
+		if !moreArtists() {
 			break
 		}
 		actx, atr := metadata.WithMBTrace(ctx)
@@ -130,7 +152,7 @@ func (c *Coordinator) refreshMusicArtists(ctx context.Context, tr *metadata.MBTr
 
 	rep.Searched = c.searchNewReleases(ctx, wanted)
 
-	if rep.Stopped == "" {
+	if followUps() {
 		settled, sw, err := c.music.CheckPendingSingles(ctx, musicSinglesChecked, more)
 		rep.SinglesSettled, rep.SinglesWanted = settled, sw
 		if err != nil {
@@ -138,7 +160,7 @@ func (c *Coordinator) refreshMusicArtists(ctx context.Context, tr *metadata.MBTr
 		}
 	}
 
-	if rep.Stopped == "" {
+	if followUps() {
 		albums, err := c.music.AlbumsWithoutListing(ctx, musicListingFills)
 		if err != nil {
 			return rep, err
@@ -156,7 +178,7 @@ func (c *Coordinator) refreshMusicArtists(ctx context.Context, tr *metadata.MBTr
 		}
 	}
 
-	if rep.Stopped == "" {
+	if followUps() {
 		tried, rekeyed, err := c.music.RekeyLegacyEditions(ctx, musicEditionPass, more)
 		rep.EditionsTried, rep.EditionsRekeyed = tried, rekeyed
 		if err != nil {

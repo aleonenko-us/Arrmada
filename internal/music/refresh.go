@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -40,6 +41,12 @@ const (
 	FoundTooMany       = "too_many"
 	FoundSinglePending = "single_pending"
 	FoundSingleOnAlbum = "single_on_album"
+	// FoundSingleAsked is a single a person queued with "Want matching albums": wanted
+	// once the check finds a song on it that isn't on an album.
+	FoundSingleAsked = "single_asked"
+	// FoundUndatedPending is a newcomer with no release date yet: listed, and judged as a
+	// new release (or not) once MusicBrainz gives it a date.
+	FoundUndatedPending = "undated_pending"
 )
 
 const (
@@ -52,6 +59,14 @@ const (
 	// firstLookWindow: on the first look at a browse (an upgraded library's first refresh,
 	// or singles just switched on) only this recent counts as new.
 	firstLookWindow = 90 * 24 * time.Hour
+	// newReleaseWindow is how far back the flood guard counts an artist's new releases.
+	newReleaseWindow = 30 * 24 * time.Hour
+	// departureRecheck is how long an album gone from its artist's list but still on
+	// MusicBrainz is left before it's looked up again.
+	departureRecheck = 30 * 24 * time.Hour
+	// listingRetry is how long the refresh waits before trying again to fill a listing
+	// MusicBrainz had nothing for (the sweep still fetches one when it searches).
+	listingRetry = 7 * 24 * time.Hour
 	// rgLookupsPerRefresh bounds the lookups that tell a merged album from a removed one,
 	// per artist per refresh (each is one MusicBrainz call, cached).
 	rgLookupsPerRefresh = 5
@@ -153,17 +168,20 @@ const (
 
 // pendingAlbum is one release group about to be added.
 type pendingAlbum struct {
-	r         metadata.AlbumResult
-	primary   string
-	secondary []string
-	foundAs   string
-	monitored bool
+	r metadata.AlbumResult
+	// existingID is set for an album already listed whose standing changes (an undated
+	// newcomer that now has a date).
+	existingID int64
+	primary    string
+	secondary  []string
+	foundAs    string
+	monitored  bool
 }
 
 // syncAlbums reads an artist's release groups and brings its albums up to date: release
 // groups its types list are added (or their details corrected), albums MusicBrainz merged
 // are re-pointed, and albums it no longer lists are flagged. monitor is the add dialog's
-// choice (syncAdd only).
+// choice (syncAdd only); listOnly adds without wanting anything (syncRefresh only).
 func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monitor string, listOnly bool) (RefreshResult, error) {
 	res := RefreshResult{ArtistID: a.ID}
 	ctx, tr := metadata.WithMBTrace(ctx)
@@ -183,9 +201,12 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monit
 		res.Unanswered = true
 		return res, nil
 	}
+	// A browse that filled every page MusicBrainz lets us ask for is cut short: an album
+	// missing from it may simply be past the end, so it says nothing about departures.
+	mainWhole := len(main) < metadata.MBReleaseGroupBrowseCap
 	answer := append([]metadata.AlbumResult(nil), main...)
 	scopes := []string{scopeMain}
-	otherFresh := false
+	otherFresh, otherWhole := false, false
 	if types.WantsOther() {
 		if op, ok := s.meta.(metadata.OtherReleaseGroupsProvider); ok {
 			before := tr.Unanswered()
@@ -197,6 +218,7 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monit
 				answer = append(answer, other...)
 				scopes = append(scopes, scopeOther)
 				otherFresh = tr.Unanswered() == before
+				otherWhole = len(other) < metadata.MBReleaseGroupBrowseCap
 			}
 		}
 	}
@@ -205,9 +227,18 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monit
 	if err != nil {
 		return res, err
 	}
-	if len(main) == 0 && len(existing) > 0 {
-		// Nothing listed where the library has albums: MusicBrainz having a bad moment,
-		// never "the artist has no albums". Nothing changes.
+	byMBID := make(map[string]Album, len(existing))
+	heldMain := 0
+	for _, al := range existing {
+		byMBID[al.MBID] = al
+		if p, _ := albumTypes(al); scopeOf(p) == scopeMain && al.StaleSince == "" && (al.Source == "" || al.Source == "musicbrainz") {
+			heldMain++
+		}
+	}
+	if len(main) == 0 && heldMain > 0 {
+		// No albums or EPs listed where the library has some: MusicBrainz having a bad
+		// moment, never "the artist has no albums". Nothing changes. (An artist the library
+		// holds only singles of can have an empty album list; that's an answer.)
 		res.Unanswered = true
 		return res, nil
 	}
@@ -217,26 +248,28 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monit
 		inAnswer[r.MBID] = true
 	}
 
-	// Albums that left the list. Only a list MusicBrainz answered just now says anything:
-	// a stale copy served while it was down is no evidence of anything.
+	// Albums that left the list. Only a whole list MusicBrainz answered just now says
+	// anything: a stale copy served while it was down, or a list cut short at the browse
+	// cap, is no evidence of anything.
 	deferNew := false
 	if mode == syncRefresh {
-		fresh := map[string]bool{scopeMain: mainFresh, scopeOther: otherFresh}
+		judged := map[string]bool{scopeMain: mainFresh && mainWhole, scopeOther: otherFresh && otherWhole}
 		var gone []Album
 		for _, al := range existing {
 			if al.MBID == "" || inAnswer[al.MBID] || al.StaleSince != "" || (al.Source != "" && al.Source != "musicbrainz") {
 				continue
 			}
-			p, _ := albumTypes(al)
-			if !fresh[scopeOf(p)] {
+			if p, _ := albumTypes(al); !judged[scopeOf(p)] {
 				continue
 			}
 			gone = append(gone, al)
 		}
-		unresolved := s.resolveGone(ctx, a, gone, inAnswer, now, &res)
-		// A merged album may be among the "new" ones; until every departure is explained,
-		// nothing new is added (the next refresh carries on where this one stopped).
-		deferNew = unresolved > 0
+		unexplained := s.resolveGone(ctx, a, gone, inAnswer, now, &res)
+		// A merged album may be among the "new" ones; while a departure nobody has been
+		// able to look at yet remains, nothing new is added (the next refresh carries on).
+		// One MusicBrainz still knows (now credited elsewhere) is explained and holds
+		// nothing up.
+		deferNew = unexplained > 0
 	}
 
 	seen, err := s.repo.SeenReleaseGroups(ctx, a.ID)
@@ -258,6 +291,21 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monit
 			if _, err := s.repo.UpsertAlbum(ctx, albumFromResult(a.ID, r, primary, secondary)); err != nil {
 				s.log.Warn("music: storing an album failed", "album", r.Title, "err", err)
 			}
+			// An undated newcomer that now has a date is judged as the new release it is,
+			// or not.
+			if ex, mine := byMBID[r.MBID]; mine && mode == syncRefresh && ex.FoundAs == FoundUndatedPending && strings.TrimSpace(r.ReleaseDate) != "" && !deferNew {
+				p := pendingAlbum{r: r, primary: primary, secondary: secondary, existingID: ex.ID}
+				switch {
+				case listOnly:
+					p.foundAs = FoundNotNew
+				case olderThan(r.ReleaseDate, now, backCatalogueAge):
+					p.foundAs = FoundBackCatalogue
+				default:
+					p.foundAs = FoundNew
+					newCount++
+				}
+				pending = append(pending, p)
+			}
 			continue
 		}
 		if deferNew {
@@ -270,8 +318,8 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monit
 			case seen[r.MBID]:
 				p.foundAs = FoundNotNew
 			case listOnly:
-				// Asked for because the artist's types just changed: whatever the change
-				// brings in is listed, never wanted on its own.
+				// Asked for because the artist's types just changed (or its MusicBrainz
+				// entry was merged): whatever comes in is listed, never wanted on its own.
 				p.foundAs = FoundNotNew
 			case !hasScope(a.seenScopes, scope) && a.seenScopes != "":
 				// A browse the artist has never had (singles just ticked): everything
@@ -285,6 +333,10 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monit
 				} else {
 					p.foundAs = FoundBackCatalogue
 				}
+			case strings.TrimSpace(r.ReleaseDate) == "":
+				// No date yet: an announcement, or old music catalogued without one. It
+				// waits, listed, until a date says which.
+				p.foundAs = FoundUndatedPending
 			case olderThan(r.ReleaseDate, now, backCatalogueAge):
 				p.foundAs = FoundBackCatalogue
 			default:
@@ -297,7 +349,17 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monit
 		pending = append(pending, p)
 	}
 
-	// Who is wanted.
+	// Who is wanted. The flood guard counts this refresh's new releases with the ones
+	// found in the last 30 days, so a catalogue import spread over several refreshes trips
+	// it too.
+	flood := false
+	if mode == syncRefresh && newCount > 0 {
+		recent, err := s.repo.RecentNewCount(ctx, a.ID, now.Add(-newReleaseWindow))
+		if err != nil {
+			return res, err
+		}
+		flood = newCount+recent > maxNewPerRefresh
+	}
 	wantNew := a.Monitored && s.MonitorNewFor(a) == MonitorNewAll
 	latest := ""
 	if mode == syncAdd && monitor == MonitorLatest {
@@ -313,7 +375,7 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monit
 				p.monitored = a.Monitored && p.r.MBID == latest
 			}
 		} else if p.foundAs == FoundNew {
-			if newCount > maxNewPerRefresh {
+			if flood {
 				p.foundAs = FoundTooMany
 			} else {
 				p.monitored = wantNew
@@ -325,12 +387,26 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, mode syncMode, monit
 			p.monitored, p.foundAs = false, FoundSinglePending
 		}
 	}
-	if newCount > maxNewPerRefresh {
+	if flood {
 		s.log.Warn("music: MusicBrainz shows many new releases at once for one artist; listing them, not wanting them",
 			"artist", a.Name, "new", newCount)
 	}
 
 	for _, p := range pending {
+		if p.existingID > 0 {
+			if err := s.repo.SetFound(ctx, p.existingID, p.foundAs, p.monitored); err != nil {
+				return res, err
+			}
+			al, err := s.repo.GetAlbum(ctx, p.existingID)
+			if err != nil {
+				return res, err
+			}
+			res.Added = append(res.Added, al)
+			if al.Monitored {
+				res.Wanted = append(res.Wanted, al)
+			}
+			continue
+		}
 		al := albumFromResult(a.ID, p.r, p.primary, p.secondary)
 		al.Monitored, al.FoundAs = p.monitored, p.foundAs
 		if mode == syncRefresh {
@@ -407,25 +483,49 @@ func pickLatest(pending []pendingAlbum, now time.Time) string {
 	return best
 }
 
-// resolveGone explains the albums that left an artist's list, a few lookups per refresh:
-// merged into another release group → re-pointed (or, when the library already has that
-// one too, flagged and both kept); removed → flagged "no longer on MusicBrainz". An album
-// MusicBrainz still knows (now credited elsewhere) is left as it is, and one it couldn't
-// answer about waits. It returns how many it couldn't explain this time.
+// resolveGone explains the albums that left an artist's list, a few lookups per refresh,
+// the ones never looked at first, then the longest since:
+//   - merged into a release group this artist lists → re-pointed (or, when the library
+//     already has that one too, flagged and both kept);
+//   - merged into one under another artist → flagged and kept, not re-pointed;
+//   - removed → flagged "no longer on MusicBrainz";
+//   - still on MusicBrainz (now credited elsewhere) → left as it is, and remembered, so it
+//     is looked at again only in turn (departureRecheck) and never holds anything up.
+//
+// It returns how many departures are unexplained: never looked at, and not looked at now
+// (past this refresh's lookups, or MusicBrainz didn't answer).
 func (s *Service) resolveGone(ctx context.Context, a Artist, gone []Album, inAnswer map[string]bool, now time.Time, res *RefreshResult) int {
 	if len(gone) == 0 {
 		return 0
 	}
 	rp, ok := s.meta.(metadata.ReleaseGroupProvider)
-	unresolved := 0
-	for i, al := range gone {
-		if !ok {
-			// No way to ask about one group: a successful list without it is the answer.
+	if !ok {
+		// No way to ask about one group: a successful list without it is the answer.
+		for _, al := range gone {
 			s.flagGone(ctx, a, al, now, res)
-			continue
 		}
+		return 0
+	}
+	// Only the never-checked and the long-since-checked are due a lookup.
+	var due []Album
+	for _, al := range gone {
+		if al.departureChecked == "" || parseDBTime(al.departureChecked).Before(now.Add(-departureRecheck)) {
+			due = append(due, al)
+		}
+	}
+	sort.SliceStable(due, func(i, j int) bool {
+		ci, cj := due[i].departureChecked, due[j].departureChecked
+		if (ci == "") != (cj == "") {
+			return ci == ""
+		}
+		return ci < cj
+	})
+	unexplained := 0
+	for i, al := range due {
 		if i >= rgLookupsPerRefresh {
-			unresolved++
+			if al.departureChecked == "" {
+				unexplained++
+			}
 			continue
 		}
 		rg, err := rp.ReleaseGroup(ctx, al.MBID)
@@ -433,16 +533,21 @@ func (s *Service) resolveGone(ctx context.Context, a Artist, gone []Album, inAns
 		case metadata.IsNotFound(err):
 			s.flagGone(ctx, a, al, now, res)
 		case err != nil:
-			unresolved++
+			if al.departureChecked == "" {
+				unexplained++
+			}
 		case rg.MBID != "" && rg.MBID != al.MBID:
 			s.followAlbumMerge(ctx, a, al, rg, inAnswer, now, res)
 		default:
 			// Still on MusicBrainz, just not under this artist any more (its credit
 			// changed). It stays in the library as it is.
 			s.log.Debug("music: an album left the artist's MusicBrainz list but still exists; keeping it", "artist", a.Name, "album", al.Title)
+			if err := s.repo.StampDepartureChecked(ctx, al.ID, now); err != nil {
+				s.log.Warn("music: noting an album's lookup failed", "album", al.Title, "err", err)
+			}
 		}
 	}
-	return unresolved
+	return unexplained
 }
 
 func (s *Service) flagGone(ctx context.Context, a Artist, al Album, now time.Time, res *RefreshResult) {
@@ -452,15 +557,26 @@ func (s *Service) flagGone(ctx context.Context, a Artist, al Album, now time.Tim
 	}
 	al.StaleSince = dbTime(now)
 	res.Stale = append(res.Stale, al)
-	s.repo.AddEvent(ctx, a.ID, "refreshed", fmt.Sprintf("%q is no longer on MusicBrainz; kept, with its files", al.Title))
+	s.repo.AddEvent(ctx, a.ID, "refreshed", fmt.Sprintf("%q is no longer on MusicBrainz; kept, with its files, and not searched by itself", al.Title))
 }
 
 func (s *Service) followAlbumMerge(ctx context.Context, a Artist, al Album, rg metadata.AlbumResult, inAnswer map[string]bool, now time.Time, res *RefreshResult) {
+	if !inAnswer[rg.MBID] {
+		// Merged into a release group this artist doesn't list: re-pointing would file
+		// another artist's album here. Kept as it is, flagged, and explained.
+		_ = s.repo.AddExternalID(ctx, ExternalID{EntityType: "album", EntityID: al.ID, Source: "musicbrainz_merged_into", Value: rg.MBID})
+		if err := s.repo.SetAlbumStale(ctx, al.ID, now); err == nil {
+			res.Stale = append(res.Stale, al)
+		}
+		s.repo.AddEvent(ctx, a.ID, "refreshed", fmt.Sprintf("MusicBrainz merged %q into a release under another artist; kept here as it was", al.Title))
+		return
+	}
 	err := s.repo.RepointAlbum(ctx, al.ID, al.MBID, rg.MBID)
 	switch {
 	case errors.Is(err, ErrMBIDTaken):
 		// Both halves of the merge are in the library: neither is folded into the other
-		// by itself (that would move files between albums). The old one is flagged.
+		// by itself (that would move files between albums). The old one is flagged, so
+		// this happens (and is written down) once.
 		if serr := s.repo.SetAlbumStale(ctx, al.ID, now); serr == nil {
 			res.Stale = append(res.Stale, al)
 		}
@@ -469,18 +585,26 @@ func (s *Service) followAlbumMerge(ctx context.Context, a Artist, al Album, rg m
 	case err != nil:
 		s.log.Warn("music: following a merged album failed", "album", al.Title, "err", err)
 	default:
-		inAnswer[rg.MBID] = true
 		res.Merged = append(res.Merged, fmt.Sprintf("%s → %s", al.MBID, rg.MBID))
 		s.repo.AddEvent(ctx, a.ID, "refreshed", fmt.Sprintf("MusicBrainz merged %q; following its new entry", al.Title))
 		s.log.Info("music: followed a merged album", "album", al.Title, "from", al.MBID, "to", rg.MBID)
 	}
 }
 
-// followArtistMerge re-points an artist MusicBrainz answered under a new MBID.
-func (s *Service) followArtistMerge(ctx context.Context, a *Artist, newMBID string) {
+// followArtistMerge re-points an artist MusicBrainz answered under a new MBID, and reports
+// whether it did.
+func (s *Service) followArtistMerge(ctx context.Context, a *Artist, newMBID string) bool {
 	err := s.repo.RepointArtist(ctx, a.ID, a.MBID, newMBID)
 	switch {
 	case errors.Is(err, ErrMBIDTaken):
+		// Both artists are in the library. Said once: every later refresh asks the same
+		// question and gets the same answer.
+		ids, _ := s.repo.ExternalIDs(ctx, "artist", a.ID)
+		for _, e := range ids {
+			if e.Source == "musicbrainz_merged_into" && e.Value == newMBID {
+				return false
+			}
+		}
 		_ = s.repo.AddExternalID(ctx, ExternalID{EntityType: "artist", EntityID: a.ID, Source: "musicbrainz_merged_into", Value: newMBID})
 		s.repo.AddEvent(ctx, a.ID, "refreshed", "MusicBrainz merged this artist into another one the library already has; both kept")
 	case err != nil:
@@ -489,7 +613,9 @@ func (s *Service) followArtistMerge(ctx context.Context, a *Artist, newMBID stri
 		s.log.Info("music: followed a merged artist", "artist", a.Name, "from", a.MBID, "to", newMBID)
 		s.repo.AddEvent(ctx, a.ID, "refreshed", "MusicBrainz merged this artist's entry; following its new id")
 		a.MBID = newMBID
+		return true
 	}
+	return false
 }
 
 // RefreshOptions say how a refresh was asked for.
@@ -502,7 +628,10 @@ type RefreshOptions struct {
 }
 
 // RefreshArtist re-reads an artist and its albums from MusicBrainz (stale cached answers
-// asked again; fresh ones free) under the rules at the top of this file.
+// asked again; fresh ones free) under the rules at the top of this file. An artist whose
+// add couldn't read its albums gets the add dialog's choice applied now, exactly as the
+// add would have; one whose MusicBrainz entry was just merged lists the merged entry's
+// albums without wanting any.
 func (s *Service) RefreshArtist(ctx context.Context, id int64, opt RefreshOptions) (RefreshResult, error) {
 	a, err := s.repo.GetArtist(ctx, id)
 	if err != nil {
@@ -510,9 +639,12 @@ func (s *Service) RefreshArtist(ctx context.Context, id int64, opt RefreshOption
 	}
 	ctx, tr := metadata.WithMBTrace(metadata.WithMBRevalidate(ctx))
 	now := s.clock()
+	listOnly := opt.ListOnly
 	if d, derr := s.meta.GetArtist(ctx, a.MBID); derr == nil {
-		if d.MBID != "" && d.MBID != a.MBID {
-			s.followArtistMerge(ctx, &a, d.MBID)
+		if d.MBID != "" && d.MBID != a.MBID && s.followArtistMerge(ctx, &a, d.MBID) {
+			// The entry it was merged into has its own catalogue: none of it is a new
+			// release just because this artist now reads it.
+			listOnly = true
 		}
 		if tr.Unanswered() == 0 {
 			if err := s.repo.UpdateArtistMeta(ctx, id, d.Overview, a.ImageURL, d.Genres, d.Disambiguation, d.Type, d.Country); err != nil {
@@ -522,7 +654,11 @@ func (s *Service) RefreshArtist(ctx context.Context, id int64, opt RefreshOption
 	} else {
 		s.log.Warn("music: artist metadata refresh failed", "artist", a.Name, "err", derr)
 	}
-	res, serr := s.syncAlbums(ctx, a, syncRefresh, "", opt.ListOnly)
+	mode, monitor := syncRefresh, ""
+	if a.pendingAdd != "" && ValidMonitor(a.pendingAdd) {
+		mode, monitor = syncAdd, a.pendingAdd
+	}
+	res, serr := s.syncAlbums(ctx, a, mode, monitor, listOnly)
 	res.Calls = tr.Fetched.Load()
 	if serr != nil && !res.Unanswered {
 		// A database failure: say so, and leave the artist due.
@@ -533,7 +669,17 @@ func (s *Service) RefreshArtist(ctx context.Context, id int64, opt RefreshOption
 		_ = s.repo.SetArtistStale(ctx, id, now)
 		s.repo.AddEvent(ctx, id, "refreshed", "MusicBrainz didn't answer; kept what we had")
 	} else {
-		s.writeRefreshEvents(ctx, a, res, opt)
+		if mode == syncAdd {
+			// What the add wanted is the sweep's to search, as after any add; these
+			// aren't new releases.
+			res.Wanted = nil
+			if err := s.repo.SetPendingAdd(ctx, id, ""); err != nil {
+				return res, err
+			}
+			s.repo.AddEvent(ctx, id, "refreshed", fmt.Sprintf("Found %d album(s)", res.Listed))
+		} else {
+			s.writeRefreshEvents(ctx, a, res, opt)
+		}
 	}
 	if err := s.repo.StampRefreshed(ctx, id, now); err != nil {
 		return res, err
@@ -585,10 +731,15 @@ func wordList(names []string, n int) string {
 }
 
 // CheckPendingSingles settles singles waiting for the singles-on-an-album check, up to
-// limit: each single's listing and the listings of the artist's monitored albums are read
-// (through the cache), and the single is wanted only when some song on it isn't on one of
-// those albums. more() is asked before each MusicBrainz-bound step; when it says no, the
-// rest wait for the next run. It returns how many were settled and how many wanted.
+// limit: each single's listing and the listings of the artist's albums are read (through
+// the cache), and the single is wanted only when some song on it isn't on one of those
+// albums. more() is asked before each MusicBrainz-bound step; when it says no, the rest
+// wait for the next run. It returns how many were settled and how many wanted.
+//
+// The check only ever acts for whoever asked for it. A single a person has wanted since
+// is left as they set it; one the refresh queued (single_pending) is wanted only while
+// the artist's types still allow singles and its new releases are still wanted; one a
+// person queued with "Want matching albums" (single_asked) only while singles are allowed.
 func (s *Service) CheckPendingSingles(ctx context.Context, limit int, more func() bool) (settled, wanted int, err error) {
 	singles, err := s.repo.PendingSingles(ctx, s.clock().Add(-24*time.Hour), limit)
 	if err != nil {
@@ -600,6 +751,36 @@ func (s *Service) CheckPendingSingles(ctx context.Context, limit int, more func(
 		}
 		a, err := s.repo.GetArtist(ctx, single.ArtistID)
 		if err != nil {
+			continue
+		}
+		// newAs is what a refresh-found single reads as once settled: a new release.
+		newAs := ""
+		if single.FoundAt != "" && single.FoundAs == FoundSinglePending {
+			newAs = FoundNew
+		}
+		p, sec := albumTypes(single)
+		settle := func(as string, monitored bool) error {
+			settled++
+			return s.repo.SetFound(ctx, single.ID, as, monitored)
+		}
+		switch {
+		case single.Monitored:
+			// Wanted by hand meanwhile: their choice stands.
+			if err := settle("", true); err != nil {
+				return settled, wanted, err
+			}
+			continue
+		case !s.ReleaseTypesFor(a).Allows(p, sec):
+			// Singles were unticked meanwhile: listed only.
+			if err := settle(FoundNotNew, false); err != nil {
+				return settled, wanted, err
+			}
+			continue
+		case single.FoundAs == FoundSinglePending && s.MonitorNewFor(a) != MonitorNewAll:
+			// The artist's new releases are only listed now.
+			if err := settle(newAs, false); err != nil {
+				return settled, wanted, err
+			}
 			continue
 		}
 		on, known, err := s.singleOnAlbum(ctx, a, single, more)
@@ -624,12 +805,8 @@ func (s *Service) CheckPendingSingles(ctx context.Context, limit int, more func(
 			s.repo.AddEvent(ctx, a.ID, "refreshed", fmt.Sprintf("Single %q is already on an album; listed, not wanted", single.Title))
 			continue
 		}
-		as := ""
-		if single.FoundAt != "" {
-			as = FoundNew
-		}
 		want := a.Monitored
-		if err := s.repo.SetFound(ctx, single.ID, as, want); err != nil {
+		if err := s.repo.SetFound(ctx, single.ID, newAs, want); err != nil {
 			return settled, wanted, err
 		}
 		if want {
@@ -641,9 +818,11 @@ func (s *Service) CheckPendingSingles(ctx context.Context, limit int, more func(
 }
 
 // singleOnAlbum reports whether every song on a single is already on one of the artist's
-// monitored albums (by recording MBID, or by title without its version suffix, so the
-// radio edit counts as the album track). known is false while a listing it needs isn't
-// in.
+// albums (by recording MBID, or by title without its version suffix, so the radio edit
+// counts as the album track). Every album the artist has counts, wanted or not, except
+// singles and albums MusicBrainz no longer lists; a listing is fetched for the wanted ones
+// and the ones holding files, and the rest count when theirs is already known. known is
+// false while a listing it needs isn't in.
 func (s *Service) singleOnAlbum(ctx context.Context, a Artist, single Album, more func() bool) (on, known bool, err error) {
 	if single.EditionTracks == 0 {
 		if err := s.EnsureTracks(ctx, single); err != nil {
@@ -661,13 +840,20 @@ func (s *Service) singleOnAlbum(ctx context.Context, a Artist, single Album, mor
 	if err != nil {
 		return false, false, err
 	}
+	withFiles, err := s.repo.AlbumsWithAnyFile(ctx, a.ID)
+	if err != nil {
+		return false, false, err
+	}
 	var ids []int64
 	for _, al := range albums {
 		p, _ := albumTypes(al)
-		if al.ID == single.ID || !al.Monitored || strings.EqualFold(p, "Single") {
+		if al.ID == single.ID || al.StaleSince != "" || strings.EqualFold(p, "Single") {
 			continue
 		}
 		if al.EditionTracks == 0 {
+			if !al.Monitored && !withFiles[al.ID] {
+				continue // nobody wants it and nothing of it is here: its songs don't count
+			}
 			if !more() {
 				return false, false, nil
 			}
@@ -764,8 +950,9 @@ type AlbumBrief struct {
 
 // ApplyPlan is what applying an artist's release types to the albums it already lists
 // would do: want the unwanted albums the types allow, stop wanting the wanted ones they
-// no longer allow that hold no files, and put the singles they allow through the
-// singles-on-an-album check. Nothing happens until a person confirms it.
+// no longer allow that hold no file at all (a file the scan can't see right now counts),
+// and put the singles they allow through the singles-on-an-album check. Nothing happens
+// until a person confirms it.
 type ApplyPlan struct {
 	Want    []AlbumBrief `json:"want"`
 	Unwant  []AlbumBrief `json:"unwant"`
@@ -774,6 +961,13 @@ type ApplyPlan struct {
 
 // Empty reports whether the plan would change nothing.
 func (p ApplyPlan) Empty() bool { return len(p.Want)+len(p.Unwant)+len(p.Singles) == 0 }
+
+// ApplyIDs is the plan a person confirmed, as album ids.
+type ApplyIDs struct {
+	Want    []int64 `json:"want"`
+	Unwant  []int64 `json:"unwant"`
+	Singles []int64 `json:"singles"`
+}
 
 // ApplyPreview works out an artist's apply plan.
 func (s *Service) ApplyPreview(ctx context.Context, id int64) (ApplyPlan, error) {
@@ -786,19 +980,24 @@ func (s *Service) ApplyPreview(ctx context.Context, id int64) (ApplyPlan, error)
 	if err != nil {
 		return plan, err
 	}
+	withFiles, err := s.repo.AlbumsWithAnyFile(ctx, id)
+	if err != nil {
+		return plan, err
+	}
 	types := s.ReleaseTypesFor(a)
 	for _, al := range albums {
 		p, sec := albumTypes(al)
 		brief := AlbumBrief{ID: al.ID, Title: al.Title, Type: al.AlbumType, Year: al.Year}
 		allowed := types.Allows(p, sec)
 		switch {
-		case allowed && !al.Monitored && al.StaleSince == "" && al.FoundAs != FoundSingleOnAlbum && al.FoundAs != FoundSinglePending:
+		case allowed && !al.Monitored && al.StaleSince == "" &&
+			al.FoundAs != FoundSingleOnAlbum && al.FoundAs != FoundSinglePending && al.FoundAs != FoundSingleAsked:
 			if strings.EqualFold(p, "Single") {
 				plan.Singles = append(plan.Singles, brief)
 			} else {
 				plan.Want = append(plan.Want, brief)
 			}
-		case !allowed && al.Monitored && al.HaveTracks == 0 && al.SizeBytes == 0:
+		case !allowed && al.Monitored && !withFiles[al.ID]:
 			plan.Unwant = append(plan.Unwant, brief)
 		}
 	}
@@ -808,35 +1007,52 @@ func (s *Service) ApplyPreview(ctx context.Context, id int64) (ApplyPlan, error)
 // ErrPlanChanged is an apply refused because the plan isn't the one the person saw.
 var ErrPlanChanged = errors.New("the albums changed since the preview; look again")
 
-// ApplyOptions carries out an artist's apply plan, provided it is still the plan the
-// person was shown (want/unwant/singles counts); otherwise ErrPlanChanged.
-func (s *Service) ApplyOptions(ctx context.Context, id int64, want, unwant, singles int) (ApplyPlan, error) {
+func briefIDs(list []AlbumBrief) []int64 {
+	out := make([]int64, 0, len(list))
+	for _, b := range list {
+		out = append(out, b.ID)
+	}
+	return out
+}
+
+// sameIDs reports whether two id lists hold the same albums, order aside.
+func sameIDs(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	set := make(map[int64]int, len(a))
+	for _, id := range a {
+		set[id]++
+	}
+	for _, id := range b {
+		if set[id] == 0 {
+			return false
+		}
+		set[id]--
+	}
+	return true
+}
+
+// ApplyOptions carries out an artist's apply plan in one transaction, provided it is
+// exactly the plan the person was shown (the same albums in each list); otherwise
+// ErrPlanChanged, with the plan as it is now.
+func (s *Service) ApplyOptions(ctx context.Context, id int64, seen ApplyIDs) (ApplyPlan, error) {
 	plan, err := s.ApplyPreview(ctx, id)
 	if err != nil {
 		return plan, err
 	}
-	if len(plan.Want) != want || len(plan.Unwant) != unwant || len(plan.Singles) != singles {
+	want, unwant, singles := briefIDs(plan.Want), briefIDs(plan.Unwant), briefIDs(plan.Singles)
+	if !sameIDs(want, seen.Want) || !sameIDs(unwant, seen.Unwant) || !sameIDs(singles, seen.Singles) {
 		return plan, ErrPlanChanged
 	}
-	for _, b := range plan.Want {
-		if err := s.repo.SetAlbumMonitored(ctx, b.ID, true); err != nil {
-			return plan, err
-		}
+	if plan.Empty() {
+		return plan, nil
 	}
-	for _, b := range plan.Unwant {
-		if err := s.repo.SetAlbumMonitored(ctx, b.ID, false); err != nil {
-			return plan, err
-		}
+	if err := s.repo.applyPlan(ctx, want, unwant, singles); err != nil {
+		return plan, err
 	}
-	for _, b := range plan.Singles {
-		if err := s.repo.SetFound(ctx, b.ID, FoundSinglePending, false); err != nil {
-			return plan, err
-		}
-	}
-	if !plan.Empty() {
-		s.repo.AddEvent(ctx, id, "refreshed", fmt.Sprintf("Applied the release types: %d wanted, %d no longer wanted, %d singles to check",
-			len(plan.Want), len(plan.Unwant), len(plan.Singles)))
-	}
+	s.repo.AddEvent(ctx, id, "refreshed", fmt.Sprintf("Applied the release types: %d wanted, %d no longer wanted, %d singles to check",
+		len(plan.Want), len(plan.Unwant), len(plan.Singles)))
 	return plan, nil
 }
 
@@ -853,14 +1069,14 @@ func (s *Service) ArtistsDueForRefresh(ctx context.Context, fresh time.Duration,
 	return s.repo.ArtistsDueForRefresh(ctx, s.clock().Add(-fresh), limit)
 }
 
-// AlbumsWithoutListing lists monitored albums with no listing yet, not tried within the
-// last day.
+// AlbumsWithoutListing lists monitored albums with no listing yet, not tried within
+// listingRetry. Albums MusicBrainz no longer lists aren't among them.
 func (s *Service) AlbumsWithoutListing(ctx context.Context, limit int) ([]Album, error) {
-	return s.repo.AlbumsWithoutListing(ctx, s.clock().Add(-24*time.Hour), limit)
+	return s.repo.AlbumsWithoutListing(ctx, s.clock().Add(-listingRetry), limit)
 }
 
 // FillListing fetches a monitored album's missing listing for the refresh (EnsureTracks),
-// and notes the try either way, so an album MusicBrainz has nothing for yet waits a day
+// and notes the try either way, so an album MusicBrainz has nothing for yet waits a week
 // rather than taking a slot every run.
 func (s *Service) FillListing(ctx context.Context, al Album) error {
 	err := s.EnsureTracks(ctx, al)

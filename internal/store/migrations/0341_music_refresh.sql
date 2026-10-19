@@ -20,9 +20,10 @@
 -- so the first browse of a scope is a first look, not a flood of "new" releases.
 --
 -- albums.found_at / found_as: an album a refresh added after the artist was, and why it is
--- or isn't wanted ('new', 'not_new', 'back_catalogue', 'too_many', 'single_pending',
--- 'single_on_album'), for the New releases list. NULL / '' for albums added with their
--- artist (a single added with its artist can still be 'single_pending').
+-- or isn't wanted ('new', 'not_new', 'back_catalogue', 'too_many', 'undated_pending',
+-- 'single_pending', 'single_asked', 'single_on_album'), for the New releases list. NULL /
+-- '' for albums added with their artist (a single added with its artist can still be
+-- 'single_pending').
 --
 -- albums.listing_tried_at: when the refresh last tried to fill a monitored album's missing
 -- listing, so albums MusicBrainz has no release for yet (announced ones) go to the back of
@@ -34,6 +35,14 @@ ALTER TABLE artists ADD COLUMN rg_seen_scopes TEXT NOT NULL DEFAULT '';
 ALTER TABLE albums ADD COLUMN found_at TIMESTAMP;
 ALTER TABLE albums ADD COLUMN found_as TEXT NOT NULL DEFAULT '';
 ALTER TABLE albums ADD COLUMN listing_tried_at TIMESTAMP;
+-- albums.departure_checked_at: an album that left its artist's MusicBrainz list was looked
+-- up by MBID and still exists there (credited elsewhere now, say). It is kept as it is and
+-- looked at again only in turn, oldest first, so it never holds up new releases.
+ALTER TABLE albums ADD COLUMN departure_checked_at TIMESTAMP;
+-- artists.pending_add_monitor: the add dialog's choice (all, future, latest, none) when the
+-- add couldn't read the artist's albums. The first refresh that can applies it exactly as
+-- the add would have, instead of treating the artist as an upgraded library's first look.
+ALTER TABLE artists ADD COLUMN pending_add_monitor TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE music_rg_seen (
     artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,

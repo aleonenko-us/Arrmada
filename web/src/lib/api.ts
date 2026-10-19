@@ -3815,7 +3815,7 @@ export interface MusicAlbum {
   /** The upgrade's open notes: tracks the old library said had a file that it couldn't give one. */
   notes?: MusicNote[];
   /** Set when a refresh found it after the artist was added (MUS-13); found_as says why it
-   *  is or isn't wanted: new, not_new, back_catalogue, too_many, single_pending, single_on_album. */
+   *  is or isn't wanted: new, not_new, back_catalogue, too_many, single_pending, single_asked, single_on_album, undated_pending. */
   found_at?: string;
   found_as?: string;
   /** MusicBrainz no longer lists it: kept, files and all. */

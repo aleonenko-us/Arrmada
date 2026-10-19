@@ -181,7 +181,7 @@ test.describe("Music on the kit", () => {
     await expect(ask.getByText("Wanted: Live at the Pier (2021)")).toBeVisible();
     expect(applied).toEqual([]);
     await ask.getByRole("button", { name: "Apply" }).click();
-    await expect.poll(() => applied).toEqual([{ want: 1, unwant: 0, singles: 0 }]);
+    await expect.poll(() => applied).toEqual([{ want: [52], unwant: [], singles: [] }]);
   });
 
   test("New releases lists what the refresh found and wants one by hand", async ({ page }) => {

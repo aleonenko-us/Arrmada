@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -147,10 +148,11 @@ func TestMusicOptionsRoundTrip(t *testing.T) {
 		t.Errorf("artist lists %d albums after ticking Live, want 2", len(withLive.Albums))
 	}
 
-	if rec := musicCallBody(h, "POST", base+"/apply", session, `{"want":1}`); rec.Code != http.StatusConflict {
-		t.Errorf("apply with a stale count = %d, want 409", rec.Code)
+	ids := fmt.Sprintf(`{"want":[%d,%d]}`, b.Options.Apply.Want[0].ID, b.Options.Apply.Want[1].ID)
+	if rec := musicCallBody(h, "POST", base+"/apply", session, fmt.Sprintf(`{"want":[%d]}`, b.Options.Apply.Want[0].ID)); rec.Code != http.StatusConflict {
+		t.Errorf("apply with a stale plan = %d, want 409", rec.Code)
 	}
-	if rec := musicCallBody(h, "POST", base+"/apply", session, `{"want":2}`); rec.Code != http.StatusOK {
+	if rec := musicCallBody(h, "POST", base+"/apply", session, ids); rec.Code != http.StatusOK {
 		t.Fatalf("apply = %d %s", rec.Code, rec.Body.String())
 	}
 	if b := get(); len(b.Options.Apply.Want) != 0 {

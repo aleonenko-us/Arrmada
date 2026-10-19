@@ -205,7 +205,7 @@ function AlbumRow({ al, onChange, credit }: { al: MusicAlbum; onChange: () => vo
   const known = (al.edition_tracks ?? al.track_count) > 0;
   // Complete as the server counts it: a known listing with every wanted track on disk.
   const complete = known && al.have_tracks >= al.track_count;
-  const tone = !known ? "var(--ink-faint)" : complete ? "var(--good)" : al.monitored ? "var(--avoid)" : "var(--ink-faint)";
+  const tone = !known ? "var(--ink-faint)" : complete ? "var(--good)" : al.monitored && !al.stale_since ? "var(--avoid)" : "var(--ink-faint)";
   return (
     <div className="flex items-center gap-3 border-b px-4 py-2.5 last:border-b-0" style={{ background: "var(--panel)", borderColor: "var(--line-soft)" }}>
       <Link to={`/music/album/${al.id}`} className="min-w-0 flex-1 hover:underline">

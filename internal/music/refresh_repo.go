@@ -197,7 +197,7 @@ func (r *Repo) AlbumsWithoutListing(ctx context.Context, before time.Time, limit
 	return r.albums(ctx, `
 		JOIN artists ar ON ar.id = al.artist_id
 		WHERE al.monitored = 1 AND ar.monitored = 1 AND ar.in_library = 1 AND al.mbid != ''
-		  AND al.target_release_id IS NULL
+		  AND al.target_release_id IS NULL AND al.stale_since IS NULL
 		  AND (al.listing_tried_at IS NULL OR al.listing_tried_at < ?)
 		ORDER BY al.listing_tried_at IS NOT NULL, al.listing_tried_at, al.id
 		LIMIT ?`, dbTime(before), limit)
@@ -225,8 +225,8 @@ func (r *Repo) LegacyAlbums(ctx context.Context, before time.Time, limit int) ([
 // PendingSingles lists singles waiting for the singles-on-an-album check that weren't
 // tried since before, never-tried first.
 func (r *Repo) PendingSingles(ctx context.Context, before time.Time, limit int) ([]Album, error) {
-	return r.albums(ctx, ` WHERE al.found_as = ? AND (al.listing_tried_at IS NULL OR al.listing_tried_at < ?)
-		ORDER BY al.listing_tried_at IS NOT NULL, al.listing_tried_at, al.id LIMIT ?`, FoundSinglePending, dbTime(before), limit)
+	return r.albums(ctx, ` WHERE al.found_as IN (?, ?) AND (al.listing_tried_at IS NULL OR al.listing_tried_at < ?)
+		ORDER BY al.listing_tried_at IS NOT NULL, al.listing_tried_at, al.id LIMIT ?`, FoundSinglePending, FoundSingleAsked, dbTime(before), limit)
 }
 
 // SetFound records why an album is or isn't wanted, and whether it is.
@@ -329,4 +329,88 @@ func (r *Repo) SetArtistOptions(ctx context.Context, artistID int64, monitorNew,
 	res, err := r.db.ExecContext(ctx, `UPDATE artists SET monitor_new = ?, release_types = ? WHERE id = ?`,
 		monitorNew, releaseTypes, artistID)
 	return affected(res, err)
+}
+
+// SetPendingAdd keeps the add dialog's choice for the first refresh that can read the
+// artist's albums ("" once applied).
+func (r *Repo) SetPendingAdd(ctx context.Context, artistID int64, monitor string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE artists SET pending_add_monitor = ? WHERE id = ?`, monitor, artistID)
+	return err
+}
+
+// StampDepartureChecked records that an album gone from its artist's list was found still
+// on MusicBrainz.
+func (r *Repo) StampDepartureChecked(ctx context.Context, albumID int64, at time.Time) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE albums SET departure_checked_at = ? WHERE id = ?`, dbTime(at), albumID)
+	return err
+}
+
+// RecentNewCount is how many new releases refreshes found for an artist since a time
+// (wanted or waiting for the singles check): the rolling count the flood guard reads.
+func (r *Repo) RecentNewCount(ctx context.Context, artistID int64, since time.Time) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM albums
+		WHERE artist_id = ? AND found_at >= ? AND found_as IN (?, ?)`,
+		artistID, dbTime(since), FoundNew, FoundSinglePending).Scan(&n)
+	return n, err
+}
+
+// AlbumsWithAnyFile lists the artist's albums holding any file row at all, missing ones
+// included: a library share that isn't mounted must never make an album look empty.
+func (r *Repo) AlbumsWithAnyFile(ctx context.Context, artistID int64) (map[int64]bool, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT DISTINCT f.album_id FROM music_track_files f
+		JOIN albums al ON al.id = f.album_id WHERE al.artist_id = ?`, artistID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// ClearPendingSingle settles a single a person wanted or unwanted by hand: their choice
+// stands, and the automatic singles check leaves it alone.
+func (r *Repo) ClearPendingSingle(ctx context.Context, albumID int64) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE albums SET found_as = '' WHERE id = ? AND found_as IN (?, ?)`,
+		albumID, FoundSinglePending, FoundSingleAsked)
+	return err
+}
+
+// applyPlan carries out an apply plan in one transaction: want, unwant (album and
+// tracks, as SetAlbumMonitored does) and put singles through the asked-for check.
+func (r *Repo) applyPlan(ctx context.Context, want, unwant, singles []int64) error {
+	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		set := func(ids []int64, monitored bool) error {
+			for _, id := range ids {
+				if _, err := tx.ExecContext(ctx, `UPDATE albums SET monitored = ? WHERE id = ?`, b2i(monitored), id); err != nil {
+					return err
+				}
+				if _, err := tx.ExecContext(ctx, `UPDATE music_release_tracks SET monitored = ?
+					 WHERE medium_id IN (SELECT m.id FROM music_media m JOIN music_releases rl ON rl.id = m.release_id WHERE rl.album_id = ?)`,
+					b2i(monitored), id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if err := set(want, true); err != nil {
+			return err
+		}
+		if err := set(unwant, false); err != nil {
+			return err
+		}
+		for _, id := range singles {
+			if _, err := tx.ExecContext(ctx, `UPDATE albums SET found_as = ?, listing_tried_at = NULL WHERE id = ?`, FoundSingleAsked, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

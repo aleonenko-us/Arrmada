@@ -357,6 +357,11 @@ func (m *MusicBrainz) albumResult(rg mbReleaseGroup) AlbumResult {
 // real discography's albums and EPs.
 const mbReleaseGroupPages = 5
 
+// MBReleaseGroupBrowseCap is the most release groups one artist browse returns. A browse
+// that came back this full may be cut short, so a release group missing from it may only
+// be past the end.
+const MBReleaseGroupBrowseCap = mbReleaseGroupPages * 100
+
 func (m *MusicBrainz) artistReleaseGroups(ctx context.Context, mbid, types string) ([]AlbumResult, error) {
 	if strings.TrimSpace(mbid) == "" {
 		return nil, fmt.Errorf("musicbrainz: empty artist id")
