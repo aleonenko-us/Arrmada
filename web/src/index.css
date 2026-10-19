@@ -2,6 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes sidebar-work-rotation {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes sidebar-download-drop {
+  0%, 15% { transform: translateY(0); }
+  55%, 70% { transform: translateY(5px); }
+  100% { transform: translateY(0); }
+}
+
+.sidebar-work-spin {
+  animation: sidebar-work-rotation 1.6s linear infinite;
+  transform-origin: center;
+}
+
+.sidebar-download-active .download-arrow {
+  animation: sidebar-download-drop 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-work-spin,
+  .sidebar-download-active .download-arrow { animation: none; }
+}
+
 /* Arrmada design tokens — warm terracotta. Single source of truth for both
    themes. prefers-color-scheme is the default; the header toggle stamps
    data-theme on <html> and must win in both directions.

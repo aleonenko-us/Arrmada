@@ -25,7 +25,13 @@ const PATHS = {
       <path d="M8 12.5l-1.6-1.6a1.6 1.6 0 0 0-2.3 2.3L8 17.5c1.3 1.6 2.9 3 5.4 3 3.2 0 3.6-2.6 3.6-6.5" />
     </>
   ),
-  downloads: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
+  downloads: (
+    <>
+      <path className="download-arrow" d="M12 4v11M7 10l5 5 5-5" />
+      {/* Draw the tray after the arrow so the moving arrow passes behind its edge. */}
+      <path d="M5 20h14" />
+    </>
+  ),
   history: (
     <>
       <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6L3.5 8.5" />
