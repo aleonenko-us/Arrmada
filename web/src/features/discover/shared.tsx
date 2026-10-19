@@ -92,7 +92,13 @@ export interface RowCtx {
   /** What this session asked for the card, if anything: the status the server answered. */
   isRequested: (c: DiscoverCard) => ReqStatus | undefined;
   canRequest: boolean;
+  /** Hide titles already present in a Movies or TV library. */
+  hideInLibrary: boolean;
   flash: ToastFn;
+}
+
+export function visibleCards(cards: DiscoverCard[], ctx: RowCtx): DiscoverCard[] {
+  return ctx.hideInLibrary ? cards.filter((c) => !c.has_file && !c.in_library) : cards;
 }
 
 // Compact inline error line for a failed fetch — distinct from a genuine empty result.
@@ -174,6 +180,7 @@ export function MediaCard({ c, ctx, full }: { c: DiscoverCard; ctx: RowCtx; full
   return (
     <PosterCard
       title={name}
+      kind={c.media_type === "series" ? "TV show" : "Movie"}
       full={full}
       onOpen={() => openTitle(c)}
       badge={badge}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type ApiError, type PersonDetail } from "../lib/api";
 import { useTitle } from "../lib/title";
 import { Button, IconButton, Sheet } from "../ui";
-import { CardSkeleton, GRID, MediaCard, useCloseOverlay, type RowCtx } from "../features/discover/shared";
+import { CardSkeleton, GRID, MediaCard, useCloseOverlay, visibleCards, type RowCtx } from "../features/discover/shared";
 
 // A person's page (REQ-20), at /discover/person/<id> over the page it was opened from: a
 // cast tile, a director, or a name in search. Photo, department and biography, then what
@@ -77,11 +77,11 @@ export function PersonSheet({ id, ctx }: { id: number; ctx: RowCtx }) {
           <>
             <h3 className="m-0 mb-2.5 mt-6 text-sm font-bold uppercase tracking-wide text-ink-faint">Known for</h3>
             <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">
-              {knownFor.map((c) => <MediaCard key={`${c.media_type}:${c.tmdb_id}`} c={c} ctx={ctx} />)}
+              {visibleCards(knownFor, ctx).map((c) => <MediaCard key={`${c.media_type}:${c.tmdb_id}`} c={c} ctx={ctx} />)}
             </div>
             <h3 className="m-0 mb-2.5 mt-6 text-sm font-bold uppercase tracking-wide text-ink-faint">Filmography · {credits.length}</h3>
             <div className="grid gap-x-3 gap-y-5" style={GRID}>
-              {byYear.map((c) => <MediaCard key={`${c.media_type}:${c.tmdb_id}`} c={c} ctx={ctx} full />)}
+              {visibleCards(byYear, ctx).map((c) => <MediaCard key={`${c.media_type}:${c.tmdb_id}`} c={c} ctx={ctx} full />)}
             </div>
           </>
         )}

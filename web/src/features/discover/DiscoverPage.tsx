@@ -112,7 +112,13 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
   }, [toast]);
   const isRequested = useCallback((c: DiscoverCard) => requested.get(`${c.media_type}:${c.tmdb_id}`), [requested]);
 
-  const ctx: RowCtx = { doRequest, isRequested, canRequest, flash: toast };
+  const hideInLibrary = params.get("hide_in_library") === "1";
+  const ctx: RowCtx = { doRequest, isRequested, canRequest, hideInLibrary, flash: toast };
+  const setHideInLibrary = (checked: boolean) => setParams((p) => {
+    const next = new URLSearchParams(p);
+    if (checked) next.set("hide_in_library", "1"); else next.delete("hide_in_library");
+    return next;
+  }, { replace: true });
 
   // A title's own address (/discover/movie/603) opens its sheet over the page. Discover
   // stays mounted underneath, so its rows, what loaded and the scroll position survive,
@@ -140,6 +146,12 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
           )}
           {/* No tab is current while search results are showing. */}
           <Tabs tabs={TABS} value={search || place.browse ? null : tab} onChange={setTab} idPrefix="discover" label="Discover sections" className="-mb-px" />
+          {tab !== "books" && (
+            <label className="flex min-h-[36px] items-center gap-2 text-sm font-medium text-ink-dim">
+              <input type="checkbox" checked={hideInLibrary} onChange={(e) => setHideInLibrary(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
+              Hide in library
+            </label>
+          )}
         </div>
 
         <TabPanel idPrefix="discover" value={tab}>

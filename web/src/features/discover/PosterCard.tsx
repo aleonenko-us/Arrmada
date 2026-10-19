@@ -4,6 +4,8 @@ import { StatusChip, type Tone } from "../../ui";
 export interface PosterCardProps {
   /** The title: the caption's first line and the poster button's name. */
   title: string;
+  /** Optional media kind, shown on mixed movie/TV discovery cards. */
+  kind?: string;
   /** The poster image, or a placeholder when there is none. */
   art: ReactNode;
   badge?: { label: string; tone: Tone } | null;
@@ -21,15 +23,16 @@ export interface PosterCardProps {
 // PosterCard is the poster tile every Discover surface shows, films and series and books
 // alike: the whole poster opens the item's sheet, a corner badge says where it stands, a
 // hover lifts it and offers a quick request, and an always-visible caption names it.
-export function PosterCard({ title, art, badge, progress, onOpen, quick, full, children }: PosterCardProps) {
+export function PosterCard({ title, kind, art, badge, progress, onOpen, quick, full, children }: PosterCardProps) {
   return (
-    <div className={`group ${full ? "w-full" : "w-[150px] flex-none"}`} style={{ scrollSnapAlign: "start" }}>
+    <div className={`group relative hover:z-10 ${full ? "w-full" : "w-[150px] flex-none"}`} style={{ scrollSnapAlign: "start" }}>
       <div
-        className="relative overflow-hidden rounded-xl transition-[transform,box-shadow] duration-200 will-change-transform group-hover:-translate-y-1 group-hover:scale-[1.03] group-hover:shadow-[0_12px_30px_rgba(0,0,0,0.45)]"
+        className="relative overflow-hidden rounded-xl transition-[transform,box-shadow] duration-200 will-change-transform group-hover:-translate-y-1 group-hover:shadow-[0_12px_30px_rgba(0,0,0,0.45)]"
         style={{ aspectRatio: "2/3", border: "1px solid var(--line)", background: "var(--panel-2)" }}
       >
         <button onClick={onOpen} aria-label={`View details for ${title}`} className="absolute inset-0 block h-full w-full text-left">
           {art}
+          {kind && <span className="absolute bottom-1.5 left-1.5 rounded px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wide" style={{ background: "rgba(20,12,7,.78)", color: "#fff" }}>{kind}</span>}
           {badge && <StatusChip tone={badge.tone} surface="poster" className="absolute right-1.5 top-1.5 max-w-[calc(100%-12px)] truncate" title={badge.label}>{badge.label}</StatusChip>}
           {/* Terracotta download bar along the bottom of the poster while it's grabbing. */}
           {progress != null && progress > 0 && progress < 1 && (

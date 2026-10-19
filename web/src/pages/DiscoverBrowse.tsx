@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, type DiscoverCard, type DiscoverPage, type Genre, type PersonResult, type WatchProvider } from "../lib/api";
-import { CardSkeleton, GRID, LoadError, MediaCard, useOpenOverlay, type RowCtx } from "../features/discover/shared";
+import { CardSkeleton, GRID, LoadError, MediaCard, useOpenOverlay, visibleCards, type RowCtx } from "../features/discover/shared";
 
 // The deeper Discover grids (REQ-19): a filterable browse grid behind every row's
 // "See all" (/discover/browse?list=popular&media=movie), and search results past the first
@@ -111,16 +111,22 @@ function scrollParent(el: HTMLElement): HTMLElement | null {
 // retry for a later page), and the sentinel that loads the next page.
 function Grid({ state, ctx, empty }: { state: ReturnType<typeof useInfinite>; ctx: RowCtx; empty: string }) {
   const { items, loading, error, sentinel, retry, hasMore, stalled } = state;
+  const visible = items ? visibleCards(items, ctx) : null;
   if (items === null) {
     return <div className="grid gap-x-3 gap-y-5" style={GRID}>{Array.from({ length: 12 }).map((_, i) => <CardSkeleton key={i} full />)}</div>;
   }
-  if (items.length === 0) {
-    return error ? <LoadError message={error} /> : <div className="rounded-xl p-12 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>{empty}</div>;
+  if (visible?.length === 0) {
+    return error ? <LoadError message={error} /> : (
+      <div className="rounded-xl p-8 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
+        {hasMore && ctx.hideInLibrary ? "No titles on this page are new to your library." : empty}
+        {hasMore && ctx.hideInLibrary && <div><button onClick={retry} className="mt-3 min-h-[32px] font-semibold" style={{ color: "var(--accent-text)" }}>Load more</button></div>}
+      </div>
+    );
   }
   return (
     <>
       <div className="grid gap-x-3 gap-y-5" style={GRID}>
-        {items.map((c) => <MediaCard key={cardKey(c)} c={c} ctx={ctx} full />)}
+        {visible!.map((c) => <MediaCard key={cardKey(c)} c={c} ctx={ctx} full />)}
         {loading && Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={`s${i}`} full />)}
       </div>
       {error && (
@@ -259,7 +265,12 @@ export function DiscoverBrowse({ ctx }: { ctx: RowCtx }) {
           </select>
           <YearRange from={params.get("year_from") ?? ""} to={params.get("year_to") ?? ""} onChange={(from, to) => set({ year_from: from || null, year_to: to || null })} />
           {filtered && (
-            <button onClick={() => setParams({ media: media === "all" ? "movie" : media }, { replace: true })} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Clear filters</button>
+            <button onClick={() => setParams((p) => {
+              const next = new URLSearchParams();
+              next.set("media", media === "all" ? "movie" : media);
+              if (p.get("hide_in_library")) next.set("hide_in_library", "1");
+              return next;
+            }, { replace: true })} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Clear filters</button>
           )}
         </div>
         {genreList.length > 0 && (

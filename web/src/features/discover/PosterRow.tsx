@@ -29,6 +29,7 @@ export function PosterRow({ title, load, ctx, order, excludeOwned, hideOnError, 
   hideUntilLoaded?: boolean;
 }) {
   const registry = useContext(RowRegistryCtx);
+  const { hideInLibrary } = ctx;
   const [items, setItems] = useState<DiscoverCard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const rail = useRail();
@@ -41,13 +42,17 @@ export function PosterRow({ title, load, ctx, order, excludeOwned, hideOnError, 
     const r = raw.current;
     if (!r) return;
     let pool = r;
-    if (excludeOwned) {
+    if (hideInLibrary) {
+      pool = r.filter((c) => !c.has_file && !c.in_library);
+    } else if (excludeOwned) {
       const fresh = r.filter((c) => !c.has_file && !c.in_library);
       pool = fresh.length >= MIN_ROW_ITEMS ? fresh : r;
     }
     setItems(order == null ? pool : registry.claim(order, pool));
-  }, [excludeOwned, order, registry]);
+  }, [excludeOwned, hideInLibrary, order, registry]);
   const recomputeRef = useRef(recompute); recomputeRef.current = recompute;
+
+  useEffect(() => { recomputeRef.current(); }, [hideInLibrary]);
 
   useEffect(() => {
     if (order == null) return;

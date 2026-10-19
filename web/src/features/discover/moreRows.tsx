@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type CollectionRow, type DiscoverCard, type Genre, type WatchProvider } from "../../lib/api";
-import { CardSkeleton, GRID, LoadError, MediaCard, useOpenOverlay, type RowCtx } from "./shared";
+import { CardSkeleton, GRID, LoadError, MediaCard, useOpenOverlay, visibleCards, type RowCtx } from "./shared";
 import { PosterRow, SeeAll } from "./PosterRow";
 
 // The rows further down Discover that build themselves from a list: the collections to
@@ -155,7 +155,7 @@ export function GenreExplorer({ media, switchable, ctx }: { media: "movie" | "se
               <div className="grid gap-x-3 gap-y-5" style={GRID}>
                 {items === null
                   ? Array.from({ length: 10 }).map((_, i) => <CardSkeleton key={i} full />)
-                  : items.map((c) => <MediaCard key={`${c.media_type}:${c.tmdb_id}`} c={c} ctx={ctx} full />)}
+                  : visibleCards(items, ctx).map((c) => <MediaCard key={`${c.media_type}:${c.tmdb_id}`} c={c} ctx={ctx} full />)}
               </div>
             )
           )}
