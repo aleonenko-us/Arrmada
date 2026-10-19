@@ -286,7 +286,7 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   #56, seen with The Pitt.
 - **Arrmada never imports into a folder other shows' files are in, or one named like a
   season.** It used to warn in the log and import anyway. Now the download waits in
-  Activity → Needs you saying "Can't tell which folder <show> lives in". Rescan, Rename and
+  Activity → Needs you saying "Can't tell which folder *the show* lives in". Rescan, Rename and
   the duplicate check refuse such a folder too.
 
 ## [0.3.1] - 2026-10-18
