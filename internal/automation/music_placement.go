@@ -193,7 +193,7 @@ func (c *Coordinator) placeMatch(ctx context.Context, a music.Artist, al music.A
 	} else {
 		placedFrom = c.placeLinked(ctx, al, plan, release, &res)
 	}
-	_ = placedFrom
+	c.bringExtras(al, placedFrom, prefs.Extras)
 	return res
 }
 

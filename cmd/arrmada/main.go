@@ -56,6 +56,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/music"
+	"github.com/tristenlammi/arrmada/internal/music/stage"
 	"github.com/tristenlammi/arrmada/internal/notify"
 	"github.com/tristenlammi/arrmada/internal/outbox"
 	"github.com/tristenlammi/arrmada/internal/plexscan"
@@ -679,6 +680,7 @@ func main() {
 	coordinator.SetMusicPlacement(func(ctx context.Context) automation.MusicPlacementPrefs {
 		return automation.MusicPlacementPrefs{
 			WriteTags: settingsSvc.GetBool(ctx, settings.KeyMusicWriteTags, settings.MusicWriteTagsDefault),
+			Extras:    stage.ParseExtras(settingsSvc.Get(ctx, settings.KeyMusicExtras, stage.DefaultExtras)),
 		}
 	}, music.NewCAA(), automation.MusicAudioHash)
 	// A music import, retag or rename a crash stopped part way is finished or rolled back
