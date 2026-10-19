@@ -410,7 +410,7 @@ func TestOneMusicBrainzClient(t *testing.T) {
 // exec.LookPath (finding a tool) is fine.
 func TestToolsThroughRunner(t *testing.T) {
 	root := repoRoot(t)
-	for _, rel := range []string{"internal/convert", "internal/subtitles", "internal/mediainfo", "internal/extract", "internal/kepub", "internal/audioserver"} {
+	for _, rel := range []string{"internal/convert", "internal/subtitles", "internal/mediainfo", "internal/extract", "internal/kepub", "internal/audioserver", "internal/music/stage", "internal/music/cue"} {
 		fset, files := parseDir(t, filepath.Join(root, filepath.FromSlash(rel)))
 		for _, f := range files {
 			ast.Inspect(f, func(n ast.Node) bool {

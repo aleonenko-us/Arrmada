@@ -1120,7 +1120,7 @@ _Every edition of an album is stored and a target edition is chosen by policy; f
   - **Risk:** Lifting the engine touches books; keep the change mechanical and books' tests as the guard.
   - **Resolves:** 
 <a id="mus-35"></a>
-- [ ] **MUS-35 · Cue-sheet albums: a single FLAC/APE/WavPack image plus a .cue imports as tracks** — `P2` · `M` · Phase 15 · R2
+- [x] **MUS-35 · Cue-sheet albums: a single FLAC/APE/WavPack image plus a .cue imports as tracks** — `P2` · `M` · Phase 15 · R2
   - **Problem:** Many lossless rips are one file per disc with a cue sheet. Lidarr has never supported them (its most-reacted issue). Plex doesn't read cue sheets, so for a Plex-first library the image must become per-track files.
   - **Approach:** 1. A pure-Go cue parser: FILE, TRACK, TITLE, PERFORMER, INDEX 00/01, REM DATE/GENRE/DISCID; encodings UTF-8 (with or without BOM), UTF-16 with BOM, and Windows-1252 as the fallback; multi-FILE cues.
     2. The matcher (MUS-31) sees a cue image as virtual tracks with lengths from the INDEX 01 points and titles from the cue.

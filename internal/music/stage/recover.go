@@ -42,6 +42,9 @@ type RecoverReport struct {
 //   - Placed: the file is in the library; record it.
 //   - A rename's file is settled where it is: at its new name it's recorded, at its old
 //     one the rename is simply undone.
+//   - A split's pieces (Kind "split", MUS-35) never reach the library themselves: they
+//     are all deleted (Planned, Staged and Verified above), and the import that used
+//     them settled on its own.
 //
 // A job whose files are all settled is removed; one that can't be settled is kept with
 // every file where it is. Errors on one job don't stop the others.

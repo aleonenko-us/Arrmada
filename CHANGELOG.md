@@ -187,6 +187,11 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Fixed
 
+- **Music (Preview) splits single-file albums.** A rip that's one big FLAC, WAV or WavPack image
+  plus a `.cue` sheet is matched first, then cut into one FLAC per track at the exact sample
+  positions (gaps stay where CD players put them), proven sample-exact against the image, and
+  imported like any other album. It streams, so even a 24/192 image needs well under 100 MB of
+  memory. A cue that doesn't fit the image, or the album's length on MusicBrainz, goes to Reviews.
 - **Music (Preview) writes proper tags and follows your naming.** Each import is copied into a
   hidden staging folder, given clean tags (every artist, MusicBrainz IDs, compilation flag,
   embedded cover plus `cover.jpg`), checked so the audio is unchanged, then moved into place in one

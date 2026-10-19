@@ -45,6 +45,9 @@ const (
 	KindImport = "import" // a download's files tagged into the library
 	KindRetag  = "retag"  // library files re-tagged in place (original to the bin)
 	KindRename = "rename" // library files moved to new names; nothing staged
+	// KindSplit (split.go) is a cue-sheet image cut into per-track FLACs: scratch files
+	// for an import, never placed themselves.
+	KindSplit = "split"
 )
 
 // State is how far one file has got. The order is the order of the steps.
@@ -105,6 +108,9 @@ type Item struct {
 	// so recovery can record a file a crash left placed but unrecorded.
 	Ref  int64           `json:"ref,omitempty"`
 	Meta json.RawMessage `json:"meta,omitempty"`
+	// Scratch marks a Source that is a piece of a split job in the same staging folder
+	// (KindSplit, MUS-35): Arrmada's own file, deleted once this item's copy is placed.
+	Scratch bool `json:"scratch,omitempty"`
 	// Note says why a file was discarded or held, for the log.
 	Note string `json:"note,omitempty"`
 }

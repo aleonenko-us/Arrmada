@@ -811,6 +811,8 @@ func (c *Coordinator) importContentInto(ctx context.Context, r Review, dest int6
 			return fmt.Errorf("the recycle bin couldn't take the files %d better track(s) would replace in %q", res.refused, al.Title)
 		case res.taken > 0:
 			return fmt.Errorf("%d track(s) would land on a file another track of %q already has; nothing was replaced", res.taken, al.Title)
+		case res.splitFailed > 0:
+			return fmt.Errorf("the disc image for %q couldn't be split into tracks: %s; the download is untouched", al.Title, res.splitWhy)
 		case res.tagFailed > 0:
 			return fmt.Errorf("house tags couldn't be written into %d file(s) of %q (%s); the download is untouched", res.tagFailed, al.Title, res.tagWhy)
 		case res.placed == 0 && res.kept == 0:
