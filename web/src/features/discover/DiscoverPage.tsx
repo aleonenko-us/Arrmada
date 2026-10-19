@@ -135,7 +135,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
         <div className="mb-5 flex flex-col gap-2 border-b sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3" style={{ borderColor: "var(--line)" }}>
           {/* Books have their own search inside BooksDiscover — hide the movie/TV one there.
               The bell lives in the layout's top bar, on every page. */}
-          {tab !== "books" && (
+          {params.get("tab") !== "books" && params.get("tab") !== "audiobooks" && (
             <div className="flex w-full items-center justify-end gap-2 sm:order-last sm:w-auto sm:justify-start">
               {metadataReady ? (
                 <SearchBox value={searchInput} onChange={onSearchChange} onSeeAll={commitSearch} />
