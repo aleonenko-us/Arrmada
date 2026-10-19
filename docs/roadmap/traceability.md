@@ -138,16 +138,16 @@ _Every audit finding (2026-10-08) and UI walkthrough note, and the roadmap task(
 | music-2 | high | Release matching only compares plain a-z/0-9 text: accented, apostrophe and '&' names never match | [MUS-04](MUS.md#mus-04) |
 | music-3 | medium | Quality detection is plain substring matching: 'Mixtape', 'Escape', 'Palace' and 'Wave' are read as lossless | [MUS-05](MUS.md#mus-05), [MUS-11](MUS.md#mus-11) |
 | music-4 | medium | Track-number parser eats song titles that start with a number ('99 Problems', '7 Rings', '22') | [MUS-06](MUS.md#mus-06) |
-| music-5 | medium | Partly imported albums seed forever, and the next grab can downgrade or duplicate tracks already on disk | [MUS-08](MUS.md#mus-08), [MUS-11](MUS.md#mus-11), [MUS-19](MUS.md#mus-19) |
+| music-5 | medium | Partly imported albums seed forever, and the next grab can downgrade or duplicate tracks already on disk | [MUS-08](MUS.md#mus-08), [MUS-11](MUS.md#mus-11), [MUS-28](MUS.md#mus-28), [MUS-30](MUS.md#mus-30) (MUS-19 superseded) |
 | music-6 | medium | Discography grabs store the artist ID in the album-ID column, so stall, blocklist and seeding logic act on an unrelated album | [MUS-07](MUS.md#mus-07) |
 | music-7 | medium | Upgrades are advertised in three places but no music upgrade code exists | [COPY-04](COPY.md#copy-04), [MUS-16](MUS.md#mus-16) |
 | music-8 | high | Monitored artists never pick up new releases; Add artist monitors the whole catalogue and offers no profile or monitor options | [MUS-13](MUS.md#mus-13), [MUS-14](MUS.md#mus-14) |
-| music-9 | high | No per-album Search or Interactive search, and the reasons an album isn't downloading only appear in the server log | [MUS-09](MUS.md#mus-09), [MUS-17](MUS.md#mus-17), [MUS-18](MUS.md#mus-18) |
-| music-10 | medium | Completeness stats count only albums whose track listing has been fetched, so artists show 'Complete' when most albums are missing | [MUS-10](MUS.md#mus-10) |
+| music-9 | high | No per-album Search or Interactive search, and the reasons an album isn't downloading only appear in the server log | [ACQ-18](ACQ.md#acq-18), [MUS-09](MUS.md#mus-09), [MUS-17](MUS.md#mus-17) (MUS-18 superseded) |
+| music-10 | medium | Completeness stats count only albums whose track listing has been fetched, so artists show 'Complete' when most albums are missing | [MUS-29](MUS.md#mus-29) (MUS-10 superseded) |
 | music-11 | medium | Review page: 'Import into a different movie…' on a held music download sends a movie ID as the album ID | [ACQ-01](ACQ.md#acq-01) |
 | music-12 | medium | In the nav by default while labelled 'planned', and the off switch only hides the nav entry | [MUS-01](MUS.md#mus-01), [MUS-12](MUS.md#mus-12) |
 | music-13 | medium | Bare text-only library with no artwork, bio or sorting, far from the Plex feel the rest of the app aims for | [MUS-22](MUS.md#mus-22), [MUS-23](MUS.md#mus-23) |
-| music-14 | medium | Library scan reports nothing back, misreads multi-disc folders, and deleted files are never noticed | [MUS-15](MUS.md#mus-15), [MUS-20](MUS.md#mus-20) |
+| music-14 | medium | Library scan reports nothing back, misreads multi-disc folders, and deleted files are never noticed | [MUS-15](MUS.md#mus-15), [MUS-31](MUS.md#mus-31), [MUS-37](MUS.md#mus-37) (MUS-20 superseded) |
 | music-15 | low | Album searches aren't restricted to audio categories and ignore size, so concert videos and fakes pass the gate | [MUS-21](MUS.md#mus-21) |
 | ops-1 | high | "Import into a different…" lists MOVIES for book and music reviews, then imports into whichever book or album happens to share that numeric id | [ACQ-01](ACQ.md#acq-01) |
 | ops-2 | medium | "Resume all" or a per-torrent Resume silently defeats the disk guard, and the disk fills anyway | [ACQ-03](ACQ.md#acq-03) |
