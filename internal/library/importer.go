@@ -1230,7 +1230,8 @@ func (im *Importer) ImportEpisodeAs(seriesFolder, seriesTitle string, year, seas
 }
 
 // EpisodeTarget builds the library path an episode file should live at, deriving the
-// quality tag from sourceName (usually the current filename). Used by rename preview.
+// quality tag from sourceName alone. A rename uses EpisodeRenameTarget, which reads the
+// recorded release too.
 func (im *Importer) EpisodeTarget(title string, year, season, episode int, sourceName, ext string) string {
 	return im.episodeTarget(title, year, season, episode, parser.Parse(sourceName), ext)
 }
@@ -1599,7 +1600,12 @@ func (im *Importer) MovieTarget(title string, year int, qualitySource, ext strin
 // places a file there can't replace another track's file. The import, manual import and
 // rename all name a track's file with this.
 func (im *Importer) MovieTrackTarget(t MovieTrack, qualitySource, ext string) string {
-	folder, file := im.movieParts(t, parser.Parse(qualitySource))
+	return im.movieTrackTarget(t, parser.Parse(qualitySource), ext)
+}
+
+// movieTrackTarget is MovieTrackTarget with the release already parsed.
+func (im *Importer) movieTrackTarget(t MovieTrack, rel parser.Release, ext string) string {
+	folder, file := im.movieParts(t, rel)
 	dir := filepath.Join(im.movieRoot(t), folder)
 	if t.Folder != "" {
 		dir = t.Folder

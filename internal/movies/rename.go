@@ -190,6 +190,11 @@ func (s *Service) judgeRename(it RenameItem, owned map[string]int64, claimed map
 // only to keep clear of another track's file), so a rename lands every track exactly
 // where an import would have put it. Tracks are named in order, default first, and each
 // one's planned name is kept clear of by the tracks after it, as their files would be.
+//
+// The release facts ({quality}, {codec}, {group}, the release's edition) come from the
+// track's recorded release, as the import's did, with the file's name filling gaps and
+// its probed codec winning after a re-encode (library.RenameSource.Release has the rule).
+// The current file name alone can't say what a scheme it was never named under asks for.
 func (s *Service) trackTargets(m Movie, versions []Version) map[int64]string {
 	out := map[int64]string{}
 	var planned []string
@@ -199,11 +204,22 @@ func (s *Service) trackTargets(m Movie, versions []Version) map[int64]string {
 		}
 		t := s.TrackNaming(m, versions, v)
 		t.Protected = append(t.Protected, planned...)
-		target := s.imp.MovieTrackTarget(t, filepath.Base(v.FilePath), filepath.Ext(v.FilePath))
+		target := s.imp.MovieRenameTarget(t, renameSource(v), filepath.Ext(v.FilePath))
 		out[v.ID] = target
 		planned = append(planned, target)
 	}
 	return out
+}
+
+// renameSource is what track v's file is renamed from: its name, its recorded release, and
+// the facts read from the file when the cached read is of this file. RepointMovieFile keeps
+// the release current through a Convert swap and a rename, and re-reads a changed file.
+func renameSource(v Version) library.RenameSource {
+	src := library.RenameSource{FileName: filepath.Base(v.FilePath), SourceRelease: v.SourceRelease}
+	if f := v.File; f != nil && f.Probed && !f.Missing && (f.Path == "" || f.Path == v.FilePath) {
+		src.Resolution, src.Codec = f.Resolution, f.Codec
+	}
+	return src
 }
 
 // PlanToken fingerprints the renames a plan would make, so applying it can tell whether

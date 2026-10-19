@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/series"
 )
 
@@ -250,7 +251,15 @@ func (c *Coordinator) seriesRenameRows(ctx context.Context, s series.Series, fol
 			if orig, ok := renameTempOriginal(name); ok {
 				name = orig
 			}
-			target := imp.EpisodeTargetIn(folder, s.Title, s.Year, e.SeasonNumber, e.EpisodeNumber, filepath.Base(name), filepath.Ext(name))
+			// The release facts ({quality}, {codec}, {group}) come from the recorded release,
+			// as the import's did, with the name filling gaps and Convert's probed codec
+			// winning after a re-encode (library.RenameSource.Release has the rule). The
+			// episode numbers stay the file's: a season pack's release names no episode.
+			src := library.RenameSource{FileName: filepath.Base(name), SourceRelease: e.SourceRelease}
+			if f := c.factsFor(ctx, e.FilePath, e.SizeBytes); f != nil {
+				src.Resolution, src.Codec = f.Resolution, f.Codec
+			}
+			target := imp.EpisodeRenameTarget(folder, s.Title, s.Year, e.SeasonNumber, e.EpisodeNumber, src, filepath.Ext(name))
 			rows = append(rows, renameRow{Season: e.SeasonNumber, Episode: e.EpisodeNumber, Path: e.FilePath, Target: target, Size: e.SizeBytes})
 		}
 	}
