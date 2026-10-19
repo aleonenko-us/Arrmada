@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, type Artist, type ArtistLookup } from "../../lib/api";
 import { Button, Modal } from "../../ui";
 import { PosterCard } from "./PosterCard";
@@ -9,8 +9,11 @@ const DEFAULT_GENRES = ["Rock", "Pop", "Hip-hop", "Electronic", "Jazz", "Classic
 
 export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const hideInLibrary = params.get("hide_in_library") === "1";
   const [query, setQuery] = useState("");
   const [artists, setArtists] = useState<Artist[]>([]);
+  const [libraryLoaded, setLibraryLoaded] = useState(false);
   const [results, setResults] = useState<ArtistLookup[] | null>(null);
   const [resultTitle, setResultTitle] = useState("");
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
@@ -20,7 +23,7 @@ export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
   const [selected, setSelected] = useState<ArtistLookup | null>(null);
 
   useEffect(() => {
-    api.artists().then(setArtists).catch(() => setArtists([]));
+    api.artists().then(setArtists).catch(() => setArtists([])).finally(() => setLibraryLoaded(true));
   }, []);
 
   // Put styles already represented in this household first, so the browse controls
@@ -32,6 +35,7 @@ export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
   }, {});
   const libraryGenres = Object.entries(genreCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 8);
   const genres = libraryGenres.length > 0 ? libraryGenres.map(([genre]) => genre) : DEFAULT_GENRES;
+  const visibleResults = results?.filter((artist) => !hideInLibrary || !artists.some((a) => a.mbid === artist.mbid));
 
   const runSearch = async (q: string, title: string) => {
     setBusy(true);
@@ -100,7 +104,7 @@ export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
 
       {error && <div role="alert" className="rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
 
-      {artists.length > 0 && <LibraryArtists artists={artists} onOpen={(id) => navigate(`/music/${id}`)} />}
+      {!hideInLibrary && artists.length > 0 && <LibraryArtists artists={artists} onOpen={(id) => navigate(`/music/${id}`)} />}
 
       <section aria-label="Browse artists by genre">
         <div className="mb-2.5">
@@ -123,10 +127,14 @@ export function MusicDiscover({ canRequest }: { canRequest: boolean }) {
         <div className="rounded-xl p-6 text-base text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
           Choose a genre or search for an artist to explore MusicBrainz.
         </div>
-      ) : results.length === 0 ? (
-        <div className="rounded-xl p-6 text-base text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>No artists found for this search.</div>
+      ) : hideInLibrary && !libraryLoaded ? (
+        <div className="rounded-xl p-6 text-base text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>Checking your library…</div>
+      ) : visibleResults?.length === 0 ? (
+        <div className="rounded-xl p-6 text-base text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+          {hideInLibrary && results.length > 0 ? "All matching artists are already in your library." : "No artists found for this search."}
+        </div>
       ) : (
-        <ArtistResults title={resultTitle} results={results} artists={artists} canRequest={canRequest} adding={adding} onAdd={add} onOpen={setSelected} />
+        <ArtistResults title={resultTitle} results={visibleResults ?? []} artists={artists} canRequest={canRequest} adding={adding} onAdd={add} onOpen={setSelected} />
       )}
 
       {selected && (
