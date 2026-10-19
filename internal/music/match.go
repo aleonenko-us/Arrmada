@@ -31,20 +31,28 @@ type numbering struct {
 	disc, track int
 	compact     bool   // read off a "1-04" disc-track prefix
 	used        string // the prefix it was read from, which the title then loses
+	// prefixes are other number prefixes the title may sit behind, tried when no number
+	// was trusted: "1-04 Airbag" (an untrusted disc-track shape) is "Airbag" or "04 Airbag".
+	prefixes []string
 }
 
 // readNumber reads a file's leading number. compactOK says whether the disc-track shape
 // may be believed for this file (see MatchTracks); without it only the track number is
-// read and the disc is left unknown (0).
+// read and the disc is left unknown (0). A name in the disc-track shape that may not be
+// believed gives no number at all — "1-04 Airbag" read as track 1 would misfile it — and
+// only offers its prefixes for the title match.
 func readNumber(base string, compactOK bool) numbering {
-	if compactOK {
-		if m := reDiscTrack.FindStringSubmatch(base); m != nil {
-			d, _ := strconv.Atoi(m[1])
-			n, _ := strconv.Atoi(m[2])
-			if d > 0 && n > 0 && n <= 200 {
-				return numbering{disc: d, track: n, compact: true, used: m[0]}
-			}
+	if m := reDiscTrack.FindStringSubmatch(base); m != nil {
+		d, _ := strconv.Atoi(m[1])
+		n, _ := strconv.Atoi(m[2])
+		if compactOK && d > 0 && n > 0 && n <= 200 {
+			return numbering{disc: d, track: n, compact: true, used: m[0]}
 		}
+		alt := numbering{prefixes: []string{m[0]}}
+		if t := reTrack.FindString(base); t != "" {
+			alt.prefixes = append(alt.prefixes, t)
+		}
+		return alt
 	}
 	m := reTrack.FindStringSubmatch(base)
 	if m == nil {
@@ -170,8 +178,11 @@ func MatchTracks(tracks []Track, files []AudioFile) (matched map[int64]AudioFile
 		// The whole name first ("7 Rings" with no prefix at all, which would otherwise
 		// read as track 7), then the name with the number prefix taken off.
 		byName, haveName := titleMatch(base)
-		if !haveName && num.used != "" {
-			byName, haveName = titleMatch(titleOf(f.Path, num.used))
+		for _, p := range append([]string{num.used}, num.prefixes...) {
+			if haveName || p == "" {
+				continue
+			}
+			byName, haveName = titleMatch(titleOf(f.Path, p))
 		}
 
 		var t Track

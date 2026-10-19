@@ -139,17 +139,26 @@ func TestMatchTracksMultiDisc(t *testing.T) {
 		{ID: 4, DiscNumber: 1, TrackNumber: 4, Title: "99 Problems"},
 		{ID: 9, DiscNumber: 1, TrackNumber: 9, Title: "Other"},
 	}
-	// Alone on a one-disc listing the compact shape is a track number and a title.
+	// Alone on a one-disc listing the compact shape isn't a disc: the title (after "04-") places it.
 	if m, _ := MatchTracks(oneDisc, []AudioFile{{Path: "/d/04-99 Problems.flac"}}); m[4].Path == "" {
 		t.Errorf("'04-99 Problems' alone should be track 4, got %v", m)
 	}
-	// One compact-shaped file in a folder isn't enough to believe the shape.
 	threeTracks := []Track{
 		{ID: 1, DiscNumber: 1, TrackNumber: 1, Title: "A"},
 		{ID: 2, DiscNumber: 1, TrackNumber: 2, Title: "B"},
 	}
-	if m, _ := MatchTracks(threeTracks, []AudioFile{{Path: "/d/01-02 Untitled.flac"}, {Path: "/d/02 B.flac"}}); m[1].Path != "/d/01-02 Untitled.flac" {
-		t.Errorf("a single compact-shaped file falls back to its track number, got %v", m)
+	// One compact-shaped file in a folder isn't believed as disc-track, and isn't read as
+	// track 1 either ("1-04 Title" would land on track 1): only its title can place it.
+	m, u = MatchTracks(threeTracks, []AudioFile{{Path: "/d/01-02 Untitled.flac"}, {Path: "/d/02 B.flac"}})
+	if _, ok := m[1]; ok || len(u) != 1 || m[2].Path != "/d/02 B.flac" {
+		t.Errorf("an untrusted disc-track name with no matching title stays unmatched: matched=%v unmatched=%v", m, u)
+	}
+	lone := []Track{
+		{ID: 1, DiscNumber: 1, TrackNumber: 1, Title: "Opening"},
+		{ID: 4, DiscNumber: 1, TrackNumber: 4, Title: "Airbag"},
+	}
+	if m, _ := MatchTracks(lone, []AudioFile{{Path: "/d/1-04 Airbag.flac"}}); m[4].Path == "" || m[1].Path != "" {
+		t.Errorf("a lone '1-04 Airbag' goes by its title, never to track 1: %v", m)
 	}
 }
 
