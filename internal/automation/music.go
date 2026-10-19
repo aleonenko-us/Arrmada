@@ -15,6 +15,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/extract"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/mediainfo"
 	"github.com/tristenlammi/arrmada/internal/music"
 	"github.com/tristenlammi/arrmada/internal/quality"
 )
@@ -767,7 +768,7 @@ func (c *Coordinator) placeAlbumTracks(ctx context.Context, a music.Artist, al m
 			continue
 		}
 		tier, bitrate := c.trackTier(ctx, f.Path, releaseTier)
-		if t.HasFile && !music.BetterTier(tier, music.HeldTier(t.Format, t.BitrateKbps)) {
+		if t.HasFile && !music.BetterTier(music.HeldTier(string(tier), bitrate), c.heldTier(ctx, t)) {
 			res.kept++
 			continue
 		}
@@ -796,11 +797,59 @@ func (c *Coordinator) placeAlbumTracks(ctx context.Context, a music.Artist, al m
 	return res
 }
 
-// trackTier is the tier recorded for a file being imported: the release name's tier until
-// the files are measured (see the probe).
-func (c *Coordinator) trackTier(_ context.Context, _ string, releaseTier music.Quality) (music.Quality, int) {
-	return releaseTier, 0
+// trackTier is the tier and bitrate recorded for an audio file: measured by ffprobe when it
+// can be (music.TierFromProbe), so a release labelled FLAC that holds MP3s is recorded as
+// the MP3s it is. Without a measurement it falls back to the release name's tier, but only
+// when that agrees with the file's extension on lossless against lossy; otherwise to the
+// extension's own tag ("MP3", "FLAC"), which HeldTier reads conservatively.
+func (c *Coordinator) trackTier(ctx context.Context, path string, releaseTier music.Quality) (music.Quality, int) {
+	if info, err := c.probeAudio(ctx, path); err == nil {
+		if q := music.TierFromProbe(info); q != music.QualityUnknown {
+			return q, info.BitrateKbps
+		}
+	}
+	ext := music.FormatOf(path)
+	if releaseTier != music.QualityUnknown && ext != "" && music.IsLosslessQuality(releaseTier) == music.IsLossless(ext) {
+		return releaseTier, 0
+	}
+	return music.Quality(ext), 0
 }
+
+// heldTier is the tier of the file a track already has. A held file whose tier can't be
+// read from what's stored (an old scan's "MP3" with no bitrate) is measured now, and the
+// measurement kept: deciding a replacement on a guess could swap a 320 for a 128.
+func (c *Coordinator) heldTier(ctx context.Context, t music.Track) music.Quality {
+	held := music.HeldTier(t.Format, t.BitrateKbps)
+	if held != music.QualityUnknown || t.FilePath == "" {
+		return held
+	}
+	info, err := c.probeAudio(ctx, t.FilePath)
+	if err != nil {
+		return held
+	}
+	if q := music.TierFromProbe(info); q != music.QualityUnknown {
+		if err := c.music.SetTrackMeasured(ctx, t.ID, t.FilePath, string(q), info.BitrateKbps); err != nil {
+			c.log.Warn("music: recording a measured tier failed", "track", t.Title, "err", err)
+		}
+		return q
+	}
+	return held
+}
+
+// probeAudio measures an audio file with ffprobe (read-only), through the test seam when
+// set. With no ffprobe installed it reports an error, and callers fall back.
+func (c *Coordinator) probeAudio(ctx context.Context, path string) (mediainfo.AudioInfo, error) {
+	if c.probeAudioFn != nil {
+		return c.probeAudioFn(ctx, path)
+	}
+	if !mediainfo.Available() {
+		return mediainfo.AudioInfo{}, errNoFFprobe
+	}
+	return mediainfo.ProbeAudio(ctx, path)
+}
+
+// errNoFFprobe: the probe can't run here; the tier falls back to names (trackTier).
+var errNoFFprobe = errors.New("ffprobe isn't installed")
 
 // afterAlbumImport handles an album a download has just been imported into. Still missing
 // tracks: the import counts as a search miss, so the album backs off rather than being

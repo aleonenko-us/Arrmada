@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/mediainfo"
 )
 
 // AudioFile is one audio file of an item, with what ffprobe found in it.
@@ -297,20 +297,15 @@ func (p *prober) meta(ctx context.Context, af *AudioFile, author string) {
 	settle := func() {
 		_, _ = p.db.ExecContext(ctx, `UPDATE audio_file_meta SET meta_version = ? WHERE path = ?`, metaVersion, af.Path)
 	}
-	pctx, cancel := context.WithTimeout(ctx, 90*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(pctx, p.ffprobe, "-v", "error", "-print_format", "json",
-		"-show_format", "-show_chapters", "-show_streams", "-select_streams", "a:0", af.Path).Output()
+	// The ffprobe run and its JSON are mediainfo's, shared with the music importer.
+	info, err := mediainfo.ProbeAudioWith(ctx, p.ffprobe, af.Path)
 	if err != nil {
 		if ctx.Err() == nil {
 			settle()
 		}
 		return
 	}
-	if !parseProbe(out, af, author) {
-		settle()
-		return
-	}
+	fillProbe(info, af, author)
 	ch, _ := json.Marshal(af.Chapters)
 	_, _ = p.db.ExecContext(ctx,
 		`INSERT INTO audio_file_meta (path, size, mtime, duration, bitrate, codec, title, narrator, chapters, meta_version)
@@ -427,41 +422,32 @@ func narratorFromTags(tags map[string]string, author string) string {
 
 // parseProbe reads ffprobe's JSON (format, first audio stream, chapters) into af. author
 // is the book's, for narratorFromTags.
+//
+// The JSON reading is mediainfo's (ParseAudio), shared with the music importer, which
+// reads the same output for a track's real codec and bitrate.
 func parseProbe(out []byte, af *AudioFile, author string) bool {
-	var r struct {
-		Format struct {
-			Duration string            `json:"duration"`
-			BitRate  string            `json:"bit_rate"`
-			Tags     map[string]string `json:"tags"`
-		} `json:"format"`
-		Streams []struct {
-			CodecName string `json:"codec_name"`
-		} `json:"streams"`
-		Chapters []struct {
-			StartTime string            `json:"start_time"`
-			EndTime   string            `json:"end_time"`
-			Tags      map[string]string `json:"tags"`
-		} `json:"chapters"`
-	}
-	if json.Unmarshal(out, &r) != nil {
+	info, err := mediainfo.ParseAudio(out)
+	if err != nil {
 		return false
 	}
-	af.Duration, _ = strconv.ParseFloat(r.Format.Duration, 64)
-	af.Bitrate, _ = strconv.Atoi(r.Format.BitRate)
-	if len(r.Streams) > 0 {
-		af.Codec = r.Streams[0].CodecName
-	}
-	af.Title = tagValue(r.Format.Tags, "title")
-	af.Narrator = narratorFromTags(r.Format.Tags, author)
+	fillProbe(info, af, author)
+	return true
+}
+
+// fillProbe copies what ffprobe found into af: what the audiobook server has always kept
+// (length, the container's bitrate, codec, title, narrator, chapters), nothing more.
+func fillProbe(info mediainfo.AudioInfo, af *AudioFile, author string) {
+	af.Duration = info.DurationSec
+	af.Bitrate = info.FormatBitrate
+	af.Codec = info.Codec
+	af.Title = tagValue(info.Tags, "title")
+	af.Narrator = narratorFromTags(info.Tags, author)
 	af.Chapters = nil
-	for i, c := range r.Chapters {
-		s, _ := strconv.ParseFloat(c.StartTime, 64)
-		e, _ := strconv.ParseFloat(c.EndTime, 64)
+	for i, c := range info.Chapters {
 		title := tagValue(c.Tags, "title")
 		if title == "" {
 			title = "Chapter " + strconv.Itoa(i+1)
 		}
-		af.Chapters = append(af.Chapters, Chapter{ID: i, Start: s, End: e, Title: title})
+		af.Chapters = append(af.Chapters, Chapter{ID: i, Start: c.Start, End: c.End, Title: title})
 	}
-	return true
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/eventbus"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/mediainfo"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/music"
 	"github.com/tristenlammi/arrmada/internal/outbox"
@@ -102,6 +103,8 @@ type Coordinator struct {
 	musicSearchFn func(ctx context.Context, q indexer.SearchQuery) (indexer.SearchResult, error)
 	musicQueueFn  func(ctx context.Context) ([]download.Item, error)
 	musicGrabFn   func(ctx context.Context, indexerName, url, title, category string) (string, error)
+	// probeAudioFn measures an audio file (nil: ffprobe through mediainfo). See probeAudio.
+	probeAudioFn func(ctx context.Context, path string) (mediainfo.AudioInfo, error)
 
 	// unmatched counts how many import sweeps have failed to match a download to a
 	// series, keyed by torrent hash. Without it the 30-second sweep logs the same failure
