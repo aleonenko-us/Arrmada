@@ -34,6 +34,18 @@ type Artist struct {
 	// artist's album, or removed from the library while still credited somewhere).
 	InLibrary bool `json:"in_library"`
 
+	// MonitorNew is the artist's own choice for albums MusicBrainz newly lists ("all",
+	// "none"); "" follows the library default. ReleaseTypes is its own release-type choice;
+	// nil follows the library default (MUS-14).
+	MonitorNew   string        `json:"monitor_new"`
+	ReleaseTypes *ReleaseTypes `json:"release_types,omitempty"`
+	// LastRefreshedAt is when its albums were last read from MusicBrainz; StaleSince is
+	// set while MusicBrainz isn't answering for it (everything kept).
+	LastRefreshedAt string `json:"last_refreshed_at,omitempty"`
+	StaleSince      string `json:"stale_since,omitempty"`
+	// seenScopes are the browses whose release groups have been seen ("main", "other").
+	seenScopes string
+
 	// Albums is filled by the detail read, not the list read: the albums filed under
 	// this artist.
 	Albums []Album `json:"albums,omitempty"`
@@ -124,6 +136,13 @@ type Album struct {
 	// no listing yet); EditionPinned keeps automatic switching off it.
 	TargetEditionID int64 `json:"target_edition_id,omitempty"`
 	EditionPinned   bool  `json:"edition_pinned,omitempty"`
+	// FoundAt is when a refresh found the album after its artist was added; FoundAs says
+	// whether it was wanted and why not (see the Found* constants). StaleSince is set when
+	// MusicBrainz no longer lists it: kept, files and all. Source is where it came from.
+	FoundAt    string `json:"found_at,omitempty"`
+	FoundAs    string `json:"found_as,omitempty"`
+	StaleSince string `json:"stale_since,omitempty"`
+	Source     string `json:"-"`
 
 	// Tracks are the target edition's tracks with their files, filled by the detail read.
 	Tracks []Track `json:"tracks,omitempty"`
