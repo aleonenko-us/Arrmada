@@ -1658,7 +1658,7 @@ _Gaps in MusicBrainz are filled from Deezer (default) and Discogs (opt-in) and r
 <a id="mus-49"></a>
 - [ ] **MUS-49 · Playlist import from CSV, JSPF and M3U** — `P3` · `M` · Phase 15 · R5
   - **Problem:** People move to Arrmada with playlists from other services and servers, and want the music in them.
-  - **Approach:** Upload a CSV (artist, title, album optional), a JSPF (ListenBrainz/XSPF JSON) or an M3U with tags; each row is resolved to a recording (MBID if present, else search with the singleton matcher's thresholds); the result is a review list: matched (in library / wanted / not yet), ambiguous, not found. Approve turns matched rows into song wants (MUS-40's table). Spotify is not used (its developer access is closed to new apps in practice).
+  - **Approach:** Upload a CSV (artist, title, album optional), a JSPF (ListenBrainz/XSPF JSON) or an M3U with tags; each row is resolved to a recording (MBID if present, else search with the singleton matcher's thresholds); the result is a review list: matched (in library / wanted / not yet), ambiguous, not found. Approve turns matched rows into song wants (MUS-40's table). Spotify is not used (new apps get only a Premium-only development mode limited to five users, and its recommendation endpoints are closed to them).
   - **Files:** `internal/music/playlist/` (parsers, resolver), `internal/httpapi/music_playlist.go`, `web/src/pages/` (Import playlist)
   - **Acceptance:** A 50-row CSV resolves with clear states and becomes song wants on approval.
   - **Data safety:** Read-only until approved; nothing grabbed before.
@@ -1803,7 +1803,7 @@ Service.GetArtist (service.go:36-47) never fills Stats, so the artist page alway
 - **Soulseek, YouTube and streaming-rip sources** (Deezer, Qobuz, Tidal, Spotify or Apple Music rippers, Lucida, DABmusic). Music comes from Usenet and torrents only. Deezer is used for metadata, never audio.
 - **A central Arrmada-hosted metadata server.** Each install talks to MusicBrainz or its owner's mirror.
 - **A Subsonic/OpenSubsonic server or an in-Arrmada music player.** Plex/Plexamp is the player; revisit when the household asks.
-- **Spotify as a dependency** (import lists or recommendations): its developer access is closed to new apps in practice.
+- **Spotify as a dependency** (import lists or recommendations): new apps get only a Premium-only development mode limited to five users, and no recommendation endpoints.
 - **Audio transcoding of the music library** (FLAC → Opus copies for phones). A later idea; Convert stays video-only.
 - **Keeping two qualities of one track side by side.** Upgrades replace, with the old file in the recycle bin.
 - **Dropping the old `tracks` table.** It stays frozen.

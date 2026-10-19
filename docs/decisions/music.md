@@ -61,7 +61,7 @@ Rules for gap-fill:
 - A candidate from another source competes in the matcher with a source-mismatch penalty, the way beets does it.
 - Fallback sources never decide that something MusicBrainz has is wrong.
 
-Other sources considered: iTunes Search is a possible last-resort art fallback later; Last.fm and ListenBrainz are for discovery only (Phase 5); Spotify is not depended on (its developer access is closed to new apps in practice).
+Other sources considered: iTunes Search is a possible last-resort art fallback later; Last.fm and ListenBrainz are for discovery only (R5); Spotify is not depended on (new apps get only a Premium-only development mode limited to five users, and its recommendation endpoints are closed to them).
 
 ## Tags, and copies while seeding
 
