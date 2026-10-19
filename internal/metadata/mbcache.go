@@ -134,34 +134,75 @@ func (c mbCache) touch(ctx context.Context, key string, now time.Time) {
 	_, _ = c.db.ExecContext(ctx, `UPDATE music_mb_cache SET checked_at = ? WHERE key = ?`, now.UnixMilli(), key)
 }
 
+// mbRefreshKinds are the kinds the refresh task rechecks. Searches aren't among them: a
+// search is only worth answering again when someone searches again.
+var mbRefreshKinds = []mbKind{mbKindReleaseGroup, mbKindArtist, mbKindReleases, mbKindRelease}
+
+// keyRange is the primary-key range holding a kind's rows ("kind:" up to "kind;"), so a
+// per-kind read goes through the index.
+func (k mbKind) keyRange() (from, to string) { return k.name + ":", k.name + ";" }
+
 // stalest lists up to limit keys whose answers are past their freshness, longest unchecked
-// first, for the refresh task.
+// first within each kind, for the refresh task. Each kind is read on its own and the
+// kinds are taken in turn, so a kind with a long freshness and many rows (thousands of
+// release listings) can't crowd out a short-lived one (an artist's album list, where new
+// releases show up).
 func (c mbCache) stalest(ctx context.Context, now time.Time, limit int) ([]string, error) {
-	if c.db == nil {
+	if c.db == nil || limit <= 0 {
 		return nil, nil
 	}
-	// Keys start with their kind; the shortest freshness bounds the read, and each row is
-	// checked against its own kind below.
-	rows, err := c.db.QueryContext(ctx,
-		`SELECT key, checked_at FROM music_mb_cache WHERE checked_at < ? ORDER BY checked_at LIMIT ?`,
-		now.Add(-MBFreshSearch).UnixMilli(), limit*4)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() && len(out) < limit {
-		var key string
-		var checked int64
-		if err := rows.Scan(&key, &checked); err != nil {
+	perKind := make([][]string, len(mbRefreshKinds))
+	for i, k := range mbRefreshKinds {
+		from, to := k.keyRange()
+		rows, err := c.db.QueryContext(ctx,
+			`SELECT key FROM music_mb_cache WHERE key >= ? AND key < ? AND checked_at < ? ORDER BY checked_at LIMIT ?`,
+			from, to, now.Add(-k.fresh).UnixMilli(), limit)
+		if err != nil {
 			return nil, err
 		}
-		k, ok := mbKindOfKey(key)
-		if ok && now.Sub(time.UnixMilli(checked)) >= k.fresh {
-			out = append(out, key)
+		for rows.Next() {
+			var key string
+			if err := rows.Scan(&key); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			perKind[i] = append(perKind[i], key)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
 		}
 	}
-	return out, rows.Err()
+	var out []string
+	for round := 0; len(out) < limit; round++ {
+		took := false
+		for _, keys := range perKind {
+			if round < len(keys) && len(out) < limit {
+				out = append(out, keys[round])
+				took = true
+			}
+		}
+		if !took {
+			break
+		}
+	}
+	return out, nil
+}
+
+// mbSearchKeep is how long a cached artist search is kept. Searches aren't library data:
+// they're asked once, by someone typing, and a week-old answer is only clutter.
+const mbSearchKeep = 7 * 24 * time.Hour
+
+// pruneSearches drops cached searches nobody has asked again for a week. Nothing else in
+// the cache is ever removed.
+func (c mbCache) pruneSearches(ctx context.Context, now time.Time) {
+	if c.db == nil {
+		return
+	}
+	from, to := mbKindSearch.keyRange()
+	_, _ = c.db.ExecContext(ctx, `DELETE FROM music_mb_cache WHERE key >= ? AND key < ? AND checked_at < ?`,
+		from, to, now.Add(-mbSearchKeep).UnixMilli())
 }
 
 // MBCacheStats is what the Settings card shows about the cache.

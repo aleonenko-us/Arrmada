@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -207,6 +208,81 @@ func TestMBCacheEmptyListRecheckedSoon(t *testing.T) {
 		t.Errorf("after a day: %v %v, want the new listing", tracks, err)
 	}
 }
+
+// The refresh task takes each kind in turn: thousands of long-fresh release listings can't
+// crowd out the stale album lists where new releases show up. Searches aren't refreshed,
+// and week-old ones are dropped.
+func TestMBRefreshStaleTakesEachKind(t *testing.T) {
+	m, f, now := cachedMB(t)
+	ctx := context.Background()
+	body := []byte(`{"release-groups":[{"id":"rg1","title":"X","primary-type":"Album"}]}`)
+	for i := 0; i < 1300; i++ {
+		// Checked 20 days ago: older than the lists, but releases stay fresh for 30.
+		key := mbKey(mbKindRelease, "/release/r"+itoa(i), nil)
+		if err := m.cache.put(ctx, key, 200, []byte(`{"id":"x","media":[{"tracks":[{}]}]}`), now.Add(-20*24*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 50; i++ {
+		key := mbKey(mbKindReleaseGroup, "/release-group", map[string][]string{"artist": {"a" + itoa(i)}})
+		if err := m.cache.put(ctx, key, 200, body, now.Add(-4*24*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := mbKey(mbKindSearch, "/artist", map[string][]string{"query": {"old"}})
+	recent := mbKey(mbKindSearch, "/artist", map[string][]string{"query": {"recent"}})
+	_ = m.cache.put(ctx, old, 200, []byte(`{"artists":[]}`), now.Add(-8*24*time.Hour))
+	_ = m.cache.put(ctx, recent, 200, []byte(`{"artists":[]}`), now.Add(-2*24*time.Hour))
+
+	n, err := m.RefreshStale(ctx, 300)
+	if err != nil || n != 50 {
+		t.Fatalf("RefreshStale = %d %v, want the 50 stale album lists", n, err)
+	}
+	if got := f.requests.Load(); got != 50 {
+		t.Errorf("requests = %d, want 50 (no release listing, no search)", got)
+	}
+	if _, ok := m.cache.get(ctx, old); ok {
+		t.Error("a week-old search should be dropped")
+	}
+	if _, ok := m.cache.get(ctx, recent); !ok {
+		t.Error("a recent search is kept")
+	}
+}
+
+// Background refreshes are bounded, and the refresh task leaves a key a page's background
+// refresh already holds.
+func TestMBRefreshBounded(t *testing.T) {
+	m, f, now := cachedMB(t)
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		_ = m.cache.put(ctx, mbKey(mbKindArtist, "/artist/a"+itoa(i), map[string][]string{"inc": {"genres"}}),
+			200, []byte(`{"id":"a","name":"A"}`), now.Add(-30*24*time.Hour))
+	}
+	f.set("hang") // every refresh sits until the client gives up
+	for i := 0; i < 10; i++ {
+		if _, err := m.GetArtist(ctx, "a"+itoa(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m.bg.Wait()
+	if got := f.requests.Load(); got > mbRefreshWorkers {
+		t.Errorf("background requests = %d, want at most %d at once", got, mbRefreshWorkers)
+	}
+
+	f.set("")
+	before := f.requests.Load()
+	held := mbKey(mbKindArtist, "/artist/a0", map[string][]string{"inc": {"genres"}})
+	m.refreshing.Store(held, true)
+	if _, err := m.RefreshStale(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
+	m.refreshing.Delete(held)
+	if got := f.requests.Load() - before; got != 9 {
+		t.Errorf("refresh task requests = %d, want 9 (the one in hand left alone)", got)
+	}
+}
+
+func itoa(i int) string { return strconv.Itoa(i) }
 
 // A merged artist (asked for by its old id, answered under the new) is cached under both.
 func TestMBCacheMergedID(t *testing.T) {

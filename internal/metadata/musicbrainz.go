@@ -48,6 +48,7 @@ type MusicBrainz struct {
 	minInterval time.Duration
 
 	refreshing sync.Map       // cache keys being refreshed in the background
+	workers    chan struct{}  // slots for background refreshes (mbRefreshWorkers)
 	bg         sync.WaitGroup // those refreshes, for tests
 }
 
@@ -84,7 +85,7 @@ func NewMusicBrainz(db *sql.DB, cfg func() MBConfig) *MusicBrainz {
 	return &MusicBrainz{
 		http: &http.Client{Timeout: mbTimeout}, art: caaBaseURL,
 		config: cfg, cache: mbCache{db: db}, gate: mbGate, log: slog.Default(), now: time.Now,
-		minInterval: -1,
+		minInterval: -1, workers: make(chan struct{}, mbRefreshWorkers),
 	}
 }
 
@@ -584,15 +585,29 @@ func mbListLen(body []byte, field string) int {
 	return len(list)
 }
 
-// refreshLater refetches a stale answer in the background, once per key at a time. The
-// caller already has the cached answer; this only brings the cache up to date.
+// mbRefreshWorkers bounds the background refreshes of stale answers running at once.
+// They all wait their turn at the one rate limit anyway; the bound keeps a page that opens
+// dozens of stale albums from parking dozens of goroutines on it.
+const mbRefreshWorkers = 4
+
+// refreshLater refetches a stale answer in the background, once per key at a time and at
+// most mbRefreshWorkers at once; with every worker busy it does nothing, and the key is
+// tried again the next time it's read (or by the refresh task). The caller already has the
+// cached answer; this only brings the cache up to date.
 func (m *MusicBrainz) refreshLater(key string) {
+	select {
+	case m.workers <- struct{}{}:
+	default:
+		return // every worker busy: the answer stays stale a little longer, nothing more
+	}
 	if _, busy := m.refreshing.LoadOrStore(key, true); busy {
+		<-m.workers
 		return
 	}
 	m.bg.Add(1)
 	go func() {
 		defer m.bg.Done()
+		defer func() { <-m.workers }()
 		defer m.refreshing.Delete(key)
 		ctx, cancel := context.WithTimeout(WithMBLane(context.Background(), MBBackground), mbRefreshTimeout)
 		defer cancel()
@@ -624,6 +639,7 @@ func (m *MusicBrainz) refreshKey(ctx context.Context, key string) error {
 // (the background lane is then resting); nothing cached is ever removed. It returns how
 // many answers were checked.
 func (m *MusicBrainz) RefreshStale(ctx context.Context, limit int) (int, error) {
+	m.cache.pruneSearches(ctx, m.now())
 	keys, err := m.cache.stalest(ctx, m.now(), limit)
 	if err != nil {
 		return 0, err
@@ -631,7 +647,13 @@ func (m *MusicBrainz) RefreshStale(ctx context.Context, limit int) (int, error) 
 	ctx = WithMBLane(ctx, MBBackground)
 	n := 0
 	for _, key := range keys {
-		if err := m.refreshKey(ctx, key); err != nil {
+		// A key a page's background refresh already has in hand is left to it.
+		if _, busy := m.refreshing.LoadOrStore(key, true); busy {
+			continue
+		}
+		err := m.refreshKey(ctx, key)
+		m.refreshing.Delete(key)
+		if err != nil {
 			if ctx.Err() != nil || errors.Is(err, errMBPaused) {
 				return n, nil
 			}
