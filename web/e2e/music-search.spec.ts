@@ -105,4 +105,33 @@ test.describe("Music searching", () => {
     await page.getByRole("button", { name: "Interactive search for Paper Lanterns" }).click();
     await expect(page.getByRole("dialog", { name: /Search indexers — Paper Lanterns/ }).getByText("looks like a video release")).toBeVisible();
   });
+
+  test("adding an artist sends the chosen profile and Search now", async ({ page }) => {
+    await mockSearch(page);
+    const added: unknown[] = [];
+    await page.route((u) => u.pathname === "/api/v1/quality/profiles", (route) => json(route, {
+      formats: [], profiles: [
+        { key: "custom:3", name: "Lossless, or the best MP3", media_type: "music", built_in: false, is_default: true, summary: "" },
+        { key: "custom:4", name: "High-quality lossy", media_type: "music", built_in: false, is_default: false, summary: "" },
+      ],
+    }));
+    await page.route((u) => u.pathname === "/api/v1/music/lookup", (route) => json(route, { results: [{ mbid: "mb-9", name: "Night Ferry", type: "Group", country: "GB" }] }));
+    await page.route((u) => u.pathname === "/api/v1/music/artists" && u.searchParams.size === 0, (route) => {
+      if (route.request().method() === "POST") {
+        added.push(route.request().postDataJSON());
+        return json(route, { ...artist, id: 9, name: "Night Ferry" }, 201);
+      }
+      return json(route, { artists: [artist] });
+    });
+    await page.goto("/music");
+    await page.getByRole("button", { name: "+ Add artist" }).click();
+    const dialog = page.getByRole("dialog", { name: "Add an artist" });
+    await expect(dialog.getByLabel("Quality")).toHaveValue("custom:3");
+    await dialog.getByLabel("Quality").selectOption("custom:4");
+    await dialog.getByLabel("Start searching now").uncheck();
+    await dialog.getByRole("textbox", { name: "Artist name" }).fill("Night Ferry");
+    await dialog.getByRole("button", { name: "Search", exact: true }).click();
+    await dialog.getByRole("button", { name: "Add", exact: true }).click();
+    await expect.poll(() => added).toEqual([{ mbid: "mb-9", monitored: true, monitor: "all", quality_profile: "custom:4", search_now: false }]);
+  });
 });

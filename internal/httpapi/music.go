@@ -53,6 +53,9 @@ func (a *api) handleAddArtist(w http.ResponseWriter, r *http.Request) {
 		Monitor      string              `json:"monitor"`
 		MonitorNew   string              `json:"monitor_new"`
 		ReleaseTypes *music.ReleaseTypes `json:"release_types"`
+		// SearchNow searches the albums it wants straight away (the artist's Search now);
+		// left out, it follows Search on add (Settings).
+		SearchNow *bool `json:"search_now"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
@@ -99,6 +102,13 @@ func (a *api) handleAddArtist(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		a.writeError(w, http.StatusBadGateway, "could not add the artist: "+err.Error())
 		return
+	}
+	searchNow := a.deps.Settings.GetBool(r.Context(), keySearchOnAdd, true)
+	if req.SearchNow != nil {
+		searchNow = *req.SearchNow
+	}
+	if searchNow && art.Monitored && a.deps.Automation != nil {
+		_, _, _ = a.submit(r, triggered(automation.TriggerAdd, a.artistSearchJob(art.ID)))
 	}
 	a.writeJSON(w, http.StatusCreated, art)
 }

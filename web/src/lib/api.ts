@@ -3508,6 +3508,8 @@ export const api = {
     monitor?: "all" | "future" | "latest" | "none";
     monitor_new?: "" | "all" | "none";
     release_types?: { primary: string[]; secondary: string[] };
+    /** Search the wanted albums straight away (left out: Settings' search on add). */
+    search_now?: boolean;
   }) =>
     req<Artist>("/api/v1/music/artists", { method: "POST", body: JSON.stringify(body) }),
   scanMusic: () => req<{ status: string } & JobRef>("/api/v1/music/scan", { method: "POST" }),

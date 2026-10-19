@@ -386,6 +386,13 @@ func main() {
 		}
 		log.Info("quality: repointed titles on deleted profiles to the default", args...)
 	}
+	// One sensible music profile on an install that has none, once (MUS-14): never a
+	// second one, and never again after the owner deletes it.
+	if created, err := qualitySvc.EnsureDefaultMusicProfile(context.Background()); err != nil {
+		log.Warn("quality: couldn't set up the default music profile", "err", err)
+	} else if created {
+		log.Info("quality: added the music profile " + quality.DefaultMusicPreset)
+	}
 	notifySvc := notify.NewService(st.DB(), bus, modLog(log, "notify"))
 	pushSvc := push.New(st.DB(), settingsSvc, modLog(log, "notify"))
 	// Episode NUMBERING comes from TVmaze; everything else about a show still comes from

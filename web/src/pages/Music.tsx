@@ -65,7 +65,7 @@ export function Music() {
   const [multiSelect, setMultiSelect] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
+  const [profiles, setProfiles] = useState<{ key: string; name: string; isDefault?: boolean }[]>([]);
 
   const toast = useToast();
   const confirm = useConfirm();
@@ -97,7 +97,7 @@ export function Music() {
   useEffect(() => {
     load();
     qualityApi.qualityProfiles("music")
-      .then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name }))))
+      .then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name, isDefault: p.is_default }))))
       .catch(() => {});
   }, []);
 
@@ -279,6 +279,7 @@ export function Music() {
 
       {adding && (
         <AddArtistModal
+          profiles={profiles}
           onClose={() => setAdding(false)}
           onAdded={(name) => {
             load();
@@ -374,13 +375,16 @@ function ArtistCard({
 
 // AddArtistModal searches MusicBrainz. The disambiguation is shown prominently because it's
 // very often the only way to tell two same-named artists apart.
-function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (name: string) => void }) {
+function AddArtistModal({ profiles, onClose, onAdded }: { profiles: { key: string; name: string; isDefault?: boolean }[]; onClose: () => void; onAdded: (name: string) => void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ArtistLookup[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [monitor, setMonitor] = useState<"all" | "future" | "latest" | "none">("all");
+  // "" adds under the music default profile.
+  const [profile, setProfile] = useState(() => profiles.find((p) => p.isDefault)?.key ?? "");
+  const [searchNow, setSearchNow] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const search = async (e?: React.FormEvent) => {
@@ -402,7 +406,7 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
     setSaving(r.mbid);
     setError(null);
     try {
-      await api.addArtist({ mbid: r.mbid, monitored: true, monitor });
+      await api.addArtist({ mbid: r.mbid, monitored: true, monitor, quality_profile: profile || undefined, search_now: searchNow });
       onAdded(r.name);
       onClose();
     } catch (err) {
@@ -452,6 +456,28 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
             <option value="none">nothing for now</option>
           </select>
         </label>
+        <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ink-dim">
+          {profiles.length > 0 && (
+            <label className="flex items-center gap-2">
+              Quality
+              <select
+                value={profile}
+                onChange={(e) => setProfile(e.target.value)}
+                className="rounded-lg px-2 py-1 text-sm"
+                style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
+              >
+                {!profiles.some((p) => p.isDefault) && <option value="">the music default</option>}
+                {profiles.map((p) => (
+                  <option key={p.key} value={p.key}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={searchNow} onChange={(e) => setSearchNow(e.target.checked)} />
+            Start searching now
+          </label>
+        </div>
 
         {error && (
           <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>
