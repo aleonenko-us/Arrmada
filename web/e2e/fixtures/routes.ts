@@ -212,6 +212,11 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/music/release-defaults", mod.musicReleaseDefaults),
     { method: "PUT", path: "/api/v1/music/release-defaults", respond: ({ body }) => ({ settings: { ...mod.musicReleaseDefaults.settings, ...(body as object) } }) },
     get("/api/v1/music/new-releases", { albums: [], days: 30 }),
+    // Album and artist searching (MUS-09, MUS-16, MUS-17); e2e/music-search.spec.ts
+    // answers them with more.
+    get(/^\/api\/v1\/music\/albums\/\d+\/search-state$/, { upgrade: { profile: "Lossless", state: "incomplete", cutoff: "FLAC" } }),
+    get(/^\/api\/v1\/music\/albums\/\d+\/releases$/, { profile: "lossless", releases: [] }),
+    { method: "POST", path: /^\/api\/v1\/music\/artists\/\d+\/search$/, status: 202, body: { status: "searching" } },
     // Per media, as the server answers: ?media=series lists the series profiles.
     { method: "GET", path: "/api/v1/quality/profiles", respond: ({ url }) => (url.searchParams.get("media") === "series" ? media.seriesQualityProfiles : media.qualityProfiles) },
     // Settings → Downloads and → Book server (only the full Settings sweep visits them).

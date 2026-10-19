@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { ArtistOptions } from "../components/music/ArtistOptions";
+import { AlbumSearchButton } from "../components/music/AlbumSearch";
+import { ArtistSearchButton } from "../components/music/ArtistSearch";
 import { foundWords } from "../components/music/releaseRules";
 import { api, type Artist, type MusicAlbum, type MovieEvent } from "../lib/api";
 import { formatBytes } from "../lib/format";
@@ -132,6 +134,7 @@ export function ArtistDetail() {
           >
             Refresh
           </Button>
+          <ArtistSearchButton artistId={a.id} onDone={load} />
           <Button size="sm" aria-expanded={showOptions} aria-controls="artist-options" onClick={() => setShowOptions((v) => !v)}>
             {showOptions ? "Hide options" : "Options"}
           </Button>
@@ -222,6 +225,7 @@ function AlbumRow({ al, onChange, credit }: { al: MusicAlbum; onChange: () => vo
       <span className="flex-none font-mono text-xs" style={{ color: tone }}>
         {known ? `${al.have_tracks}/${al.track_count}` : "not listed"}
       </span>
+      <AlbumSearchButton album={al} onGrabbed={onChange} />
       <button
         disabled={busy}
         onClick={async () => {
