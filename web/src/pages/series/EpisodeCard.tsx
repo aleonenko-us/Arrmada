@@ -6,7 +6,7 @@ import { api, type Episode, type FitItem, type SearchAttempt, type Series as Ser
 import { seriesApi } from "../../lib/seriesApi";
 import { stillThumb } from "../../lib/img";
 import { attemptLine, outcomeTone } from "../../lib/searchOutcome";
-import { libraryStatus } from "../../lib/status";
+import { SEARCHING_OFF_HINT, STATUS_LABEL, libraryStatus } from "../../lib/status";
 import { jobFailed, jobToast, useJob } from "../../lib/useJob";
 import { Menu, StatusChip, useConfirm, type MenuItem, type Tone } from "../../ui";
 import { MENU_ITEM, type Flash } from "./HeroActions";
@@ -17,13 +17,16 @@ import { EpisodeSubChip } from "./EpisodeSubs";
 // paint-contained (content-visibility) while off screen, which would clip a fixed overlay.
 export type EpisodeDialog = { kind: "choose" | "file" | "delete"; ep: Episode };
 
-// episodeStatus is the card's one status word: Downloaded, the live download, Wanted or
-// Unmonitored for an aired episode without a file (a paused show searches nothing), or
-// Unaired.
-export function episodeStatus(series: SeriesT, ep: Episode): { label: string; tone: Tone } {
+// episodeStatus is the card's one status word: Downloaded, the live download, or for an
+// aired episode without a file Wanted, Unmonitored (the episode, or its season, isn't
+// wanted) or Searching off (it is wanted, but the show's searching is off — GH-52: that
+// used to read Unmonitored, blaming an episode its menu showed as monitored), or Unaired.
+// title explains a word that needs it.
+export function episodeStatus(series: SeriesT, ep: Episode, seasonMonitored = true): { label: string; tone: Tone; title?: string } {
   const dl = !ep.has_file && ep.download ? ep.download : null;
   if (ep.has_file || (!dl && aired(ep))) {
-    const st = libraryStatus({ hasFile: ep.has_file, monitored: ep.monitored && series.monitored });
+    const st = libraryStatus({ hasFile: ep.has_file, monitored: ep.monitored && seasonMonitored, searchingOff: !series.monitored });
+    if (st.label === STATUS_LABEL.searchingOff) return { label: st.label, tone: st.tone, title: SEARCHING_OFF_HINT };
     return { label: st.label, tone: st.tone };
   }
   if (dl) return { label: `↓ ${Math.round(dl.progress * 100)}%`, tone: "accent" };
@@ -33,6 +36,8 @@ export function episodeStatus(series: SeriesT, ep: Episode): { label: string; to
 export interface EpisodeCardProps {
   series: SeriesT;
   ep: Episode;
+  /** The episode's season is monitored (the sweep needs both flags). */
+  seasonMonitored?: boolean;
   fit?: FitItem;
   last?: SearchAttempt;
   onChange: () => void;
@@ -51,7 +56,7 @@ export interface EpisodeCardProps {
 // EpisodeCard is one episode: its still, number and title, air date and runtime, a
 // two-line overview that opens on a tap, the status and fit chips, the live download, and
 // one menu holding every action. The monitored dot is the monitor toggle.
-export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, selecting = false, selected = false, onToggleSelect, subs, onSubs }: EpisodeCardProps) {
+export function EpisodeCard({ series, ep, seasonMonitored = true, fit, last, onChange, flash, open, selecting = false, selected = false, onToggleSelect, subs, onSubs }: EpisodeCardProps) {
   const confirm = useConfirm();
   const [expanded, setExpanded] = useState(false);
   const [grabJob, setGrabJob] = useState<number | null>(null);
@@ -60,7 +65,7 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
   });
   const dl = !ep.has_file && ep.download ? ep.download : null;
   const dlPct = dl ? Math.round(dl.progress * 100) : 0;
-  const status = episodeStatus(series, ep);
+  const status = episodeStatus(series, ep, seasonMonitored);
   const label = sxe(ep);
   const canGrab = !ep.has_file && !dl && aired(ep);
 
@@ -102,7 +107,11 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
   ];
 
   const meta = [ep.air_date ? fmtAirDay(ep.air_date) : "No air date", ep.runtime ? `${ep.runtime} min` : ""].filter(Boolean).join(" · ");
-  const pausedHint = "Series paused — nothing is searched. This choice applies when you resume.";
+  // The dot says the episode's own state; with the show's searching off it also says when
+  // that state counts, rather than one "searching off" line on every episode.
+  const dotHint = series.monitored
+    ? (ep.monitored ? "Monitored — click to stop" : "Not monitored — click to monitor")
+    : (ep.monitored ? "Wanted — searched for once you turn the show's searching on. Click to stop monitoring." : "Not wanted — click to monitor. Nothing is searched while the show's searching is off.");
 
   return (
     <div
@@ -137,9 +146,9 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
             disabled={selecting}
             aria-pressed={ep.monitored}
             aria-label={ep.monitored ? `${label} is monitored — stop monitoring` : `Monitor ${label}`}
-            title={!series.monitored ? pausedHint : ep.monitored ? "Monitored — click to stop" : "Not monitored — click to monitor"}
+            title={dotHint}
             className="-ml-1 grid h-6 w-6 flex-none place-items-center text-md"
-            style={{ color: ep.monitored ? "var(--accent-text)" : "var(--ink-faint)", opacity: series.monitored ? 1 : 0.5 }}
+            style={{ color: ep.monitored ? "var(--accent-text)" : "var(--ink-faint)" }}
           >
             {ep.monitored ? "◉" : "○"}
           </button>
@@ -166,7 +175,7 @@ export function EpisodeCard({ series, ep, fit, last, onChange, flash, open, sele
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-faint">
           <span className="font-mono">{meta}</span>
           {series.series_type === "anime" && ep.absolute_number ? <span className="rounded px-1 font-mono text-xs" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }} title="Absolute episode number">#{ep.absolute_number}</span> : null}
-          <StatusChip tone={status.tone} size="xs">{grabbing.running ? "Searching…" : status.label}</StatusChip>
+          <StatusChip tone={status.tone} size="xs" title={status.title}>{grabbing.running ? "Searching…" : status.label}</StatusChip>
           {ep.has_file && fit?.fit && (
             <span className="inline-flex items-center gap-1">
               <FitBadge item={fit} />

@@ -787,7 +787,10 @@ export interface UserNotification {
 }
 
 export interface CalendarItem {
-  date: string; type: "episode" | "movie"; title: string; subtitle: string; poster_url?: string; ref_id: number; has_file: boolean; monitored: boolean;
+  date: string; type: "episode" | "movie"; title: string; subtitle: string; poster_url?: string; ref_id: number; has_file: boolean;
+  // Searched for (an episode: it's wanted and its show's searching is on). searching_off: a
+  // wanted episode of a show whose searching is off.
+  monitored: boolean; searching_off?: boolean;
   // The title's TMDB id and kind open its Discover page (APP-16); the episode's numbers and name.
   tmdb_id?: number; media_type?: "movie" | "series"; year?: number; season?: number; episode?: number; episode_title?: string;
   // The viewer asked for this title or follows a request for it (APP-17).
@@ -2248,8 +2251,11 @@ export interface Series {
   poster_url?: string;
   status?: string;
   network?: string;
-  monitored: boolean; // the pause gate: off means nothing is searched, choices kept
+  monitored: boolean; // the search gate ("Searching: On / Off"): off means nothing is searched, choices kept
   monitor_new_seasons?: boolean; // a season new on refresh is monitored
+  // The monitoring preset last applied ("all", "missing", …), "custom" once seasons or
+  // episodes were changed one by one since, "" / absent when not known.
+  monitor_preset?: string;
   quality_profile: string;
   series_type?: string; // "standard" | "anime"
   // Whose listing the stored episode numbering follows: "tvdb" | "tvmaze" | "tmdb", or ""

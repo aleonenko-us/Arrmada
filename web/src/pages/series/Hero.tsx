@@ -20,7 +20,8 @@ export function Hero({ series: s, children }: { series: SeriesT; children?: Reac
   const counted = s.stats?.episodes ?? 0;
   const missing = s.stats?.missing ?? Math.max(0, counted - have);
   const notMonitored = s.stats?.unmonitored_missing ?? 0;
-  const st = libraryStatus({ multi: true, hasFile: have > 0, monitored: s.monitored, have: counted - missing, total: counted });
+  // The show's switch is its searching, not its episode choices: off reads "Searching off".
+  const st = libraryStatus({ multi: true, hasFile: have > 0, monitored: true, searchingOff: !s.monitored, have: counted - missing, total: counted });
   const next = nextEpisode(s);
   const nextDate = s.stats?.next_air_date;
 

@@ -6,13 +6,16 @@ import type { Tone } from "../ui";
 //   Complete      every monitored episode or track is downloaded (series, albums)  good
 //   Partial       some downloaded, more wanted                                     avoid
 //   Wanted        monitored and no file yet: Arrmada is searching for it           avoid
-//   Unmonitored   Arrmada won't search for it (a paused series or artist too)      faint
+//   Unmonitored   not wanted: Arrmada won't search for it (a paused artist too)     faint
+//   Searching off a series whose searching is turned off, or a wanted episode of one:  faint
+//                 its episode choices are kept, nothing is searched until it's on
 //   File missing  Arrmada recorded a file but it is gone from disk                 reject
 //
 // "Searching" and "Upcoming" belong to Downloads' live tabs and request cards only.
 // Library filters use the same words: "Wanted" (not "Missing") means monitored with no
 // file, or for a series/artist monitored and not complete; "Downloaded" (not "Available").
-// Monitor toggles read "Monitored" or "Monitor" everywhere.
+// Monitor toggles read "Monitored" or "Monitor" everywhere; for a series "Monitor" is only
+// which episodes are wanted, and its show-wide switch reads "Searching: On / Off".
 
 // STATUS_LABEL is the glossary: pages that need one of these words (lib/movieStatus) take
 // it from here rather than spelling it again.
@@ -22,6 +25,7 @@ export const STATUS_LABEL = {
   partial: "Partial",
   wanted: "Wanted",
   unmonitored: "Unmonitored",
+  searchingOff: "Searching off",
   fileMissing: "File missing",
 } as const;
 
@@ -34,6 +38,7 @@ const TONE: Record<StatusLabel, Tone> = {
   Partial: "avoid",
   Wanted: "avoid",
   Unmonitored: "faint",
+  "Searching off": "faint",
   "File missing": "reject",
 };
 
@@ -75,12 +80,16 @@ export interface StatusInput {
   have?: number;
   total?: number;
   multi?: boolean;
+  /** A series whose searching is off, or an episode of one: wanted, but nothing is searched. */
+  searchingOff?: boolean;
 }
 
 // libraryStatus is the one status word for a library item. For a series or artist,
-// Unmonitored wins over Partial: a paused show isn't searched, so nothing more is
-// "wanted", and the Wanted filter (monitored and not complete) then matches exactly the
-// items badged Wanted or Partial.
+// Unmonitored and Searching off win over Partial: a paused artist or a show with its
+// searching off isn't searched, so nothing more is "wanted", and the Wanted filter
+// (monitored and not complete) then matches exactly the items badged Wanted or Partial.
+// Unmonitored comes first: an episode nobody wants says so even while its show's
+// searching is off — the switch isn't what keeps it from being searched.
 export function libraryStatus(x: StatusInput): LibraryStatus {
   const have = x.have ?? 0;
   const total = x.total ?? 0;
@@ -88,9 +97,14 @@ export function libraryStatus(x: StatusInput): LibraryStatus {
   if (x.multi && total > 0 && have >= total) return status(STATUS_LABEL.complete);
   if (!x.multi && x.hasFile) return status(STATUS_LABEL.downloaded);
   if (!x.monitored) return status(STATUS_LABEL.unmonitored);
+  if (x.searchingOff) return status(STATUS_LABEL.searchingOff);
   if (have > 0) return status(STATUS_LABEL.partial);
   return status(STATUS_LABEL.wanted);
 }
+
+// SEARCHING_OFF_HINT is the tooltip on a "Searching off" word: why nothing is searched and
+// where to turn it back on (the series page's Searching menu, top of the page).
+export const SEARCHING_OFF_HINT = "Searching is off for this show — nothing is searched. Turn it on from Searching at the top of the show's page.";
 
 // isWanted is the library "Wanted" filter: the items whose badge says Wanted or Partial.
 export function isWanted(x: StatusInput): boolean {

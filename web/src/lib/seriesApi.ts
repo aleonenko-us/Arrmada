@@ -1,5 +1,8 @@
 import { req, type BlockEntry, type DeletePreview, type JobRef, type ManualImportList, type RenameSkip, type SceneOverride, type SeriesImportCandidate, type SeriesNumbering, type SeriesRenameItem } from "./api";
 
+/** PUT /series/{id}/monitor's answer. resumed: this change turned the show's searching on. */
+export interface MonitorReply { monitored: boolean; monitor_new_seasons: boolean; monitor_preset?: string; resumed?: boolean }
+
 // Series management calls (manual import, renames, numbering, monitoring, scene overrides,
 // deletes). They live here rather than in api.ts so they only download with the staff
 // pages that use them, not with a requester's first load.
@@ -22,12 +25,14 @@ export const seriesApi = {
     req<JobRef>(`/api/v1/series/${id}/numbering/apply`, { method: "POST", body: JSON.stringify({ plan_hash }) }),
   dismissSeriesNumbering: (id: number) =>
     req<void>(`/api/v1/series/${id}/numbering/pending`, { method: "DELETE" }),
-  // The series switch is a pause gate: season and episode choices are kept either way.
+  // The show's searching switch (the monitored field): season and episode choices are kept
+  // either way.
   setSeriesMonitored: (id: number, monitored: boolean) =>
-    req<{ monitored: boolean; monitor_new_seasons: boolean }>(`/api/v1/series/${id}/monitor`, { method: "PUT", body: JSON.stringify({ monitored }) }),
-  // Applies a monitoring preset to the show's episodes (the pause switch is untouched).
+    req<MonitorReply>(`/api/v1/series/${id}/monitor`, { method: "PUT", body: JSON.stringify({ monitored }) }),
+  // Applies a monitoring preset to the show's episodes and turns its searching on (resumed
+  // says it was off), in one request.
   applySeriesMonitorPreset: (id: number, preset: string) =>
-    req<{ monitored: boolean; monitor_new_seasons: boolean }>(`/api/v1/series/${id}/monitor`, { method: "PUT", body: JSON.stringify({ preset }) }),
+    req<MonitorReply>(`/api/v1/series/${id}/monitor`, { method: "PUT", body: JSON.stringify({ preset }) }),
   setSeriesMonitorNewSeasons: (id: number, monitor_new_seasons: boolean) =>
     req<{ monitored: boolean; monitor_new_seasons: boolean }>(`/api/v1/series/${id}/monitor`, { method: "PUT", body: JSON.stringify({ monitor_new_seasons }) }),
   setSeriesProfile: (id: number, quality_profile: string) =>

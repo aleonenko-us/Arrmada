@@ -160,7 +160,7 @@ Use dots for nested fields (`queue.downloading`).
 | Field | What it is | Format |
 | --- | --- | --- |
 | `movies`, `shows`, `episodes`, `books` | How many are in the library. | `number` |
-| `wanted.movies`, `wanted.episodes`, `wanted.books` | Monitored and still without a file — what Arrmada is searching for. Episodes count only aired ones of shows that aren't paused. | `number` |
+| `wanted.movies`, `wanted.episodes`, `wanted.books` | Monitored and still without a file — what Arrmada is searching for. Episodes count only aired ones of shows whose searching is on. | `number` |
 | `wanted.total` | The three added up. | `number` |
 | `queue.downloading` | Downloads moving right now. | `number` |
 | `queue.seeding` | Finished torrents still seeding. | `number` |

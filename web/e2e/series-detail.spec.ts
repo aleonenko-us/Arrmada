@@ -27,7 +27,7 @@ test.describe("desktop", () => {
 
     await expect(page.getByRole("button", { name: "Search missing" })).toBeVisible();
     await expect(page.getByRole("group", { name: "Show actions" }).getByRole("button", { name: "Choose release…" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Monitoring", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Searching: On", exact: true })).toBeVisible();
     // The old nine-button toolbar is gone.
     for (const old of ["Auto-grab missing", "Upload torrent", "Manual import", "Refresh & rescan", "Search indexers"]) {
       await expect(page.getByRole("button", { name: old, exact: true })).toHaveCount(0);
@@ -79,15 +79,15 @@ test.describe("desktop", () => {
     await expect(page.getByText("Refreshed metadata and rescanned disk.")).toHaveCount(0);
   });
 
-  test("the Monitor menu pauses, applies a preset and toggles new seasons", async ({ page, api }) => {
+  test("the Searching menu turns searching off, applies a preset and toggles new seasons", async ({ page, api }) => {
     await page.goto("/series/1");
-    const monitor = page.getByRole("button", { name: "Monitoring", exact: true });
+    const monitor = page.getByRole("button", { name: "Searching: On", exact: true });
     await monitor.click();
     await page.getByRole("menuitem", { name: /Monitor: Future episodes/ }).click();
     await expect.poll(() => api.callsTo("PUT", "/api/v1/series/1/monitor").map((c) => c.body)).toContainEqual({ preset: "future" });
 
     await monitor.click();
-    await page.getByRole("menuitem", { name: /^Pause/ }).click();
+    await page.getByRole("menuitem", { name: /^Turn searching off/ }).click();
     await expect.poll(() => api.callsTo("PUT", "/api/v1/series/1/monitor").map((c) => c.body)).toContainEqual({ monitored: false });
 
     await monitor.click();
@@ -260,8 +260,8 @@ test.describe("phone", () => {
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.keyboard.press("Escape");
 
-    await page.getByRole("button", { name: "Monitoring", exact: true }).tap();
-    const mon = page.getByRole("menu", { name: "Monitoring" });
+    await page.getByRole("button", { name: "Searching: On", exact: true }).tap();
+    const mon = page.getByRole("menu", { name: "Searching: On" });
     await expect(mon.getByRole("menuitem", { name: /Monitor: All episodes/ })).toBeInViewport();
     await fitsScreen(page);
   });

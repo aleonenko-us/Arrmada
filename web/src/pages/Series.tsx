@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { MetadataMissing } from "../components/MetadataMissing";
 import { DeleteSeriesDialog } from "../components/DeleteSeriesDialog";
@@ -12,7 +13,7 @@ import { useConfirm, useToast } from "../ui";
 import { LibraryGrid, useLibraryView } from "../features/library/LibraryGrid";
 import { LibraryEmpty } from "../features/library/LibraryEmpty";
 import { useFolderScope } from "../features/library/folderScope";
-import { seriesLibraryConfig, statsOf } from "./series/library";
+import { manyOff, seriesLibraryConfig, statsOf } from "./series/library";
 import { SeriesBulkActions } from "./series/SeriesBulkActions";
 import { AddSeriesModal } from "./series/AddSeriesModal";
 import { shownTitle } from "../lib/displayTitle";
@@ -37,6 +38,12 @@ export function Series() {
   const [confirmDelete, setConfirmDelete] = useState<SeriesT | null>(null);
   const [searchFor, setSearchFor] = useState<SeriesT | null>(null); // the table's per-row "Search indexers"
   const [profiles, setProfiles] = useState<{ key: string; name: string }[]>([]);
+  // GH-53: a library scan (or an import of shows Sonarr had unmonitored) can leave most of
+  // the library with searching off, one show at a time is hundreds of clicks — point at the
+  // bulk switch. "show them" picks the Searching off filter, keeping the rest of the address.
+  const offCount = manyOff(list ?? []);
+  const [, setParams] = useSearchParams();
+  const showOff = () => setParams((p) => { const next = new URLSearchParams(p); next.set("filter", "searching-off"); return next; });
   useEffect(() => {
     qualityApi.qualityProfiles("series").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
   }, []);
@@ -128,7 +135,15 @@ export function Series() {
           { label: "Refresh all", busyLabel: "Refreshing…", busy: refreshingAll, disabled: !list?.length, onClick: refreshAll, title: "Re-pull metadata and rescan files for every series — fixes episodes that are on disk but still show as missing" },
         ]}
         primary={{ label: "+ Add series", onClick: () => setAdding(true), disabled: !metaOK }}
-        banners={!metaOK && <MetadataMissing variant="banner" />}
+        banners={<>
+          {!metaOK && <MetadataMissing variant="banner" />}
+          {offCount > 0 && (
+            <div data-testid="searching-off-hint" className="mb-3 rounded-lg px-3 py-2 text-sm text-ink-dim" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
+              <b className="font-semibold text-ink">{offCount === list?.length ? "Every show here has" : `${offCount} of ${list?.length} shows have`} searching off</b> — nothing is searched for them.
+              {" "}To turn it on for many at once: <button type="button" onClick={showOff} className="underline" style={{ color: "var(--accent-text)" }}>show them</button>, then Select → Select all → Searching on.
+            </div>
+          )}
+        </>}
         bulkActions={(sel) => <SeriesBulkActions sel={sel} profiles={profiles} onDone={refresh} />}
         scope={folder.scope}
         empty={<LibraryEmpty noun="series" folder="TV folder" addLabel="Add series" onScan={scanLibrary} scanning={scanning || scan.running} />}

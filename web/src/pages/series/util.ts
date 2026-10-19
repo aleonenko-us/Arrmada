@@ -77,6 +77,23 @@ export function seasonCounts(sn: Season, on = today) {
   return { have, counted, notMonitored, missing, airedCount, total: eps.length };
 }
 
+// waitingOnSearch is what a show with its searching off is holding back: how many aired,
+// monitored regular episodes have no file (they'd be searched for once it's on), and
+// whether any regular episode is monitored at all (if none is, turning searching on
+// monitors every one — see series.Repo.SetMonitored).
+export function waitingOnSearch(s: Series, on = today): { wanted: number; anyMonitored: boolean } {
+  let wanted = 0;
+  let anyMonitored = false;
+  for (const sn of s.seasons ?? []) {
+    if (sn.season_number === 0) continue;
+    for (const e of sn.episodes ?? []) {
+      if (e.monitored) anyMonitored = true;
+      if (!e.has_file && wantedIn(sn, e, on)) wanted++;
+    }
+  }
+  return { wanted, anyMonitored };
+}
+
 // defaultSeason is where the page opens: the first season with a monitored aired episode
 // missing, else the latest season that has aired anything, else the first one. Specials
 // come last in both searches, so they're only the default when nothing else qualifies.

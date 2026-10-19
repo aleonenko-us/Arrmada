@@ -153,7 +153,7 @@ export function LibrarySettings() {
         <ExtraFolders />
       </Section>
       <Section id="adding-titles" title="Adding titles" subtitle="Defaults when adding movies and series.">
-        <AutoToggle label="Search on add" hint="Start searching for a release as soon as a title is added." save={searchOnAdd} />
+        <AutoToggle label="Search on add" hint="Start searching for a release as soon as a title is added. Off: movies and books are added unmonitored and series with their searching off, so nothing is searched for them until you turn that on." save={searchOnAdd} />
         <Link to="/quality" className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Quality profiles →</Link>
       </Section>
       <Section id="series-monitoring" title="Series monitoring" subtitle="Which episodes a new series monitors. The add dialog starts from this, and requests use it.">

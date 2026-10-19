@@ -63,6 +63,9 @@ describe("item lines and links", () => {
   it("says where an item stands", () => {
     expect(itemStatus(item({ has_file: true }), "2026-10-09")).toBe("Downloaded");
     expect(itemStatus(item({ monitored: false }), "2026-10-09")).toBe("Unmonitored");
+    // GH-52: wanted, but the show's searching is off — not the episode's doing.
+    expect(itemStatus(item({ monitored: false, searching_off: true }), "2026-10-09")).toBe("Searching off");
+    expect(itemStatus(item({ monitored: false, searching_off: true, has_file: true }), "2026-10-09")).toBe("Downloaded");
     expect(itemStatus(item({ date: "2026-10-09" }), "2026-10-09")).toBe("Upcoming");
     expect(itemStatus(item({ date: "2026-10-08" }), "2026-10-09")).toBe("Wanted");
   });

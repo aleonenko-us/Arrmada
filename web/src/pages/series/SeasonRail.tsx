@@ -10,6 +10,7 @@ import { convertApi } from "../../lib/convertApi";
 import { disposalLine, useRecycleMode } from "../../lib/disposal";
 import { posterThumb } from "../../lib/img";
 import { attemptLine, outcomeTone } from "../../lib/searchOutcome";
+import { SEARCHING_OFF_HINT, STATUS_LABEL } from "../../lib/status";
 import { jobFailed, jobToast, useJob } from "../../lib/useJob";
 import { Button, ConfirmDialog, StatusChip } from "../../ui";
 import { scrollDelta } from "../../ui/Tabs";
@@ -149,6 +150,9 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
           {c.total === 0 ? "Not yet released" : c.airedCount === 0 ? "Upcoming" : `${c.have}/${c.counted}`}
           {c.notMonitored > 0 && <span title="Aired episodes without a file that aren't monitored — not counted as missing"> · {c.notMonitored} not monitored</span>}
         </span>
+        {/* The season is wanted but the show's searching is off: said here too, beside
+            the season's own Monitored, so the two don't seem to disagree. */}
+        {!series.monitored && season.monitored && <StatusChip tone="faint" title={SEARCHING_OFF_HINT}>{STATUS_LABEL.searchingOff}</StatusChip>}
         <SeasonAudioSummary episodes={eps} />
         {held > 0 && (
           <span className="flex items-center gap-2">
@@ -163,7 +167,7 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
               onClick={grabSeason}
               busy={searching}
               busyLabel="Searching…"
-              title={last ? `${attemptLine(last)}. Click to search again.` : `Grabs ${name}'s missing episodes — a season pack when most of the season is missing or no single episodes exist`}
+              title={(last ? `${attemptLine(last)}. Click to search again.` : `Grabs ${name}'s missing episodes — a season pack when most of the season is missing or no single episodes exist`) + (series.monitored ? "" : ". A one-off search: the show's searching stays off.")}
               style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)", background: "transparent" }}
             >
               {last ? "Grab again" : "Grab missing"}
@@ -180,8 +184,10 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
             onClick={monitor}
             disabled={busy === "monitor"}
             aria-pressed={season.monitored}
-            title={series.monitored ? (season.monitored ? `${name} is monitored — click to stop` : `Monitor all of ${name}`) : "Series paused — nothing is searched. This choice applies when you resume."}
-            style={{ border: `1px solid ${season.monitored ? "var(--accent-line)" : "var(--line)"}`, color: season.monitored ? "var(--accent-text)" : "var(--ink-faint)", background: "transparent", opacity: series.monitored ? 1 : 0.6 }}
+            title={series.monitored
+              ? (season.monitored ? `${name} is monitored — click to stop` : `Monitor all of ${name}`)
+              : (season.monitored ? `${name} is monitored — searched for once you turn the show's searching on. Click to stop.` : `Monitor all of ${name} — searched for once you turn the show's searching on`)}
+            style={{ border: `1px solid ${season.monitored ? "var(--accent-line)" : "var(--line)"}`, color: season.monitored ? "var(--accent-text)" : "var(--ink-faint)", background: "transparent" }}
           >
             {season.monitored ? "Monitored" : "Monitor"}
           </Button>
@@ -199,6 +205,7 @@ export function SeasonPanel({ series, season, fits, onChange, flash }: { series:
               key={e.id}
               series={series}
               ep={e}
+              seasonMonitored={season.monitored}
               fit={fits.get(`${e.season_number}:${e.episode_number}`)}
               last={latestFor(attempts, sxe(e))}
               onChange={onChange}

@@ -2,12 +2,20 @@ import type { ReactNode } from "react";
 import type { Series, SeriesFitSummary } from "../../lib/api";
 import { FIT_COLOR } from "../../components/FitBadge";
 import { shownTitle } from "../../lib/displayTitle";
-import { isWanted, libraryStatus } from "../../lib/status";
+import { SEARCHING_OFF_HINT, STATUS_LABEL, isWanted, libraryStatus } from "../../lib/status";
 import type { LibraryConfig } from "../../features/library/types";
 import { shortDate } from "../../features/library/format";
 import type { MenuItem } from "../../ui";
 
 // The Series library as LibraryGrid config: its filters, card slots and table columns.
+
+// manyOff says when the list should point at the bulk switch: every show, or at least 5
+// and half of them, have their searching off (a library scan or an import of unmonitored
+// shows) — turning it on one show at a time would be hundreds of clicks.
+export function manyOff(list: Pick<Series, "monitored">[]): number {
+  const off = list.filter((s) => !s.monitored).length;
+  return off > 0 && (off === list.length || (off >= 5 && off * 2 >= list.length)) ? off : 0;
+}
 
 export function statsOf(s: Series) {
   const st = s.stats ?? { episodes: 0, have_files: 0, size_bytes: 0, seasons: 0 };
@@ -16,10 +24,12 @@ export function statsOf(s: Series) {
 }
 
 // Counted episodes are the files plus the monitored aired ones still missing, so the
-// downloaded share is the count less the missing.
+// downloaded share is the count less the missing. The show's own switch is its searching
+// (monitored is the field's name): off reads "Searching off", not "Unmonitored" — which
+// episodes are wanted is a separate choice, kept while searching is off.
 function statusInput(s: Series) {
   const st = statsOf(s);
-  return { multi: true, hasFile: st.have_files > 0, monitored: s.monitored, have: st.episodes - st.missing, total: st.episodes };
+  return { multi: true, hasFile: st.have_files > 0, monitored: true, searchingOff: !s.monitored, have: st.episodes - st.missing, total: st.episodes };
 }
 export const seriesStatus = (s: Series) => libraryStatus(statusInput(s));
 
@@ -65,7 +75,7 @@ function EpisodeBar({ s }: { s: Series }) {
   );
 }
 
-const STATUS_RANK: Record<string, number> = { Complete: 0, Partial: 1, Wanted: 2, Unmonitored: 3 };
+const STATUS_RANK: Record<string, number> = { Complete: 0, Partial: 1, Wanted: 2, "Searching off": 3 };
 const ENDED = /end|cancel/i;
 
 // nextAiring says when a show's next episode airs, from its YYYY-MM-DD date: "Airs today",
@@ -106,7 +116,9 @@ export function seriesLibraryConfig({ fits, actions, rowAction }: SeriesConfigDe
     detailPath: (s) => `/series/${s.id}`,
     filters: [
       { key: "all", label: "All" },
-      { key: "monitored", label: "Monitored", match: (s) => s.monitored },
+      // The show's searching switch, both ways: the two counts add up to the library.
+      { key: "monitored", label: "Searching on", match: (s) => s.monitored, title: "Shows whose wanted episodes are searched for" },
+      { key: "searching-off", label: "Searching off", match: (s) => !s.monitored, title: "Shows whose searching is off: nothing is searched for them" },
       { key: "continuing", label: "Continuing", match: (s) => /return|continu/i.test(s.status ?? "") },
       { key: "ended", label: "Ended", match: (s) => ENDED.test(s.status ?? "") },
       { key: "wanted", label: "Wanted", match: (s) => isWanted(statusInput(s)) },
@@ -129,7 +141,7 @@ export function seriesLibraryConfig({ fits, actions, rowAction }: SeriesConfigDe
         return <><span style={{ color: st.missing === 0 && st.episodes > 0 ? "var(--good-text)" : "var(--ink-dim)" }}>{st.have_files}/{st.episodes}</span><NotMonitored n={st.unmonitored_missing} /></>;
       } },
       { key: "size", label: "Size", align: "right", descFirst: true, className: "font-mono text-xs text-ink-dim", sort: (s) => statsOf(s).size_bytes || undefined, cell: (s) => gb(statsOf(s).size_bytes) },
-      { key: "monitored", label: "Monitored", sort: (s) => (s.monitored ? 0 : 1), cell: (s) => <span className="font-mono text-2xs uppercase" style={{ color: s.monitored ? "var(--accent-text)" : "var(--ink-faint)" }}>{s.monitored ? "Yes" : "No"}</span> },
+      { key: "monitored", label: "Searching", sort: (s) => (s.monitored ? 0 : 1), cell: (s) => <span className="font-mono text-2xs uppercase" style={{ color: s.monitored ? "var(--accent-text)" : "var(--ink-faint)" }}>{s.monitored ? "On" : "Off"}</span> },
       // Share of judged episodes that fit: ascending puts the worst shows first.
       { key: "fit", label: "Fit", title: "How the episode files fit this show's profile — sort ascending for the worst first; open a show for each episode's reasons", sort: (s) => { const f = fits.get(s.id); return f && f.checked > 0 ? f.fits / f.checked : undefined; }, cell: (s) => <SeriesFit f={fits.get(s.id)} /> },
       { key: "added", label: "Added", align: "right", className: "whitespace-nowrap font-mono text-xs text-ink-dim", sort: (s) => s.added_at || undefined, cell: (s) => shortDate(s.added_at) },
@@ -144,7 +156,7 @@ export function seriesLibraryConfig({ fits, actions, rowAction }: SeriesConfigDe
     ],
     card: {
       meta: (s) => cardMeta(s),
-      status: seriesStatus,
+      status: (s) => { const st = seriesStatus(s); return st.label === STATUS_LABEL.searchingOff ? { ...st, title: SEARCHING_OFF_HINT } : st; },
       overlay: (s) => <EpisodeBar s={s} />,
     },
     actions,
