@@ -175,6 +175,9 @@ func TestMusicScanMatchesByMBID(t *testing.T) {
 	if !strings.HasSuffix(got["Hunter"], "track01.flac") || !strings.HasSuffix(got["Jóga"], "track02.flac") {
 		t.Errorf("Homogenic's files = %v", got)
 	}
+	if h.fake.searches != 0 {
+		t.Errorf("%d artist search(es) for files whose MBIDs already named the album", h.fake.searches)
+	}
 }
 
 // A folder the scan can't place goes to Reviews once (a second scan neither re-reads it
@@ -325,6 +328,36 @@ func TestMusicScanWorkersAndCap(t *testing.T) {
 		if got := h.trackFiles(t, h.album(t, a.ID, title).ID); len(got) != 2 {
 			t.Errorf("%s has %d file(s)", title, len(got))
 		}
+	}
+}
+
+// Folders held in Reviews, or waiting for their album's listing, never hold new folders back
+// from the per-run cap.
+func TestMusicScanBacklogDoesNotStarveNewFolders(t *testing.T) {
+	h := musicTestCoord(t)
+	lib := newScanLib(t, h)
+	a := h.addArtist(t, "Band", "", []string{"Announced", "Later One", "Later Two"}, map[string]bool{"Announced": true}, "")
+	lib.add("Aaa Unknown/Bootleg/01 - x.flac", music.FileTags{})
+	lib.add("Band/Announced/01 - One.flac", tagged("Band", "Announced", 1, "One"))
+	first := h.scan(t, MusicScanOptions{})
+	if first.Reviews != 1 || first.Waiting != 1 {
+		t.Fatalf("first scan = %+v; want one folder held and one waiting", first)
+	}
+	lib.add("Band/Later One/01 - One.flac", tagged("Band", "Later One", 1, "One"))
+	lib.add("Band/Later Two/01 - One.flac", tagged("Band", "Later Two", 1, "One"))
+	second := h.scan(t, MusicScanOptions{FoldersPerRun: 1})
+	if second.Tracks != 1 || second.Remaining != 2 {
+		t.Fatalf("second scan = %+v; want a new folder read first, the waiting one left with the other", second)
+	}
+	third := h.scan(t, MusicScanOptions{FoldersPerRun: 1})
+	if third.Tracks != 1 {
+		t.Errorf("third scan = %+v; want the other new folder read before the waiting one", third)
+	}
+	if got := h.trackFiles(t, h.album(t, a.ID, "Later One").ID); len(got) != 1 {
+		t.Errorf("Later One = %v", got)
+	}
+	if got := h.trackFiles(t, h.album(t, a.ID, "Later Two").ID); len(got) != 1 {
+		t.Errorf("Later Two = %v", got)
 	}
 }
 

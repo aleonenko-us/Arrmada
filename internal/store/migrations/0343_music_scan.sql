@@ -8,6 +8,7 @@
 --   files      how many of its files were on record when it was judged: fewer now (an
 --              artist removed, say) and it is looked at again
 --   state      done (its files are recorded, or there was nothing new) | unmatched (in Reviews)
+--              | waiting (its album has no track listing yet: looked at again, after the rest)
 -- It's a cache: losing a row only costs the scan a second look at that folder.
 --
 -- music_scan_runs: each scan's summary (counts and timings), for the results drawer. The

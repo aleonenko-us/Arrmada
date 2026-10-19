@@ -123,6 +123,9 @@ type ScanDir struct {
 const (
 	ScanDirDone      = "done"
 	ScanDirUnmatched = "unmatched"
+	// ScanDirWaiting: its album has no track listing yet; looked at again, after the
+	// folders that changed.
+	ScanDirWaiting = "waiting"
 )
 
 // ScanDirs reads the scan's memory of every album folder.

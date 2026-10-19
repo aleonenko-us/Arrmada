@@ -154,18 +154,30 @@ func (c *Coordinator) ScanMusicLibraryWith(ctx context.Context, opt MusicScanOpt
 		return res, err
 	}
 	// Folders unchanged since the last scan, with their files still on record, are done.
-	var todo []*scanGroup
+	// Folders waiting in Reviews whose folder hasn't changed only need their files' sizes
+	// and times checked (a retag in place), which is cheap: they don't count towards the
+	// per-run cap, so a long Reviews list can never hold new folders back.
+	// Folders still waiting for their album's track listing go after everything else, so
+	// a backlog of them never holds new folders back either.
+	var todo, recheck, waiting []*scanGroup
 	for _, g := range groups {
-		if st.unchanged(g) {
+		switch {
+		case st.unchanged(g):
 			res.Skipped++
-			continue
+		case st.heldUnchanged(g):
+			recheck = append(recheck, g)
+		case st.waitingUnchanged(g):
+			waiting = append(waiting, g)
+		default:
+			todo = append(todo, g)
 		}
-		todo = append(todo, g)
 	}
+	todo = append(todo, waiting...)
 	if len(todo) > perRun {
 		res.Remaining = len(todo) - perRun
 		todo = todo[:perRun]
 	}
+	todo = append(recheck, todo...)
 	st.settleGone(ctx, groups)
 
 	total := len(todo)
@@ -489,8 +501,26 @@ func (st *scanState) unchanged(g *scanGroup) bool {
 	return ok && d.State == music.ScanDirDone && d.Sig == g.sig && st.recordedIn(g) >= d.Files
 }
 
+// heldUnchanged reports whether a folder is one waiting in Reviews whose folder signature
+// is the remembered one (its files are checked in the worker).
+func (st *scanState) heldUnchanged(g *scanGroup) bool {
+	if st.full {
+		return false
+	}
+	d, ok := st.cache[g.path]
+	return ok && d.State == music.ScanDirUnmatched && d.Sig == g.sig
+}
+
+// waitingUnchanged reports whether a folder last waited for its album's track listing and
+// hasn't changed since.
+func (st *scanState) waitingUnchanged(g *scanGroup) bool {
+	d, ok := st.cache[g.path]
+	return ok && d.State == music.ScanDirWaiting && d.Sig == g.sig
+}
+
 // settleGone resolves pending scan reviews whose folder isn't in the music folder any more
-// (renamed, moved or deleted since): the folder they describe is gone.
+// (renamed, moved or deleted since): the folder they describe is gone. Only a folder that
+// is really not there counts; one the walk couldn't read stays in Reviews.
 func (st *scanState) settleGone(ctx context.Context, groups []*scanGroup) {
 	if len(st.reviews) == 0 {
 		return
@@ -501,6 +531,9 @@ func (st *scanState) settleGone(ctx context.Context, groups []*scanGroup) {
 	}
 	for path, id := range st.reviews {
 		if present[path] || !within(st.root, path) {
+			continue
+		}
+		if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
 		if err := st.c.resolveReview(ctx, id, ResolutionRemoved); err != nil {
@@ -662,6 +695,7 @@ func (st *scanState) scanFolder(ctx context.Context, g *scanGroup) {
 		// MusicBrainz yet: nothing to place the files against, and judging them against
 		// other albums meanwhile would be a guess. Looked at again by the next scan.
 		c.log.Info("music scan: the album has no track listing yet — the next scan looks again", "folder", g.path)
+		st.remember(music.ScanDir{Path: g.path, Sig: g.sig, FilesSig: fsig, Files: recorded, State: music.ScanDirWaiting})
 		st.mu.Lock()
 		st.res.Waiting++
 		st.mu.Unlock()
@@ -913,10 +947,13 @@ func (st *scanState) identify(ctx context.Context, g *scanGroup, files []music.M
 	for rg := range groups {
 		add(st.artists.albumByRG(rg))
 	}
+	// Files whose MBIDs already name a library album need no artist looked up on
+	// MusicBrainz: the names below are only checked against the library.
+	remote := len(id.albums) == 0
 
 	// The folder's own names: the old scan's rule, and the strongest local evidence.
 	if g.artist != "" && g.album != "" {
-		if artistID, _, _ := st.artists.find(ctx, g.artist, ""); artistID > 0 {
+		if artistID, _, _ := st.artists.find(ctx, g.artist, "", remote); artistID > 0 {
 			if albumID := st.artists.albumTitled(artistID, g.album); albumID > 0 {
 				id.named = albumID
 				add(albumID)
@@ -931,7 +968,7 @@ func (st *scanState) identify(ctx context.Context, g *scanGroup, files []music.M
 		if try.name == "" && try.mbid == "" {
 			continue
 		}
-		artistID, w, transient := st.artists.find(ctx, try.name, try.mbid)
+		artistID, w, transient := st.artists.find(ctx, try.name, try.mbid, remote)
 		if transient {
 			id.transient, id.why = true, w
 			return id
@@ -1120,12 +1157,16 @@ func (sa *scanArtists) lock(key string) func() {
 }
 
 // find resolves an artist by MBID (when the tags carry one) or name. id 0 with why says
-// why not; transient says MusicBrainz couldn't be asked.
-func (sa *scanArtists) find(ctx context.Context, name, mbid string) (id int64, why string, transient bool) {
+// why not; transient says MusicBrainz couldn't be asked. remote false keeps to the library
+// (and artists this scan added): nothing is looked up on MusicBrainz or added.
+func (sa *scanArtists) find(ctx context.Context, name, mbid string, remote bool) (id int64, why string, transient bool) {
 	if music.IsVariousArtistsName(name) || music.IsVariousArtistsMBID(mbid) {
 		// "Various Artists" is a placeholder, not an artist to add: adding it would list
 		// every compilation MusicBrainz has. A compilation's album is chosen by hand.
 		return 0, "A various-artists compilation: choose its album with Match….", false
+	}
+	if !remote {
+		return sa.local(name), "", false
 	}
 	if mbid != "" {
 		if a := sa.answer(ctx, "m:"+strings.ToLower(mbid), func() scanArtistAnswer { return sa.byMBID(ctx, mbid, name) }); a.id > 0 || a.transient {
@@ -1137,6 +1178,31 @@ func (sa *scanArtists) find(ctx context.Context, name, mbid string) (id int64, w
 	}
 	a := sa.answer(ctx, "n:"+music.NormKey(name), func() scanArtistAnswer { return sa.byName(ctx, name) })
 	return a.id, a.why, a.transient
+}
+
+// local is the one library artist whose name or alias this is, or one this scan already
+// resolved by the name (0: none, or more than one).
+func (sa *scanArtists) local(name string) int64 {
+	key := music.NormKey(name)
+	if key == "" {
+		return 0
+	}
+	sa.mu.Lock()
+	defer sa.mu.Unlock()
+	if a, ok := sa.resolved["n:"+key]; ok {
+		return a.id
+	}
+	var hit int64
+	n := 0
+	for _, id := range sa.ix.ArtistsNamed(name) {
+		if _, ok := sa.inLib[id]; ok {
+			hit, n = id, n+1
+		}
+	}
+	if n != 1 {
+		return 0
+	}
+	return hit
 }
 
 // answer returns the cached answer for key, working it out once.

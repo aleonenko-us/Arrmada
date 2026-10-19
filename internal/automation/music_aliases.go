@@ -26,6 +26,9 @@ func (c *Coordinator) searchAliases(ctx context.Context, res indexer.SearchResul
 	if namesAlbum(res.Releases, names, al) {
 		return res
 	}
+	if len(res.Releases) == 0 && len(res.Errors) > 0 && len(res.Errors) >= res.Asked {
+		return res // every indexer failed: asking them again under another name won't help
+	}
 	seen := map[string]bool{}
 	for _, r := range res.Releases {
 		seen[r.Indexer+"\x00"+r.Title] = true
