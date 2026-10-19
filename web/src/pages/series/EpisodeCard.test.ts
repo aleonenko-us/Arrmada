@@ -3,7 +3,8 @@ import type { Episode, Series } from "../../lib/api";
 import { episodeStatus } from "./EpisodeCard";
 import { presetToast } from "./HeroActions";
 import { manyOff } from "./library";
-import { waitingOnSearch } from "./util";
+import { seriesStatusInput, waitingOnSearch } from "./util";
+import { libraryStatus } from "../../lib/status";
 
 const show = (over: Partial<Series> = {}): Series => ({ id: 1, tmdb_id: 1, title: "Show", year: 2020, monitored: true, quality_profile: "", ...over });
 const ep = (over: Partial<Episode> = {}): Episode => ({
@@ -28,6 +29,22 @@ describe("episodeStatus", () => {
     expect(episodeStatus(show(), ep()).label).toBe("Wanted");
     expect(episodeStatus(show({ monitored: false }), ep({ has_file: true })).label).toBe("Downloaded");
     expect(episodeStatus(show({ monitored: false }), ep({ air_date: "2999-01-01" })).label).toBe("Unaired");
+  });
+});
+
+// The hero's and the library card's word for a whole show.
+describe("seriesStatusInput", () => {
+  const word = (over: Partial<Series>) => libraryStatus(seriesStatusInput(show(over))).label;
+  const stats = (o: Partial<NonNullable<Series["stats"]>>) => ({ episodes: 0, have_files: 0, size_bytes: 0, seasons: 1, missing: 0, unmonitored_missing: 0, ...o });
+  it("says Nothing monitored for a show searching for nothing, not Wanted", () => {
+    expect(word({ stats: stats({ unmonitored_missing: 10 }) })).toBe("Nothing monitored");
+    expect(word({ monitored: false, stats: stats({ unmonitored_missing: 10 }) })).toBe("Searching off");
+  });
+  it("keeps Wanted for a show whose wanted episodes are all still to come", () => {
+    expect(word({ stats: stats({ next_air_date: "2999-01-01" }) })).toBe("Wanted");
+    expect(word({ stats: stats({ episodes: 4, missing: 4 }) })).toBe("Wanted");
+    expect(word({ stats: stats({ episodes: 4, have_files: 2, missing: 2 }) })).toBe("Partial");
+    expect(word({ stats: stats({ episodes: 4, have_files: 4, unmonitored_missing: 3 }) })).toBe("Complete");
   });
 });
 

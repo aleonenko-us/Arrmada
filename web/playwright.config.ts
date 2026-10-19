@@ -58,7 +58,7 @@ export default defineConfig({
       // A phone: touch only, so (hover: hover) is false and hover-revealed controls
       // must not exist. Chromium on purpose (Pixel, not iPhone) to keep CI to one browser.
       name: "phone",
-      testMatch: /(requester-mobile|activity-mobile|movies-mobile|admin-mobile|series-phone|book-formats|seasons|insights-mobile|phone-shell|me-page|calendar|audiobook-places|discover-depth-mobile|audiobook-player|connections-mobile|people-mobile|series-detail|issues-report|subtitles-queue|subtitles-drawer|subtitles-profile-picker|my-shelf|book-authors|books-phone|quality-formats|jellyfin-signin|setup-media-server|version-badge|usenet-mobile|palette-phone|request-profile|library-order-phone)\.spec\.ts/,
+      testMatch: /(requester-mobile|activity-mobile|movies-mobile|admin-mobile|series-phone|series-searching-off|book-formats|seasons|insights-mobile|phone-shell|me-page|calendar|audiobook-places|discover-depth-mobile|audiobook-player|connections-mobile|people-mobile|series-detail|issues-report|subtitles-queue|subtitles-drawer|subtitles-profile-picker|my-shelf|book-authors|books-phone|quality-formats|jellyfin-signin|setup-media-server|version-badge|usenet-mobile|palette-phone|request-profile|library-order-phone)\.spec\.ts/,
       use: { ...devices["Pixel 7"], viewport: { width: 375, height: 812 } },
     },
     // The colour-contrast audit (e2e/contrast.spec.ts): every page in both themes at both

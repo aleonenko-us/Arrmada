@@ -4,6 +4,7 @@ import { FIT_COLOR } from "../../components/FitBadge";
 import { shownTitle } from "../../lib/displayTitle";
 import { SEARCHING_OFF_HINT, STATUS_LABEL, isWanted, libraryStatus } from "../../lib/status";
 import type { LibraryConfig } from "../../features/library/types";
+import { seriesStatusInput } from "./util";
 import { shortDate } from "../../features/library/format";
 import type { MenuItem } from "../../ui";
 
@@ -23,14 +24,8 @@ export function statsOf(s: Series) {
   return { ...st, missing: st.missing ?? Math.max(0, st.episodes - st.have_files), unmonitored_missing: st.unmonitored_missing ?? 0 };
 }
 
-// Counted episodes are the files plus the monitored aired ones still missing, so the
-// downloaded share is the count less the missing. The show's own switch is its searching
-// (monitored is the field's name): off reads "Searching off", not "Unmonitored" — which
-// episodes are wanted is a separate choice, kept while searching is off.
-function statusInput(s: Series) {
-  const st = statsOf(s);
-  return { multi: true, hasFile: st.have_files > 0, monitored: true, searchingOff: !s.monitored, have: st.episodes - st.missing, total: st.episodes };
-}
+// The show's status word and the Wanted filter read the same input as its page's hero.
+const statusInput = seriesStatusInput;
 export const seriesStatus = (s: Series) => libraryStatus(statusInput(s));
 
 function gb(bytes?: number): string {
@@ -75,7 +70,7 @@ function EpisodeBar({ s }: { s: Series }) {
   );
 }
 
-const STATUS_RANK: Record<string, number> = { Complete: 0, Partial: 1, Wanted: 2, "Searching off": 3 };
+const STATUS_RANK: Record<string, number> = { Complete: 0, Partial: 1, Wanted: 2, "Searching off": 3, "Nothing monitored": 4 };
 const ENDED = /end|cancel/i;
 
 // nextAiring says when a show's next episode airs, from its YYYY-MM-DD date: "Airs today",

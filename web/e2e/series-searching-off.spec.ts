@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./mockApi";
 import { seriesDetails } from "./fixtures/seriesDetail";
 import * as media from "./fixtures/media";
@@ -88,6 +89,46 @@ test.describe("a show whose searching is off", () => {
     await page.getByTestId("searching-off-banner").getByRole("button", { name: "Turn searching on" }).click();
     await expect.poll(() => puts).toEqual([{ monitored: true }]);
     await expect(page.getByTestId("searching-off-banner")).toHaveCount(0);
+  });
+});
+
+test.describe("phone", () => {
+  test.skip(({ isMobile }) => !isMobile, "phone project only");
+
+  async function fitsScreen(page: Page) {
+    const w = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, viewport: document.documentElement.clientWidth }));
+    expect(w.doc, "document width").toBeLessThanOrEqual(w.viewport);
+  }
+
+  test("the banner fits a 375px screen and turns searching on by touch", async ({ page }) => {
+    let on = false;
+    await page.route(/\/api\/v1\/series\/1$/, (route) => route.fulfill({ json: { ...seriesDetails[1], monitored: on } }));
+    await page.route(/\/api\/v1\/series\/1\/monitor$/, async (route) => {
+      on = true;
+      await route.fulfill({ json: { monitored: true, monitor_new_seasons: true, resumed: true } });
+    });
+    await page.goto("/series/1");
+    const banner = page.getByTestId("searching-off-banner");
+    await expect(banner).toContainText("Searching is off for this show");
+    const button = banner.getByRole("button", { name: "Turn searching on" });
+    await button.scrollIntoViewIfNeeded();
+    await expect(button).toBeInViewport();
+    await fitsScreen(page);
+    await button.tap();
+    await expect(banner).toHaveCount(0);
+  });
+
+  test("the Series list hint and pills fit a 375px screen", async ({ page }) => {
+    const off = media.series.series.map((s) => ({ ...s, monitored: false }));
+    await page.route((u) => u.pathname === "/api/v1/series", (route) => route.fulfill({ json: { ...media.series, series: off } }));
+    await page.goto("/series");
+    const hint = page.getByTestId("searching-off-hint");
+    await expect(hint).toContainText("Every show here has searching off");
+    await expect(hint).toBeInViewport();
+    await fitsScreen(page);
+    await hint.getByRole("button", { name: "show them" }).tap();
+    await expect(page).toHaveURL(/filter=searching-off/);
+    await fitsScreen(page);
   });
 });
 

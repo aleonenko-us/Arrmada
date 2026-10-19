@@ -5,7 +5,7 @@ import type { Series as SeriesT } from "../../lib/api";
 import { shownOverview, shownTitle } from "../../lib/displayTitle";
 import { libraryStatus } from "../../lib/status";
 import { StatusChip } from "../../ui";
-import { fmtAirDay, fmtSize, nextEpisode, sxe } from "./util";
+import { fmtAirDay, fmtSize, nextEpisode, seriesStatusInput, sxe } from "./util";
 import { Page } from "../../ui/Page";
 
 // Hero is the top of a show's page: the backdrop, poster and title, what state the show is
@@ -18,10 +18,9 @@ export function Hero({ series: s, children }: { series: SeriesT; children?: Reac
   // the two agree: only monitored episodes in monitored seasons count as missing.
   const have = s.stats?.have_files ?? 0;
   const counted = s.stats?.episodes ?? 0;
-  const missing = s.stats?.missing ?? Math.max(0, counted - have);
   const notMonitored = s.stats?.unmonitored_missing ?? 0;
-  // The show's switch is its searching, not its episode choices: off reads "Searching off".
-  const st = libraryStatus({ multi: true, hasFile: have > 0, monitored: true, searchingOff: !s.monitored, have: counted - missing, total: counted });
+  // The same status word as the library's card (Searching off, Nothing monitored, …).
+  const st = libraryStatus(seriesStatusInput(s));
   const next = nextEpisode(s);
   const nextDate = s.stats?.next_air_date;
 

@@ -9,6 +9,8 @@ import type { Tone } from "../ui";
 //   Unmonitored   not wanted: Arrmada won't search for it (a paused artist too)     faint
 //   Searching off a series whose searching is turned off, or a wanted episode of one:  faint
 //                 its episode choices are kept, nothing is searched until it's on
+//   Nothing monitored  a series searching for nothing: no episode is wanted and none   faint
+//                 is on disk (the None preset on a show with no files)
 //   File missing  Arrmada recorded a file but it is gone from disk                 reject
 //
 // "Searching" and "Upcoming" belong to Downloads' live tabs and request cards only.
@@ -26,6 +28,7 @@ export const STATUS_LABEL = {
   wanted: "Wanted",
   unmonitored: "Unmonitored",
   searchingOff: "Searching off",
+  nothingMonitored: "Nothing monitored",
   fileMissing: "File missing",
 } as const;
 
@@ -39,6 +42,7 @@ const TONE: Record<StatusLabel, Tone> = {
   Wanted: "avoid",
   Unmonitored: "faint",
   "Searching off": "faint",
+  "Nothing monitored": "faint",
   "File missing": "reject",
 };
 
@@ -82,6 +86,8 @@ export interface StatusInput {
   multi?: boolean;
   /** A series whose searching is off, or an episode of one: wanted, but nothing is searched. */
   searchingOff?: boolean;
+  /** A series with no file and no episode wanted: it reads "Nothing monitored", not "Wanted". */
+  nothingWanted?: boolean;
 }
 
 // libraryStatus is the one status word for a library item. For a series or artist,
@@ -98,6 +104,7 @@ export function libraryStatus(x: StatusInput): LibraryStatus {
   if (!x.multi && x.hasFile) return status(STATUS_LABEL.downloaded);
   if (!x.monitored) return status(STATUS_LABEL.unmonitored);
   if (x.searchingOff) return status(STATUS_LABEL.searchingOff);
+  if (x.nothingWanted) return status(STATUS_LABEL.nothingMonitored);
   if (have > 0) return status(STATUS_LABEL.partial);
   return status(STATUS_LABEL.wanted);
 }

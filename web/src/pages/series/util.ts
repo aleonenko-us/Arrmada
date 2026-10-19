@@ -1,4 +1,5 @@
 import type { Episode, SearchAttempt, Season, Series } from "../../lib/api";
+import type { StatusInput } from "../../lib/status";
 
 // Grab missing / Grab run as background jobs, and every search leaves a stored attempt
 // (search_attempts) under its scope: "S03" for a season, "S03E04" for an episode. The
@@ -75,6 +76,23 @@ export function seasonCounts(sn: Season, on = today) {
   const missing = eps.filter((e) => !e.has_file && e.monitored && aired(e, on)).length;
   const airedCount = eps.filter((e) => aired(e, on)).length;
   return { have, counted, notMonitored, missing, airedCount, total: eps.length };
+}
+
+// seriesStatusInput is a show's status word input from its server roll-up — the same for
+// the hero and the library, so the two agree. Counted episodes are the files plus the
+// monitored aired ones still missing. The show's own switch is its searching: off reads
+// "Searching off", not "Unmonitored". A show with nothing on disk and nothing wanted (the
+// None preset on a scanned show: aired episodes, none monitored, none coming) reads
+// "Nothing monitored" rather than "Wanted".
+export function seriesStatusInput(s: Series): StatusInput {
+  const st = s.stats;
+  const have = st?.have_files ?? 0;
+  const counted = st?.episodes ?? 0;
+  const missing = st?.missing ?? Math.max(0, counted - have);
+  return {
+    multi: true, hasFile: have > 0, monitored: true, searchingOff: !s.monitored, have: counted - missing, total: counted,
+    nothingWanted: counted === 0 && !st?.next_air_date && (st?.unmonitored_missing ?? 0) > 0,
+  };
 }
 
 // waitingOnSearch is what a show with its searching off is holding back: how many aired,
