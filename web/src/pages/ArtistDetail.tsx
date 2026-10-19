@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
+import { ArtistOptions } from "../components/music/ArtistOptions";
+import { foundWords } from "../components/music/releaseRules";
 import { api, type Artist, type MusicAlbum, type MovieEvent } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { libraryStatus } from "../lib/status";
@@ -15,6 +17,7 @@ export function ArtistDetail() {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [showOptions, setShowOptions] = useState(false);
   const toast = useToast();
   const load = useCallback(() => {
     api
@@ -129,6 +132,9 @@ export function ArtistDetail() {
           >
             Refresh
           </Button>
+          <Button size="sm" aria-expanded={showOptions} aria-controls="artist-options" onClick={() => setShowOptions((v) => !v)}>
+            {showOptions ? "Hide options" : "Options"}
+          </Button>
           {mostlyMissing && (
             <Button
               size="sm"
@@ -143,10 +149,20 @@ export function ArtistDetail() {
           <DeleteArtistButton artist={a} />
         </div>
 
+        {a.stale_since && (
+          <p className="mt-3 text-sm text-ink-dim">MusicBrainz didn't answer the last refresh; everything here is kept as it was.</p>
+        )}
+
         {error && (
           <div className="mt-4 rounded-lg p-3 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>
             {error}
           </div>
+        )}
+
+        {showOptions && (
+          <section id="artist-options" aria-label="Artist options" className="mt-4 max-w-[760px]">
+            <ArtistOptions artistId={a.id} onChanged={load} />
+          </section>
         )}
 
         <h2 className="m-0 mb-3 mt-8 text-md font-bold">Albums</h2>
@@ -197,6 +213,11 @@ function AlbumRow({ al, onChange, credit }: { al: MusicAlbum; onChange: () => vo
         <div className="truncate font-mono text-xs text-ink-faint">
           {[credit ? al.artist_credit || "" : "", al.year || "", al.album_type || ""].filter(Boolean).join(" · ")}
         </div>
+        {(al.stale_since || (!al.monitored && al.found_as)) && (
+          <div className="truncate text-xs text-ink-faint">
+            {al.stale_since ? "No longer on MusicBrainz; kept with its files" : foundWords(al.found_as, al.monitored)}
+          </div>
+        )}
       </Link>
       <span className="flex-none font-mono text-xs" style={{ color: tone }}>
         {known ? `${al.have_tracks}/${al.track_count}` : "not listed"}
@@ -248,6 +269,7 @@ const EVENT_TONES: Record<string, string> = {
   added: "var(--ink-faint)",
   grabbed: "var(--accent-text)",
   imported: "var(--good-text)",
+  new: "var(--accent-text)",
   refreshed: "var(--ink-dim)",
   failed: "var(--reject-text)",
 };

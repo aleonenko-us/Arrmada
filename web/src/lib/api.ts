@@ -3500,7 +3500,15 @@ export const api = {
   artists: () => req<{ artists: Artist[] }>("/api/v1/music/artists").then((r) => r.artists ?? []),
   lookupArtists: (q: string) =>
     req<{ results: ArtistLookup[] }>(`/api/v1/music/lookup?q=${encodeURIComponent(q)}`).then((r) => r.results ?? []),
-  addArtist: (body: { mbid: string; quality_profile?: string; monitored?: boolean }) =>
+  addArtist: (body: {
+    mbid: string;
+    quality_profile?: string;
+    monitored?: boolean;
+    /** Which of today's albums are wanted. */
+    monitor?: "all" | "future" | "latest" | "none";
+    monitor_new?: "" | "all" | "none";
+    release_types?: { primary: string[]; secondary: string[] };
+  }) =>
     req<Artist>("/api/v1/music/artists", { method: "POST", body: JSON.stringify(body) }),
   scanMusic: () => req<{ status: string } & JobRef>("/api/v1/music/scan", { method: "POST" }),
   artistDetail: (id: number) => req<Artist>(`/api/v1/music/artists/${id}`),
@@ -3806,6 +3814,12 @@ export interface MusicAlbum {
   extras?: MusicExtraFile[];
   /** The upgrade's open notes: tracks the old library said had a file that it couldn't give one. */
   notes?: MusicNote[];
+  /** Set when a refresh found it after the artist was added (MUS-13); found_as says why it
+   *  is or isn't wanted: new, not_new, back_catalogue, too_many, single_pending, single_on_album. */
+  found_at?: string;
+  found_as?: string;
+  /** MusicBrainz no longer lists it: kept, files and all. */
+  stale_since?: string;
 }
 /** A track the upgrade to editions couldn't give its file (two tracks on one file, or a file with no path). */
 export interface MusicNote {
@@ -3831,6 +3845,13 @@ export interface Artist {
   country?: string;
   /** False for an artist that is only credited (featured on another artist's album). */
   in_library?: boolean;
+  /** The artist's own new-release choice ("" = the library default) and release types
+   *  (absent = the library default). */
+  monitor_new?: "" | "all" | "none";
+  release_types?: { primary: string[]; secondary: string[] };
+  last_refreshed_at?: string;
+  /** MusicBrainz isn't answering for it; everything is kept. */
+  stale_since?: string;
   /** The albums filed under this artist (detail only). */
   albums?: MusicAlbum[];
   /** Albums filed under other artists that credit this one (detail only). */

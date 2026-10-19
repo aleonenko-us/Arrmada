@@ -41,7 +41,79 @@ export interface MusicMatching {
   edition_media: string[];
 }
 
+/** Which release groups an artist lists (MUS-14): the primary type must be allowed AND
+ *  every secondary type. */
+export interface ReleaseTypes {
+  primary: string[];
+  secondary: string[];
+}
+
+export type MonitorNew = "all" | "none";
+
+/** What "Want matching albums" would do: nothing happens until it's confirmed. */
+export interface ApplyPlan {
+  want: { id: number; title: string; type?: string; year?: number }[];
+  unwant: { id: number; title: string; type?: string; year?: number }[];
+  singles: { id: number; title: string; type?: string; year?: number }[];
+}
+
+/** An artist's options: its own choices ("" / null follow the library default). */
+export interface ArtistOptions {
+  monitor_new: "" | MonitorNew;
+  release_types: ReleaseTypes | null;
+  effective_monitor_new: MonitorNew;
+  effective_release_types: ReleaseTypes;
+  default_monitor_new: MonitorNew;
+  default_release_types: ReleaseTypes;
+  quality_profile: string;
+  apply: ApplyPlan;
+}
+
+export interface ReleaseTypeChoices {
+  primary: string[];
+  secondary: string[];
+}
+
+export interface ReleaseDefaults {
+  monitor_new: MonitorNew;
+  release_types: ReleaseTypes;
+}
+
+/** An album a refresh found, with why it is or isn't wanted (found_as). */
+export interface NewRelease {
+  id: number;
+  artist_id: number;
+  artist_name: string;
+  title: string;
+  album_type?: string;
+  release_date?: string;
+  year?: number;
+  monitored: boolean;
+  found_at?: string;
+  found_as?: string;
+}
+
 export const musicApi = {
+  artistOptions: (artistId: number) =>
+    req<{ options: ArtistOptions; choices: ReleaseTypeChoices }>(`/api/v1/music/artists/${artistId}/options`),
+  /** Save an artist's options. release_types null = follow the library default. */
+  setArtistOptions: (artistId: number, patch: { monitor_new?: "" | MonitorNew; release_types?: ReleaseTypes | null; quality_profile?: string }) =>
+    req<{ options: ArtistOptions; choices: ReleaseTypeChoices; refreshed: boolean }>(`/api/v1/music/artists/${artistId}/options`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+  /** Carry out the plan the person saw (its counts); 409 when it changed. */
+  applyArtistOptions: (artistId: number, plan: ApplyPlan) =>
+    req<{ applied: ApplyPlan }>(`/api/v1/music/artists/${artistId}/options/apply`, {
+      method: "POST",
+      body: JSON.stringify({ want: plan.want.length, unwant: plan.unwant.length, singles: plan.singles.length }),
+    }),
+  releaseDefaults: () =>
+    req<{ settings: ReleaseDefaults; defaults: ReleaseDefaults; choices: ReleaseTypeChoices }>("/api/v1/music/release-defaults"),
+  setReleaseDefaults: (patch: Partial<ReleaseDefaults>) =>
+    req<{ settings: ReleaseDefaults }>("/api/v1/music/release-defaults", { method: "PUT", body: JSON.stringify(patch) }),
+  newReleases: (days = 30) => req<{ albums: NewRelease[]; days: number }>(`/api/v1/music/new-releases?days=${days}`),
+
   /** Mark one of an album's upgrade notes as looked at; the sweep searches the album again. */
   resolveAlbumNote: (albumId: number, noteId: number) =>
     req<{ status: string }>(`/api/v1/music/albums/${albumId}/notes/${noteId}/resolve`, { method: "POST" }),
