@@ -172,7 +172,7 @@ In Arrmada's template settings, set **Built-in Prowlarr** and/or **Built-in SABn
 service while keeping its configuration.
 
 - **Prowlarr** opens on port 9697. Add indexers in its page, then enter that address and
-  Prowlarr's API key in Arrmada → Settings → Indexers, and choose **Sync from Prowlarr**.
+  Prowlarr's API key in Arrmada → Settings → Connections → Prowlarr, and choose **Sync now**.
   The host port setting lets Arrmada link to the port you chose in Unraid.
 - **SABnzbd** opens on port 8085. Arrmada registers it as a download client and creates
   its initial API key and page login. Open its card under Settings → Connections to show
@@ -195,7 +195,7 @@ Edit Arrmada, switch on **Show more settings**, and set a built-in service to `f
 - **FlareSolverr off:** put your own FlareSolverr's address in **FlareSolverr URL**, or in
   Settings → Connections → FlareSolverr, for example `http://192.168.1.10:8191`.
 - **Prowlarr off:** use your existing Prowlarr URL and API key in Arrmada → Settings →
-  Indexers. Prowlarr is no longer linked as the built-in service.
+  Connections → Prowlarr. Prowlarr is no longer linked as the built-in service.
 - **SABnzbd off:** add your existing client under Settings → Connections → + Add client.
   Its appdata and settings stay in place if you enable the built-in one again later.
 
