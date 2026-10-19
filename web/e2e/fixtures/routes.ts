@@ -207,6 +207,8 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/books/authors/images", { images: {}, pending: 0 }),
     get("/api/v1/books/duplicates", { groups: [], past_merges: [] }),
     get("/api/v1/music/artists", mod.artists),
+    get("/api/v1/music/matching", mod.musicMatching),
+    { method: "PUT", path: "/api/v1/music/matching", respond: ({ body }) => ({ settings: { ...mod.musicMatching.settings, ...(body as object) } }) },
     // Per media, as the server answers: ?media=series lists the series profiles.
     { method: "GET", path: "/api/v1/quality/profiles", respond: ({ url }) => (url.searchParams.get("media") === "series" ? media.seriesQualityProfiles : media.qualityProfiles) },
     // Settings → Downloads and → Book server (only the full Settings sweep visits them).

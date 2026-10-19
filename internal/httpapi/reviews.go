@@ -307,6 +307,8 @@ func (a *api) handleImportReview(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		TargetID   int64  `json:"target_id"`
 		TargetKind string `json:"target_kind"`
+		// ReleaseID (music): the edition of the album to place the files on.
+		ReleaseID int64 `json:"release_id"`
 	}
 	if r.ContentLength > 0 && !a.decodeJSON(w, r, &req) { // body optional; 0 = import into the expected item
 		return
@@ -319,11 +321,12 @@ func (a *api) handleImportReview(w http.ResponseWriter, r *http.Request) {
 		a.writeReviewError(w, err, "")
 		return
 	}
-	targetID, targetKind := req.TargetID, req.TargetKind
+	targetID, targetKind, releaseID := req.TargetID, req.TargetKind, req.ReleaseID
 	// Import anyway and Choose different… into the same item are the same import.
 	a.startHandImport(w, r, handImportRequest{Kind: reviewImportKind, Target: jobTarget("review", id), Hash: t.Review.Hash,
 		Key: "import:" + t.Review.MediaType + ":" + strconv.FormatInt(t.Dest, 10), Title: t.Title,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			ctx = automation.WithMusicEdition(ctx, releaseID)
 			if err := a.deps.Automation.ImportReview(withImportProgress(ctx, p), id, targetID, targetKind); err != nil {
 				return nil, err // the import's own reason, which the card shows
 			}

@@ -910,6 +910,8 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/music/albums/{id}/notes/{note}/resolve", a.requireRole(auth.RoleManager, a.musicRoute(a.handleResolveAlbumNote)))
 	mux.HandleFunc("GET /api/v1/music/albums/{id}/editions", a.requireRole(auth.RoleManager, a.musicRoute(a.handleAlbumEditions)))
 	mux.HandleFunc("PUT /api/v1/music/albums/{id}/edition", a.requireRole(auth.RoleManager, a.musicRoute(a.handleSetAlbumEdition)))
+	mux.HandleFunc("GET /api/v1/music/matching", a.requireRole(auth.RoleManager, a.musicRoute(a.handleGetMusicMatching)))
+	mux.HandleFunc("PUT /api/v1/music/matching", a.requireRole(auth.RoleManager, a.musicRoute(a.handleSetMusicMatching)))
 
 	// Books Discover (Open Library browse/search + author catalogues).
 	mux.HandleFunc("GET /api/v1/books/discover/trending", a.signedIn(a.handleBookDiscoverTrending).ext())

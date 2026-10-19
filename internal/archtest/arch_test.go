@@ -269,12 +269,36 @@ func TestNoBackgroundContextInHandlers(t *testing.T) {
 	}
 }
 
-// TestAudiotagNotLinkedYet: nothing imports internal/audiotag until the music import's
-// tagging step (Phase 2) does, deliberately. Until then the binary links neither its
-// LGPL-2.1 TagLib backend nor anything else from it, and stays MIT/Apache, as
-// THIRD_PARTY_NOTICES.md says. Wiring it in means updating that file and this test.
-func TestAudiotagNotLinkedYet(t *testing.T) {
+// TestAudiotagNoticeShips: internal/audiotag links TagLib (LGPL-2.1) into the binary, so
+// THIRD_PARTY_NOTICES.md must say so and ship in the image: the Docker context keeps it
+// (.dockerignore drops other Markdown) and the image copies it.
+func TestAudiotagNoticeShips(t *testing.T) {
 	root := repoRoot(t)
+	read := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	if n := read("THIRD_PARTY_NOTICES.md"); !strings.Contains(n, "go.senan.xyz/taglib") || strings.Contains(n, "not in the shipped binary") {
+		t.Error("THIRD_PARTY_NOTICES.md must name go-taglib and say it ships")
+	}
+	if !strings.Contains(read(".dockerignore"), "!THIRD_PARTY_NOTICES.md") {
+		t.Error(".dockerignore drops *.md: it must keep THIRD_PARTY_NOTICES.md for the image")
+	}
+	if !strings.Contains(read("Dockerfile"), "THIRD_PARTY_NOTICES.md /usr/share/doc/arrmada/") {
+		t.Error("the Dockerfile must copy THIRD_PARTY_NOTICES.md into the image")
+	}
+}
+
+// TestAudiotagImportersKnown: only the music import reads tags (the matcher); anything
+// else that starts importing internal/audiotag is a new place LGPL code is used, which the
+// notices should account for. Add it here when it's deliberate.
+func TestAudiotagImportersKnown(t *testing.T) {
+	root := repoRoot(t)
+	allowed := map[string]bool{"internal/automation/music_match.go": true}
 	const pkg = `"github.com/tristenlammi/arrmada/internal/audiotag"`
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -298,8 +322,8 @@ func TestAudiotagNotLinkedYet(t *testing.T) {
 			return nil
 		}
 		for _, imp := range f.Imports {
-			if imp.Path.Value == pkg {
-				t.Errorf("%s imports internal/audiotag — it would link LGPL code into the binary; update THIRD_PARTY_NOTICES.md (and ship it) first", rel)
+			if imp.Path.Value == pkg && !allowed[rel] {
+				t.Errorf("%s imports internal/audiotag — a new user of the LGPL tag code: check THIRD_PARTY_NOTICES.md covers it, then list it in TestAudiotagImportersKnown", rel)
 			}
 		}
 		return nil

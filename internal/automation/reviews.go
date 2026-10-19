@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -109,6 +110,9 @@ type Review struct {
 	SizeBytes  int64  `json:"size_bytes"`
 	Indexer    string `json:"indexer"`
 	CreatedAt  string `json:"created_at"`
+	// Match is the music matcher's explanation (music.MatchReport as JSON): the
+	// candidates it weighed and each one's per-field breakdown. Absent otherwise.
+	Match json.RawMessage `json:"match,omitempty"`
 
 	status string // pending | resolved; read by getReview only
 }
@@ -128,12 +132,16 @@ const (
 	ReasonNoMedia = "no_media"
 )
 
-const reviewCols = `id, hash, name, content_path, media_type, expected_id, expected_title, parsed_title, reason, reason_code, size_bytes, indexer, created_at, status`
+const reviewCols = `id, hash, name, content_path, media_type, expected_id, expected_title, parsed_title, reason, reason_code, size_bytes, indexer, created_at, status, match_json`
 
 func scanReview(row interface{ Scan(...any) error }) (Review, error) {
 	var r Review
+	var match string
 	err := row.Scan(&r.ID, &r.Hash, &r.Name, &r.ContentPath, &r.MediaType, &r.ExpectedID, &r.ExpectedTitle,
-		&r.ParsedTitle, &r.Reason, &r.ReasonCode, &r.SizeBytes, &r.Indexer, &r.CreatedAt, &r.status)
+		&r.ParsedTitle, &r.Reason, &r.ReasonCode, &r.SizeBytes, &r.Indexer, &r.CreatedAt, &r.status, &match)
+	if match != "" && json.Valid([]byte(match)) {
+		r.Match = json.RawMessage(match)
+	}
 	if r.ReasonCode == "" { // a row written by a build without codes, after 0133 ran
 		r.ReasonCode = defaultReasonCode(r)
 	}
@@ -181,9 +189,9 @@ func (c *Coordinator) addReview(ctx context.Context, r Review) {
 		r.ReasonCode = defaultReasonCode(r)
 	}
 	res, err := c.db.ExecContext(ctx,
-		`INSERT INTO import_reviews (hash, name, content_path, media_type, expected_id, expected_title, parsed_title, reason, reason_code, size_bytes, indexer)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.Hash, r.Name, r.ContentPath, r.MediaType, r.ExpectedID, r.ExpectedTitle, r.ParsedTitle, r.Reason, r.ReasonCode, r.SizeBytes, r.Indexer)
+		`INSERT INTO import_reviews (hash, name, content_path, media_type, expected_id, expected_title, parsed_title, reason, reason_code, size_bytes, indexer, match_json)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.Hash, r.Name, r.ContentPath, r.MediaType, r.ExpectedID, r.ExpectedTitle, r.ParsedTitle, r.Reason, r.ReasonCode, r.SizeBytes, r.Indexer, string(r.Match))
 	if err != nil {
 		c.log.Warn("review: record failed", "name", r.Name, "err", err)
 		return
@@ -693,12 +701,19 @@ func (c *Coordinator) ImportReview(ctx context.Context, id, targetID int64, targ
 		return err
 	}
 	r, dest := t.Review, t.Dest
+	left := &importLeftovers{}
+	ctx = context.WithValue(ctx, importLeftoversKey{}, left)
 	if err := c.importContentInto(withCopyAccounting(ctx, r), r, dest, "review"); err != nil {
 		c.importFailed(ctx, r, dest, "review", err)
 		return err
 	}
 	// No history line here: every kind's import already writes its own "imported" entry.
 	c.closeReviewImported(ctx, r)
+	if left.files > 0 {
+		// Some files were left in the download (an album's extra or doubtful files): its
+		// grab is 'dismissed', so seed cleanup keeps its files at the seed goal.
+		c.setGrabStatusByHash(ctx, r.Hash, r.Name, r.MediaType, grabStatusDismissed)
+	}
 	return c.resolveReview(ctx, id, ResolutionImported)
 }
 
@@ -791,6 +806,9 @@ func (c *Coordinator) importContentInto(ctx context.Context, r Review, dest int6
 			return fmt.Errorf("%d track(s) would land on a file another track of %q already has; nothing was replaced", res.taken, al.Title)
 		case res.placed == 0 && res.kept == 0:
 			return fmt.Errorf("no track could be placed into %q", al.Title)
+		}
+		if left, ok := ctx.Value(importLeftoversKey{}).(*importLeftovers); ok {
+			left.files += res.unmatched
 		}
 		c.afterAlbumImport(ctx, art, al)
 	case "book":

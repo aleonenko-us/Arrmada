@@ -1,4 +1,4 @@
-import { req } from "./api";
+import { req, type ReviewImportStarted } from "./api";
 
 // Music calls that only the staff music pages make. Their own module, not part of
 // lib/api.ts, so none of it lands in a requester's first load.
@@ -28,6 +28,19 @@ export interface AlbumEditionView {
   files: number;
 }
 
+/** The music matcher's thresholds and the edition policy (Settings → Naming & metadata). */
+export interface MusicMatching {
+  strong: number;
+  expected: number;
+  review: number;
+  track_max: number;
+  gap: number;
+  partial_min: number;
+  edition_policy: "original" | "most_complete" | "preferred";
+  edition_countries: string[];
+  edition_media: string[];
+}
+
 export const musicApi = {
   /** Mark one of an album's upgrade notes as looked at; the sweep searches the album again. */
   resolveAlbumNote: (albumId: number, noteId: number) =>
@@ -43,5 +56,16 @@ export const musicApi = {
     req<{ moved?: number; kept?: number; job_id?: number; existing?: boolean }>(`/api/v1/music/albums/${albumId}/edition`, {
       method: "PUT",
       body: JSON.stringify({ release_id: releaseId, pinned }),
+    }),
+
+  matching: () => req<{ settings: MusicMatching; defaults: MusicMatching }>("/api/v1/music/matching"),
+  setMatching: (patch: Partial<MusicMatching>) =>
+    req<{ settings: MusicMatching }>("/api/v1/music/matching", { method: "PUT", body: JSON.stringify(patch) }),
+
+  /** Reviews: import a held music download into one edition of an album. */
+  importReviewEdition: (reviewId: number, albumId: number, releaseId: number) =>
+    req<ReviewImportStarted>(`/api/v1/reviews/${reviewId}/import`, {
+      method: "POST",
+      body: JSON.stringify({ target_id: albumId, target_kind: "music", release_id: releaseId }),
     }),
 };
