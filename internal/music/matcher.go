@@ -157,6 +157,10 @@ type MatchCandidate struct {
 	// compilation).
 	Credit         string
 	VariousArtists bool
+	// ArtistAliases are the album artist's other names (MUS-38): tags or a folder naming
+	// the artist by one fit as well as by the credit. Only the album's own artist's
+	// aliases are here, so they can only bring this album closer, never another.
+	ArtistAliases []string
 	// Target marks the album's target edition; Pinned that the album's edition is pinned.
 	Target, Pinned bool
 	// TrackCredits are the credits of tracks credited differently from the edition
@@ -180,6 +184,9 @@ type candTrack struct {
 	Credit                string
 	ISRCs                 []string
 	aliases               []string
+	// creditAliases are the album artist's aliases when the track carries the album's
+	// own credit (none for a track credited differently).
+	creditAliases []string
 }
 
 func (t *candTrack) hasAlias(mbid string) bool { return containsFold(t.aliases, mbid) }
@@ -211,13 +218,15 @@ func (c *MatchCandidate) trackList() []candTrack {
 		for _, rt := range m.Tracks {
 			idx++
 			credit := c.TrackCredits[rt.ID]
+			var creditAliases []string
 			if credit == "" {
-				credit = c.Credit
+				credit, creditAliases = c.Credit, c.ArtistAliases
 			}
 			out = append(out, candTrack{
 				ID: rt.ID, RecordingID: rt.RecordingID, MBID: rt.MBID, RecordingMBID: rt.RecordingMBID,
 				Disc: m.Position, Position: rt.Position, Index: idx, Title: rt.Title, LengthMs: rt.LengthMs,
 				Credit: credit, ISRCs: c.ISRCs[rt.RecordingID], aliases: aliases[strings.ToLower(rt.RecordingMBID)],
+				creditAliases: creditAliases,
 			})
 		}
 	}
@@ -872,7 +881,7 @@ func scoreCandidate(c *MatchCandidate, files []*MatchFile, cons consensus, pol E
 		d.addBool(CompAlbumID, !strings.EqualFold(cons.ReleaseMBID, ed.MBID))
 	}
 	if !c.VariousArtists && cons.Artist != "" && c.Credit != "" && !isVariousArtists(cons.Artist) {
-		d.add(CompArtist, stringDist(cons.Artist, c.Credit))
+		d.add(CompArtist, artistDist(cons.Artist, c.Credit, c.ArtistAliases))
 	}
 	if cons.Album != "" {
 		title := ed.Title

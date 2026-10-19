@@ -473,6 +473,7 @@ function AddArtistModal({ onClose, onAdded }: { onClose: () => void; onAdded: (n
                       {r.name}
                       {r.disambiguation && <span className="ml-2 text-sm text-ink-faint">({r.disambiguation})</span>}
                     </div>
+                    {r.aka && <div className="truncate text-sm text-ink-dim">also known as {r.aka}</div>}
                     <div className="truncate font-mono text-xs text-ink-faint">
                       {[r.type, r.country].filter(Boolean).join(" · ") || r.mbid}
                     </div>

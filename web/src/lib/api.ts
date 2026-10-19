@@ -3706,6 +3706,8 @@ export interface ArtistLookup {
   disambiguation?: string;
   country?: string;
   type?: string;
+  /** The alias the search matched when the name itself doesn't show it ("also known as"). */
+  aka?: string;
 }
 export interface ArtistStats {
   albums: number;

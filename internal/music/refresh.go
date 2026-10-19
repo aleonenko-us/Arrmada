@@ -653,6 +653,7 @@ func (s *Service) RefreshArtist(ctx context.Context, id int64, opt RefreshOption
 			if err := s.repo.UpdateArtistMeta(ctx, id, d.Overview, a.ImageURL, d.Genres, d.Disambiguation, d.Type, d.Country); err != nil {
 				s.log.Warn("music: updating artist metadata failed", "artist", a.Name, "err", err)
 			}
+			s.storeAliases(ctx, id, d.Aliases)
 		}
 	} else {
 		s.log.Warn("music: artist metadata refresh failed", "artist", a.Name, "err", derr)

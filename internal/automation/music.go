@@ -87,7 +87,7 @@ func (c *Coordinator) SearchMusicMissing(ctx context.Context) {
 		if !albumReleased(al, today) {
 			continue // announced but not out yet — not a miss, just not yet
 		}
-		if c.albumDownloading(queue, a, al) {
+		if c.albumDownloading(ctx, queue, a, al) {
 			continue // already downloading — let it finish
 		}
 		last := parseTime(al.LastSearchAt)
@@ -204,12 +204,13 @@ func (o albumOutcome) miss() bool {
 }
 
 // albumDownloading reports whether the queue already holds a release for this album.
-func (c *Coordinator) albumDownloading(queue []download.Item, a music.Artist, al music.Album) bool {
+func (c *Coordinator) albumDownloading(ctx context.Context, queue []download.Item, a music.Artist, al music.Album) bool {
+	names := c.music.ArtistNames(ctx, a)
 	for _, it := range queue {
 		if it.Category != musicCategory {
 			continue
 		}
-		if music.ReleaseIsForAlbum(it.Name, a.Name, al.Title) {
+		if names.ReleaseIsForAlbum(it.Name, al.Title) {
 			return true
 		}
 	}
@@ -311,6 +312,9 @@ func (c *Coordinator) grabAlbumExcluding(ctx context.Context, a music.Artist, al
 		c.log.Warn("music: search failed", "album", al.Title, "err", err)
 		return albumOutcome{Code: outcomeIndexerError, Detail: err.Error()}
 	}
+	// Nothing named the album under the artist's own name: try its aliases (MUS-38).
+	names := c.music.ArtistNames(ctx, a)
+	res = c.searchAliases(ctx, res, names, al)
 	notes := notesFrom(ctx) // the album's search attempt, when it is recorded
 	notes.consider(res.Releases)
 	if len(res.Releases) == 0 {
@@ -334,7 +338,7 @@ func (c *Coordinator) grabAlbumExcluding(ctx context.Context, a music.Artist, al
 	nets.noteDropped(notes, res.Releases, usable)
 	var cands []indexer.Release
 	for _, rel := range usable {
-		if music.ReleaseIsForAlbum(rel.Title, a.Name, al.Title) {
+		if names.ReleaseIsForAlbum(rel.Title, al.Title) {
 			cands = append(cands, rel)
 		} else {
 			notes.mark(rel.Title, DropWrongTitle)
@@ -709,9 +713,22 @@ func (c *Coordinator) AlbumMatcher(ctx context.Context) func(name string) (music
 				}
 			}
 		}
+		// The artist's own name first, everywhere; an alias (MUS-38) only when no artist's
+		// name fits, so an alias never takes a release another artist's name claims.
 		for _, e := range lib {
 			for _, al := range e.albums {
 				if music.ReleaseIsForAlbum(name, e.artist.Name, al.Title) {
+					return al, e.artist, true
+				}
+			}
+		}
+		for _, e := range lib {
+			names := c.music.ArtistNames(ctx, e.artist)
+			if len(names.Aliases) == 0 {
+				continue
+			}
+			for _, al := range e.albums {
+				if names.ReleaseIsForAlbum(name, al.Title) {
 					return al, e.artist, true
 				}
 			}
@@ -726,6 +743,11 @@ func (c *Coordinator) albumForRelease(ctx context.Context, name string) (music.A
 	if err != nil {
 		return music.Album{}, music.Artist{}, false
 	}
+	type entry struct {
+		artist music.Artist
+		albums []music.Album
+	}
+	var aliased []entry
 	for _, a := range artists {
 		albums, err := c.music.Albums(ctx, a.ID)
 		if err != nil {
@@ -734,6 +756,19 @@ func (c *Coordinator) albumForRelease(ctx context.Context, name string) (music.A
 		for _, al := range albums {
 			if music.ReleaseIsForAlbum(name, a.Name, al.Title) {
 				return al, a, true
+			}
+		}
+		aliased = append(aliased, entry{a, albums})
+	}
+	// No artist's own name fits: an alias may (MUS-38), as the release's whole artist part.
+	for _, e := range aliased {
+		names := c.music.ArtistNames(ctx, e.artist)
+		if len(names.Aliases) == 0 {
+			continue
+		}
+		for _, al := range e.albums {
+			if names.ReleaseIsForAlbum(name, al.Title) {
+				return al, e.artist, true
 			}
 		}
 	}

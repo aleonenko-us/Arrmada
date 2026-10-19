@@ -185,6 +185,11 @@ func (s *Service) candidate(ctx context.Context, al Album, releaseID int64) (Mat
 	if isVariousArtists(c.Credit) {
 		c.VariousArtists = true
 	}
+	if !c.VariousArtists {
+		if ix, err := s.NameIndex(ctx); err == nil {
+			c.ArtistAliases = ix.Names(al.ArtistID, "").Aliases
+		}
+	}
 	for _, m := range ed.Media {
 		for _, t := range m.Tracks {
 			if cr, ok := credits[t.CreditID]; ok && t.CreditID != creditID {

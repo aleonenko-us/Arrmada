@@ -22,6 +22,8 @@ type Service struct {
 	lookup func(key string) (string, bool)
 	// now is the clock (tests move it); nil is the real one.
 	now func() time.Time
+	// names caches every artist's names and aliases (MUS-38, NameIndex).
+	names nameCache
 }
 
 // NewService wires the module.
@@ -32,9 +34,15 @@ func NewService(db *sql.DB, meta metadata.MusicProvider, log *slog.Logger) *Serv
 // MetadataAvailable reports whether the metadata provider is usable (MusicBrainz always is).
 func (s *Service) MetadataAvailable() bool { return s.meta.Available() }
 
-// Lookup searches MusicBrainz for artists to add.
+// Lookup searches MusicBrainz for artists to add. MusicBrainz searches aliases too, so a
+// romanised name finds a Japanese artist; each result says which alias matched when its
+// own name doesn't show what was typed (AKA).
 func (s *Service) Lookup(ctx context.Context, query string) ([]metadata.ArtistResult, error) {
-	return s.meta.SearchArtists(ctx, query)
+	res, err := s.meta.SearchArtists(ctx, query)
+	for i := range res {
+		res[i].AKA = AliasMatching(res[i], query)
+	}
+	return res, err
 }
 
 // ListArtists returns the library.
@@ -219,6 +227,8 @@ func (s *Service) AddArtistWith(ctx context.Context, mbid, qualityProfile string
 	}
 	s.log.Info("music: artist added", "name", created.Name, "mbid", created.MBID)
 	s.repo.AddEvent(ctx, created.ID, "added", "Added to library")
+	s.forgetNames()
+	s.storeAliases(ctx, created.ID, d.Aliases)
 
 	res, aerr := s.syncAlbums(ctx, created, syncAdd, opt.Monitor, false)
 	if aerr != nil || res.Unanswered {
@@ -381,7 +391,10 @@ func (s *Service) ClearTrackFile(ctx context.Context, trackID int64) error {
 
 // Delete removes an artist from the library: rows only, never files. Albums another
 // library artist is credited on stay (see Repo.DeleteArtist).
-func (s *Service) Delete(ctx context.Context, id int64) error { return s.repo.DeleteArtist(ctx, id) }
+func (s *Service) Delete(ctx context.Context, id int64) error {
+	defer s.forgetNames()
+	return s.repo.DeleteArtist(ctx, id)
+}
 
 // AddEvent appends an artist timeline event.
 func (s *Service) AddEvent(ctx context.Context, id int64, event, detail string) {
