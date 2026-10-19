@@ -97,14 +97,27 @@ test.describe("a manager who leaves the pick alone", () => {
   test.skip(({ isMobile }) => isMobile, "desktop project only");
   test.use({ persona: "manager" });
 
-  test("sends the default the button names", async ({ page, api }) => {
+  // Untouched, nothing is sent: a new request gets the server's default (the one the button
+  // names), and following one already waiting doesn't overwrite another staff member's pick.
+  test("sends no profile: the server's default, the one the button names", async ({ page, api }) => {
     await page.goto(`/discover/movie/${requestableCard.tmdb_id}`);
     await api.quiet();
     await movieSheet(page).getByRole("button", { name: "＋ Request with HD 1080p" }).click();
     await api.quiet();
     const posted = api.callsTo("POST", "/api/v1/requests");
     expect(posted).toHaveLength(1);
-    expect(posted[0].body).toMatchObject({ quality_profile: "hd-1080p" });
+    expect(posted[0].body).not.toHaveProperty("quality_profile");
+  });
+
+  test("choosing the default again sends it", async ({ page, api }) => {
+    await page.goto(`/discover/movie/${requestableCard.tmdb_id}`);
+    await api.quiet();
+    const sheet = movieSheet(page);
+    await sheet.getByRole("button", { name: "Quality profile: HD 1080p" }).click();
+    await sheet.getByRole("menuitem", { name: /HD 1080p/ }).click();
+    await sheet.getByRole("button", { name: "＋ Request with HD 1080p" }).click();
+    await api.quiet();
+    expect(api.callsTo("POST", "/api/v1/requests")[0].body).toMatchObject({ quality_profile: "hd-1080p" });
   });
 });
 
@@ -154,6 +167,11 @@ test.describe("staff on a phone", () => {
     await fitsScreen(page);
     const g = await group.boundingBox();
     expect(g && g.x >= 0 && g.x + g.width <= 375, `split button inside the screen: ${JSON.stringify(g)}`).toBeTruthy();
+
+    // The profile is a whole second line under the label, not cut short.
+    const name = sheet.getByRole("button", { name: "＋ Request with HD 1080p" }).getByText("HD 1080p", { exact: true });
+    await expect(name).toBeVisible();
+    expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth), "the profile name isn't truncated").toBe(true);
 
     await sheet.getByRole("button", { name: "Quality profile: HD 1080p" }).tap();
     const menu = sheet.getByRole("menu");

@@ -92,8 +92,8 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
   const [noteOpen, setNoteOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Staff pick the quality profile a request goes with (issue #50); "" until the picker
-  // settles on the default.
+  // Staff pick the quality profile a request goes with (issue #50); "" until they choose
+  // one, and then nothing is sent (the server's default, which the button shows).
   const staff = isStaff(useMe().user);
   const [profile, setProfile] = useState("");
   // The requester has no movie requests left (QuotaHint says when the next frees up).
@@ -182,7 +182,7 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
     if (!staffPick) return plain;
     return (
       <Suspense fallback={plain}>
-        <StaffRequestButton media={c.media_type} label={label} value={profile} onChange={setProfile} onRequest={onClick} busy={busy} disabled={disabled} />
+        <StaffRequestButton media={c.media_type} label={label} value={profile} onChange={setProfile} onRequest={onClick} busy={busy} disabled={disabled} className={className} />
       </Suspense>
     );
   };

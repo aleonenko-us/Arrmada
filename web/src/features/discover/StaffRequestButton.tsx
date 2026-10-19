@@ -9,10 +9,12 @@ import { requestProfiles, selectedProfile } from "./profilePick";
 // whose chevron picks another. It's its own chunk, loaded only for staff, along with the
 // profiles call (staff-only on the server): a requester's Discover never fetches either.
 //
-// value is the parent's pick; once the list is here it's settled to a listed profile (the
-// default to start), so what the parent sends is always what the button says. Without a
-// list (none, or it failed) it's a plain Request and the server uses its default.
-export function StaffRequestButton({ media, label, value, onChange, onRequest, busy = false, disabled = false }: {
+// value is the parent's pick, "" until someone chooses from the list. Untouched, the button
+// shows the default and the parent sends no profile at all: a new request gets the server's
+// default (the same one), and following a request already waiting changes nothing about
+// it, rather than overwriting what another staff member picked with the default. Without a
+// list (none, or it failed) it's a plain Request.
+export function StaffRequestButton({ media, label, value, onChange, onRequest, busy = false, disabled = false, className = "" }: {
   media: "movie" | "series";
   label: string;
   value: string;
@@ -20,12 +22,21 @@ export function StaffRequestButton({ media, label, value, onChange, onRequest, b
   onRequest: () => void;
   busy?: boolean;
   disabled?: boolean;
+  /** Extra classes on the main part (a taller button in the season picker). */
+  className?: string;
 }) {
   const { data } = useQuery(`discover:request-profiles:${media}`, () => qualityApi.qualityProfiles(media).then((r) => requestProfiles(r.profiles, media)), { staleMs: 60_000 });
   const profiles = data ?? [];
   const sel = selectedProfile(profiles, value);
-  const selKey = sel?.key;
-  useEffect(() => { if (selKey && selKey !== value) onChange(selKey); }, [selKey, value, onChange]);
+  // What's shown must be what's asked for. With no profile marked default the button names
+  // the first, which the server wouldn't pick by itself, so that one is sent; and a pick
+  // that has since gone from the list is dropped rather than sent.
+  const firstNotDefault = !value && !!sel && !sel.is_default ? sel.key : "";
+  const gone = !!value && !!data && !profiles.some((p) => p.key === value);
+  useEffect(() => {
+    if (firstNotDefault) onChange(firstNotDefault);
+    else if (gone) onChange("");
+  }, [firstNotDefault, gone, onChange]);
 
   // The title sheet is a dialog that closes on Escape, and it hears the key first. With the
   // list open, Escape should close only the list: catch it before the dialog does and
@@ -50,13 +61,14 @@ export function StaffRequestButton({ media, label, value, onChange, onRequest, b
   }
   return (
     <div ref={groupRef} role="group" aria-label="Request and quality profile" className="inline-flex max-w-full items-stretch">
-      {/* A long profile name shortens on a narrow screen; the label never does. */}
+      {/* On a phone the profile is a second line under the label, so its name fits whole;
+          only a very long one is cut short. Wider, it sits beside the label. */}
       <Button variant="primary" onClick={onRequest} busy={busy} busyLabel="Requesting…" disabled={disabled} title={`${label} · ${sel.name}`}
-        className="inline-flex min-w-0 items-center rounded-r-none px-3 sm:px-4">
-        <span className="flex-none">{label}</span>
-        <span aria-hidden className="mx-1 flex-none opacity-70 sm:mx-1.5">·</span>
+        className={`flex min-w-0 flex-col items-start rounded-r-none px-3 leading-tight sm:flex-row sm:items-center sm:px-4 ${className}`}>
+        <span className="max-w-full flex-none">{label}</span>
+        <span aria-hidden className="mx-1.5 hidden flex-none opacity-70 sm:inline">·</span>
         <span className="sr-only"> with </span>
-        <span className="min-w-0 max-w-[12rem] truncate">{sel.name}</span>
+        <span className="min-w-0 max-w-full truncate text-xs sm:max-w-[12rem] sm:text-base">{sel.name}</span>
       </Button>
       <Menu
         label={`Quality profile: ${sel.name}`}
