@@ -14,6 +14,7 @@ require (
 	github.com/oschwald/geoip2-golang v1.13.0
 	go.senan.xyz/taglib v0.15.0
 	golang.org/x/crypto v0.57.0
+	golang.org/x/text v0.42.0
 	modernc.org/sqlite v1.53.0
 	rsc.io/qr v0.2.0
 )
@@ -30,7 +31,6 @@ require (
 	github.com/tetratelabs/wazero v1.11.1-0.20260428013916-2bbd517b7633 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
 	modernc.org/libc v1.73.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

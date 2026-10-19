@@ -117,6 +117,19 @@ type placement struct {
 	// go there (a disc-folder scheme puts tracks one level below it).
 	albumDir string
 	old      string // the track's file now, when the new one replaces it
+	// from is where the file came from in the download when that isn't f.Path: the disc
+	// image a split track was cut from (MUS-35). Extras are found beside it.
+	from string
+	// scratch: f.Path is a split track in staging, Arrmada's own, deleted once placed.
+	scratch bool
+}
+
+// source is the download file the placement came from.
+func (p placement) source() string {
+	if p.from != "" {
+		return p.from
+	}
+	return p.f.Path
 }
 
 // placeMatch places a matcher result (music.MatchResult) onto the album's target tracks:
@@ -143,6 +156,7 @@ func (c *Coordinator) placeFiles(ctx context.Context, a music.Artist, al music.A
 			"album", al.Title, "err", tcErr)
 	}
 
+	c.cueHiddenTracks(ctx, tracks, matched)
 	var plan []placement
 	taken := map[string]bool{} // two files of this import never get one name
 	for _, t := range tracks { // in the edition's order
@@ -181,6 +195,12 @@ func (c *Coordinator) placeFiles(ctx context.Context, a music.Artist, al music.A
 		plan = append(plan, p)
 	}
 	if len(plan) == 0 {
+		return res
+	}
+	// A cue-sheet image is split now that it's known which of its tracks are taken.
+	plan, splitDone, ok := c.splitPlanned(ctx, al, plan, releaseTier, &res)
+	defer splitDone()
+	if !ok {
 		return res
 	}
 
@@ -290,7 +310,7 @@ func (c *Coordinator) placeStaged(ctx context.Context, al music.Album, tc music.
 	}
 	items := make([]stage.Item, len(plan))
 	for i, p := range plan {
-		items[i] = stage.Item{Source: p.f.Path, Final: p.target, Ref: p.t.ID}
+		items[i] = stage.Item{Source: p.f.Path, Final: p.target, Ref: p.t.ID, Scratch: p.scratch}
 		if _, err := os.Lstat(p.target); err == nil {
 			items[i].Replace = p.target // a better copy, or a file no track owns: to the bin first
 		}

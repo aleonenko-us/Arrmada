@@ -73,6 +73,18 @@ Tags are written in a **staging** folder on the same drive as the library, check
 
 Files already in the library are never retagged in place. A retag of an existing album stages a tagged copy, checks it, and swaps it in, with the original going to the recycle bin.
 
+## Cue-sheet albums are split into tracks
+
+_Built with [MUS-35](../roadmap/MUS.md#mus-35), 2026-10-20._ A download that is one audio image per disc plus a `.cue` sheet is split into one FLAC per track, because Plex comes first and Plex doesn't read cue sheets. The rules it follows:
+
+- **Pregaps stay with the track before.** A track runs from its INDEX 01 to the next track's INDEX 01, so the next track's pregap (INDEX 00 to INDEX 01) is at the end of the earlier track. That's how a CD player plays the disc, what EAC, XLD and foobar2000 do by default, and what per-track rips of the same disc look like; played in order, the tracks are gapless.
+- **Audio before track 1** (track 1's pregap) is imported only as a hidden track ("track 0"), and only when it is at least four seconds long and MusicBrainz lists a track 0 on that disc. Otherwise it's left out, with a log line saying so. Data tracks of an enhanced CD are left out the same way.
+- **Exact, and proven.** ffmpeg decodes the image once and cuts the decoded samples at the cue's INDEX points (CD frame × sample rate ÷ 75), encoding each piece to FLAC at the image's own bit depth. Before anything is imported, the pieces and the image are decoded again and compared: joined in order, the pieces must be the image sample for sample, each with exactly its planned length. APE, WavPack and WAV images become FLAC this way too.
+- **Split late, in staging.** The image's tracks are matched first as "virtual" files named, tagged and timed from the cue sheet; the image is split only when the match is confident and placement takes its tracks. The split happens in the music folder's staging area, the download is only read, and each piece goes through the usual house-tag staging (tagged, checked, one move). A split interrupted by a crash is deleted at the next start.
+- **To Reviews, never guessed:** a cue naming a file that isn't in the download, a cue that runs past the end of its image, a lossy image, or a split that doesn't prove exact.
+- **Not split:** an image whose tracks are in the download as files already, and a cue sheet that describes per-track files. Those files are imported as they are.
+- The image itself is never copied into the library; the cue sheet and rip log follow the album as extras when the extras list includes them.
+
 ## Sources excluded
 
 Music comes from **Usenet and torrents only**, through the indexers and download clients Arrmada already has.

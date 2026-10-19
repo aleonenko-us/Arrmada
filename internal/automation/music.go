@@ -548,6 +548,8 @@ func (c *Coordinator) ImportMusicDownloads(ctx context.Context) {
 			switch {
 			case res.taken > 0:
 				c.musicTakenReview(ctx, it, res, 0, art.Name+" (discography)")
+			case res.splitFailed > 0:
+				c.musicSplitReview(ctx, it, res, 0, art.Name+" (discography)")
 			case res.tagFailed > 0:
 				c.musicTagReview(ctx, it, res, 0, art.Name+" (discography)")
 			case res.refused > 0 || res.failed > 0:
@@ -756,6 +758,14 @@ func (c *Coordinator) importAlbumContent(ctx context.Context, a music.Artist, al
 		return res
 	}
 	res.found = true
+	// A disc image with a cue sheet stands in for its tracks (MUS-35).
+	files, cues, err := c.expandCueSheets(ctx, contentPath, files)
+	if err != nil {
+		res.splitFailed, res.splitWhy = 1, err.Error()
+		c.log.Warn("music import: a cue-sheet album can't be split", "album", al.Title, "why", err)
+		return res
+	}
+	ctx = withCueSet(ctx, cues)
 
 	// A person chose this album (or a test did): the matcher places what fits, on the
 	// best of its editions (MUS-31).
@@ -812,6 +822,11 @@ type albumImport struct {
 	// (MUS-33): the download is untouched and goes to Review with tagWhy.
 	tagFailed int
 	tagWhy    string
+	// splitFailed counts disc images (MUS-35) that couldn't be split, or whose split didn't
+	// prove exact: nothing from them was placed, and the download goes to Review with
+	// splitWhy.
+	splitFailed int
+	splitWhy    string
 }
 
 func (r *albumImport) add(o albumImport) {
@@ -824,6 +839,10 @@ func (r *albumImport) add(o albumImport) {
 	r.tagFailed += o.tagFailed
 	if r.tagWhy == "" {
 		r.tagWhy = o.tagWhy
+	}
+	r.splitFailed += o.splitFailed
+	if r.splitWhy == "" {
+		r.splitWhy = o.splitWhy
 	}
 }
 
@@ -876,6 +895,9 @@ func (c *Coordinator) heldTier(ctx context.Context, t music.Track) music.Quality
 // probeAudio measures an audio file with ffprobe (read-only), through the test seam when
 // set. With no ffprobe installed it reports an error, and callers fall back.
 func (c *Coordinator) probeAudio(ctx context.Context, path string) (mediainfo.AudioInfo, error) {
+	if part, ok := cueSetFrom(ctx).part(path); ok {
+		return part.probe(), nil // a cue sheet's track: what it will be once split
+	}
 	if c.probeAudioFn != nil {
 		return c.probeAudioFn(ctx, path)
 	}
@@ -1188,7 +1210,13 @@ func (c *Coordinator) importAlbumFolder(ctx context.Context, a music.Artist, al 
 		c.log.Warn("music import: couldn't fetch a track listing", "album", al.Title, "err", err)
 		return albumImport{found: true, unmatched: len(f.files)} // nothing to place them against: left for a person
 	}
-	tracks, matched, unmatched, err := c.matchGrabbedFolder(ctx, al, f.files, filepath.Base(f.path))
+	files, cues, err := c.expandCueSheets(ctx, f.path, f.files)
+	if err != nil {
+		c.log.Warn("music import: a discography folder's cue sheet can't be used — left in the download", "album", al.Title, "folder", filepath.Base(f.path), "why", err)
+		return albumImport{found: true, unmatched: len(f.files)}
+	}
+	ctx = withCueSet(ctx, cues)
+	tracks, matched, unmatched, err := c.matchGrabbedFolder(ctx, al, files, filepath.Base(f.path))
 	if err != nil || len(tracks) == 0 {
 		return albumImport{found: true, unmatched: len(f.files)}
 	}
