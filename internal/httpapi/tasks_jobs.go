@@ -65,6 +65,7 @@ var jobKindLabels = map[string]string{
 	"books.upgrade":             "Look for better book releases",
 	"album.search":              "Search for an album",
 	"music.scan":                "Scan the music folder",
+	"album.edition":             "Switch an album's edition",
 	"download.block":            "Block a download and search again",
 	"download.failover":         "Replace a stalled download",
 	"review.import":             "Import a reviewed download",

@@ -43,6 +43,10 @@ func jsonShape(prefix string, v any, out map[string]string) {
 	}
 }
 
+// listingOnly hides the editions half of a MusicBrainz client, so a test's album page
+// reads what is stored instead of listing editions over the network.
+type listingOnly struct{ metadata.MusicProvider }
+
 // MUS-29: the album, artist and library responses keep every field the music pages read
 // (AlbumDetail, ArtistDetail, Music) with the same types, and add the new model's.
 func TestMusicResponseShapes(t *testing.T) {
@@ -65,7 +69,9 @@ func TestMusicResponseShapes(t *testing.T) {
 	_ = set.SetBool(ctx, settings.KeyModuleMusic, true)
 	h := New(Deps{
 		Log: slog.Default(), Store: st, Auth: authSvc, Settings: set,
-		Music: music.NewService(st.DB(), metadata.NewMusicBrainz(nil, nil), slog.Default()),
+		// Listings only: the album below is already listed, and editions (MUS-30) would ask
+		// the real MusicBrainz.
+		Music: music.NewService(st.DB(), listingOnly{metadata.NewMusicBrainz(nil, nil)}, slog.Default()),
 	}).Handler
 
 	repo := music.NewRepo(st.DB())

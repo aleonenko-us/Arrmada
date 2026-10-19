@@ -16,6 +16,9 @@ type Service struct {
 	repo *Repo
 	meta metadata.MusicProvider
 	log  *slog.Logger
+	// lookup reads a saved setting (the matcher's thresholds, the edition policy); nil
+	// reads every one as its default.
+	lookup func(key string) (string, bool)
 }
 
 // NewService wires the module.
@@ -72,13 +75,11 @@ func (s *Service) GetAlbum(ctx context.Context, id int64) (Album, error) {
 	if err != nil {
 		return Album{}, err
 	}
-	if al.EditionTracks == 0 {
-		if err := s.EnsureTracks(ctx, al); err != nil {
-			s.log.Warn("music: couldn't fetch the track listing", "album", al.Title, "err", err)
-		}
-		if refreshed, rerr := s.repo.GetAlbum(ctx, id); rerr == nil {
-			al = refreshed
-		}
+	if err := s.EnsureTracks(ctx, al); err != nil {
+		s.log.Warn("music: couldn't fetch the track listing", "album", al.Title, "err", err)
+	}
+	if refreshed, rerr := s.repo.GetAlbum(ctx, id); rerr == nil {
+		al = refreshed
 	}
 	tracks, err := s.repo.TracksFor(ctx, id)
 	if err != nil {
@@ -184,8 +185,19 @@ func (s *Service) syncAlbums(ctx context.Context, a Artist, monitored bool) (int
 }
 
 // EnsureTracks fills in an album's track listing when its target edition has none yet.
-// Safe to call repeatedly — an album that already has a listing costs nothing.
+// Safe to call repeatedly — an album that already has a listing costs nothing. With a
+// provider that lists editions (MusicBrainz) it lists every edition and keeps the target
+// one by policy (EnsureEditions), which also re-keys a migrated album.
 func (s *Service) EnsureTracks(ctx context.Context, al Album) error {
+	if ep, ok := s.meta.(metadata.EditionProvider); ok {
+		return s.ensureEditions(ctx, ep, al)
+	}
+	return s.ensureListing(ctx, al)
+}
+
+// ensureListing is the single-listing path: the listing of the release group's
+// representative release, stored as the target edition when there is none.
+func (s *Service) ensureListing(ctx context.Context, al Album) error {
 	if al.EditionTracks > 0 {
 		return nil
 	}

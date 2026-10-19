@@ -280,7 +280,11 @@ type EditionTrack struct {
 	RecordingMBID string
 	LengthMs      int
 	CreditID      int64 // 0: the release's credit
-	Unmonitored   bool
+	// Credit is the track's own credit by MBIDs (MUS-30), stored when CreditID is 0; an
+	// empty one means the release's credit.
+	Credit      []CreditInput
+	ISRCs       []string // the recording's ISRCs, kept in music_external_ids
+	Unmonitored bool
 }
 
 // AddEdition stores an edition of an album with its discs, recordings and tracks, in one
@@ -377,29 +381,47 @@ func putTracksTx(ctx context.Context, tx *sql.Tx, releaseID int64, tracks []Edit
 		if number == "" {
 			number = fmt.Sprint(t.Position)
 		}
-		var existing int64
-		err := tx.QueryRowContext(ctx, `SELECT id FROM music_release_tracks WHERE medium_id = ? AND position = ?`, mid, t.Position).Scan(&existing)
+		if t.CreditID == 0 && len(t.Credit) > 0 {
+			id, err := creditFromInputsTx(ctx, tx, t.Credit)
+			if err != nil {
+				return err
+			}
+			t.CreditID = id
+		}
+		var existing, recID int64
+		err := tx.QueryRowContext(ctx, `SELECT id, recording_id FROM music_release_tracks WHERE medium_id = ? AND position = ?`,
+			mid, t.Position).Scan(&existing, &recID)
 		switch {
 		case err == nil:
 			if _, err := tx.ExecContext(ctx,
-				`UPDATE music_release_tracks SET mbid = ?, number = ?, title = ?, length_ms = ? WHERE id = ?`,
-				t.MBID, number, t.Title, t.LengthMs, existing); err != nil {
+				`UPDATE music_release_tracks SET mbid = ?, number = ?, title = ?, length_ms = ?,
+				        artist_credit_id = COALESCE(?, artist_credit_id) WHERE id = ?`,
+				t.MBID, number, t.Title, t.LengthMs, nullID(t.CreditID), existing); err != nil {
 				return err
 			}
-			continue
 		case !errors.Is(err, sql.ErrNoRows):
 			return err
+		default:
+			if recID, err = recordingTx(ctx, tx, t); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO music_release_tracks (medium_id, recording_id, mbid, position, number, title, artist_credit_id,
+				                                  length_ms, monitored)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				mid, recID, t.MBID, t.Position, number, t.Title, nullID(t.CreditID), t.LengthMs, b2i(!t.Unmonitored)); err != nil {
+				return err
+			}
 		}
-		recID, err := recordingTx(ctx, tx, t)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO music_release_tracks (medium_id, recording_id, mbid, position, number, title, artist_credit_id,
-			                                  length_ms, monitored)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			mid, recID, t.MBID, t.Position, number, t.Title, nullID(t.CreditID), t.LengthMs, b2i(!t.Unmonitored)); err != nil {
-			return err
+		for _, isrc := range t.ISRCs {
+			if isrc = strings.ToUpper(strings.TrimSpace(isrc)); isrc == "" {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO music_external_ids (entity_type, entity_id, source, value) VALUES ('recording', ?, 'isrc', ?)
+				ON CONFLICT DO NOTHING`, recID, isrc); err != nil {
+				return err
+			}
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `

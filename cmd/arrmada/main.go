@@ -421,6 +421,7 @@ func main() {
 	})
 	mbClient.SetLogger(modLog(log, "music"))
 	musicSvc := music.NewService(st.DB(), mbClient, modLog(log, "music"))
+	musicSvc.SetSettingsLookup(settingsSvc.Lookup) // the matcher's thresholds, the edition policy
 	// Music is off by default now (it's a preview), but an install already using it must
 	// not have it switched off underneath it by an upgrade: an unsaved toggle on a library
 	// with artists is pinned on. A saved choice, either way, is never touched.

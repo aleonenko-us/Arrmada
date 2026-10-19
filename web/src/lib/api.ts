@@ -3790,6 +3790,8 @@ export interface MusicAlbum {
   /** The album's credit as it reads ("Daft Punk feat. Pharrell Williams"). */
   artist_credit?: string;
   target_edition_id?: number;
+  /** A person chose the edition and keeps it: no automatic switching (MUS-30). */
+  edition_pinned?: boolean;
   /** Album detail only. */
   editions?: MusicEdition[];
   discs?: MusicDisc[];
