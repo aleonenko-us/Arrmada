@@ -385,6 +385,31 @@ func TestMusicModelMigrationBigLibrary(t *testing.T) {
 	}
 
 	start := time.Now()
+	fillBigOldMusic(t, db)
+	t.Logf("generated the library in %s", time.Since(start).Round(time.Millisecond))
+
+	start = time.Now()
+	if err := runMigrations(ctx, db, all); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	took := time.Since(start)
+	t.Logf("MUS-28 migration of 1000 artists / 15000 albums / 200000 tracks took %s", took.Round(time.Millisecond))
+	if n := count(t, db, `SELECT COUNT(*) FROM music_release_tracks`); n != 200000 {
+		t.Errorf("release tracks = %d, want 200000", n)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM music_track_files`); n != 100000 {
+		t.Errorf("track files = %d, want 100000", n)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM music_releases`); n != 14000 {
+		t.Errorf("editions = %d, want 14000", n)
+	}
+}
+
+// fillBigOldMusic writes a 1000-artist / 15k-album / 200k-track library the way the old
+// model held it: 200k tracks over the first 14,000 albums (about 14 each; every 7th album
+// two discs), the last 1,000 albums unlisted, half the tracks with a file.
+func fillBigOldMusic(t *testing.T, db *sql.DB) {
+	t.Helper()
 	mustExecAll(t, db,
 		`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1000)
 		 INSERT INTO artists (id, mbid, name, monitored, quality_profile) SELECT i, 'mb-artist-' || i, 'Artist ' || i, i % 2, '' FROM n`,
@@ -406,21 +431,4 @@ func TestMusicModelMigrationBigLibrary(t *testing.T) {
 		        CASE WHEN i % 2 = 1 THEN 'FLAC' ELSE '' END, 0, 30000000, 'release'
 		   FROM n`,
 	)
-	t.Logf("generated the library in %s", time.Since(start).Round(time.Millisecond))
-
-	start = time.Now()
-	if err := runMigrations(ctx, db, all); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	took := time.Since(start)
-	t.Logf("MUS-28 migration of 1000 artists / 15000 albums / 200000 tracks took %s", took.Round(time.Millisecond))
-	if n := count(t, db, `SELECT COUNT(*) FROM music_release_tracks`); n != 200000 {
-		t.Errorf("release tracks = %d, want 200000", n)
-	}
-	if n := count(t, db, `SELECT COUNT(*) FROM music_track_files`); n != 100000 {
-		t.Errorf("track files = %d, want 100000", n)
-	}
-	if n := count(t, db, `SELECT COUNT(*) FROM music_releases`); n != 14000 {
-		t.Errorf("editions = %d, want 14000", n)
-	}
 }

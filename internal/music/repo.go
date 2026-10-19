@@ -5,40 +5,46 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"strings"
 
+	"github.com/tristenlammi/arrmada/internal/mediainfo"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
 
-// Repo persists artists, albums and tracks in SQLite.
+// Repo persists the music library in SQLite: artists and albums (release groups), and
+// under each album its editions, discs, tracks and files (the model of migration 0339,
+// MUS-28). The old tracks table is frozen: nothing here reads or writes it (archtest).
 type Repo struct{ db *sql.DB }
 
 // NewRepo builds a repository over the given pool.
 func NewRepo(db *sql.DB) *Repo { return &Repo{db: db} }
 
 const artistCols = `id, mbid, name, sort_name, overview, image_url, genres_json,
-	monitored, quality_profile, added_at`
+	monitored, quality_profile, added_at, disambiguation, artist_type, country, in_library`
 
 func scanArtist(row interface{ Scan(...any) error }) (Artist, error) {
 	var (
 		a          Artist
 		genresJSON string
-		mon        int
+		mon, inLib int
 	)
 	if err := row.Scan(&a.ID, &a.MBID, &a.Name, &a.SortName, &a.Overview, &a.ImageURL,
-		&genresJSON, &mon, &a.QualityProfile, &a.AddedAt); err != nil {
+		&genresJSON, &mon, &a.QualityProfile, &a.AddedAt, &a.Disambiguation, &a.Type, &a.Country, &inLib); err != nil {
 		return Artist{}, err
 	}
-	a.Monitored = mon != 0
+	a.Monitored, a.InLibrary = mon != 0, inLib != 0
 	if genresJSON != "" {
 		_ = json.Unmarshal([]byte(genresJSON), &a.Genres)
 	}
 	return a, nil
 }
 
-// ListArtists returns every artist with its holdings summary, newest first.
+// ListArtists returns every artist in the library with its holdings summary, newest
+// first. Artists that are only credited (featured on someone else's album) aren't listed.
 func (r *Repo) ListArtists(ctx context.Context) ([]Artist, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+artistCols+` FROM artists ORDER BY added_at DESC, id DESC`)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+artistCols+` FROM artists WHERE in_library = 1 ORDER BY added_at DESC, id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +66,7 @@ func (r *Repo) ListArtists(ctx context.Context) ([]Artist, error) {
 	}
 	for i := range out {
 		if s, ok := stats[out[i].ID]; ok {
-			out[i].Stats = &s
+			out[i].Stats = s
 		} else {
 			out[i].Stats = &ArtistStats{}
 		}
@@ -68,31 +74,51 @@ func (r *Repo) ListArtists(ctx context.Context) ([]Artist, error) {
 	return out, nil
 }
 
-// artistStats summarizes albums/tracks/size per artist in one grouped query, so listing the
-// library doesn't run a per-artist count.
-func (r *Repo) artistStats(ctx context.Context) (map[int64]ArtistStats, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT al.artist_id,
-		       COUNT(DISTINCT al.id),
-		       COUNT(t.id),
-		       SUM(CASE WHEN t.has_file = 1 THEN 1 ELSE 0 END),
-		       SUM(COALESCE(t.size_bytes, 0))
-		  FROM albums al LEFT JOIN tracks t ON t.album_id = al.id
-		 GROUP BY al.artist_id`)
+// wantedTrack says whether a release track ("rt") of an album ("al") counts towards the
+// album's tracks. Album and artist switches cascade to their tracks (as they always have),
+// so a track's own flag only means something inside a monitored album: an unmonitored
+// album still counts all its tracks, and its page still says 12/12.
+const wantedTrack = `(rt.monitored = 1 OR al.monitored = 0)`
+
+// albumCounts are an album row's ("al") counts, as correlated subqueries on its target
+// edition: wanted tracks, those with a file on disk, the size of every file the album
+// holds (extras included), and every track of the edition (0: no listing yet). Indexed
+// lookups all, so a list of thousands of albums is still one quick statement.
+const albumCounts = `
+	(SELECT COUNT(*) FROM music_media m JOIN music_release_tracks rt ON rt.medium_id = m.id
+	  WHERE m.release_id = al.target_release_id AND ` + wantedTrack + `),
+	(SELECT COUNT(*) FROM music_media m JOIN music_release_tracks rt ON rt.medium_id = m.id
+	   JOIN music_track_files f ON f.release_track_id = rt.id
+	  WHERE m.release_id = al.target_release_id AND f.missing_since IS NULL AND ` + wantedTrack + `),
+	(SELECT COALESCE(SUM(f.size_bytes), 0) FROM music_track_files f WHERE f.album_id = al.id AND f.missing_since IS NULL),
+	(SELECT COUNT(*) FROM music_media m JOIN music_release_tracks rt ON rt.medium_id = m.id
+	  WHERE m.release_id = al.target_release_id)`
+
+// artistStats summarizes every library artist's albums in one statement, with the same
+// counts and arithmetic as statsFromAlbums (which the detail read uses), so list and
+// detail agree. About a third of a second on a 15,000-album, 200,000-track library.
+func (r *Repo) artistStats(ctx context.Context) (map[int64]*ArtistStats, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT al.artist_id, al.monitored,`+albumCounts+` FROM albums al`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[int64]ArtistStats{}
+	out := map[int64]*ArtistStats{}
 	for rows.Next() {
-		var id int64
-		var s ArtistStats
-		var have, size sql.NullInt64
-		if err := rows.Scan(&id, &s.Albums, &s.Tracks, &have, &size); err != nil {
+		var (
+			id                              int64
+			mon, tracks, have, editionCount int
+			size                            int64
+		)
+		if err := rows.Scan(&id, &mon, &tracks, &have, &size, &editionCount); err != nil {
 			return nil, err
 		}
-		s.HaveTracks, s.SizeBytes = int(have.Int64), size.Int64
-		out[id] = s
+		s := out[id]
+		if s == nil {
+			s = &ArtistStats{}
+			out[id] = s
+		}
+		s.add(tracks, have, size, mon != 0, editionCount == 0)
 	}
 	return out, rows.Err()
 }
@@ -101,7 +127,7 @@ func (r *Repo) artistStats(ctx context.Context) (map[int64]ArtistStats, error) {
 // than a count: it's asked at startup only to tell "never used Music" from "uses it".
 func (r *Repo) HasArtists(ctx context.Context) (bool, error) {
 	var has bool
-	err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artists)`).Scan(&has)
+	err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artists WHERE in_library = 1)`).Scan(&has)
 	return has, err
 }
 
@@ -115,7 +141,10 @@ func (r *Repo) GetArtist(ctx context.Context, id int64) (Artist, error) {
 	return a, err
 }
 
-// CreateArtist inserts an artist row.
+// CreateArtist adds an artist to the library, with its own one-name credit. An artist
+// already stored only as a credit (featured somewhere, or removed from the library while
+// still credited) is brought back into the library instead; one already in it is
+// ErrExists.
 func (r *Repo) CreateArtist(ctx context.Context, a Artist) (Artist, error) {
 	genresJSON := ""
 	if len(a.Genres) > 0 {
@@ -123,22 +152,40 @@ func (r *Repo) CreateArtist(ctx context.Context, a Artist) (Artist, error) {
 			genresJSON = string(raw)
 		}
 	}
-	res, err := r.db.ExecContext(ctx,
-		`INSERT INTO artists (mbid, name, sort_name, overview, image_url, genres_json, monitored, quality_profile)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.MBID, a.Name, a.SortName, a.Overview, a.ImageURL, genresJSON, b2i(a.Monitored), a.QualityProfile)
-	if err != nil {
-		if isUnique(err) {
-			return Artist{}, ErrExists
+	var id int64
+	err := store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+			INSERT INTO artists (mbid, name, sort_name, overview, image_url, genres_json, monitored, quality_profile,
+			                     disambiguation, artist_type, country, in_library)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+			ON CONFLICT(mbid) DO UPDATE SET
+			  name = excluded.name, sort_name = excluded.sort_name, overview = excluded.overview,
+			  genres_json = excluded.genres_json, monitored = excluded.monitored,
+			  quality_profile = excluded.quality_profile, disambiguation = excluded.disambiguation,
+			  artist_type = excluded.artist_type, country = excluded.country, in_library = 1
+			WHERE artists.in_library = 0`,
+			a.MBID, a.Name, a.SortName, a.Overview, a.ImageURL, genresJSON, b2i(a.Monitored), a.QualityProfile,
+			a.Disambiguation, a.Type, a.Country)
+		if err != nil {
+			return err
 		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrExists // already in the library: the conflict's WHERE kept it as it was
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM artists WHERE mbid = ?`, a.MBID).Scan(&id); err != nil {
+			return err
+		}
+		_, err = artistCreditTx(ctx, tx, id)
+		return err
+	})
+	if err != nil {
 		return Artist{}, err
 	}
-	id, _ := res.LastInsertId()
 	return r.GetArtist(ctx, id)
 }
 
 // UpdateArtistMeta refreshes provider-owned artist fields, leaving the user's choices alone.
-func (r *Repo) UpdateArtistMeta(ctx context.Context, id int64, overview, imageURL string, genres []string) error {
+func (r *Repo) UpdateArtistMeta(ctx context.Context, id int64, overview, imageURL string, genres []string, disambiguation, typ, country string) error {
 	genresJSON := ""
 	if len(genres) > 0 {
 		if raw, err := json.Marshal(genres); err == nil {
@@ -146,12 +193,20 @@ func (r *Repo) UpdateArtistMeta(ctx context.Context, id int64, overview, imageUR
 		}
 	}
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE artists SET overview = ?, image_url = ?, genres_json = ? WHERE id = ?`,
-		overview, imageURL, genresJSON, id)
+		`UPDATE artists SET overview = ?, image_url = ?, genres_json = ?, disambiguation = ?, artist_type = ?,
+		        country = ?, stale_since = NULL
+		  WHERE id = ?`,
+		overview, imageURL, genresJSON, disambiguation, typ, country, id)
 	return err
 }
 
-// SetArtistMonitored toggles an artist and cascades to its albums and tracks, so an
+// albumTracksOf switches the release tracks of every edition of the albums the given
+// subquery names, for the monitoring cascades.
+const albumTracksOf = `UPDATE music_release_tracks SET monitored = ?
+	 WHERE medium_id IN (SELECT m.id FROM music_media m JOIN music_releases r ON r.id = m.release_id
+	                      WHERE r.album_id IN (%s))`
+
+// SetArtistMonitored toggles an artist and cascades to its albums and their tracks, so an
 // unmonitored artist can't leave monitored albums behind that the searcher keeps chasing.
 func (r *Repo) SetArtistMonitored(ctx context.Context, id int64, monitored bool) error {
 	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
@@ -161,9 +216,7 @@ func (r *Repo) SetArtistMonitored(ctx context.Context, id int64, monitored bool)
 		if _, err := tx.ExecContext(ctx, `UPDATE albums SET monitored = ? WHERE artist_id = ?`, b2i(monitored), id); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx,
-			`UPDATE tracks SET monitored = ? WHERE album_id IN (SELECT id FROM albums WHERE artist_id = ?)`,
-			b2i(monitored), id)
+		_, err := tx.ExecContext(ctx, fmt.Sprintf(albumTracksOf, `SELECT id FROM albums WHERE artist_id = ?`), b2i(monitored), id)
 		return err
 	})
 }
@@ -174,39 +227,92 @@ func (r *Repo) SetArtistQualityProfile(ctx context.Context, id int64, profile st
 	return affected(res, err)
 }
 
-// DeleteArtist removes an artist; albums and tracks cascade.
+// albumCredits lists the credits an album ("al") carries: its own, its editions', and
+// its editions' tracks'.
+const albumCredits = `
+	SELECT al.artist_credit_id
+	UNION SELECT r.artist_credit_id FROM music_releases r WHERE r.album_id = al.id
+	UNION SELECT rt.artist_credit_id FROM music_releases r
+	        JOIN music_media m ON m.release_id = r.id
+	        JOIN music_release_tracks rt ON rt.medium_id = m.id
+	       WHERE r.album_id = al.id AND rt.artist_credit_id IS NOT NULL`
+
+// DeleteArtist removes an artist from the library. Rows only: no file is touched.
+//
+// Credits may still name it (featured on another library artist's album), so it isn't
+// simply deleted. It leaves the library (in_library = 0, unmonitored), and the albums
+// filed under it go, except any that another library artist is credited on: those stay,
+// credit and all. An artist that nothing credits any more is then removed outright, its
+// history with it, which is what deleting an artist always did.
 func (r *Repo) DeleteArtist(ctx context.Context, id int64) error {
-	res, err := r.db.ExecContext(ctx, `DELETE FROM artists WHERE id = ?`, id)
-	return affected(res, err)
+	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE artists SET in_library = 0, monitored = 0 WHERE id = ?`, id)
+		if err := affected(res, err); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM albums WHERE id IN (
+			  SELECT al.id FROM albums al
+			   WHERE al.artist_id = ?1
+			     AND NOT EXISTS (SELECT 1 FROM music_artist_credit_names n JOIN artists o ON o.id = n.artist_id
+			                      WHERE o.id != ?1 AND o.in_library = 1 AND n.credit_id IN (`+albumCredits+`)))`, id); err != nil {
+			return err
+		}
+		// Recordings that were only on the albums just deleted, and credits nothing uses
+		// any more (the artist's own one-name credit among them).
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM music_recordings
+			 WHERE NOT EXISTS (SELECT 1 FROM music_release_tracks rt WHERE rt.recording_id = music_recordings.id)`); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM music_artist_credits
+			 WHERE id IN (SELECT credit_id FROM music_artist_credit_names WHERE artist_id = ?)
+			   AND NOT EXISTS (SELECT 1 FROM albums WHERE artist_credit_id = music_artist_credits.id)
+			   AND NOT EXISTS (SELECT 1 FROM music_releases WHERE artist_credit_id = music_artist_credits.id)
+			   AND NOT EXISTS (SELECT 1 FROM music_recordings WHERE artist_credit_id = music_artist_credits.id)
+			   AND NOT EXISTS (SELECT 1 FROM music_release_tracks WHERE artist_credit_id = music_artist_credits.id)`, id); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `
+			DELETE FROM artists
+			 WHERE id = ?1
+			   AND NOT EXISTS (SELECT 1 FROM music_artist_credit_names WHERE artist_id = ?1)
+			   AND NOT EXISTS (SELECT 1 FROM albums WHERE artist_id = ?1)`, id)
+		return err
+	})
 }
 
-const albumCols = `id, artist_id, mbid, title, year, album_type, cover_url, release_date, monitored, added_at,
-	last_search_at, search_misses`
+// albumHead is an album row's ("al") own columns, its credit and its edition, in
+// scanAlbum's order; the counts follow.
+const albumHead = `SELECT al.id, al.artist_id, al.mbid, al.title, al.year, al.album_type, al.cover_url,
+	al.release_date, al.monitored, al.added_at, al.last_search_at, al.search_misses, al.primary_type,
+	al.secondary_types, COALESCE(al.artist_credit_id, 0),
+	COALESCE((SELECT c.display FROM music_artist_credits c WHERE c.id = al.artist_credit_id), ''),
+	COALESCE(al.target_release_id, 0), al.edition_pinned,`
 
-// albumColsAl is albumCols qualified with the "al" alias, for queries that join albums to
-// artists or tracks (where a bare "id" would be ambiguous).
-var albumColsAl = "al." + strings.Join(strings.Fields(strings.ReplaceAll(albumCols, ",", " ")), ", al.")
+// albumSelect reads album rows with their counts.
+const albumSelect = albumHead + albumCounts + ` FROM albums al`
 
-func scanAlbum(row interface{ Scan(...any) error }, extra ...any) (Album, error) {
+func scanAlbum(row interface{ Scan(...any) error }) (Album, error) {
 	var (
-		al   Album
-		mon  int
-		last sql.NullString
+		al          Album
+		mon, pinned int
+		last        sql.NullString
 	)
-	dest := append([]any{&al.ID, &al.ArtistID, &al.MBID, &al.Title, &al.Year, &al.AlbumType,
-		&al.CoverURL, &al.ReleaseDate, &mon, &al.AddedAt, &last, &al.SearchMisses}, extra...)
-	if err := row.Scan(dest...); err != nil {
+	if err := row.Scan(&al.ID, &al.ArtistID, &al.MBID, &al.Title, &al.Year, &al.AlbumType, &al.CoverURL,
+		&al.ReleaseDate, &mon, &al.AddedAt, &last, &al.SearchMisses, &al.PrimaryType, &al.SecondaryTypes,
+		&al.CreditID, &al.ArtistCredit, &al.TargetEditionID, &pinned,
+		&al.TrackCount, &al.HaveTracks, &al.SizeBytes, &al.EditionTracks); err != nil {
 		return Album{}, err
 	}
-	al.Monitored = mon != 0
+	al.Monitored, al.EditionPinned = mon != 0, pinned != 0
 	al.LastSearchAt = last.String
 	return al, nil
 }
 
-// AlbumsFor returns an artist's albums, newest first, each with its track counts.
-func (r *Repo) AlbumsFor(ctx context.Context, artistID int64) ([]Album, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+albumCols+` FROM albums WHERE artist_id = ? ORDER BY year DESC, title`, artistID)
+func (r *Repo) albums(ctx context.Context, q string, args ...any) ([]Album, error) {
+	rows, err := r.db.QueryContext(ctx, albumSelect+q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -219,15 +325,29 @@ func (r *Repo) AlbumsFor(ctx context.Context, artistID int64) ([]Album, error) {
 		}
 		out = append(out, al)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	for i := range out {
-		if err := r.fillAlbumCounts(ctx, &out[i]); err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
+	return out, rows.Err()
+}
+
+// AlbumsFor returns the albums filed under an artist, newest first, each with its counts.
+func (r *Repo) AlbumsFor(ctx context.Context, artistID int64) ([]Album, error) {
+	return r.albums(ctx, ` WHERE al.artist_id = ? ORDER BY al.year DESC, al.title`, artistID)
+}
+
+// AppearsOn returns the albums filed under other artists that credit this one: on the
+// album, an edition, or a track of one.
+func (r *Repo) AppearsOn(ctx context.Context, artistID int64) ([]Album, error) {
+	return r.albums(ctx, `
+		WHERE al.artist_id != ?1 AND al.id IN (
+		      SELECT a2.id FROM albums a2 JOIN music_artist_credit_names n ON n.credit_id = a2.artist_credit_id
+		       WHERE n.artist_id = ?1
+		      UNION SELECT r.album_id FROM music_releases r JOIN music_artist_credit_names n ON n.credit_id = r.artist_credit_id
+		       WHERE n.artist_id = ?1
+		      UNION SELECT r.album_id FROM music_releases r
+		        JOIN music_media m ON m.release_id = r.id
+		        JOIN music_release_tracks rt ON rt.medium_id = m.id
+		        JOIN music_artist_credit_names n ON n.credit_id = rt.artist_credit_id
+		       WHERE n.artist_id = ?1)
+		ORDER BY al.year DESC, al.title`, artistID)
 }
 
 // AlbumHit is one row of an album search: just enough to label it in a picker.
@@ -272,47 +392,34 @@ func escapeLike(q string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
 }
 
-// fillAlbumCounts reads an album's track count, how many of them have a file, and their
-// size. The have count and size used to be scanned and then dropped, so every album read
-// one at a time (album pages, the stall check, imports) said it held nothing and never
-// read as complete; only the sweep's grouped query had them right.
-func (r *Repo) fillAlbumCounts(ctx context.Context, al *Album) error {
-	var have, size sql.NullInt64
-	if err := r.db.QueryRowContext(ctx,
-		`SELECT COUNT(*), SUM(CASE WHEN has_file = 1 THEN 1 ELSE 0 END), SUM(COALESCE(size_bytes, 0))
-		   FROM tracks WHERE album_id = ?`, al.ID).
-		Scan(&al.TrackCount, &have, &size); err != nil {
-		return err
-	}
-	al.HaveTracks, al.SizeBytes = int(have.Int64), size.Int64
-	return nil
-}
-
-// GetAlbum returns one album by id (without tracks).
+// GetAlbum returns one album by id with its counts (without tracks).
 func (r *Repo) GetAlbum(ctx context.Context, id int64) (Album, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+albumCols+` FROM albums WHERE id = ?`, id)
-	al, err := scanAlbum(row)
+	al, err := scanAlbum(r.db.QueryRowContext(ctx, albumSelect+` WHERE al.id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Album{}, ErrNotFound
 	}
-	if err != nil {
-		return Album{}, err
-	}
-	err = r.fillAlbumCounts(ctx, &al)
 	return al, err
 }
 
 // UpsertAlbum inserts an album, or updates the provider-owned fields when its MBID is
 // already present — so a metadata refresh corrects a title or cover without creating a
-// duplicate row or disturbing the user's monitoring choice.
+// duplicate row or disturbing the user's monitoring choice. A new album takes its
+// artist's own credit.
 func (r *Repo) UpsertAlbum(ctx context.Context, al Album) (int64, error) {
+	primary, secondary := splitAlbumType(al.AlbumType)
 	res, err := r.db.ExecContext(ctx,
-		`INSERT INTO albums (artist_id, mbid, title, year, album_type, cover_url, release_date, monitored)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO albums (artist_id, mbid, title, year, album_type, cover_url, release_date, monitored,
+		                     primary_type, secondary_types, artist_credit_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+		         (SELECT c.id FROM artists a JOIN music_artist_credits c ON c.credit_key = a.mbid WHERE a.id = ?))
 		 ON CONFLICT(mbid) DO UPDATE SET
 		   title = excluded.title, year = excluded.year, album_type = excluded.album_type,
-		   cover_url = excluded.cover_url, release_date = excluded.release_date`,
-		al.ArtistID, al.MBID, al.Title, al.Year, al.AlbumType, al.CoverURL, al.ReleaseDate, b2i(al.Monitored))
+		   cover_url = excluded.cover_url, release_date = excluded.release_date,
+		   primary_type = excluded.primary_type, secondary_types = excluded.secondary_types,
+		   artist_credit_id = COALESCE(albums.artist_credit_id, excluded.artist_credit_id),
+		   stale_since = NULL`,
+		al.ArtistID, al.MBID, al.Title, al.Year, al.AlbumType, al.CoverURL, al.ReleaseDate, b2i(al.Monitored),
+		primary, secondary, al.ArtistID)
 	if err != nil {
 		return 0, err
 	}
@@ -325,36 +432,12 @@ func (r *Repo) UpsertAlbum(ctx context.Context, al Album) (int64, error) {
 }
 
 // WantedAlbums returns every monitored album of a monitored artist, each with its track and
-// have counts, in one grouped query. The sweep used to list each artist's albums and then
-// count tracks album by album; this is the same answer without a query per album.
+// have counts, in one statement: the sweep's and Wanted's list.
 func (r *Repo) WantedAlbums(ctx context.Context) ([]Album, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT `+albumColsAl+`,
-		       COUNT(t.id),
-		       SUM(CASE WHEN t.has_file = 1 THEN 1 ELSE 0 END),
-		       SUM(COALESCE(t.size_bytes, 0))
-		  FROM albums al
-		  JOIN artists ar ON ar.id = al.artist_id
-		  LEFT JOIN tracks t ON t.album_id = al.id
-		 WHERE al.monitored = 1 AND ar.monitored = 1
-		 GROUP BY al.id
-		 ORDER BY al.id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Album
-	for rows.Next() {
-		var have, size sql.NullInt64
-		var count int
-		al, err := scanAlbum(rows, &count, &have, &size)
-		if err != nil {
-			return nil, err
-		}
-		al.TrackCount, al.HaveTracks, al.SizeBytes = count, int(have.Int64), size.Int64
-		out = append(out, al)
-	}
-	return out, rows.Err()
+	return r.albums(ctx, `
+		JOIN artists ar ON ar.id = al.artist_id
+		WHERE al.monitored = 1 AND ar.monitored = 1
+		ORDER BY al.id`)
 }
 
 // RecordSearchMiss stamps the search time and counts one more search that found nothing
@@ -380,21 +463,22 @@ func (r *Repo) TouchSearch(ctx context.Context, id int64) error {
 	return err
 }
 
-// SetAlbumMonitored toggles an album and its tracks.
+// SetAlbumMonitored toggles an album and the tracks of its editions.
 func (r *Repo) SetAlbumMonitored(ctx context.Context, id int64, monitored bool) error {
-	if _, err := r.db.ExecContext(ctx, `UPDATE albums SET monitored = ? WHERE id = ?`, b2i(monitored), id); err != nil {
+	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE albums SET monitored = ? WHERE id = ?`, b2i(monitored), id); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, fmt.Sprintf(albumTracksOf, `?`), b2i(monitored), id)
 		return err
-	}
-	_, err := r.db.ExecContext(ctx, `UPDATE tracks SET monitored = ? WHERE album_id = ?`, b2i(monitored), id)
-	return err
+	})
 }
 
-const trackCols = `id, album_id, mbid, disc_number, track_number, title, duration_sec,
-	monitored, has_file, file_path, format, bitrate_kbps, size_bytes, source_release`
-
-// FilePaths returns the path of every track with a file on record.
+// FilePaths returns the path of every music file on record (a missing one included: it's
+// still a file the library had there), for checks that ask whether a missing folder used
+// to hold anything.
 func (r *Repo) FilePaths(ctx context.Context) ([]string, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT file_path FROM tracks WHERE has_file = 1 AND COALESCE(file_path, '') != ''`)
+	rows, err := r.db.QueryContext(ctx, `SELECT path FROM music_track_files WHERE path != ''`)
 	if err != nil {
 		return nil, err
 	}
@@ -410,55 +494,224 @@ func (r *Repo) FilePaths(ctx context.Context) ([]string, error) {
 	return out, rows.Err()
 }
 
-// TracksFor returns an album's tracks in disc/track order.
+// TracksFor returns an album's target-edition tracks in disc/track order, each with its
+// file, in one statement. An album with no listing yet has none.
 func (r *Repo) TracksFor(ctx context.Context, albumID int64) ([]Track, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+trackCols+` FROM tracks WHERE album_id = ? ORDER BY disc_number, track_number`, albumID)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT rt.id, al.id, rt.mbid, m.position, rt.position, rt.number, rt.title, rt.length_ms, rt.monitored,
+		       CASE WHEN rt.artist_credit_id IS NOT NULL
+		             AND rt.artist_credit_id != COALESCE(r.artist_credit_id, al.artist_credit_id, 0)
+		            THEN COALESCE((SELECT c.display FROM music_artist_credits c WHERE c.id = rt.artist_credit_id), '')
+		            ELSE '' END,
+		       rt.recording_id, rec.mbid,
+		       COALESCE(f.id, 0), COALESCE(f.path, ''), COALESCE(f.quality, ''), COALESCE(f.bitrate_kbps, 0),
+		       COALESCE(f.size_bytes, 0), COALESCE(f.source_release, ''), COALESCE(f.codec, ''),
+		       COALESCE(f.lossless, 0), COALESCE(f.sample_rate_hz, 0), COALESCE(f.bit_depth, 0),
+		       COALESCE(f.channels, 0), COALESCE(f.tag_state, ''), f.missing_since IS NOT NULL
+		  FROM albums al
+		  JOIN music_releases r ON r.id = al.target_release_id
+		  JOIN music_media m ON m.release_id = r.id
+		  JOIN music_release_tracks rt ON rt.medium_id = m.id
+		  JOIN music_recordings rec ON rec.id = rt.recording_id
+		  LEFT JOIN music_track_files f ON f.release_track_id = rt.id
+		 WHERE al.id = ?
+		 ORDER BY m.position, rt.position`, albumID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []Track
 	for rows.Next() {
-		var t Track
-		var mon, hf int
-		if err := rows.Scan(&t.ID, &t.AlbumID, &t.MBID, &t.DiscNumber, &t.TrackNumber, &t.Title,
-			&t.DurationSec, &mon, &hf, &t.FilePath, &t.Format, &t.BitrateKbps, &t.SizeBytes, &t.SourceRelease); err != nil {
+		var (
+			t                      Track
+			lengthMs               int
+			mon, lossless, missing int
+		)
+		if err := rows.Scan(&t.ID, &t.AlbumID, &t.MBID, &t.DiscNumber, &t.TrackNumber, &t.Number, &t.Title,
+			&lengthMs, &mon, &t.ArtistCredit, &t.RecordingID, &t.RecordingMBID,
+			&t.FileID, &t.FilePath, &t.Format, &t.BitrateKbps, &t.SizeBytes, &t.SourceRelease, &t.Codec,
+			&lossless, &t.SampleRateHz, &t.BitDepth, &t.Channels, &t.TagState, &missing); err != nil {
 			return nil, err
 		}
-		t.Monitored, t.HasFile = mon != 0, hf != 0
+		t.DurationSec = lengthMs / 1000
+		t.Monitored, t.Lossless, t.Missing = mon != 0, lossless != 0, missing != 0
+		t.HasFile = t.FileID != 0 && !t.Missing
+		if t.Number == fmt.Sprint(t.TrackNumber) {
+			t.Number = "" // just the position: nothing more to say
+		}
 		out = append(out, t)
 	}
 	return out, rows.Err()
 }
 
-// UpsertTracks replaces an album's track listing with the metadata's, preserving the file
-// state and monitoring already recorded against each (disc, track) slot. A refresh that
-// re-listed the album must not forget which tracks are on disk.
-func (r *Repo) UpsertTracks(ctx context.Context, albumID int64, tracks []Track) error {
-	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
-		for _, t := range tracks {
-			if _, err := tx.ExecContext(ctx,
-				`INSERT INTO tracks (album_id, mbid, disc_number, track_number, title, duration_sec, monitored)
-				 VALUES (?, ?, ?, ?, ?, ?, ?)
-				 ON CONFLICT(album_id, disc_number, track_number) DO UPDATE SET
-				   mbid = excluded.mbid, title = excluded.title, duration_sec = excluded.duration_sec`,
-				albumID, t.MBID, t.DiscNumber, t.TrackNumber, t.Title, t.DurationSec, b2i(true)); err != nil {
-				return err
-			}
+// Discs lists an edition's discs (without their tracks).
+func (r *Repo) Discs(ctx context.Context, editionID int64) ([]Medium, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, release_id, position, format, title, track_count FROM music_media WHERE release_id = ? ORDER BY position`, editionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Medium
+	for rows.Next() {
+		var m Medium
+		if err := rows.Scan(&m.ID, &m.ReleaseID, &m.Position, &m.Format, &m.Title, &m.TrackCount); err != nil {
+			return nil, err
 		}
-		return nil
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// Listing is a track listing fetched for an album: the release it was read from, when
+// known, and its tracks.
+type Listing struct {
+	ReleaseMBID string
+	Tracks      []EditionTrack
+}
+
+// UpsertListing stores an album's fetched track listing on its target edition, creating
+// that edition (and making it the target) when the album has none yet. A track already at
+// a (disc, position) takes the listing's title, MBID and length and keeps its monitoring
+// and its file: a refresh that re-listed the album must not forget which tracks are on
+// disk.
+func (r *Repo) UpsertListing(ctx context.Context, albumID int64, l Listing) error {
+	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		var target sql.NullInt64
+		if err := tx.QueryRowContext(ctx, `SELECT target_release_id FROM albums WHERE id = ?`, albumID).Scan(&target); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if target.Valid {
+			return putTracksTx(ctx, tx, target.Int64, l.Tracks)
+		}
+		id, err := addEditionTx(ctx, tx, albumID, EditionInput{
+			Edition: Edition{MBID: l.ReleaseMBID, TracksFetched: true}, Tracks: l.Tracks,
+		})
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE albums SET target_release_id = ? WHERE id = ?`, id, albumID)
+		return err
 	})
 }
 
-// SetTrackFile records a track's file on disk.
+// UpsertTracks stores a listing given as Tracks (disc, number, title, MBID, duration):
+// UpsertListing for callers that have the flat shape.
+func (r *Repo) UpsertTracks(ctx context.Context, albumID int64, tracks []Track) error {
+	l := Listing{Tracks: make([]EditionTrack, 0, len(tracks))}
+	for _, t := range tracks {
+		l.Tracks = append(l.Tracks, EditionTrack{
+			Disc: t.DiscNumber, Position: t.TrackNumber, Number: t.Number, Title: t.Title, MBID: t.MBID,
+			RecordingMBID: t.RecordingMBID, LengthMs: t.DurationSec * 1000,
+		})
+	}
+	return r.UpsertListing(ctx, albumID, l)
+}
+
+// FileRecord is a file placed on (or found for) a track: where it is and what it is.
+type FileRecord struct {
+	Path          string
+	SizeBytes     int64
+	MtimeUnix     int64
+	Quality       Quality // the measured tier, else the release's or the extension's (see trackTier)
+	BitrateKbps   int
+	SourceRelease string // "" keeps the one already recorded
+	DownloadHash  string // "" keeps the one already recorded
+	// Probe is what ffprobe measured, nil when it couldn't: the scan's measuring pass
+	// picks the file up later (probed_at stays NULL).
+	Probe *mediainfo.AudioInfo
+}
+
+// ErrPathTaken is returned when a file is recorded for one track while another track
+// already has it: one file is never two tracks.
+var ErrPathTaken = errors.New("that file is already recorded for another track")
+
+// RecordTrackFile records a track's file on disk: the track's file row is updated (a
+// replacement) or created, at most one per track. A row already holding the path as an
+// album extra becomes the track's.
+func (r *Repo) RecordTrackFile(ctx context.Context, trackID int64, rec FileRecord) error {
+	if strings.TrimSpace(rec.Path) == "" {
+		return errors.New("music: a track file needs a path")
+	}
+	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
+		var albumID int64
+		if err := tx.QueryRowContext(ctx, `
+			SELECT r.album_id FROM music_release_tracks rt
+			  JOIN music_media m ON m.id = rt.medium_id
+			  JOIN music_releases r ON r.id = m.release_id
+			 WHERE rt.id = ?`, trackID).Scan(&albumID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		var byTrack, byPath, pathTrack sql.NullInt64
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM music_track_files WHERE release_track_id = ?`, trackID).Scan(&byTrack); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT id, release_track_id FROM music_track_files WHERE path = ?`, rec.Path).Scan(&byPath, &pathTrack); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if byPath.Valid && pathTrack.Valid && pathTrack.Int64 != trackID {
+			return ErrPathTaken
+		}
+		rowID := byTrack
+		if byTrack.Valid && byPath.Valid && byPath.Int64 != byTrack.Int64 {
+			// The new path was an extra of this album: it is this track's file now, so
+			// its row folds into the track's (rows only; the file stays where it is).
+			if _, err := tx.ExecContext(ctx, `DELETE FROM music_track_files WHERE id = ?`, byPath.Int64); err != nil {
+				return err
+			}
+		} else if !byTrack.Valid {
+			rowID = byPath
+		}
+		if !rowID.Valid {
+			if err := tx.QueryRowContext(ctx,
+				`INSERT INTO music_track_files (album_id, release_track_id, path) VALUES (?, ?, ?) RETURNING id`,
+				albumID, trackID, rec.Path).Scan(&rowID); err != nil {
+				return err
+			}
+		}
+		q := HeldTier(string(rec.Quality), rec.BitrateKbps)
+		lossless := IsLosslessQuality(q)
+		var p mediainfo.AudioInfo
+		probed := rec.Probe != nil
+		if probed {
+			p = *rec.Probe
+		}
+		_, err := tx.ExecContext(ctx, `
+			UPDATE music_track_files SET
+			  album_id = ?, release_track_id = ?, path = ?, size_bytes = ?, mtime_unix = ?, container = ?,
+			  lossless = ?, quality = ?, bitrate_kbps = ?, codec = ?, sample_rate_hz = ?, bit_depth = ?,
+			  channels = ?, duration_ms = ?,
+			  probed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END,
+			  source_release = CASE WHEN ? != '' THEN ? ELSE source_release END,
+			  download_hash = CASE WHEN ? != '' THEN ? ELSE download_hash END,
+			  tags_json = '', tag_state = ?, tagged_at = NULL, missing_since = NULL,
+			  added_at = CURRENT_TIMESTAMP
+			 WHERE id = ?`,
+			albumID, trackID, rec.Path, rec.SizeBytes, rec.MtimeUnix, containerOf(rec.Path),
+			b2i(lossless), string(rec.Quality), rec.BitrateKbps, p.Codec, p.SampleRateHz, p.BitsPerSample,
+			p.Channels, int(p.DurationSec*1000), b2i(probed),
+			rec.SourceRelease, rec.SourceRelease, rec.DownloadHash, rec.DownloadHash, TagStateAsFound, rowID.Int64)
+		return err
+	})
+}
+
+// containerOf is a file's container, from its extension ("flac", "mp3").
+func containerOf(path string) string {
+	return strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
+}
+
+// SetTrackFile records a track's file with just its tier, bitrate and size: RecordTrackFile
+// without a measurement.
 func (r *Repo) SetTrackFile(ctx context.Context, trackID int64, path, format string, bitrate int, size int64, sourceRelease string) error {
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE tracks SET has_file = 1, file_path = ?, format = ?, bitrate_kbps = ?, size_bytes = ?,
-		        source_release = CASE WHEN ? != '' THEN ? ELSE source_release END
-		  WHERE id = ?`,
-		path, format, bitrate, size, sourceRelease, sourceRelease, trackID)
-	return affected(res, err)
+	return r.RecordTrackFile(ctx, trackID, FileRecord{
+		Path: path, SizeBytes: size, Quality: Quality(format), BitrateKbps: bitrate, SourceRelease: sourceRelease,
+	})
 }
 
 // HeldTiers is the lowest tier among an album's tracks that have a file — the floor a
@@ -490,46 +743,47 @@ func lowestHeld(tracks []Track) (lowest Quality, ok bool) {
 	return lowest, ok
 }
 
-// UnmeasuredTracks lists up to limit tracks, after track afterID, that have a file but no
-// measured bitrate: files recorded before tracks were probed, or by a scan that couldn't
-// probe them. The cursor lets a pass move past files that can't be measured.
-func (r *Repo) UnmeasuredTracks(ctx context.Context, afterID int64, limit int) ([]Track, error) {
+// UnmeasuredFiles lists up to limit files, after file afterID, that haven't been measured
+// with every fact yet: files the migration copied, ones recorded while ffprobe couldn't
+// run, or by a scan that couldn't probe them. The cursor lets a pass move past files that
+// can't be measured.
+func (r *Repo) UnmeasuredFiles(ctx context.Context, afterID int64, limit int) ([]TrackFile, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+trackCols+` FROM tracks WHERE has_file = 1 AND bitrate_kbps = 0 AND file_path != '' AND id > ?
+		`SELECT `+fileCols+` FROM music_track_files
+		  WHERE probed_at IS NULL AND missing_since IS NULL AND path != '' AND id > ?
 		  ORDER BY id LIMIT ?`, afterID, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Track
+	var out []TrackFile
 	for rows.Next() {
-		var t Track
-		var mon, hf int
-		if err := rows.Scan(&t.ID, &t.AlbumID, &t.MBID, &t.DiscNumber, &t.TrackNumber, &t.Title,
-			&t.DurationSec, &mon, &hf, &t.FilePath, &t.Format, &t.BitrateKbps, &t.SizeBytes, &t.SourceRelease); err != nil {
+		f, err := scanFile(rows)
+		if err != nil {
 			return nil, err
 		}
-		t.Monitored, t.HasFile = mon != 0, hf != 0
-		out = append(out, t)
+		out = append(out, f)
 	}
 	return out, rows.Err()
 }
 
-// SetTrackMeasured records a held file's measured tier and bitrate, leaving where it is
-// and where it came from alone. Guarded on the path, so a file replaced meanwhile isn't
+// SetFileMeasured records a held file's measured tier and facts, leaving where it is and
+// where it came from alone. Guarded on the path, so a file replaced meanwhile isn't
 // stamped with the old one's measurements.
-func (r *Repo) SetTrackMeasured(ctx context.Context, trackID int64, path, format string, bitrate int) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE tracks SET format = ?, bitrate_kbps = ? WHERE id = ? AND has_file = 1 AND file_path = ?`,
-		format, bitrate, trackID, path)
+func (r *Repo) SetFileMeasured(ctx context.Context, fileID int64, path string, q Quality, info mediainfo.AudioInfo) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE music_track_files SET quality = ?, bitrate_kbps = ?, lossless = ?, codec = ?, sample_rate_hz = ?,
+		       bit_depth = ?, channels = ?, duration_ms = ?, probed_at = CURRENT_TIMESTAMP
+		 WHERE id = ? AND path = ?`,
+		string(q), info.BitrateKbps, b2i(IsLosslessQuality(q)), info.Codec, info.SampleRateHz, info.BitsPerSample,
+		info.Channels, int(info.DurationSec*1000), fileID, path)
 	return err
 }
 
-// ClearTrackFile flips a track back to wanted.
+// ClearTrackFile flips a track back to wanted. Its file row stays, as an album extra:
+// the file itself is wherever it was, and a row is never the reason a file is forgotten.
 func (r *Repo) ClearTrackFile(ctx context.Context, trackID int64) error {
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE tracks SET has_file = 0, file_path = '', format = '', bitrate_kbps = 0, size_bytes = 0 WHERE id = ?`,
-		trackID)
+	res, err := r.db.ExecContext(ctx, `UPDATE music_track_files SET release_track_id = NULL WHERE release_track_id = ?`, trackID)
 	return affected(res, err)
 }
 
@@ -557,10 +811,6 @@ func (r *Repo) Events(ctx context.Context, artistID int64, limit int) ([]Event, 
 		out = append(out, e)
 	}
 	return out, rows.Err()
-}
-
-func isUnique(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "unique")
 }
 
 func affected(res sql.Result, err error) error {

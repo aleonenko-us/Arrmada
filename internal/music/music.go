@@ -27,19 +27,71 @@ type Artist struct {
 	Monitored      bool     `json:"monitored"`
 	QualityProfile string   `json:"quality_profile"`
 	AddedAt        string   `json:"added_at,omitempty"`
+	Disambiguation string   `json:"disambiguation,omitempty"`
+	Type           string   `json:"type,omitempty"` // Person, Group, Orchestra...
+	Country        string   `json:"country,omitempty"`
+	// InLibrary is false for an artist that is only credited (featured on another
+	// artist's album, or removed from the library while still credited somewhere).
+	InLibrary bool `json:"in_library"`
 
-	// Albums is filled by the detail read, not the list read.
+	// Albums is filled by the detail read, not the list read: the albums filed under
+	// this artist.
 	Albums []Album `json:"albums,omitempty"`
-	// Stats summarize the artist's holdings for the list view.
+	// AppearsOn is filled by the detail read: albums filed under another artist that
+	// credit this one.
+	AppearsOn []Album `json:"appears_on,omitempty"`
+	// Stats summarize the artist's holdings (both reads).
 	Stats *ArtistStats `json:"stats,omitempty"`
 }
 
-// ArtistStats is the at-a-glance summary of what an artist holds.
+// ArtistStats is the at-a-glance summary of what an artist holds: its albums, and the
+// tracks of each album's target edition.
 type ArtistStats struct {
 	Albums     int   `json:"albums"`
 	Tracks     int   `json:"tracks"`
 	HaveTracks int   `json:"have_tracks"`
 	SizeBytes  int64 `json:"size_bytes"`
+	// Album counts (MUS-10's, from the target editions). An unlisted album (no target
+	// edition yet) is "unknown": never complete.
+	AlbumsMonitored int `json:"albums_monitored"`
+	AlbumsComplete  int `json:"albums_complete"`
+	AlbumsUnlisted  int `json:"albums_unlisted"`
+	AlbumsWithFiles int `json:"albums_with_files"`
+	// AlbumsWanted are monitored albums that aren't complete (unlisted ones included).
+	AlbumsWanted int `json:"albums_wanted"`
+}
+
+// statsFromAlbums sums an artist's albums into its stats: the same arithmetic as the
+// grouped query behind the library list (Repo.artistStats), so the two always agree.
+func statsFromAlbums(albums []Album) *ArtistStats {
+	s := &ArtistStats{}
+	for _, al := range albums {
+		s.add(al.TrackCount, al.HaveTracks, al.SizeBytes, al.Monitored, al.EditionTracks == 0)
+	}
+	return s
+}
+
+func (s *ArtistStats) add(tracks, have int, size int64, monitored, unlisted bool) {
+	s.Albums++
+	s.Tracks += tracks
+	s.HaveTracks += have
+	s.SizeBytes += size
+	complete := tracks > 0 && have >= tracks
+	if monitored {
+		s.AlbumsMonitored++
+		if !complete {
+			s.AlbumsWanted++
+		}
+	}
+	if complete {
+		s.AlbumsComplete++
+	}
+	if unlisted {
+		s.AlbumsUnlisted++
+	}
+	if have > 0 {
+		s.AlbumsWithFiles++
+	}
 }
 
 // Album is one release group (what a user calls "an album").
@@ -59,35 +111,79 @@ type Album struct {
 	LastSearchAt string `json:"last_search_at,omitempty"`
 	SearchMisses int    `json:"search_misses"`
 
+	// PrimaryType/SecondaryTypes are MusicBrainz's release-group types; AlbumType stays
+	// the display label.
+	PrimaryType    string `json:"primary_type,omitempty"`
+	SecondaryTypes string `json:"secondary_types,omitempty"`
+	// ArtistCredit is the album's credit as it reads ("Daft Punk feat. Pharrell
+	// Williams"); CreditID is its row.
+	ArtistCredit string `json:"artist_credit,omitempty"`
+	CreditID     int64  `json:"-"`
+	// TargetEditionID is the edition completeness and imports are measured against (0:
+	// no listing yet); EditionPinned keeps automatic switching off it.
+	TargetEditionID int64 `json:"target_edition_id,omitempty"`
+	EditionPinned   bool  `json:"edition_pinned,omitempty"`
+
+	// Tracks are the target edition's tracks with their files, filled by the detail read.
 	Tracks []Track `json:"tracks,omitempty"`
-	// TrackCount/HaveTracks let the UI show "7/12" without loading every track.
+	// TrackCount/HaveTracks let the UI show "7/12" without loading every track: the
+	// target edition's wanted tracks, and how many of those have a file on disk.
 	TrackCount int   `json:"track_count"`
 	HaveTracks int   `json:"have_tracks"`
 	SizeBytes  int64 `json:"size_bytes"`
+	// EditionTracks is every track of the target edition, wanted or not; 0 means the
+	// listing isn't known yet.
+	EditionTracks int `json:"edition_tracks"`
 	// HeldTier is the lowest tier among the tracks on disk ("" when none are, or one
 	// can't be told), filled by the album detail read.
 	HeldTier Quality `json:"held_tier,omitempty"`
+
+	// Filled by the detail read: the album's editions (summaries, the target first), the
+	// target edition's discs (without their tracks), and the album's extra files (on no
+	// track of the target edition: kept and listed, never deleted).
+	Editions []Edition   `json:"editions,omitempty"`
+	Discs    []Medium    `json:"discs,omitempty"`
+	Extras   []TrackFile `json:"extras,omitempty"`
 }
 
-// Complete reports whether every monitored track on the album has a file.
+// Complete reports whether every wanted track of the album's target edition has a file.
+// An album with no listing is never complete: it is unknown.
 func (a Album) Complete() bool { return a.TrackCount > 0 && a.HaveTracks >= a.TrackCount }
 
-// Track is one recording on an album.
+// Track is one track of an album's target edition (a release track) with its file folded
+// in: the shape imports, the scan and the album page work with. ID is the release track's
+// id; migrated tracks kept their old ids.
 type Track struct {
-	ID            int64  `json:"id"`
-	AlbumID       int64  `json:"album_id"`
-	MBID          string `json:"mbid,omitempty"`
-	DiscNumber    int    `json:"disc_number"`
-	TrackNumber   int    `json:"track_number"`
-	Title         string `json:"title"`
-	DurationSec   int    `json:"duration_sec,omitempty"`
-	Monitored     bool   `json:"monitored"`
+	ID          int64  `json:"id"`
+	AlbumID     int64  `json:"album_id"`
+	MBID        string `json:"mbid,omitempty"` // the release track's MBID
+	DiscNumber  int    `json:"disc_number"`
+	TrackNumber int    `json:"track_number"`
+	Number      string `json:"number,omitempty"` // as printed ("A1"), when it isn't just the position
+	Title       string `json:"title"`
+	DurationSec int    `json:"duration_sec,omitempty"`
+	Monitored   bool   `json:"monitored"`
+	// ArtistCredit is set only when the track's credit differs from the album's ("feat."
+	// on one song).
+	ArtistCredit  string `json:"artist_credit,omitempty"`
+	RecordingID   int64  `json:"recording_id,omitempty"`
+	RecordingMBID string `json:"recording_mbid,omitempty"`
+
+	// The file, when there is one. HasFile is false for a file that has gone missing.
 	HasFile       bool   `json:"has_file"`
+	FileID        int64  `json:"file_id,omitempty"`
 	FilePath      string `json:"file_path,omitempty"`
-	Format        string `json:"format,omitempty"`
+	Format        string `json:"format,omitempty"` // the measured tier, or an old scan's extension tag
 	BitrateKbps   int    `json:"bitrate_kbps,omitempty"`
 	SizeBytes     int64  `json:"size_bytes,omitempty"`
 	SourceRelease string `json:"source_release,omitempty"`
+	Codec         string `json:"codec,omitempty"`
+	Lossless      bool   `json:"lossless,omitempty"`
+	SampleRateHz  int    `json:"sample_rate_hz,omitempty"`
+	BitDepth      int    `json:"bit_depth,omitempty"`
+	Channels      int    `json:"channels,omitempty"`
+	TagState      string `json:"tag_state,omitempty"`
+	Missing       bool   `json:"missing,omitempty"`
 }
 
 // Event is one entry in an artist's activity timeline.

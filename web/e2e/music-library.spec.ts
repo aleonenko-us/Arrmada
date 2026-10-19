@@ -1,15 +1,41 @@
 import type { Page, Route } from "@playwright/test";
 import { test, expect } from "./mockApi";
-import type { Artist } from "../src/lib/api";
+import type { Artist, MusicAlbum } from "../src/lib/api";
 
 // FE-12: Music on the kit, same features as before. Add artist is a Modal (named, focus
 // on the search box, Escape closes); removing artists, in bulk or from the artist page,
 // asks the same question through the shared confirm and Cancel leaves them alone.
 
 const artist: Artist = {
-  id: 5, mbid: "mb-5", name: "The Quiet Harbours", monitored: true, quality_profile: "lossless",
-  stats: { albums: 2, tracks: 20, have_tracks: 8, size_bytes: 400_000_000 },
-  albums: [{ id: 51, artist_id: 5, mbid: "rg-51", title: "Low Tide", year: 2019, album_type: "Album", monitored: true, track_count: 10, have_tracks: 8 } as never],
+  id: 5, mbid: "mb-5", name: "The Quiet Harbours", monitored: true, quality_profile: "lossless", in_library: true,
+  stats: {
+    albums: 2, tracks: 20, have_tracks: 8, size_bytes: 400_000_000,
+    albums_monitored: 2, albums_complete: 0, albums_unlisted: 1, albums_with_files: 1, albums_wanted: 2,
+  },
+  albums: [{ id: 51, artist_id: 5, mbid: "rg-51", title: "Low Tide", year: 2019, album_type: "Album", monitored: true, track_count: 10, have_tracks: 8, edition_tracks: 10 } as never],
+};
+
+// MUS-29: the album page lists tracks by disc from the album's target edition, names a
+// track's own artist when it differs, and the artist page shows albums it appears on.
+const album: MusicAlbum = {
+  id: 51, artist_id: 5, mbid: "rg-51", title: "Low Tide", year: 2019, album_type: "Album", monitored: true,
+  track_count: 3, have_tracks: 2, size_bytes: 90_000_000, edition_tracks: 3, held_tier: "MP3-320",
+  artist_credit: "The Quiet Harbours", target_edition_id: 7,
+  editions: [{ id: 7, album_id: 51, title: "Low Tide", track_count: 3, disc_count: 2, source: "musicbrainz", target: true, release_date: "2019-03-01", country: "GB", media_summary: "2×CD" }],
+  discs: [{ id: 1, position: 1, track_count: 2 }, { id: 2, position: 2, title: "Bonus", track_count: 1 }],
+  tracks: [
+    { id: 1, album_id: 51, disc_number: 1, track_number: 1, title: "Undertow", monitored: true, has_file: true, format: "FLAC-24", lossless: true, codec: "flac", bit_depth: 24, sample_rate_hz: 96000, bitrate_kbps: 2100 },
+    { id: 2, album_id: 51, disc_number: 1, track_number: 2, title: "Breakwater", monitored: true, has_file: true, format: "MP3-320", lossless: false, artist_credit: "The Quiet Harbours feat. Ana Lys" },
+    { id: 3, album_id: 51, disc_number: 2, track_number: 1, title: "Lantern", monitored: true, has_file: false },
+  ],
+  extras: [{ id: 9, path: "/music/The Quiet Harbours/Low Tide/hidden track.flac", size_bytes: 20_000_000, quality: "FLAC", lossless: true }],
+};
+
+const guest: Artist = {
+  id: 6, mbid: "mb-6", name: "Ana Lys", monitored: true, quality_profile: "lossless", in_library: true,
+  stats: { albums: 0, tracks: 0, have_tracks: 0, size_bytes: 0, albums_monitored: 0, albums_complete: 0, albums_unlisted: 0, albums_with_files: 0, albums_wanted: 0 },
+  albums: [],
+  appears_on: [{ id: 51, artist_id: 5, mbid: "rg-51", title: "Low Tide", year: 2019, album_type: "Album", monitored: true, track_count: 3, have_tracks: 2, size_bytes: 0, edition_tracks: 3, artist_credit: "The Quiet Harbours & Ana Lys" }],
 };
 
 const json = (route: Route, body: unknown) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
@@ -22,6 +48,9 @@ async function mockMusic(page: Page) {
     return json(route, artist);
   });
   await page.route((u) => u.pathname === "/api/v1/music/artists/5/history", (route) => json(route, { events: [] }));
+  await page.route((u) => u.pathname === "/api/v1/music/artists/6", (route) => json(route, guest));
+  await page.route((u) => u.pathname === "/api/v1/music/artists/6/history", (route) => json(route, { events: [] }));
+  await page.route((u) => u.pathname === "/api/v1/music/albums/51", (route) => json(route, album));
   return state;
 }
 
@@ -62,5 +91,36 @@ test.describe("Music on the kit", () => {
     await ask.getByRole("button", { name: "Delete" }).click();
     await expect(page).toHaveURL(/\/music$/);
     expect(state.deletes).toBe(1);
+  });
+
+  test("the library card counts albums first", async ({ page }) => {
+    await mockMusic(page);
+    await page.goto("/music");
+    await expect(page.getByText("0/2 albums")).toBeVisible();
+    // Nothing complete, so the Complete filter has nobody.
+    await page.getByRole("button", { name: /^Complete/ }).click();
+    await expect(page.getByText("No artists match this filter.")).toBeVisible();
+  });
+
+  test("the album page lists its tracks by disc, with a featured artist named", async ({ page }) => {
+    await mockMusic(page);
+    await page.goto("/music/album/51");
+    await expect(page.getByText("Edition: 2019-03-01 · GB · 2×CD")).toBeVisible();
+    const disc1 = page.getByRole("region", { name: "Disc 1" });
+    const disc2 = page.getByRole("region", { name: "Disc 2" });
+    await expect(disc1.getByText("Undertow")).toBeVisible();
+    await expect(disc1.getByText("The Quiet Harbours feat. Ana Lys")).toBeVisible();
+    await expect(disc2.getByRole("heading", { name: "Disc 2 — Bonus" })).toBeVisible();
+    await expect(disc2.getByText("Lantern")).toBeVisible();
+    await expect(page.getByText("hidden track.flac")).toBeVisible();
+  });
+
+  test("an artist page shows the albums it appears on", async ({ page }) => {
+    await mockMusic(page);
+    await page.goto("/music/6");
+    await expect(page.getByRole("heading", { name: "Appears on" })).toBeVisible();
+    await expect(page.getByText(/The Quiet Harbours & Ana Lys/)).toBeVisible();
+    await page.getByRole("link", { name: /Low Tide/ }).click();
+    await expect(page).toHaveURL(/\/music\/album\/51$/);
   });
 });

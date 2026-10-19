@@ -869,7 +869,7 @@ func (c *Coordinator) placeAlbumTracks(ctx context.Context, a music.Artist, al m
 		if !ok {
 			continue
 		}
-		tier, bitrate := c.trackTier(ctx, f.Path, releaseTier)
+		tier, bitrate, probe := c.trackTier(ctx, f.Path, releaseTier)
 		if t.HasFile && !music.BetterTier(music.HeldTier(string(tier), bitrate), c.heldTier(ctx, t)) {
 			res.kept++
 			continue
@@ -888,11 +888,12 @@ func (c *Coordinator) placeAlbumTracks(ctx context.Context, a music.Artist, al m
 			c.log.Warn("music import: placing a track failed", "track", t.Title, "err", err)
 			continue
 		}
-		size := f.SizeBytes
+		rec := music.FileRecord{Path: target, SizeBytes: f.SizeBytes, Quality: tier, BitrateKbps: bitrate,
+			SourceRelease: release, Probe: probe}
 		if fi, serr := os.Stat(target); serr == nil {
-			size = fi.Size()
+			rec.SizeBytes, rec.MtimeUnix = fi.Size(), fi.ModTime().Unix()
 		}
-		if err := c.music.MarkTrackImported(ctx, t.ID, target, string(tier), bitrate, size, release); err != nil {
+		if err := c.music.RecordTrackFile(ctx, t.ID, rec); err != nil {
 			res.failed++
 			c.log.Warn("music import: recording a track failed", "track", t.Title, "err", err)
 			continue
@@ -904,20 +905,21 @@ func (c *Coordinator) placeAlbumTracks(ctx context.Context, a music.Artist, al m
 
 // trackTier is the tier and bitrate recorded for an audio file: measured by ffprobe when it
 // can be (music.TierFromProbe), so a release labelled FLAC that holds MP3s is recorded as
-// the MP3s it is. Without a measurement it falls back to the release name's tier, but only
-// when that agrees with the file's extension on lossless against lossy; otherwise to the
-// extension's own tag ("MP3", "FLAC"), which HeldTier reads conservatively.
-func (c *Coordinator) trackTier(ctx context.Context, path string, releaseTier music.Quality) (music.Quality, int) {
+// the MP3s it is, along with what the probe measured. Without a measurement it falls back
+// to the release name's tier, but only when that agrees with the file's extension on
+// lossless against lossy; otherwise to the extension's own tag ("MP3", "FLAC"), which
+// HeldTier reads conservatively. probe is nil then, so the scan measures it later.
+func (c *Coordinator) trackTier(ctx context.Context, path string, releaseTier music.Quality) (music.Quality, int, *mediainfo.AudioInfo) {
 	if info, err := c.probeAudio(ctx, path); err == nil {
 		if q := music.TierFromProbe(info); q != music.QualityUnknown {
-			return q, info.BitrateKbps
+			return q, info.BitrateKbps, &info
 		}
 	}
 	ext := music.FormatOf(path)
 	if releaseTier != music.QualityUnknown && ext != "" && music.IsLosslessQuality(releaseTier) == music.IsLossless(ext) {
-		return releaseTier, 0
+		return releaseTier, 0, nil
 	}
-	return music.Quality(ext), 0
+	return music.Quality(ext), 0, nil
 }
 
 // heldTier is the tier of the file a track already has. A held file whose tier can't be
@@ -933,7 +935,7 @@ func (c *Coordinator) heldTier(ctx context.Context, t music.Track) music.Quality
 		return held
 	}
 	if q := music.TierFromProbe(info); q != music.QualityUnknown {
-		if err := c.music.SetTrackMeasured(ctx, t.ID, t.FilePath, string(q), info.BitrateKbps); err != nil {
+		if err := c.music.SetFileMeasured(ctx, t.FileID, t.FilePath, q, info); err != nil {
 			c.log.Warn("music: recording a measured tier failed", "track", t.Title, "err", err)
 		}
 		return q

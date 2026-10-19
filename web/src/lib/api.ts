@@ -3696,21 +3696,75 @@ export interface ArtistStats {
   tracks: number;
   have_tracks: number;
   size_bytes: number;
+  /** Album counts, from each album's target edition. An unlisted album is unknown, never complete. */
+  albums_monitored?: number;
+  albums_complete?: number;
+  albums_unlisted?: number;
+  albums_with_files?: number;
+  /** Monitored albums that aren't complete (unlisted ones included). */
+  albums_wanted?: number;
 }
 export interface MusicTrack {
   id: number;
   album_id: number;
   disc_number: number;
   track_number: number;
+  /** The number as the release prints it ("A1"), when it isn't just the position. */
+  number?: string;
   title: string;
   duration_sec?: number;
   monitored: boolean;
+  /** Set only when the track's credit differs from the album's ("feat." on one song). */
+  artist_credit?: string;
   has_file: boolean;
+  /** A file is recorded but has gone missing from disk. */
+  missing?: boolean;
   file_path?: string;
   /** The measured tier ("FLAC-24", "MP3-320"), or an extension tag ("MP3") when unmeasured. */
   format?: string;
   bitrate_kbps?: number;
   size_bytes?: number;
+  codec?: string;
+  lossless?: boolean;
+  sample_rate_hz?: number;
+  bit_depth?: number;
+  channels?: number;
+  /** as_found | house | failed */
+  tag_state?: string;
+}
+/** One edition of an album (a pressing, a reissue, the deluxe version). */
+export interface MusicEdition {
+  id: number;
+  album_id: number;
+  mbid?: string;
+  title: string;
+  status?: string;
+  release_date?: string;
+  country?: string;
+  label?: string;
+  disambiguation?: string;
+  media_summary?: string;
+  track_count: number;
+  disc_count: number;
+  source: string;
+  /** The listing Arrmada had before editions existed, not yet matched to a MusicBrainz release. */
+  legacy?: boolean;
+  target?: boolean;
+}
+export interface MusicDisc {
+  id: number;
+  position: number;
+  format?: string;
+  title?: string;
+  track_count: number;
+}
+/** A file the album holds that is on no track of its target edition: kept and listed. */
+export interface MusicExtraFile {
+  id: number;
+  path: string;
+  size_bytes: number;
+  quality?: string;
+  lossless: boolean;
 }
 export interface MusicAlbum {
   id: number;
@@ -3723,11 +3777,23 @@ export interface MusicAlbum {
   release_date?: string;
   monitored: boolean;
   tracks?: MusicTrack[];
+  /** The target edition's wanted tracks, and how many of them have a file. */
   track_count: number;
   have_tracks: number;
   size_bytes: number;
+  /** Every track of the target edition; 0 means the listing isn't known yet. */
+  edition_tracks?: number;
   /** The lowest tier among the tracks on disk (album detail only). */
   held_tier?: string;
+  primary_type?: string;
+  secondary_types?: string;
+  /** The album's credit as it reads ("Daft Punk feat. Pharrell Williams"). */
+  artist_credit?: string;
+  target_edition_id?: number;
+  /** Album detail only. */
+  editions?: MusicEdition[];
+  discs?: MusicDisc[];
+  extras?: MusicExtraFile[];
 }
 export interface Artist {
   id: number;
@@ -3740,7 +3806,15 @@ export interface Artist {
   monitored: boolean;
   quality_profile: string;
   added_at?: string;
+  disambiguation?: string;
+  type?: string;
+  country?: string;
+  /** False for an artist that is only credited (featured on another artist's album). */
+  in_library?: boolean;
+  /** The albums filed under this artist (detail only). */
   albums?: MusicAlbum[];
+  /** Albums filed under other artists that credit this one (detail only). */
+  appears_on?: MusicAlbum[];
   stats?: ArtistStats;
 }
 

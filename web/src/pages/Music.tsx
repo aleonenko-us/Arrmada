@@ -25,11 +25,20 @@ function have(a: Artist): number {
 function total(a: Artist): number {
   return a.stats?.tracks ?? 0;
 }
+// An artist is complete by its albums, not its tracks: every monitored album has all its
+// tracks, and an album with no listing yet is unknown, never complete. Counting tracks
+// made a scanned artist with 1 of 20 albums read 12/12, complete.
 function isComplete(a: Artist): boolean {
-  return total(a) > 0 && have(a) >= total(a);
+  const monitoredAlbums = a.stats?.albums_monitored ?? 0;
+  return monitoredAlbums > 0 && (a.stats?.albums_wanted ?? 0) === 0;
 }
 function statusInput(a: Artist) {
-  return { multi: true, hasFile: have(a) > 0, monitored: a.monitored, have: have(a), total: total(a) };
+  const monitoredAlbums = a.stats?.albums_monitored ?? 0;
+  const held = (a.stats?.albums_with_files ?? 0) > 0;
+  let done = monitoredAlbums - (a.stats?.albums_wanted ?? 0);
+  // Partial as soon as anything is on disk, not only once a whole album is.
+  if (done === 0 && held && monitoredAlbums > 0) done = 0.5;
+  return { multi: true, hasFile: held, monitored: a.monitored, have: done, total: monitoredAlbums };
 }
 
 function matches(a: Artist, f: FilterKey): boolean {
@@ -287,7 +296,10 @@ function ArtistCard({
 }) {
   const done = have(a);
   const all = total(a);
-  const pct = all > 0 ? Math.round((done / all) * 100) : 0;
+  // Albums first (complete of all), tracks second.
+  const albums = a.stats?.albums ?? 0;
+  const albumsDone = a.stats?.albums_complete ?? 0;
+  const pct = albums > 0 ? Math.round((albumsDone / albums) * 100) : 0;
   const st = libraryStatus(statusInput(a));
   const tone = TONE_HUE[st.tone];
 
@@ -310,7 +322,7 @@ function ArtistCard({
           <div className="min-w-0">
             <div className="truncate text-md font-semibold">{a.name}</div>
             <div className="mt-0.5 truncate text-xs text-ink-faint">
-              {a.stats?.albums ?? 0} album{(a.stats?.albums ?? 0) === 1 ? "" : "s"}
+              {albumsDone}/{albums} album{albums === 1 ? "" : "s"}
               {a.genres && a.genres.length > 0 && <> · {a.genres[0]}</>}
             </div>
           </div>
@@ -323,7 +335,7 @@ function ArtistCard({
         <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: "var(--line)" }}>
           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: tone }} />
         </div>
-        <span className="flex-none font-mono text-xs text-ink-faint">
+        <span className="flex-none font-mono text-xs text-ink-faint" title="Tracks on disk, of the tracks wanted">
           {all > 0 ? `${done}/${all}` : "—"}
         </span>
       </div>

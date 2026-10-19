@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
-import { api, type MusicAlbum } from "../lib/api";
+import { api, type MusicAlbum, type MusicEdition, type MusicTrack } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { libraryStatus } from "../lib/status";
 import { Button, StatusChip } from "../ui";
@@ -18,6 +18,26 @@ function fmtDuration(sec?: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// fileFacts is what was measured in a track's file, for the format badge's tooltip:
+// "flac · 24-bit / 96 kHz · 2100 kbps".
+function fileFacts(t: MusicTrack): string {
+  const parts: string[] = [];
+  if (t.codec) parts.push(t.codec);
+  const depth = t.bit_depth ? `${t.bit_depth}-bit` : "";
+  const rate = t.sample_rate_hz ? `${t.sample_rate_hz % 1000 === 0 ? t.sample_rate_hz / 1000 : (t.sample_rate_hz / 1000).toFixed(1)} kHz` : "";
+  if (depth || rate) parts.push([depth, rate].filter(Boolean).join(" / "));
+  if (t.bitrate_kbps) parts.push(`${t.bitrate_kbps} kbps`);
+  if (!t.codec) parts.push("not measured yet");
+  return parts.join(" · ");
+}
+
+// editionLabel names the edition the tracks are listed from.
+function editionLabel(e: MusicEdition): string {
+  if (e.legacy) return "the listing kept from before editions";
+  const bits = [e.release_date, e.country, e.media_summary, e.disambiguation].filter(Boolean);
+  return bits.length > 0 ? bits.join(" · ") : `${e.track_count} tracks`;
 }
 
 
@@ -63,6 +83,11 @@ export function AlbumDetail() {
     );
 
   const st = libraryStatus({ multi: true, hasFile: al.have_tracks > 0, monitored: al.monitored, have: al.have_tracks, total: al.track_count });
+  const target = al.editions?.find((e) => e.target);
+  const tracks = al.tracks ?? [];
+  // Tracks by disc, each disc under its own heading when there's more than one.
+  const discs = [...new Set(tracks.map((t) => t.disc_number))].sort((x, y) => x - y);
+  const discTitle = (n: number) => al.discs?.find((d) => d.position === n)?.title;
 
   return (
     <>
@@ -113,6 +138,12 @@ export function AlbumDetail() {
               {al.have_tracks}/{al.track_count} tracks{al.size_bytes ? ` · ${formatBytes(al.size_bytes)}` : ""}
               {al.held_tier ? ` · Held: ${al.held_tier}` : ""}
             </div>
+            {target && (
+              <div className="mt-1 text-sm text-ink-faint">
+                Edition: {editionLabel(target)}
+                {(al.editions?.length ?? 0) > 1 ? ` · ${al.editions!.length} editions known` : ""}
+              </div>
+            )}
             <div className="mt-4">
               <Button
                 size="sm"
@@ -142,50 +173,88 @@ export function AlbumDetail() {
         )}
 
         <h2 className="m-0 mb-3 mt-8 text-md font-bold">Tracks</h2>
-        {!al.tracks || al.tracks.length === 0 ? (
+        {tracks.length === 0 ? (
           <div className="rounded-xl p-8 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
             No track listing. MusicBrainz has no official release for this album yet — an
             announced record often has none until it ships.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
-            {al.tracks.map((t) => (
-              <div
-                key={t.id}
-                className="flex items-center gap-3 border-b px-4 py-2 last:border-b-0 text-base"
-                style={{ background: "var(--panel)", borderColor: "var(--line-soft)" }}
-              >
-                <span className="w-[42px] flex-none font-mono text-xs text-ink-faint">
-                  {t.disc_number > 1 ? `${t.disc_number}-` : ""}
-                  {String(t.track_number).padStart(2, "0")}
-                </span>
-                <span className="min-w-0 flex-1 truncate" style={{ color: t.has_file ? "var(--ink)" : "var(--ink-dim)" }}>
-                  {t.title}
-                </span>
-                {t.format ? (
-                  // Green only for lossless: the tier is measured from the file, so an MP3
-                  // in a release labelled FLAC shows as the MP3 it is.
-                  <span
-                    className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase"
-                    title={t.bitrate_kbps ? `${t.bitrate_kbps} kbps` : undefined}
-                    style={{ background: "var(--panel-2)", color: isLosslessTier(t.format) ? "var(--good-text)" : "var(--ink-dim)" }}
-                  >
-                    {t.format}
-                  </span>
-                ) : null}
-                <span className="w-[52px] flex-none text-right font-mono text-xs text-ink-faint">{fmtDuration(t.duration_sec)}</span>
-                <span
-                  className="w-[74px] flex-none text-right font-mono text-2xs font-semibold uppercase"
-                  style={{ color: t.has_file ? "var(--good-text)" : "var(--avoid-text)" }}
-                >
-                  {t.has_file ? "downloaded" : "wanted"}
-                </span>
+          discs.map((disc) => (
+            <section key={disc} aria-label={discs.length > 1 ? `Disc ${disc}` : undefined} className="mb-4">
+              {discs.length > 1 && (
+                <h3 className="m-0 mb-2 text-sm font-semibold text-ink-dim">
+                  Disc {disc}
+                  {discTitle(disc) ? ` — ${discTitle(disc)}` : ""}
+                </h3>
+              )}
+              <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
+                {tracks.filter((t) => t.disc_number === disc).map((t) => (
+                  <TrackRow key={t.id} t={t} />
+                ))}
               </div>
-            ))}
-          </div>
+            </section>
+          ))
+        )}
+
+        {al.extras && al.extras.length > 0 && (
+          <>
+            {/* Files the album holds that are on no track of this edition: kept, never deleted. */}
+            <h2 className="m-0 mb-1 mt-8 text-md font-bold">Other files</h2>
+            <p className="m-0 mb-3 text-sm text-ink-dim">Files on record for this album that are on no track of this edition. They're kept as they are.</p>
+            <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--line)" }}>
+              {al.extras.map((f) => (
+                <div key={f.id} className="flex items-center gap-3 border-b px-4 py-2 text-base last:border-b-0" style={{ background: "var(--panel)", borderColor: "var(--line-soft)" }}>
+                  <span className="min-w-0 flex-1 truncate font-mono text-sm" title={f.path}>{f.path.split(/[\\/]/).pop()}</span>
+                  {f.quality ? (
+                    <span className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: f.lossless ? "var(--good-text)" : "var(--ink-dim)" }}>
+                      {f.quality}
+                    </span>
+                  ) : null}
+                  <span className="flex-none font-mono text-xs text-ink-faint">{formatBytes(f.size_bytes)}</span>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </Page>
     </>
+  );
+}
+
+function TrackRow({ t }: { t: MusicTrack }) {
+  const lossless = t.lossless ?? (t.format ? isLosslessTier(t.format) : false);
+  return (
+    <div
+      className="flex items-center gap-3 border-b px-4 py-2 last:border-b-0 text-base"
+      style={{ background: "var(--panel)", borderColor: "var(--line-soft)" }}
+    >
+      <span className="w-[42px] flex-none font-mono text-xs text-ink-faint">{t.number || String(t.track_number).padStart(2, "0")}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate" style={{ color: t.has_file ? "var(--ink)" : "var(--ink-dim)" }}>
+          {t.title}
+        </span>
+        {/* The track's own artist, only when it isn't the album's ("feat." on one song). */}
+        {t.artist_credit ? <span className="block truncate text-xs text-ink-faint">{t.artist_credit}</span> : null}
+      </span>
+      {t.format ? (
+        // Green only for lossless: the tier is measured from the file, so an MP3 in a
+        // release labelled FLAC shows as the MP3 it is.
+        <span
+          className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase"
+          title={fileFacts(t)}
+          style={{ background: "var(--panel-2)", color: lossless ? "var(--good-text)" : "var(--ink-dim)" }}
+        >
+          {t.format}
+        </span>
+      ) : null}
+      <span className="w-[52px] flex-none text-right font-mono text-xs text-ink-faint">{fmtDuration(t.duration_sec)}</span>
+      <span
+        className="w-[74px] flex-none text-right font-mono text-2xs font-semibold uppercase"
+        style={{ color: t.has_file ? "var(--good-text)" : "var(--avoid-text)" }}
+      >
+        {t.has_file ? "downloaded" : "wanted"}
+      </span>
+    </div>
   );
 }
 
