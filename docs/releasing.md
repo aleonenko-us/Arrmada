@@ -1,9 +1,20 @@
 # Releasing (maintainers)
 
 A release is a version tag. Arrmada is pre-1.0: versions are `v0.x` until the owner has
-tested the finished roadmap. First wait for the Image workflow (`image.yml`) on `main` to go
-green on both platforms (Docker build and Docker build (arm64)): that's what proves the
-commit builds, and it warms the caches the release reads. Then, from an up-to-date `main`:
+tested the finished roadmap.
+
+1. **Write the release notes.** In `CHANGELOG.md`, rename `## [Unreleased]` to the new
+   version with today's date, `## [0.18.0] - 2026-10-20` (no `v`), and put a fresh, empty
+   `## [Unreleased]` above it. Check the section covers everything since the last release
+   (`git log v0.17.0..main --merges`), and that **Before you update** lists every change in
+   behaviour and anything people must do by hand (new `.env` lines, a reverse proxy change,
+   whether rolling back needs `--with-db`). At the bottom, point `[Unreleased]` at
+   `compare/v0.18.0...HEAD` and add a `[0.18.0]` compare link. To see exactly what the
+   release will say, run `scripts/changelog-section.sh v0.18.0`. Commit this to `main`.
+2. **Wait for the Image workflow** (`image.yml`) on `main` to go green on both platforms
+   (Docker build and Docker build (arm64)): that's what proves the commit builds, and it
+   warms the caches the release reads.
+3. **Tag it**, from an up-to-date `main`:
 
 ```sh
 git tag -a v0.18.0 -m "Arrmada 0.18.0"
@@ -15,13 +26,27 @@ image stamped with the version and commit for `linux/amd64` and `linux/arm64` (e
 runner of its own platform, the arm64 one on GitHub's free arm64 runner), pushes both to
 `ghcr.io/tristenlammi/arrmada` by digest, joins them into one multi-platform image tagged
 `0.18.0`, `0.18`, `sha-<commit>` and `stable`, checks both platforms are behind the tag, and
-then creates the GitHub release with generated notes. If either platform fails to build,
+then creates the GitHub release with that version's `CHANGELOG.md` section as its notes,
+followed by GitHub's compare link to the previous release. If either platform fails to build,
 nothing is tagged and no release is written: open the failed run and use **Re-run all
 jobs**, so both platforms are built again from the same tag. A tag with a hyphen
 (`v0.18.0-rc.1`) is published as a pre-release: it gets
 its own version tag but never `stable`, and the in-app update check doesn't offer it. Pushes
 to `main` and pull requests only build the image as a check (`image.yml`, both platforms);
 they never publish one.
+
+### If the release notes are missing
+
+With no `## [0.18.0]` section in `CHANGELOG.md`, the **GitHub release** job fails on
+purpose: nothing is published with bare notes, because people decide whether to update from
+**Before you update**. The images are already out by then (`stable` included, which is what
+`update.sh` pulls), but without a release the in-app "Update available" stays quiet. To
+finish it, add the section to `CHANGELOG.md` on `main`, then open the run and use **Re-run
+failed jobs**. The job reads the tag's `CHANGELOG.md` first and `main`'s second, so the tag
+doesn't have to move. Writing the release by hand on GitHub works too, because the job
+leaves an existing release alone.
+
+A pre-release (`v0.18.0-rc.1`) needs its own section, `## [0.18.0-rc.1] - <date>`.
 
 ## The first release
 

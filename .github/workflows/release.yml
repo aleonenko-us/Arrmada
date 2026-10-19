@@ -1,8 +1,9 @@
 name: Release
 
 # Publishes a release: builds the image from a version tag, pushes it to GitHub's
-# container registry (ghcr.io/<owner>/arrmada) and then writes the GitHub release with
-# generated notes, which is what the app's "Update available" check reads.
+# container registry (ghcr.io/<owner>/arrmada) and then writes the GitHub release, its
+# notes taken from that version's section of CHANGELOG.md, which is what the app's
+# "Update available" check reads.
 #
 # Only a pushed v* tag publishes (git tag v0.17.0 && git push origin v0.17.0). Pushes to
 # main and pull requests never do: image.yml builds those without pushing anything. A
@@ -212,22 +213,64 @@ jobs:
     permissions:
       contents: write
     steps:
+      # For CHANGELOG.md and the script that reads it. Nothing here pushes, so the token
+      # isn't left in git's config.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # A release made by hand in GitHub's UI (which also pushes the tag) is left as it
-      # is; otherwise one is created with GitHub's generated notes. A tag with a hyphen
-      # (v0.18.0-rc.1) is marked a pre-release, which the update check doesn't offer.
+      # is; otherwise one is created with that version's section of CHANGELOG.md as its
+      # notes (the "## [0.18.0] - <date>" heading, without the v), and GitHub's compare
+      # link to the previous release after it. A tag with a hyphen (v0.18.0-rc.1) is
+      # marked a pre-release, which the update check doesn't offer.
+      #
+      # No section, no release: the job fails rather than publish the bare compare link.
+      # Real users decide whether to update from these notes, and its Before you update
+      # part is what they can't get from a list of commits; a red run reaches the owner,
+      # where a warning on a published release goes unseen. The image is already out by
+      # now (update.sh pulls :stable), but without a release the in-app "Update available"
+      # stays quiet until the notes exist. To fix it, add the section to CHANGELOG.md on
+      # main and use "Re-run failed jobs": the tag's own CHANGELOG.md is read first, then
+      # main's. (Or write the release by hand in GitHub and re-run; it's left alone.)
       - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG already exists; leaving it as it is."
             exit 0
           fi
+          notes="${RUNNER_TEMP}/release-notes.md"
+          branch="${DEFAULT_BRANCH:-main}"
+          if sh scripts/changelog-section.sh "$TAG" CHANGELOG.md > "$notes"; then
+            echo "Notes: CHANGELOG.md at $TAG."
+          elif git fetch --quiet --depth=1 origin "refs/heads/${branch}" \
+            && git show FETCH_HEAD:CHANGELOG.md > "${RUNNER_TEMP}/CHANGELOG.${branch}.md" \
+            && sh scripts/changelog-section.sh "$TAG" "${RUNNER_TEMP}/CHANGELOG.${branch}.md" > "$notes"; then
+            echo "Notes: CHANGELOG.md on ${branch} (the tag's has no section for $TAG)."
+          else
+            echo "::error title=No release notes::CHANGELOG.md has no '## [${TAG#v}]' section, at ${TAG} or on ${branch}. Add one on ${branch} (docs/releasing.md), then re-run the failed jobs."
+            exit 1
+          fi
+          # GitHub's generated notes end with the compare link to the previous release
+          # ("**Full Changelog**: …/compare/v0.17.0...v0.18.0"); only that line is kept.
+          # The notes still go out if GitHub can't be asked for it.
+          if compare="$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" -f tag_name="$TAG" --jq .body)"; then
+            compare="$(printf '%s\n' "$compare" | grep -m 1 '^\*\*Full Changelog\*\*' || true)"
+          else
+            compare=""
+          fi
+          if [ -n "$compare" ]; then
+            printf '\n%s\n' "$compare" >> "$notes"
+          else
+            echo "::warning::GitHub gave no compare link; the release has the changelog section only."
+          fi
           pre=""
           case "$TAG" in *-*) pre="--prerelease" ;; esac
           # shellcheck disable=SC2086
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$TAG" $pre
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --notes-file "$notes" --title "$TAG" $pre
 
   # The Unraid all-in-one variant (the Dockerfile's aio target: Arrmada plus a qBittorrent
   # and a FlareSolverr in one container, for the Community Apps template). It's built on
