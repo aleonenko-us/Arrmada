@@ -312,6 +312,8 @@ func (a *api) handleDiscoverByGenre(w http.ResponseWriter, r *http.Request) {
 type mediaDetailResponse struct {
 	*metadata.MediaDetail
 	Card discoverCard `json:"card"`
+	// Similar cards carry the same per-viewer library and request badges as Discover rows.
+	Similar []discoverCard `json:"similar,omitempty"`
 	// PlexURL is the title's app.plex.tv page when the owner's Plex has it (older pages;
 	// WatchLinks is the full list).
 	PlexURL string `json:"plex_url,omitempty"`
@@ -369,6 +371,7 @@ func (a *api) handleMediaDetail(w http.ResponseWriter, r *http.Request) {
 	shownOverview := a.displayPolicy(r.Context()).Overview(d.Overview, d.Overviews)
 	d.Overviews = nil
 	card := a.enrichCards(r.Context(), []metadata.DiscoverItem{itemFromDetail(d)})[0]
+	similar := a.enrichCards(r.Context(), d.Similar)
 	if shownOverview != d.Overview {
 		card.DisplayOverview = shownOverview
 	} else {
@@ -378,7 +381,7 @@ func (a *api) handleMediaDetail(w http.ResponseWriter, r *http.Request) {
 	// server). The detail's IMDb id finds it in a legacy-agent Plex library too.
 	links := a.watchLinks(r.Context(), d.MediaType, insights.ExternalIDs{TMDB: id, IMDB: d.IMDBID})
 	viewer, _ := userFrom(r)
-	a.writeJSON(w, http.StatusOK, mediaDetailResponse{MediaDetail: d, Card: card,
+	a.writeJSON(w, http.StatusOK, mediaDetailResponse{MediaDetail: d, Card: card, Similar: similar,
 		PlexURL: linkFor(links, mediaserver.Plex), WatchLinks: a.leadWith(r.Context(), links, viewer),
 		DisplayOverview: shownOverview})
 }
