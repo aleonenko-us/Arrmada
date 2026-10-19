@@ -2410,25 +2410,28 @@ func (im *Importer) PlaceAlbumTrack(src, dst, old string) error {
 		old = ""
 	}
 	if old != "" {
-		if _, err := os.Lstat(old); err != nil || insideRoot(old, im.MusicDir()) != nil {
+		oi, err := os.Lstat(old)
+		if err != nil || insideRoot(old, im.MusicDir()) != nil {
 			old = "" // gone already, or not in the music folder
+		} else if di, derr := os.Stat(dst); derr == nil && os.SameFile(oi, di) {
+			// The same file under another spelling (a case-insensitive share: "X.FLAC" and
+			// "X.flac"): it's dst itself, handled below, not a sibling to recycle.
+			old = ""
 		}
 	}
 	// Everything that would be displaced must have a bin to go to before anything moves.
-	needBin := []string{}
+	replaceDst := false
 	if di, err := os.Stat(dst); err == nil {
 		same := false
 		if si, serr := os.Stat(src); serr == nil {
 			same, _ = sameContent(src, dst, si, di)
 		}
-		if !same {
-			needBin = append(needBin, dst)
+		replaceDst = !same
+	}
+	for _, p := range []string{dst, old} {
+		if p == "" || (p == dst && !replaceDst) {
+			continue
 		}
-	}
-	if old != "" {
-		needBin = append(needBin, old)
-	}
-	for _, p := range needBin {
 		if err := im.binFor(p); err != nil {
 			return fmt.Errorf("%w (%v)", ErrReplacementRefused, err)
 		}
@@ -2436,7 +2439,11 @@ func (im *Importer) PlaceAlbumTrack(src, dst, old string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return fmt.Errorf("create album dir: %w", err)
 	}
-	if _, err := im.linkOrCopy(src, dst); err != nil {
+	if replaceDst {
+		if err := im.replaceThroughBin(src, dst); err != nil {
+			return err
+		}
+	} else if _, err := im.linkOrCopy(src, dst); err != nil {
 		return err
 	}
 	if old != "" {
@@ -2448,6 +2455,31 @@ func (im *Importer) PlaceAlbumTrack(src, dst, old string) error {
 			im.log.Info("recycled replaced file", "target", old, "recycled_to", moved)
 		}
 	}
+	return nil
+}
+
+// replaceThroughBin puts src in dst's place when dst holds something else. The new copy is
+// made first, beside dst under a temporary name; only once it exists does dst go to the
+// recycle bin and the copy take its name. A link and a copy that both fail leave dst
+// untouched (the temporary file, ours, is removed); a bin that refuses leaves dst where it
+// was. The one window that loses nothing either way is the final rename: dst is in the
+// bin, restorable, and the new copy sits beside it.
+func (im *Importer) replaceThroughBin(src, dst string) error {
+	tmp := dst + ".arrmada-part"
+	_ = os.Remove(tmp) // a temporary copy of ours left by an earlier, interrupted try
+	if _, err := linkOrCopyReport(src, tmp, im.copyReport); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	moved, err := RemoveToBin(im.bin, dst)
+	if err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("%w (%v)", ErrReplacementRefused, err)
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		return fmt.Errorf("the replaced file is in the recycle bin (%s) but the new copy couldn't take its place: %w", moved, err)
+	}
+	im.log.Info("recycled replaced file", "target", dst, "recycled_to", moved)
 	return nil
 }
 
