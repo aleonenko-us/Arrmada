@@ -11,6 +11,7 @@ import { useQuery } from "../lib/query";
 import { useConfirm, useToast } from "../ui";
 import { LibraryGrid, useLibraryView } from "../features/library/LibraryGrid";
 import { LibraryEmpty } from "../features/library/LibraryEmpty";
+import { useFolderScope } from "../features/library/folderScope";
 import { seriesLibraryConfig, statsOf } from "./series/library";
 import { SeriesBulkActions } from "./series/SeriesBulkActions";
 import { AddSeriesModal } from "./series/AddSeriesModal";
@@ -28,6 +29,8 @@ export function Series() {
   const toast = useToast();
   const confirm = useConfirm();
   const view = useLibraryView("series");
+  // With several TV folders: the Folder picker (?folder=), and Add goes into the one shown.
+  const folder = useFolderScope<SeriesT>("series");
   const [adding, setAdding] = useState(false);
   // /series?add=1 (the command palette's Add series) opens the Add dialog.
   useActionParam("add", () => setAdding(true));
@@ -112,7 +115,7 @@ export function Series() {
 
   return (
     <>
-      <PageHeader title="Series" />
+      <PageHeader title="Series" tail={folder.scope?.name || undefined} />
       <LibraryGrid
         config={config}
         items={list}
@@ -127,12 +130,13 @@ export function Series() {
         primary={{ label: "+ Add series", onClick: () => setAdding(true), disabled: !metaOK }}
         banners={!metaOK && <MetadataMissing variant="banner" />}
         bulkActions={(sel) => <SeriesBulkActions sel={sel} profiles={profiles} onDone={refresh} />}
+        scope={folder.scope}
         empty={<LibraryEmpty noun="series" folder="TV folder" addLabel="Add series" onScan={scanLibrary} scanning={scanning || scan.running} />}
       />
       {searchFor && (
         <SeriesSearchModal id={searchFor.id} title={shownTitle(searchFor)} onClose={() => setSearchFor(null)} onGrabbed={() => { toast(`Grabbed for ${shownTitle(searchFor)} — follow it in Activity → Queue.`); refresh(); }} />
       )}
-      {adding && <AddSeriesModal onClose={() => setAdding(false)} onAdded={() => { setAdding(false); refresh(); }} />}
+      {adding && <AddSeriesModal folderId={folder.folderId} onClose={() => setAdding(false)} onAdded={() => { setAdding(false); refresh(); }} />}
       {confirmDelete && <DeleteSeriesDialog series={confirmDelete} onClose={() => setConfirmDelete(null)} onDeleted={() => { setConfirmDelete(null); refresh(); }} />}
     </>
   );

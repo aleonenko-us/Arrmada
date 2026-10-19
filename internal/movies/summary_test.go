@@ -69,6 +69,33 @@ func TestSummariesListFilmsWithoutExtras(t *testing.T) {
 	}
 }
 
+// Each summary says which Movies folder the film is in, so the library page can filter by
+// folder; the default folder (0) is left out of the JSON.
+func TestSummariesCarryTheFolder(t *testing.T) {
+	s, ctx := testService(t)
+	if _, err := s.repo.db.Exec(`INSERT INTO movies (id, tmdb_id, title, year, monitored, library_folder_id)
+		VALUES (1, 949, 'Heat', 1995, 1, 0), (2, 950, 'Up', 2009, 1, 3)`); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.ListSummaries(ctx)
+	if err != nil || len(list) != 2 {
+		t.Fatalf("summaries = %+v, %v", list, err)
+	}
+	for _, m := range list {
+		b, _ := json.Marshal(m)
+		switch m.Title {
+		case "Heat":
+			if m.LibraryFolderID != 0 || strings.Contains(string(b), "library_folder_id") {
+				t.Errorf("Heat = %s", b)
+			}
+		case "Up":
+			if m.LibraryFolderID != 3 || !strings.Contains(string(b), `"library_folder_id":3`) {
+				t.Errorf("Up = %s", b)
+			}
+		}
+	}
+}
+
 // The library fit report needs only each film's profile.
 func TestProfileRefs(t *testing.T) {
 	s, ctx := testService(t)

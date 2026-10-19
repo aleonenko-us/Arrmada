@@ -68,6 +68,27 @@ test.describe("Books library (desktop)", () => {
     await expect(page.getByLabel("Sort")).toHaveValue("author");
   });
 
+  // GitHub #36: the book table's headers sort like the Sort menu, and a second click
+  // reverses (?dir= in the address, so it survives a reload).
+  test("the book table sorts by its headers and reverses on a second click", async ({ page }) => {
+    await mockLibrary(page);
+    await page.goto("/books");
+    await page.getByLabel("View").selectOption("book-table");
+    const rows = page.locator("main tbody tr td:first-child a");
+    await page.getByRole("columnheader", { name: /Year/ }).getByRole("button").click();
+    await expect(rows).toHaveText(["Anathem", "Children of Dune", "Dune"]);
+    await expect(page.getByLabel("Sort")).toHaveValue("year");
+    await page.getByRole("columnheader", { name: /Year/ }).getByRole("button").click();
+    await expect(rows).toHaveText(["Dune", "Children of Dune", "Anathem"]);
+    await expect(page).toHaveURL(/dir=asc/);
+    await page.reload();
+    await expect(rows).toHaveText(["Dune", "Children of Dune", "Anathem"]);
+    // The menu starts an order its own way again.
+    await page.getByLabel("Sort").selectOption("added");
+    await expect(rows).toHaveText(["Anathem", "Children of Dune", "Dune"]);
+    await expect(page).not.toHaveURL(/dir=/);
+  });
+
   test("the book page groups its controls", async ({ page }) => {
     const state = await mockLibrary(page);
     await page.goto("/books/13");

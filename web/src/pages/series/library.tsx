@@ -4,6 +4,7 @@ import { FIT_COLOR } from "../../components/FitBadge";
 import { shownTitle } from "../../lib/displayTitle";
 import { isWanted, libraryStatus } from "../../lib/status";
 import type { LibraryConfig } from "../../features/library/types";
+import { shortDate } from "../../features/library/format";
 import type { MenuItem } from "../../ui";
 
 // The Series library as LibraryGrid config: its filters, card slots and table columns.
@@ -114,8 +115,11 @@ export function seriesLibraryConfig({ fits, actions, rowAction }: SeriesConfigDe
     // order follows the shown title.
     searchText: (s) => `${s.display_title ?? ""} ${s.title}`,
     compare: (a, b) => shownTitle(a).localeCompare(shownTitle(b)),
-    tableMinWidth: 820,
+    tableMinWidth: 980,
+    // Year, Size and Added are the Sort menu's orders too: a header click and the menu
+    // pick the same sort.
     columns: [
+      { key: "year", label: "Year", align: "right", className: "font-mono text-xs text-ink-dim", sort: (s) => s.year || undefined, cell: (s) => s.year || "—" },
       { key: "status", label: "Status", sort: (s) => STATUS_RANK[seriesStatus(s).label] ?? 4, cell: (s) => { const st = seriesStatus(s); return <span className="font-mono text-2xs uppercase" style={{ color: st.color }}>{st.label}</span>; } },
       { key: "network", label: "Network", sort: (s) => (s.network ? s.network.toLowerCase() : undefined), cell: (s) => s.network || "—" },
       { key: "seasons", label: "Seasons", align: "right", descFirst: true, className: "font-mono text-xs text-ink-dim", sort: (s) => statsOf(s).seasons, cell: (s) => statsOf(s).seasons },
@@ -128,10 +132,12 @@ export function seriesLibraryConfig({ fits, actions, rowAction }: SeriesConfigDe
       { key: "monitored", label: "Monitored", sort: (s) => (s.monitored ? 0 : 1), cell: (s) => <span className="font-mono text-2xs uppercase" style={{ color: s.monitored ? "var(--accent-text)" : "var(--ink-faint)" }}>{s.monitored ? "Yes" : "No"}</span> },
       // Share of judged episodes that fit: ascending puts the worst shows first.
       { key: "fit", label: "Fit", title: "How the episode files fit this show's profile — sort ascending for the worst first; open a show for each episode's reasons", sort: (s) => { const f = fits.get(s.id); return f && f.checked > 0 ? f.fits / f.checked : undefined; }, cell: (s) => <SeriesFit f={fits.get(s.id)} /> },
+      { key: "added", label: "Added", align: "right", className: "whitespace-nowrap font-mono text-xs text-ink-dim", sort: (s) => s.added_at || undefined, cell: (s) => shortDate(s.added_at) },
     ],
     sorts: [
       { key: "title", label: "Title" },
       { key: "added", label: "Recently added", dir: "desc", value: (s) => s.added_at || undefined },
+      { key: "year", label: "Year", dir: "desc", value: (s) => s.year || undefined },
       { key: "next", label: "Next airing", value: (s) => (ENDED.test(s.status ?? "") ? undefined : s.stats?.next_air_date || undefined) },
       { key: "size", label: "Size", dir: "desc", value: (s) => statsOf(s).size_bytes || undefined },
       { key: "missing", label: "Missing episodes", dir: "desc", value: (s) => statsOf(s).missing || undefined },

@@ -64,6 +64,14 @@ Built on `fix/new-folder-scan` (2026-10-18), owner-approved. On 0.3.0 people add
 - **When the scan starts:** a scan of one folder may wait behind another library scan, so its job looks at the folder again first and fails, saying why, if it's now missing, empty-looking or not responding. The missing-file check that follows a Movies scan runs only after whole-library scans (it covers every folder; a one-folder scan didn't look at the others).
 - **UI:** a folder just added that already holds something says "This folder has N items. Scan it now to add what's already there?" (**Scan now**); every extra folder has its own **Scan**, a folder with no titles says how many folders in it aren't in the library yet, a missing one (or an empty one that titles belong to) says to check the mount instead. The row follows the job (`useLibraryScan` with a target) and ends on "Found N titles; M need review" (with a link to the review list), then the title counts reload. Media folders has a one-line pointer to the card, and the settings search finds it for animation, kids, anime, extra/second/multiple folders.
 
+## Browsing one folder (GitHub #34, lighter version)
+
+Built on `feat/library-sort-and-folder-filter` (2026-10-19), owner-approved as the lighter version: no sidebar section per folder. Someone added a Cartoons folder and wanted to browse and add to it like its own library.
+
+- **Folder picker:** the Movies and Series library pages get a **Folder** picker in the toolbar (All folders, then each folder in order), only when that library has several folders. It narrows the whole page — the filter pills count inside it, the search and Select all look only inside it — and the breadcrumb names it (Library / Movies / Kids). The choice is `?folder=<id>` in the address; with one folder, or an id that's no longer a folder, the address is ignored and everything shows.
+- **Filtering is in the browser:** the library list is already loaded whole, so the page filters it. `GET /api/v1/movies` summaries now carry `library_folder_id` (left out for the default folder, 0); series rows already did.
+- **Add into the folder shown:** + Add movie / + Add series while one folder is shown preselect it in the dialog's folder picker (the rules aren't asked) and send it as `folder_id`. With All folders the rules preselect as before.
+
 ## Not done here / follow-ups
 
 - ~~**Radarr/Sonarr import is folders only.**~~ Done in [ARRIMPORT](ARRIMPORT.md): the folders card grew into a full title importer (profiles, monitoring, wanted titles, existing files).

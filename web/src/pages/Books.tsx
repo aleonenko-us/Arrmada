@@ -1,11 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { DeleteBookDialog } from "../components/DeleteBookDialog";
 import { api, type BookSource, type BookUpgradeStatus, type BookSweepStatus, type Book, type BookLookup, type BookAuthor, type BookDiscoverCard } from "../lib/api";
 import { qualityApi } from "../lib/qualityApi";
 import { usePersisted } from "../lib/persist";
-import { useSearchParamState } from "../lib/useSearchState";
+import { useSearchParamState, withParam } from "../lib/useSearchState";
 import { PHONE, useMediaQuery } from "../lib/useMediaQuery";
 import { isWanted, libraryStatus } from "../lib/status";
 import { jobFailed, jobToast, useJob } from "../lib/useJob";
@@ -19,8 +19,11 @@ import { Button, ErrorState, FilterBar, IconButton, LibraryToolbar, Modal, Skele
 import { LibraryCard } from "../features/library/LibraryCard";
 import { LibraryEmpty } from "../features/library/LibraryEmpty";
 import { useProgressive } from "../features/library/progressive";
+import { SortTh } from "../features/library/LibraryTable";
+import type { SortDir } from "../features/library/sort";
 import type { LibraryConfig } from "../features/library/types";
-import { AUTHOR_SORTS, BOOK_SORTS, DEFAULT_SORT, SORT_KEYS, sortAuthors, sortBooks, sortFor, type BookSort } from "./books/sort";
+import { shortDate } from "../features/library/format";
+import { AUTHOR_SORTS, BOOK_SORTS, DEFAULT_SORT, DIR_KEYS, NATURAL_DIR, SORT_KEYS, bookOrder, sortAuthors, sortBooks, sortFor, type BookSort } from "./books/sort";
 import { Page } from "../ui/Page";
 
 const FILTERS = [
@@ -74,7 +77,11 @@ export function Books() {
   const [filter, setFilter] = useSearchParamState<FilterKey>("filter", "all", { allowed: FILTER_KEYS });
   const [query, setQuery] = useSearchParamState<string>("q", "", { debounceMs: 300 });
   // The order lives in the address too (?sort=added), so it survives a reload and Back.
-  const [sortKey, setSortKey] = useSearchParamState<BookSort>("sort", DEFAULT_SORT, { allowed: SORT_KEYS });
+  const [sortKey] = useSearchParamState<BookSort>("sort", DEFAULT_SORT, { allowed: SORT_KEYS });
+  // ?dir= runs the book view the other way from its order's own direction (a second click
+  // on a table header, or the ↑/↓ beside Sort); "" is the order's own.
+  const [dirParam] = useSearchParamState<(typeof DIR_KEYS)[number]>("dir", "", { allowed: DIR_KEYS });
+  const [, setParams] = useSearchParams();
   const [adding, setAdding] = useState(false);
   const [addingAuthor, setAddingAuthor] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Book | null>(null);
@@ -218,6 +225,13 @@ export function Books() {
 
   const q = query.trim().toLowerCase();
   const sort = sortFor(mode, sortKey);
+  // The author tiles keep their orders' own directions; only the book view reverses.
+  const dir: SortDir = mode === "book" && dirParam ? dirParam : NATURAL_DIR[sort];
+  // One address write for both, so neither undoes the other.
+  const setOrder = (key: BookSort, toggle: boolean) => {
+    const next = bookOrder({ key: sort, dir }, key, toggle);
+    setParams((p) => withParam(withParam(p, "sort", next.key, DEFAULT_SORT), "dir", next.dir, ""), { replace: true });
+  };
   const filtered = useMemo(
     () =>
       sortBooks(
@@ -225,13 +239,14 @@ export function Books() {
           .filter((b) => matches(b, filter))
           .filter((b) => !q || b.title.toLowerCase().includes(q) || (b.author ?? "").toLowerCase().includes(q)),
         sort,
+        dir,
       ),
-    [list, filter, q, sort],
+    [list, filter, q, sort, dir],
   );
   const authors = useMemo(() => sortAuthors(groupByAuthor(filtered, authorImages), sort), [filtered, authorImages, sort]);
   // The lists render a few screens and grow as they scroll (a big library was all of it
   // at once); a new filter, search or sort starts them from the top again.
-  const listKey = `${filter}|${q}|${sort}`;
+  const listKey = `${filter}|${q}|${sort}|${dir}`;
   const authorList = useProgressive(authors, "authors", listKey);
   const bookList = useProgressive(filtered, "books", listKey);
 
@@ -341,7 +356,8 @@ export function Books() {
           pickers={multiSelect ? [] : [
             { label: "View", value: `${mode}-${view}`, options: viewOptions, onChange: (v) => { const [m, vw] = v.split("-"); setMode(m as "author" | "book"); if (!phone) setView(vw as "grid" | "table"); } },
           ]}
-          sort={{ label: "Sort", value: sort, options: mode === "author" ? AUTHOR_SORTS : BOOK_SORTS, onChange: (v) => setSortKey(v as BookSort) }}
+          sort={{ label: "Sort", value: sort, options: mode === "author" ? AUTHOR_SORTS : BOOK_SORTS, onChange: (v) => setOrder(v as BookSort, false) }}
+          sortDir={mode === "book" ? { dir, onToggle: () => setOrder(sort, true) } : undefined}
           select={{ active: multiSelect, onToggle: () => (multiSelect ? exitMultiSelect() : enterSelect()) }}
           tools={tools}
           toolsBadge={dupeCount}
@@ -441,7 +457,7 @@ export function Books() {
           </>
         ) : view === "table" ? (
           <>
-            <BooksTable list={bookList.shown} onSearch={search} />
+            <BooksTable list={bookList.shown} onSearch={search} sort={{ key: sort, dir }} onSort={(k) => setOrder(k as BookSort, true)} />
             {bookList.sentinel}
           </>
         ) : (
@@ -488,17 +504,20 @@ function editionTags(b: Book): string {
   return t.join(" + ") || "—";
 }
 
-function BooksTable({ list, onSearch }: { list: Book[]; onSearch: (b: Book) => void }) {
+// BooksTable is the book view as a table: Title, Author, Year and Added sort by a click on
+// their header (again to reverse), the same orders as the Sort menu.
+function BooksTable({ list, onSearch, sort, onSort }: { list: Book[]; onSearch: (b: Book) => void; sort: { key: string; dir: SortDir }; onSort: (key: string) => void }) {
   const th = "px-2.5 py-2 text-left font-mono text-2xs font-bold uppercase tracking-[0.06em] text-ink-faint";
   const td = "px-2.5 py-2 align-middle";
   return (
     <div className="thin-scroll overflow-x-auto rounded-xl" style={{ border: "1px solid var(--line)" }}>
-      <table className="w-full border-collapse text-sm" style={{ minWidth: "780px" }}>
+      <table className="w-full border-collapse text-sm" style={{ minWidth: "880px" }}>
         <thead>
           <tr style={{ background: "var(--panel)", borderBottom: "1px solid var(--line)" }}>
-            <th className={th}>Title</th>
-            <th className={th}>Author</th>
-            <th className={`${th} text-right`}>Year</th>
+            <SortTh label="Title" k="title" sort={sort} onSort={onSort} />
+            <SortTh label="Author" k="author" sort={sort} onSort={onSort} />
+            <SortTh label="Year" k="year" align="right" sort={sort} onSort={onSort} />
+            <SortTh label="Added" k="added" align="right" sort={sort} onSort={onSort} />
             <th className={th}>Status</th>
             <th className={th}>Editions</th>
             <th className={`${th} text-right`}>Size</th>
@@ -516,6 +535,7 @@ function BooksTable({ list, onSearch }: { list: Book[]; onSearch: (b: Book) => v
                 <td className={`${td} min-w-[200px]`}><Link to={`/books/${b.id}`} className="font-semibold hover:text-[var(--accent)]">{b.title}</Link></td>
                 <td className={td}>{b.author || "—"}</td>
                 <td className={`${td} text-right font-mono text-xs text-ink-dim`}>{b.year || "—"}</td>
+                <td className={`${td} whitespace-nowrap text-right font-mono text-xs text-ink-dim`}>{shortDate(b.added_at)}</td>
                 <td className={td}><span className="font-mono text-2xs uppercase" style={{ color: st.color }} title={st.title}>{st.label}</span></td>
                 <td className={td}><span className="font-mono text-xs text-ink-dim">{editionTags(b)}</span></td>
                 <td className={`${td} text-right font-mono text-xs text-ink-dim`}>{size > 0 ? gb(size) : "—"}</td>

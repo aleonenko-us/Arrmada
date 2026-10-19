@@ -2,11 +2,12 @@ import { useMemo, useState, type ReactNode } from "react";
 import { usePersisted } from "../../lib/persist";
 import { useSearchParamState } from "../../lib/useSearchState";
 import { PHONE, useMediaQuery } from "../../lib/useMediaQuery";
-import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner, type LibraryTool, type ToolbarAction } from "../../ui";
+import { ErrorState, FilterBar, LibraryToolbar, Skeleton, StaleBanner, type LibraryTool, type ToolbarAction, type ToolbarSegment } from "../../ui";
 import { LibraryCard } from "./LibraryCard";
 import { LibraryTable } from "./LibraryTable";
 import { useProgressive } from "./progressive";
-import { compareValues } from "./sort";
+import { sortItems } from "./sort";
+import { useLibrarySort } from "./useLibrarySort";
 import type { LibraryConfig, LibraryItem, LibrarySelection } from "./types";
 import { Page } from "../../ui/Page";
 
@@ -49,6 +50,18 @@ export interface LibraryGridProps<T extends LibraryItem> {
   bulkActions?: (sel: LibrarySelection<T>) => ReactNode;
   /** The library is really empty: the page's <LibraryEmpty> (scan or add). */
   empty: ReactNode;
+  /** Part of the library the page narrows to (one folder of several): its picker in the
+   *  toolbar, which titles are in it, its name and the way back to all of them. */
+  scope?: LibraryScope<T>;
+}
+
+export interface LibraryScope<T> {
+  picker: ToolbarSegment;
+  /** Left out while the whole library shows. */
+  match?: (item: T) => boolean;
+  /** "Kids", for "No movies in Kids yet". */
+  name: string;
+  onClear: () => void;
 }
 
 // LibraryGrid is the one library page body for Movies and Series: the toolbar, the filter
@@ -65,31 +78,43 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
 
   const list = useMemo(() => items ?? [], [items]);
+  // The scope (one folder of several) narrows everything below it: the pills count within
+  // it, and the filters and search look only inside it.
+  const scopeMatch = p.scope?.match;
+  const scoped = useMemo(() => (scopeMatch ? list.filter(scopeMatch) : list), [list, scopeMatch]);
   const active = config.filters.find((f) => f.key === filter) ?? config.filters[0];
   const q = query.trim().toLowerCase();
-  // The grid's order is a remembered preference ("series.grid.sort"), like the view.
-  const sortKeys = useMemo(() => config.sorts.map((s) => s.key), [config.sorts]);
-  const [sortKey, setSortKey] = usePersisted<string>(`${config.storageKey}.grid.sort`, sortKeys[0] ?? "title", sortKeys);
-  const sort = config.sorts.find((s) => s.key === sortKey) ?? config.sorts[0];
+  // One order for the grid's Sort menu and the table's headers, remembered ("movies.sort").
+  const order = useLibrarySort(config);
+  const { choice, state: sortState } = order;
   const visible = useMemo(() => {
-    const by = sort?.value;
-    const dir = sort?.dir ?? "asc";
     // Every word must appear somewhere ("dune 2021" finds Dune, 2021), in any order.
     const words = q.split(/\s+/).filter(Boolean);
-    return list
+    const shown = scoped
       .filter((it) => !active?.match || active.match(it))
-      .filter((it) => { if (!words.length) return true; const text = config.searchText(it).toLowerCase(); return words.every((w) => text.includes(w)); })
-      .sort((a, b) => (by ? compareValues(by(a), by(b), dir) : 0) || config.compare(a, b));
-  }, [list, active, q, config, sort]);
+      .filter((it) => { if (!words.length) return true; const text = config.searchText(it).toLowerCase(); return words.every((w) => text.includes(w)); });
+    return sortItems(shown, choice, sortState.dir, config.compare);
+  }, [scoped, active, q, config, choice, sortState.dir]);
 
-  // The grid renders a few screens and grows as it scrolls; a new filter, search or sort
-  // starts it from the top again. The table does the same in its own order.
-  const listKey = `${active?.key}|${q}`;
-  const grid = useProgressive(visible, "grid", `${listKey}|${sort?.key}`);
+  // The grid renders a few screens and grows as it scrolls; a new scope, filter, search or
+  // sort starts it from the top again. The table does the same.
+  const listKey = `${p.scope?.picker.value ?? ""}|${active?.key}|${q}|${sortState.key}:${sortState.dir}`;
+  const grid = useProgressive(visible, "grid", listKey);
+  // The Sort menu lists the config's orders; a column sort picked in the table (Codec)
+  // joins it while it's in use, so the menu always names the order on screen.
+  const menuChoices = config.sorts.some((s) => s.key === sortState.key) || !choice ? config.sorts : [...config.sorts, { key: choice.key, label: choice.label }];
 
-  // Only titles still in the library count as selected: one removed meanwhile (here or
-  // elsewhere) drops out instead of failing the next bulk action.
-  const chosen = list.filter((it) => selected.has(it.id));
+  // Another folder is another set of titles: the selection starts again, so a bulk action
+  // never reaches titles picked in a folder that's no longer on screen.
+  const scopeKey = p.scope?.picker.value ?? "";
+  const [selScope, setSelScope] = useState(scopeKey);
+  if (selScope !== scopeKey) {
+    setSelScope(scopeKey);
+    setSelected(new Set());
+  }
+  // Only titles still in the library, and in the folder shown, count as selected: one
+  // removed meanwhile (here or elsewhere) drops out instead of failing the next bulk action.
+  const chosen = scoped.filter((it) => selected.has(it.id));
   const sel: LibrarySelection<T> = {
     active: multi,
     ids: new Set(chosen.map((it) => it.id)),
@@ -105,16 +130,18 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
   return (
     <Page width="wide">
       <LibraryToolbar
-        count={items ? list.length : null}
+        count={items ? scoped.length : null}
         lead={p.lead}
         segments={view.canTable ? [{ label: "View", value: view.mode, options: VIEW_OPTIONS, onChange: (v) => view.set(v as LibraryViewMode) }] : []}
-        sort={view.mode === "grid" && config.sorts.length > 1 ? { label: "Sort", value: sort?.key ?? "", options: config.sorts.map((s) => ({ value: s.key, label: s.label })), onChange: setSortKey } : undefined}
+        pickers={p.scope ? [p.scope.picker] : []}
+        sort={config.sorts.length > 1 ? { label: "Sort", value: sortState.key, options: menuChoices.map((s) => ({ value: s.key, label: s.label })), onChange: order.onPick } : undefined}
+        sortDir={config.sorts.length > 1 ? { dir: sortState.dir, onToggle: order.reverse } : undefined}
         select={{ active: multi, onToggle: () => (multi ? sel.exit() : setMulti(true)) }}
         tools={p.tools}
         primary={p.primary}
       />
       <FilterBar
-        filters={config.filters.map((f) => ({ key: f.key, label: f.label, title: f.title, count: f.match ? list.filter(f.match).length : list.length }))}
+        filters={config.filters.map((f) => ({ key: f.key, label: f.label, title: f.title, count: f.match ? scoped.filter(f.match).length : scoped.length }))}
         active={filter}
         onFilter={setFilter}
         query={query}
@@ -141,6 +168,11 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
         error ? <ErrorState what={`your ${noun.many}`} message={error} onRetry={p.onRetry} busy={p.loading} /> : <Skeleton variant={view.mode === "table" ? "table" : "grid"} />
       ) : list.length === 0 ? (
         p.empty
+      ) : scoped.length === 0 && p.scope ? (
+        <div className="rounded-xl p-12 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
+          No {noun.many} in <b>{p.scope.name}</b> yet.{" "}
+          <button onClick={p.scope.onClear} className="font-semibold" style={{ color: "var(--accent-text)" }}>Show all folders</button>
+        </div>
       ) : visible.length === 0 ? (
         <div className="rounded-xl p-12 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
           {q ? <>No {noun.many} match “<b>{query.trim()}</b>”.</> : <>No {noun.many} match the <b>{active?.label}</b> filter.</>}
@@ -148,7 +180,7 @@ export function LibraryGrid<T extends LibraryItem>(p: LibraryGridProps<T>) {
       ) : view.mode === "table" ? (
         <>
           {p.tableNote}
-          <LibraryTable items={visible} config={config} selectable={multi} selected={selected} onToggle={sel.toggle} listKey={listKey} />
+          <LibraryTable items={visible} config={config} selectable={multi} selected={selected} onToggle={sel.toggle} listKey={listKey} sort={sortState} onSort={order.onColumn} />
         </>
       ) : (
         <>

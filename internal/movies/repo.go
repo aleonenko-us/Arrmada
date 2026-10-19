@@ -106,7 +106,7 @@ func (r *Repo) SetMediaInfoForPath(ctx context.Context, id int64, path, mediaJSO
 func (r *Repo) ListSummaries(ctx context.Context) ([]MovieSummary, error) {
 	rows, err := r.q().QueryContext(ctx, `SELECT id, title, year, poster_url, monitored, has_file, quality_profile,
 		min_availability, added_at, COALESCE(CASE WHEN json_valid(extra_json) THEN json_extract(extra_json, '$.vote_average') END, 0), media_json,
-		file_missing_since IS NOT NULL, display_title
+		file_missing_since IS NOT NULL, display_title, library_folder_id
 		FROM movies ORDER BY added_at DESC, id DESC`)
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func (r *Repo) ListSummaries(ctx context.Context) ([]MovieSummary, error) {
 			display   string
 		)
 		if err := rows.Scan(&s.ID, &s.Title, &s.Year, &s.PosterURL, &mon, &hf, &s.QualityProfile,
-			&s.MinAvailability, &s.AddedAt, &vote, &mediaJSON, &missing, &display); err != nil {
+			&s.MinAvailability, &s.AddedAt, &vote, &mediaJSON, &missing, &display, &s.LibraryFolderID); err != nil {
 			return nil, err
 		}
 		s.Monitored, s.HasFile, s.VoteAverage = mon != 0, hf != 0, vote

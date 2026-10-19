@@ -5,6 +5,7 @@ import { shownTitle } from "../../lib/displayTitle";
 import { isMovieWanted, movieStatus } from "../../lib/movieStatus";
 import { STATUS_LABEL } from "../../lib/status";
 import type { LibraryConfig } from "../../features/library/types";
+import { shortDate } from "../../features/library/format";
 import { POSTER_CHIP_BG, type MenuItem } from "../../ui";
 
 // The Movies library as LibraryGrid config: its filters, card slots and table columns.
@@ -141,8 +142,11 @@ export function movieLibraryConfig({ fits, queueKnown, actions, rowAction }: Mov
     ],
     // Alphabetical by the shown title (the server's sort title follows it), "The" ignored.
     compare: (a, b) => (a.sort_title || shownTitle(a)).localeCompare(b.sort_title || shownTitle(b)),
-    tableMinWidth: 900,
+    tableMinWidth: 1120,
+    // Year, Size, Rating and Added are the Sort menu's orders too: a header click and the
+    // menu pick the same sort (newest, biggest and best first).
     columns: [
+      { key: "year", label: "Year", align: "right", className: "font-mono text-xs text-ink-dim", sort: (m) => m.year || undefined, cell: (m) => m.year || "—" },
       { key: "status", label: "Status", sort: (m) => (m.has_file ? 0 : m.monitored ? 1 : 2), cell: (m) => { const st = movieStatus(m, undefined, queueKnown); return <span className="font-mono text-2xs uppercase" style={{ color: st.color }}>{st.label}</span>; } },
       { key: "resolution", label: "Resolution", sort: (m) => resValue(m.media), cell: (m) => m.media?.resolution || (m.media?.quality ? m.media.quality.split(" ")[0] : "—") },
       { key: "codec", label: "Codec", sort: (m) => m.media?.codec || undefined, cell: (m) => <span style={bad(m, "codec")}>{m.media?.codec || "—"}</span> },
@@ -162,6 +166,8 @@ export function movieLibraryConfig({ fits, queueKnown, actions, rowAction }: Mov
         return <span style={c ? { color: c, fontWeight: 600 } : undefined} title={fi?.fit?.window ? `Window ${fi.fit.window.min || 0}–${fi.fit.window.max || "∞"} Mb/s` : undefined}>{n ? `${n.toFixed(1)} Mbps` : "—"}</span>;
       } },
       { key: "fit", label: "Fit", sort: (m) => fitRank(fits.get(m.id)), cell: (m) => <FitBadge item={fits.get(m.id)} /> },
+      { key: "rating", label: "Rating", align: "right", title: "TMDB's rating", className: "font-mono text-xs text-ink-dim", sort: (m) => m.vote_average || undefined, cell: (m) => (m.vote_average ? m.vote_average.toFixed(1) : "—") },
+      { key: "added", label: "Added", align: "right", className: "whitespace-nowrap font-mono text-xs text-ink-dim", sort: (m) => m.added_at || undefined, cell: (m) => shortDate(m.added_at) },
     ],
     card: {
       meta: (m) => m.year || "—",
