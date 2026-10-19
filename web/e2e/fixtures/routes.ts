@@ -119,6 +119,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
 
     // Discover → Books
     get(/^\/api\/v1\/books\/discover\/browse\/[a-z_]+$/, books.browse),
+    get(/^\/api\/v1\/books\/discover\/subjects\/[a-z_]+$/, { books: [] }),
     get("/api/v1/books/discover/recommended", { rows: [] }),
     // Hardcover ("hc:") books also ask for "readers also liked".
     get("/api/v1/books/discover/similar", { books: [] }),

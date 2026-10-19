@@ -69,7 +69,7 @@ export function BooksDiscover({ flash, canRequest, initialQuery, initialWork, on
         overview: "description" in b ? b.description : undefined,
         formats: formats ?? preferredFormat, note: note?.trim() || undefined,
       });
-      setRequested((s) => new Map(s).set(b.key, formats ?? ""));
+      setRequested((s) => new Map(s).set(b.key, formats ?? preferredFormat ?? ""));
       flash(res.subscribed ? "You’re on the list — we’ll notify you when it’s ready"
         : res.request.status === "approved" ? `Added “${b.title}” to your library` : `Requested “${b.title}”`);
       announceRequested();
