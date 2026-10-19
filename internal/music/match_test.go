@@ -13,6 +13,11 @@ func TestTrackNumberOf(t *testing.T) {
 		{"2-04 Some Song.flac", 2, 4},
 		{"Airbag.flac", 0, 0},           // no number at all
 		{"1997 - Album Rip.flac", 0, 0}, // a year is not a track number
+		// MUS-06: a title that starts with a number is not a disc-track pair.
+		{"04 - 99 Problems.flac", 1, 4},
+		{"10 - 7 Rings.flac", 1, 10},
+		{"05. 4 Minutes.flac", 1, 5},
+		{"01 - 22 (Taylor's Version).flac", 1, 1},
 	}
 	for _, c := range cases {
 		d, n := TrackNumberOf(c.path)
@@ -52,6 +57,99 @@ func TestMatchTracks(t *testing.T) {
 	m2, u2 := MatchTracks(tracks, []AudioFile{{Path: "/d/09 - Ghost Track.flac"}})
 	if len(m2) != 0 || len(u2) != 1 {
 		t.Errorf("an out-of-range number must not be placed: matched=%v unmatched=%v", m2, u2)
+	}
+}
+
+// MUS-06: songs whose titles start with a number land on their own slot, never on the
+// slot the number in their title points at.
+func TestMatchTracksNumericTitles(t *testing.T) {
+	tracks := []Track{
+		{ID: 1, DiscNumber: 1, TrackNumber: 1, Title: "22 (Taylor's Version)"},
+		{ID: 4, DiscNumber: 1, TrackNumber: 4, Title: "99 Problems"},
+		{ID: 5, DiscNumber: 1, TrackNumber: 5, Title: "4 Minutes"},
+		{ID: 10, DiscNumber: 1, TrackNumber: 10, Title: "7 Rings"},
+		{ID: 22, DiscNumber: 1, TrackNumber: 22, Title: "Closer"},
+	}
+	files := []AudioFile{
+		{Path: "/d/04 - 99 Problems.flac"},
+		{Path: "/d/10 - 7 Rings.flac"},
+		{Path: "/d/05. 4 Minutes.flac"},
+		{Path: "/d/01 - 22 (Taylor's Version).flac"},
+	}
+	matched, unmatched := MatchTracks(tracks, files)
+	want := map[int64]string{
+		4: "/d/04 - 99 Problems.flac", 10: "/d/10 - 7 Rings.flac",
+		5: "/d/05. 4 Minutes.flac", 1: "/d/01 - 22 (Taylor's Version).flac",
+	}
+	for id, path := range want {
+		if matched[id].Path != path {
+			t.Errorf("track %d got %q, want %q", id, matched[id].Path, path)
+		}
+	}
+	if _, ok := matched[22]; ok || len(unmatched) != 0 {
+		t.Errorf("nothing may land on track 22 and nothing is left over: matched=%v unmatched=%v", matched, unmatched)
+	}
+}
+
+// The misfile the old parser made: "01 - 7 Rings" read as disc 1, track 7, so it took the
+// real track 7's slot.
+func TestMatchTracksNoOneOffMisfile(t *testing.T) {
+	tracks := []Track{
+		{ID: 1, DiscNumber: 1, TrackNumber: 1, Title: "7 Rings"},
+		{ID: 7, DiscNumber: 1, TrackNumber: 7, Title: "Fake Smile"},
+	}
+	matched, unmatched := MatchTracks(tracks, []AudioFile{
+		{Path: "/d/01 - 7 Rings.flac"}, {Path: "/d/07 - Fake Smile.flac"},
+	})
+	if matched[1].Path != "/d/01 - 7 Rings.flac" || matched[7].Path != "/d/07 - Fake Smile.flac" || len(unmatched) != 0 {
+		t.Errorf("matched=%v unmatched=%v", matched, unmatched)
+	}
+	// A file named only by its title, which starts with a number, goes by the title.
+	m2, _ := MatchTracks(tracks, []AudioFile{{Path: "/d/7 Rings.flac"}})
+	if m2[1].Path != "/d/7 Rings.flac" {
+		t.Errorf("'7 Rings.flac' must land on 7 Rings, got %v", m2)
+	}
+	if _, ok := m2[7]; ok {
+		t.Error("'7 Rings.flac' must not land on track 7")
+	}
+}
+
+func TestMatchTracksMultiDisc(t *testing.T) {
+	twoDisc := []Track{
+		{ID: 101, DiscNumber: 1, TrackNumber: 1, Title: "Opening"},
+		{ID: 104, DiscNumber: 1, TrackNumber: 4, Title: "Airbag"},
+		{ID: 201, DiscNumber: 2, TrackNumber: 1, Title: "X"},
+		{ID: 203, DiscNumber: 2, TrackNumber: 3, Title: "Third"},
+	}
+	// The compact disc-track shape, two files of it in one folder: believed.
+	m, u := MatchTracks(twoDisc, []AudioFile{{Path: "/d/1-04 Airbag.flac"}, {Path: "/d/2-01 X.flac"}})
+	if m[104].Path != "/d/1-04 Airbag.flac" || m[201].Path != "/d/2-01 X.flac" || len(u) != 0 {
+		t.Errorf("multi-disc: matched=%v unmatched=%v", m, u)
+	}
+	// A three-digit number on a multi-disc listing is disc and track.
+	if m, _ := MatchTracks(twoDisc, []AudioFile{{Path: "/d/101 - Something Else.flac"}}); m[101].Path == "" {
+		t.Errorf("'101 - …' should be disc 1 track 1, got %v", m)
+	}
+	// A folder hint says which disc a bare track number is on.
+	if m, _ := MatchTracks(twoDisc, []AudioFile{{Path: "/d/CD2/03 - Something.flac", Disc: 2}}); m[203].Path == "" {
+		t.Errorf("a Disc=2 hint with '03 - …' should be disc 2 track 3, got %v", m)
+	}
+
+	oneDisc := []Track{
+		{ID: 4, DiscNumber: 1, TrackNumber: 4, Title: "99 Problems"},
+		{ID: 9, DiscNumber: 1, TrackNumber: 9, Title: "Other"},
+	}
+	// Alone on a one-disc listing the compact shape is a track number and a title.
+	if m, _ := MatchTracks(oneDisc, []AudioFile{{Path: "/d/04-99 Problems.flac"}}); m[4].Path == "" {
+		t.Errorf("'04-99 Problems' alone should be track 4, got %v", m)
+	}
+	// One compact-shaped file in a folder isn't enough to believe the shape.
+	threeTracks := []Track{
+		{ID: 1, DiscNumber: 1, TrackNumber: 1, Title: "A"},
+		{ID: 2, DiscNumber: 1, TrackNumber: 2, Title: "B"},
+	}
+	if m, _ := MatchTracks(threeTracks, []AudioFile{{Path: "/d/01-02 Untitled.flac"}, {Path: "/d/02 B.flac"}}); m[1].Path != "/d/01-02 Untitled.flac" {
+		t.Errorf("a single compact-shaped file falls back to its track number, got %v", m)
 	}
 }
 
