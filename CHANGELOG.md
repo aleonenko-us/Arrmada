@@ -113,6 +113,11 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   be read, or that turns out to be a RAM folder (a mistyped Unraid pool name), is a clear
   warning, and nothing is paused or released on its account
   ([Download disk guard](https://github.com/tristenlammi/Arrmada/blob/main/docs/configuration.md#download-disk-guard)).
+- **Staff choose a quality profile when requesting** (#50). On a Discover movie or show,
+  admins and managers get a split Request button ("Request · HD 1080p") with the profiles
+  for that kind of media; for a show it's on the season picker's confirm button. Leave it
+  alone and the default is used. Requesters see no change, and a profile a requester sends
+  through the API is ignored (staff still choose when approving).
 - **SECURITY.md**: how to report a vulnerability privately, and which versions get fixes.
   The README now explains how Arrmada is built and tested.
 
