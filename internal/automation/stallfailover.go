@@ -654,7 +654,9 @@ func (c *Coordinator) discographyStallTarget(ctx context.Context, g grab) (stall
 			c.addBlockMusicArtist(ctx, a.ID, g.Title, g.Indexer, reason)
 			return nil
 		},
-		event:   func(ctx context.Context, detail string) { c.music.AddEvent(ctx, a.ID, "failed", "Discography: "+detail) },
+		event: func(ctx context.Context, detail string) {
+			c.music.AddEvent(ctx, a.ID, "failed", "Discography: "+detail)
+		},
 		replace: func(context.Context, map[string]bool) (string, error) { return "", nil },
 	}, true
 }

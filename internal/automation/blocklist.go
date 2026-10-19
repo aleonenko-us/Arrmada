@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-
 )
 
 // ErrBlockNotFound means the blocklist entry doesn't exist (already unblocked).
