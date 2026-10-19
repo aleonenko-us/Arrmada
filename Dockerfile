@@ -425,14 +425,14 @@ LABEL org.arrmada.version="${VERSION}" org.arrmada.commit="${COMMIT}"
 # The Unraid all-in-one variant (--target aio; published as x.y.z-aio, x.y-aio, stable-aio)
 # ==========================================================================================
 #
-# An Unraid template is one container, so the template's image carries Arrmada's two
-# companions inside it: qBittorrent and FlareSolverr, each switched off with a template
+# An Unraid template is one container, so the template's image carries Arrmada's
+# companions inside it: qBittorrent, FlareSolverr, Prowlarr and SABnzbd, each switched off with a template
 # variable. It is the plain image above plus these stages, built FROM it, so it runs the
 # exact same Arrmada. The plain image and the Compose install don't change: nothing below
 # is in them, and a build without --target still ends on the plain image (the last line).
 #
-# cmd/arrmada-aio supervises the three processes behind tini (docs/unraid.md says how).
-# arm64 gets qBittorrent only: FlareSolverr's Chromium is published for x86-64 Linux alone.
+# cmd/arrmada-aio supervises the processes behind tini (docs/unraid.md says how).
+# arm64 gets all but FlareSolverr: its Chromium is published for x86-64 Linux alone.
 
 # qBittorrent: the static qbittorrent-nox build (no Qt or Boost to install, one file),
 # the same 5.2.3 the Compose bundle pins, with libtorrent 2.0. Checked against the SHA-256
@@ -451,6 +451,37 @@ RUN set -eux; \
     wget -qO /qbittorrent-nox "https://github.com/userdocs/qbittorrent-nox-static/releases/download/${QBITTORRENT_RELEASE}/${ARCH}-qbittorrent-nox"; \
     echo "${SHA}  /qbittorrent-nox" | sha256sum -c -; \
     chmod 755 /qbittorrent-nox
+
+# Prowlarr's core releases are self-contained .NET packages. Pin both architectures to
+# the same version and verify the checksums published by the upstream release.
+FROM ubuntu:24.04 AS aio-prowlarr
+ARG PROWLARR_VERSION=2.6.5.5623
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) ARCH=x64; SHA=c0824e9f0e9c79e085882f6143041be5c2cde0519baa59e9477d9e4dcbe1b5e3 ;; \
+        arm64) ARCH=arm64; SHA=6552ac286d8a1213f99779daac685cc283d69fa6ad3144d811af0289ee5f5656 ;; \
+        *) echo "no Prowlarr for ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/prowlarr.tar.gz "https://github.com/Prowlarr/Prowlarr/releases/download/v${PROWLARR_VERSION}/Prowlarr.master.${PROWLARR_VERSION}.linux-core-${ARCH}.tar.gz"; \
+    echo "${SHA}  /tmp/prowlarr.tar.gz" | sha256sum -c -; \
+    mkdir -p /opt/prowlarr; tar -xzf /tmp/prowlarr.tar.gz -C /opt/prowlarr; \
+    chmod 755 /opt/prowlarr/Prowlarr
+
+# SABnzbd source and Python dependencies, built on the same Ubuntu/Python release as the
+# runtime. Its configuration and generated credentials are created in appdata at startup.
+FROM ubuntu:24.04 AS aio-sabnzbd
+ARG SABNZBD_VERSION=5.1.3
+ARG SABNZBD_SHA256=12a01e30ce166297a375ffc3a761f98bf7d93260e040391497f643f8a3525fed
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl python3 python3-dev python3-venv build-essential libffi-dev libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    curl -fsSL -o /tmp/sabnzbd.tar.gz "https://github.com/sabnzbd/sabnzbd/releases/download/${SABNZBD_VERSION}/SABnzbd-${SABNZBD_VERSION}-src.tar.gz"; \
+    echo "${SABNZBD_SHA256}  /tmp/sabnzbd.tar.gz" | sha256sum -c -; \
+    mkdir -p /opt/sabnzbd/app; tar -xzf /tmp/sabnzbd.tar.gz --strip-components=1 -C /opt/sabnzbd/app; \
+    python3 -m venv /opt/sabnzbd/venv; \
+    /opt/sabnzbd/venv/bin/pip install --no-cache-dir -r /opt/sabnzbd/app/requirements.txt
 
 # The supervisor: standard library only, so it builds from its own two folders, on the
 # build machine's platform (Go cross-compiles it, like arrmada), without the web UI.
@@ -539,17 +570,23 @@ FROM aio-${TARGETARCH} AS aio
 # tini is PID 1: it passes the stop signal to the supervisor and reaps the processes
 # Chromium leaves behind.
 RUN dpkg-query -W -f='${binary:Package}\n' | xargs apt-mark hold >/dev/null && \
-    apt-get update && apt-get install -y --no-install-recommends --no-upgrade tini && \
+    sed -i '/^Components:/s/$/ multiverse/' /etc/apt/sources.list.d/ubuntu.sources && \
+    apt-get update && apt-get install -y --no-install-recommends --no-upgrade tini python3 libicu74 libsqlite3-0 par2 7zip unrar && \
     apt-mark showhold | xargs -r apt-mark unhold >/dev/null && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=aio-qbittorrent /qbittorrent-nox /usr/local/bin/qbittorrent-nox
+COPY --from=aio-prowlarr /opt/prowlarr /opt/prowlarr
+COPY --from=aio-sabnzbd /opt/sabnzbd /opt/sabnzbd
 COPY --from=aio-supervisor /out/arrmada-aio /usr/local/bin/arrmada-aio
 RUN qbittorrent-nox --version
-# Both companions run unless the template switches them off.
+# qBittorrent and FlareSolverr run by default. The template can opt into Prowlarr and SABnzbd.
 ENV ARRMADA_BUNDLE_QBITTORRENT=true \
-    ARRMADA_BUNDLE_FLARESOLVERR=true
+    ARRMADA_BUNDLE_FLARESOLVERR=true \
+    ARRMADA_BUNDLE_PROWLARR=false \
+    ARRMADA_BUNDLE_SABNZBD=false
 # 8080: qBittorrent's web UI. The incoming torrent port is the template's ARRMADA_QBIT_PORT.
 EXPOSE 8080
+EXPOSE 9696 8082
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/arrmada-aio"]
 LABEL org.arrmada.variant="aio"
 

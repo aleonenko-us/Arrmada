@@ -27,6 +27,9 @@ type Service struct {
 const (
 	Entrypoint     = "/entrypoint.sh" // the plain image's: fixes ownership, drops to PUID:PGID, runs arrmada
 	QbittorrentBin = "/usr/local/bin/qbittorrent-nox"
+	ProwlarrBin    = "/opt/prowlarr/Prowlarr"
+	SABnzbdPython  = "/opt/sabnzbd/venv/bin/python"
+	SABnzbdDir     = "/opt/sabnzbd/app"
 	// FlareSolverr sits where its own image keeps it (/app): its code looks for the
 	// chromedriver at /app/chromedriver and its Chromium at /app/chrome/chrome.
 	FlareSolverrDir    = "/app"
@@ -90,6 +93,22 @@ func Plan(o Options, environ []string, getenv func(string) string) []Service {
 				"PYTHONDONTWRITEBYTECODE=1",
 			),
 			UID: &fuid, GID: &fgid, OwnUser: true,
+		})
+	}
+	if o.Prowlarr {
+		profile := ProwlarrProfile(o.DataDir)
+		svcs = append(svcs, Service{
+			Name: "prowlarr", Path: ProwlarrBin,
+			Args: []string{"-nobrowser", "-data=" + profile, "-port=9696", "-bindaddress=*"},
+			Dir: profile, Env: append(append([]string(nil), base...), "HOME="+profile), UID: &uid, GID: &gid,
+		})
+	}
+	if o.SABnzbd {
+		profile := SABProfile(o.DataDir)
+		svcs = append(svcs, Service{
+			Name: "sabnzbd", Path: SABnzbdPython,
+			Args: []string{"-OO", SABnzbdDir + "/SABnzbd.py", "-f", SABConfigPath(o.DataDir), "--server", "0.0.0.0:8082"},
+			Dir: SABnzbdDir, Env: append(append([]string(nil), base...), "HOME="+profile, "PYTHONUNBUFFERED=1"), UID: &uid, GID: &gid,
 		})
 	}
 	return svcs

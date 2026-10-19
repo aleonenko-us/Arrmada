@@ -26,6 +26,8 @@ type Options struct {
 	Downloads    string // where qBittorrent saves until Arrmada sets its own folder
 	Qbittorrent  bool   // run the bundled qBittorrent
 	FlareSolverr bool   // run the bundled FlareSolverr
+	Prowlarr     bool   // run the bundled Prowlarr
+	SABnzbd      bool   // run the bundled SABnzbd
 	TorrentPort  int
 }
 
@@ -66,6 +68,8 @@ func ReadOptions(getenv func(string) string, flareInstalled bool) (o Options, no
 		Downloads:    orDefault(getenv("ARRMADA_DOWNLOADS_DIR"), "/media/downloads"),
 		Qbittorrent:  on("ARRMADA_BUNDLE_QBITTORRENT"),
 		FlareSolverr: on("ARRMADA_BUNDLE_FLARESOLVERR"),
+		Prowlarr:     on("ARRMADA_BUNDLE_PROWLARR"),
+		SABnzbd:      on("ARRMADA_BUNDLE_SABNZBD"),
 		TorrentPort:  num("ARRMADA_QBIT_PORT", DefaultTorrentPort),
 	}
 	if o.TorrentPort < 1 || o.TorrentPort > 65535 {
@@ -76,7 +80,7 @@ func ReadOptions(getenv func(string) string, flareInstalled bool) (o Options, no
 		notes = append(notes, "FlareSolverr isn't part of the ARM build of this image (its Chromium is x86-64 only), so it stays off. Add your own in Settings → Connections if a tracker needs it.")
 		o.FlareSolverr = false
 	}
-	notes = append(notes, fmt.Sprintf("bundled qBittorrent %s, bundled FlareSolverr %s", onOff(o.Qbittorrent), onOff(o.FlareSolverr)))
+	notes = append(notes, fmt.Sprintf("bundled qBittorrent %s, bundled FlareSolverr %s, bundled Prowlarr %s, bundled SABnzbd %s", onOff(o.Qbittorrent), onOff(o.FlareSolverr), onOff(o.Prowlarr), onOff(o.SABnzbd)))
 	return o, notes
 }
 
@@ -100,6 +104,16 @@ func AppEnv(o Options, getenv func(string) string) []string {
 	}
 	if o.FlareSolverr && strings.TrimSpace(getenv("ARRMADA_FLARESOLVERR_URL")) == "" {
 		env = append(env, "ARRMADA_FLARESOLVERR_URL="+FlareSolverrURL)
+	}
+	if o.Prowlarr {
+		env = append(env, "ARRMADA_PROWLARR_URL=http://127.0.0.1:9696")
+	} else {
+		env = append(env, "ARRMADA_PROWLARR_URL=")
+	}
+	if o.SABnzbd {
+		env = append(env, "ARRMADA_SABNZBD_URL=http://127.0.0.1:8082", "ARRMADA_SABNZBD_CONFIG="+SABConfigPath(o.DataDir))
+	} else {
+		env = append(env, "ARRMADA_SABNZBD_URL=", "ARRMADA_SABNZBD_CONFIG=")
 	}
 	return env
 }

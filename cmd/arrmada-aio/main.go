@@ -1,9 +1,8 @@
 //go:build linux
 
-// Command arrmada-aio starts the Unraid all-in-one image: Arrmada, plus the bundled
-// qBittorrent and FlareSolverr unless they're switched off, in one container. It runs as
-// root behind tini (PID 1, which reaps orphaned processes and passes the stop signal on),
-// sets up qBittorrent's first config, and supervises the three (internal/aio).
+// Command arrmada-aio starts Arrmada and its optional bundled qBittorrent, FlareSolverr,
+// Prowlarr and SABnzbd services in one Unraid container. It runs as root behind tini,
+// prepares their config and supervises them (internal/aio).
 //
 // The plain image doesn't contain it: there the entrypoint runs Arrmada directly, and
 // the Compose install runs each companion in a container of its own.
@@ -58,6 +57,27 @@ func prepare(o aio.Options) error {
 		// First, so the folder is already PUID's when qBittorrent starts in it.
 		if err := aio.CloseToOthers(o.DataDir, o.UID, o.GID); err != nil {
 			return fmt.Errorf("closing %s to FlareSolverr: %w", o.DataDir, err)
+		}
+	}
+	if o.Prowlarr {
+		profile := aio.ProwlarrProfile(o.DataDir)
+		if err := os.MkdirAll(profile, 0o750); err != nil {
+			return err
+		}
+		if err := aio.ChownTree(profile, o.UID, o.GID); err != nil {
+			return fmt.Errorf("Prowlarr folder: %w", err)
+		}
+	}
+	if o.SABnzbd {
+		profile := aio.SABProfile(o.DataDir)
+		if err := os.MkdirAll(profile, 0o750); err != nil {
+			return err
+		}
+		if _, err := aio.SeedSAB(profile, o.Downloads, o.UID, o.GID); err != nil {
+			return fmt.Errorf("SABnzbd config: %w", err)
+		}
+		if err := aio.ChownTree(profile, o.UID, o.GID); err != nil {
+			return fmt.Errorf("SABnzbd folder: %w", err)
 		}
 	}
 	if o.Qbittorrent {
