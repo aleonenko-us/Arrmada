@@ -2,8 +2,8 @@
 
 [Homepage](https://gethomepage.dev) is a popular start page for a homelab. Arrmada has a
 small read-only summary made for Homepage's `customapi` widget, so your dashboard can show
-how many movies and shows you have, what's wanted, what's downloading, requests waiting,
-what needs you, disk space and whether an update is out.
+how many movies, shows, books and (with Music on) albums you have, what's wanted, what's
+downloading, requests waiting, what needs you, disk space and whether an update is out.
 
 ![Arrmada's card on a Homepage dashboard](images/homepage-widget.png)
 
@@ -143,7 +143,8 @@ address you open Arrmada on.
 ```json
 {
   "movies": 412, "shows": 38, "episodes": 2210, "books": 96,
-  "wanted": { "movies": 3, "episodes": 14, "books": 2, "total": 19 },
+  "artists": 57, "albums": 340, "tracks": 4120,
+  "wanted": { "movies": 3, "episodes": 14, "books": 2, "albums": 4, "total": 23 },
   "queue": { "ok": true, "total": 9, "downloading": 2, "seeding": 6, "stalled": 1,
              "paused": 0, "errored": 0, "down_speed": 5242880, "up_speed": 131072 },
   "requests_pending": 2,
@@ -160,8 +161,10 @@ Use dots for nested fields (`queue.downloading`).
 | Field | What it is | Format |
 | --- | --- | --- |
 | `movies`, `shows`, `episodes`, `books` | How many are in the library. | `number` |
+| `artists`, `albums`, `tracks` | Music: artists in the library, albums with at least one track on disk, and tracks on disk. `0` while the Music module is off. | `number` |
 | `wanted.movies`, `wanted.episodes`, `wanted.books` | Monitored and still without a file — what Arrmada is searching for. Episodes count only aired ones of shows whose searching is on. | `number` |
-| `wanted.total` | The three added up. | `number` |
+| `wanted.albums` | Music: released albums Arrmada is searching for — monitored albums of monitored artists still missing tracks (albums not out yet don't count). `0` while the Music module is off. | `number` |
+| `wanted.total` | Those four added up. | `number` |
 | `queue.downloading` | Unfinished downloads that aren't stalled, paused or errored (including ones waiting a moment for peers). | `number` |
 | `queue.seeding` | Finished torrents still seeding. | `number` |
 | `queue.stalled` | Unfinished downloads that have made no progress for half an hour — the same count as the Stalled pill in Activity → Queue. | `number` |

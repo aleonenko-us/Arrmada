@@ -9,26 +9,30 @@ import (
 	"github.com/tristenlammi/arrmada/internal/requests"
 )
 
-// CalendarItem is one dated entry (episode or movie) in the Calendar.
+// CalendarItem is one dated entry (episode, movie or album) in the Calendar.
 type CalendarItem struct {
 	Date      string `json:"date"` // YYYY-MM-DD
-	Type      string `json:"type"` // "episode" | "movie"
+	Type      string `json:"type"` // "episode" | "movie" | "album"
 	Title     string `json:"title"`
 	Subtitle  string `json:"subtitle"` // kept for older clients; new ones build their own line from the fields below
 	PosterURL string `json:"poster_url,omitempty"`
-	RefID     int64  `json:"ref_id"` // series id or movie id (for linking)
+	RefID     int64  `json:"ref_id"` // series, movie or album id (for linking)
 	HasFile   bool   `json:"has_file"`
 	Monitored bool   `json:"monitored"` // searched for (an episode: it is wanted and its show's searching is on)
-	// SearchingOff: an episode that is wanted, of a show whose searching is off.
+	// SearchingOff: an episode that is wanted, of a show whose searching is off (an album:
+	// wanted, of an artist switched off).
 	SearchingOff bool `json:"searching_off,omitempty"`
 	// TMDBID and MediaType open the title's Discover page, the only title page a
 	// requester can reach (staff link to ref_id instead).
 	TMDBID       int    `json:"tmdb_id"`
-	MediaType    string `json:"media_type"` // "movie" | "series"
+	MediaType    string `json:"media_type"` // "movie" | "series" | "music"
 	Year         int    `json:"year,omitempty"`
 	Season       int    `json:"season,omitempty"`
 	Episode      int    `json:"episode,omitempty"`
 	EpisodeTitle string `json:"episode_title,omitempty"`
+	// An album's artist and kind (Album, EP, Single…). Albums are staff-only.
+	Artist    string `json:"artist,omitempty"`
+	AlbumType string `json:"album_type,omitempty"`
 	// CanonicalTitle is the title's own (TMDB English) name when Title is the shown one
 	// (Settings → Library → "Show titles as"); never sent, only judged by the adult filter.
 	CanonicalTitle string `json:"-"`
@@ -37,9 +41,10 @@ type CalendarItem struct {
 	RequestedByMe bool `json:"requested_by_me"`
 }
 
-// handleCalendar returns upcoming episodes + movie releases in a date window. Defaults to a
-// window around today when start/end aren't given. Available to any signed-in user. Each
-// item says whether the viewer requested it; ?mine=1 keeps only those.
+// handleCalendar returns upcoming episodes + movie releases in a date window (and, for
+// staff while Music is on, album releases). Defaults to a window around today when
+// start/end aren't given. Available to any signed-in user. Each item says whether the
+// viewer requested it; ?mine=1 keeps only those.
 func (a *api) handleCalendar(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	start := q.Get("start")
@@ -53,9 +58,10 @@ func (a *api) handleCalendar(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
-	items := a.calendarItems(ctx, start, end)
+	u, _ := userFrom(r)
+	items := a.calendarItems(ctx, start, end, a.calendarMusicFor(ctx, u))
 	mine := q.Get("mine") == "1"
-	if u, ok := userFrom(r); ok && u != nil {
+	if u != nil {
 		items = a.markRequestedBy(ctx, items, u.ID, mine)
 	} else if mine {
 		items = []CalendarItem{}
@@ -64,9 +70,10 @@ func (a *api) handleCalendar(w http.ResponseWriter, r *http.Request) {
 }
 
 // calendarItems is every library episode and movie release dated within [start, end]
-// (inclusive, YYYY-MM-DD). A source that fails is left out rather than failing the whole
-// calendar: half a schedule beats an error page.
-func (a *api) calendarItems(ctx context.Context, start, end string) []CalendarItem {
+// (inclusive, YYYY-MM-DD), and with albums the library's album releases too
+// (calendarMusicFor says who sees them). A source that fails is left out rather than
+// failing the whole calendar: half a schedule beats an error page.
+func (a *api) calendarItems(ctx context.Context, start, end string, albums bool) []CalendarItem {
 	items := []CalendarItem{}
 	if a.deps.Series == nil || a.deps.Movies == nil {
 		return items // only in tests that build a server without the libraries
@@ -95,6 +102,9 @@ func (a *api) calendarItems(ctx context.Context, start, end string) []CalendarIt
 			})
 		}
 	}
+	if albums {
+		items = append(items, a.calendarAlbums(ctx, start, end)...)
+	}
 	// The adult filter is always on, for every feed built from these: a title shown under
 	// a clean display name is still judged by its own name too.
 	kept := items[:0]
@@ -107,9 +117,10 @@ func (a *api) calendarItems(ctx context.Context, start, end string) []CalendarIt
 }
 
 // calendarAdult reports whether an item names adult content: its shown title, its own
-// title or its episode's.
+// title, its episode's or its artist.
 func calendarAdult(it CalendarItem) bool {
-	return adultfilter.Matches(it.Title) || adultfilter.Matches(it.CanonicalTitle) || adultfilter.Matches(it.EpisodeTitle)
+	return adultfilter.Matches(it.Title) || adultfilter.Matches(it.CanonicalTitle) || adultfilter.Matches(it.EpisodeTitle) ||
+		adultfilter.Matches(it.Artist)
 }
 
 // markRequestedBy sets RequestedByMe on the items user uid asked for or follows, and with

@@ -112,7 +112,7 @@ func TestRecentActivityUnionsEveryModule(t *testing.T) {
 		}
 	}
 
-	got := a.recentActivity(ctx)
+	got := a.recentActivity(ctx, true)
 	if len(got) != 4 {
 		t.Fatalf("got %d events, want one from each module: %+v", len(got), got)
 	}

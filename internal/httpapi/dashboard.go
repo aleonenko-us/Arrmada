@@ -35,11 +35,13 @@ type dashboardPayload struct {
 	PlexConfigured bool `json:"plex_configured"`
 	// JellyfinConfigured: a Jellyfin address and key are set. Now playing lists both
 	// servers' streams, each with its server.
-	JellyfinConfigured bool            `json:"jellyfin_configured"`
-	Queue              queueSummary    `json:"queue"`
-	QueueNote          string          `json:"queue_note,omitempty"`
-	Library            libraryCounts   `json:"library"`
-	Activity           []activityEvent `json:"activity"`
+	JellyfinConfigured bool          `json:"jellyfin_configured"`
+	Queue              queueSummary  `json:"queue"`
+	QueueNote          string        `json:"queue_note,omitempty"`
+	Library            libraryCounts `json:"library"`
+	// Music is Music's counts, new releases and imports; absent while the module is off.
+	Music    *dashboardMusic `json:"music,omitempty"`
+	Activity []activityEvent `json:"activity"`
 	// Listening is who's listening to audiobooks right now. AudioOff: the audiobook
 	// server isn't running, so there's nothing to show.
 	Listening []nowListening `json:"listening"`
@@ -135,8 +137,6 @@ type libraryCounts struct {
 	EpisodesMissing int `json:"episodes_missing"`
 	Books           int `json:"books"`
 	BooksMissing    int `json:"books_missing"`
-	Artists         int `json:"artists"`
-	Albums          int `json:"albums"`
 }
 
 // activityEvent is one line of "what Arrmada actually did", drawn from the per-media
@@ -166,10 +166,12 @@ func (a *api) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), dashboardTimeout)
 	defer cancel()
 
+	music := a.dashboardMusic(ctx)
 	out := dashboardPayload{
 		Storage:  a.storageVolumes(ctx),
 		Library:  a.libraryCounts(ctx),
-		Activity: a.recentActivity(ctx),
+		Music:    music,
+		Activity: a.recentActivity(ctx, music != nil),
 	}
 
 	if a.deps.Downloads != nil {
@@ -384,10 +386,7 @@ func (a *api) libraryCounts(ctx context.Context) libraryCounts {
 		  AND e.season_number > 0 AND e.air_date <> '' AND date(e.air_date) <= date('now')`)
 	count(&lc.Books, `SELECT COUNT(*) FROM books`)
 	count(&lc.BooksMissing, `SELECT COUNT(*) FROM books WHERE monitored = 1 AND has_file = 0`)
-	// Library artists only: one that is just credited (featured on someone else's album)
-	// isn't in the library.
-	count(&lc.Artists, `SELECT COUNT(*) FROM artists WHERE in_library = 1`)
-	count(&lc.Albums, `SELECT COUNT(*) FROM albums`)
+	// Music's counts are dashboardMusic's, sent only while the module is on.
 	return lc
 }
 
@@ -395,13 +394,17 @@ func (a *api) libraryCounts(ctx context.Context) libraryCounts {
 // tab. The full history is still on each title's detail page.
 const activityLimit = 20
 
-func (a *api) recentActivity(ctx context.Context) []activityEvent {
+func (a *api) recentActivity(ctx context.Context, withMusic bool) []activityEvent {
 	out := make([]activityEvent, 0, activityLimit)
 	if a.deps.Store == nil {
 		return out
 	}
-	// The newest slice of History's feed (every event, music included).
-	events, err := eventsFeed(ctx, a.deps.Store.DB(), eventsFilter{Limit: activityLimit})
+	// The newest slice of History's feed: every event, music's only while Music is on.
+	f := eventsFilter{Limit: activityLimit}
+	if !withMusic {
+		f.Kinds = []string{"movie", "series", "book"}
+	}
+	events, err := eventsFeed(ctx, a.deps.Store.DB(), f)
 	if err != nil {
 		a.deps.Log.Debug("dashboard: activity feed unavailable", "err", err)
 		return out

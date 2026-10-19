@@ -298,12 +298,12 @@ func TestWidgetCountsOnly(t *testing.T) {
 	walk("", doc)
 	sort.Strings(paths)
 	want := []string{
-		"books", "disk.free_bytes", "disk.lowest_free_bytes", "disk.lowest_free_pct", "disk.ok", "disk.total_bytes",
+		"albums", "artists", "books", "disk.free_bytes", "disk.lowest_free_bytes", "disk.lowest_free_pct", "disk.ok", "disk.total_bytes",
 		"episodes", "health.errors", "health.problems", "health.status", "health.warnings",
 		"latest_version", "movies", "needs_you",
 		"queue.down_speed", "queue.downloading", "queue.errored", "queue.ok", "queue.paused", "queue.seeding", "queue.stalled", "queue.total", "queue.up_speed",
-		"requests_pending", "shows", "update_available", "version",
-		"wanted.books", "wanted.episodes", "wanted.movies", "wanted.total",
+		"requests_pending", "shows", "tracks", "update_available", "version",
+		"wanted.albums", "wanted.books", "wanted.episodes", "wanted.movies", "wanted.total",
 	}
 	if strings.Join(paths, " ") != strings.Join(want, " ") {
 		t.Errorf("fields =\n%v\nwant\n%v", paths, want)
