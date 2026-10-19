@@ -31,5 +31,5 @@ internal/webui/dist/*
 .idea/
 .vscode/
 *.md
-# ...except the third-party notices, which ship in the image (/usr/share/doc/arrmada).
+# ...except the licence notices, which ship in the image (internal/audiotag links LGPL code).
 !THIRD_PARTY_NOTICES.md

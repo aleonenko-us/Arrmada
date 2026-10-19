@@ -3798,6 +3798,8 @@ export interface MusicAlbum {
   /** The album's credit as it reads ("Daft Punk feat. Pharrell Williams"). */
   artist_credit?: string;
   target_edition_id?: number;
+  /** A person chose the edition and keeps it: no automatic switching (MUS-30). */
+  edition_pinned?: boolean;
   /** Album detail only. */
   editions?: MusicEdition[];
   discs?: MusicDisc[];
@@ -4157,6 +4159,43 @@ export interface ImportReview {
   // Its import job: running or queued (someone chose to import it), or the last one,
   // when that failed. Absent otherwise.
   import_job?: Job;
+  /** The music matcher's explanation of why it held the download (MUS-31). */
+  match?: MusicMatchReport;
+}
+
+/** One field's part of a music match distance. */
+export interface MusicMatchComponent {
+  name: string;
+  weight: number;
+  penalty: number;
+  count: number;
+  share: number;
+}
+/** One candidate edition the music matcher weighed. */
+export interface MusicMatchCandidate {
+  album_id: number;
+  release_id: number;
+  album: string;
+  artist?: string;
+  edition: string;
+  target?: boolean;
+  distance: number;
+  fit: number;
+  components: MusicMatchComponent[];
+  tracks?: { file: string; track: string; distance: number; notes?: string[] }[];
+  missing?: string[];
+  extra?: string[];
+}
+/** The music matcher's explanation stored on a review. */
+export interface MusicMatchReport {
+  reason?: string;
+  summary: string;
+  expected?: boolean;
+  threshold: number;
+  candidates?: MusicMatchCandidate[];
+  unplaced?: { file: string; why: string }[];
+  /** "used": AcoustID was asked; "off": it would have been, but no key is set. */
+  fingerprint?: "used" | "off";
 }
 
 // A review import that started (or was already running: existing).
@@ -4167,7 +4206,11 @@ export interface ReviewImportStarted extends JobRef {
 
 // Why a download is held: content that doesn't match, tied to nothing, unreadable episode
 // numbering, an import that keeps failing, or nothing importable inside.
-export type ReviewReason = "mismatch" | "unmatched" | "numbering" | "import_failed" | "no_media";
+// The music matcher adds its own (MUS-31): a doubtful best fit, two editions that fit
+// almost equally, too few of an album's tracks, tags naming another album's recordings, and
+// AcoustID disagreeing with the tags.
+export type ReviewReason = "mismatch" | "unmatched" | "numbering" | "import_failed" | "no_media"
+  | "low_confidence" | "close_editions" | "partial" | "tag_conflict" | "fingerprint_conflict";
 
 // One file inside a held download, with what its name says about episode numbering.
 export interface ReviewFile {

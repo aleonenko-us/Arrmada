@@ -384,10 +384,10 @@ COPY --from=hdrtools /usr/local/bin/dovi_tool /usr/local/bin/hdr10plus_tool /usr
 # kepubify: the KEPUB download for Kobo (internal/kepub). Every variant has it: aio builds
 # FROM this stage.
 COPY --from=kepubify /usr/local/bin/kepubify /usr/local/bin/kepubify
-# The music import writes tags through internal/audiotag, which links TagLib (LGPL-2.1,
-# for Ogg Vorbis and Opus): its notice and how to replace it ship with the binary.
-COPY THIRD_PARTY_NOTICES.md LICENSE /usr/share/doc/arrmada/
 COPY docker/entrypoint.sh /entrypoint.sh
+# The licence and the third-party notices (TagLib, LGPL-2.1, is linked for music tags).
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/arrmada/
+COPY LICENSES/ /usr/share/doc/arrmada/LICENSES/
 RUN chmod +x /entrypoint.sh && whisper-cli --help >/dev/null 2>&1 && kepubify --version
 
 # Runs as root only long enough to fix data-dir ownership, then drops to PUID:PGID.

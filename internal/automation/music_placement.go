@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 
@@ -120,39 +119,37 @@ type placement struct {
 	old      string // the track's file now, when the new one replaces it
 }
 
-// placeMatch places a match's files onto the album's tracks (placeAlbumTracks' work). A
-// track that already has a file only takes the new one when it is a better tier
-// (music.BetterTier); a replaced file goes to the recycle bin first, and with no bin to
-// take it the track is left alone. One file is never two tracks (FileOwner). Nothing here
-// ever deletes or writes the download.
-func (c *Coordinator) placeMatch(ctx context.Context, a music.Artist, al music.Album, tracks []music.Track, m music.MatchResult, releaseTier music.Quality, release string) albumImport {
+// placeMatch places a matcher result (music.MatchResult) onto the album's target tracks:
+// the album already switched to the matched edition when the matcher said so (applyMatch),
+// and the assignments are read onto its tracks. Files it couldn't place stay in the
+// download; extras come only from inside res.ContentRoot.
+func (c *Coordinator) placeMatch(ctx context.Context, a music.Artist, al music.Album, tracks []music.Track, res music.MatchResult, releaseTier music.Quality, release string) albumImport {
+	matched, _ := assignmentsOnto(tracks, res)
+	return c.placeFiles(ctx, a, al, tracks, matched, releaseTier, release, res.ContentRoot)
+}
+
+// placeFiles places files onto an album's target tracks (track id → file). A track that
+// already has a file only takes the new one when it is a better tier (music.BetterTier); a
+// replaced file goes to the recycle bin first, and with no bin to take it the track is
+// left alone. One file is never two tracks (FileOwner). Nothing here ever deletes or
+// writes the download.
+func (c *Coordinator) placeFiles(ctx context.Context, a music.Artist, al music.Album, tracks []music.Track, matched map[int64]music.AudioFile, releaseTier music.Quality, release, contentRoot string) albumImport {
 	var res albumImport
 	defer c.lockAlbum(al.ID)()
 	prefs := c.placementPrefs(ctx)
-	tc, tcErr := c.music.TagContext(ctx, al.ID, m.EditionID)
+	tc, tcErr := c.music.TagContext(ctx, al.ID, al.TargetEditionID)
 	if tcErr != nil && prefs.WriteTags {
 		c.log.Warn("music import: couldn't read the album's edition for tags — placing the files as they are",
 			"album", al.Title, "err", tcErr)
 	}
-	byID := make(map[int64]music.Track, len(tracks))
-	order := make(map[int64]int, len(tracks))
-	for i, t := range tracks {
-		byID[t.ID], order[t.ID] = t, i
-	}
-	as := append([]music.Assignment(nil), m.Assignments...)
-	sort.SliceStable(as, func(i, j int) bool { return order[as[i].ReleaseTrackID] < order[as[j].ReleaseTrackID] })
 
 	var plan []placement
 	taken := map[string]bool{} // two files of this import never get one name
-	for _, asg := range as {
-		t, ok := byID[asg.ReleaseTrackID]
+	for _, t := range tracks { // in the edition's order
+		f, ok := matched[t.ID]
 		if !ok {
-			res.failed++
-			c.log.Warn("music import: a file was matched to a track not on the album's edition — left alone",
-				"album", al.Title, "file", filepath.Base(asg.File.Path))
 			continue
 		}
-		f := asg.File
 		tier, bitrate, probe := c.trackTier(ctx, f.Path, releaseTier)
 		if t.HasFile && !music.BetterTier(music.HeldTier(string(tier), bitrate), c.heldTier(ctx, t)) {
 			res.kept++
@@ -200,7 +197,7 @@ func (c *Coordinator) placeMatch(ctx context.Context, a music.Artist, al music.A
 	} else {
 		placedFrom = c.placeLinked(ctx, al, plan, release, &res)
 	}
-	c.bringExtras(al, m.ContentRoot, release, placedFrom, prefs.Extras)
+	c.bringExtras(al, contentRoot, release, placedFrom, prefs.Extras)
 	return res
 }
 

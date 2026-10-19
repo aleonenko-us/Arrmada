@@ -2,7 +2,6 @@ package archtest
 
 import (
 	"go/ast"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -55,29 +54,5 @@ func TestAudiotagWritesOnlyInStaging(t *testing.T) {
 				return true
 			})
 		}
-	}
-}
-
-// TestThirdPartyNoticesShip: the music import links internal/audiotag, and with it the
-// LGPL-2.1 TagLib (for Ogg), so THIRD_PARTY_NOTICES.md must ship in the image: the
-// Dockerfile copies it, and .dockerignore (which drops *.md) lets it through.
-func TestThirdPartyNoticesShip(t *testing.T) {
-	root := repoRoot(t)
-	if _, err := os.Stat(filepath.Join(root, "THIRD_PARTY_NOTICES.md")); err != nil {
-		t.Fatal(err)
-	}
-	docker, err := os.ReadFile(filepath.Join(root, "Dockerfile"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(docker), "COPY THIRD_PARTY_NOTICES.md LICENSE /usr/share/doc/arrmada/") {
-		t.Error("the Dockerfile doesn't copy THIRD_PARTY_NOTICES.md (and LICENSE) into the image")
-	}
-	ignore, err := os.ReadFile(filepath.Join(root, ".dockerignore"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(ignore), "!THIRD_PARTY_NOTICES.md") {
-		t.Error(".dockerignore drops *.md without letting THIRD_PARTY_NOTICES.md through")
 	}
 }

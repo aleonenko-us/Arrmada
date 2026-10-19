@@ -25,6 +25,7 @@ import (
 	// makes TZ=Australia/Sydney and friends resolve without an OS package.
 	_ "time/tzdata"
 
+	"github.com/tristenlammi/arrmada/internal/acoustid"
 	"github.com/tristenlammi/arrmada/internal/apikeys"
 	"github.com/tristenlammi/arrmada/internal/applog"
 	"github.com/tristenlammi/arrmada/internal/attention"
@@ -430,6 +431,7 @@ func main() {
 	})
 	mbClient.SetLogger(modLog(log, "music"))
 	musicSvc := music.NewService(st.DB(), mbClient, modLog(log, "music"))
+	musicSvc.SetSettingsLookup(settingsSvc.Lookup) // the matcher's thresholds, the edition policy
 	// Music is off by default now (it's a preview), but an install already using it must
 	// not have it switched off underneath it by an upgrade: an unsaved toggle on a library
 	// with artists is pinned on. A saved choice, either way, is never touched.
@@ -688,6 +690,9 @@ func main() {
 	if rep, err := coordinator.RecoverMusicStaging(runCtx); err != nil {
 		log.Error("music: some interrupted staging jobs couldn't be settled — they're kept, nothing was deleted", "err", err, "kept", rep.Kept)
 	}
+	// AcoustID, the music matcher's second pass (MUS-32): off until the owner sets a key.
+	acoustidClient := acoustid.New(keyStore.Func(acoustid.KeyID))
+	coordinator.SetMusicFingerprinter(acoustid.NewFingerprinter(acoustidClient))
 	// Switching Music off in Settings stops its searches, imports and manual actions on the
 	// next cycle; Books keeps its old behaviour (the toggle only hides it) for now.
 	coordinator.SetModuleGate(func(ctx context.Context, module string) bool {
@@ -1433,6 +1438,7 @@ func main() {
 		"opensubtitles_api": subsProvider.Verify,
 		// A typed Hardcover key only; the saved one is tested through Books.
 		"hardcover": hardcover.VerifyKey,
+		"acoustid":  acoustidClient.Verify,
 	}
 	restartCh := make(chan struct{}, 1)
 	// "Move to folder": a title's files to another Movies or TV folder, as a job. A

@@ -160,7 +160,9 @@ var untouched = []string{
 	`SELECT * FROM grabs ORDER BY id`,
 	`SELECT * FROM blocklist ORDER BY id`,
 	`SELECT * FROM search_attempts ORDER BY id`,
-	`SELECT * FROM import_reviews ORDER BY id`,
+	// Named columns: later migrations add their own (0340's match_json).
+	`SELECT id, hash, name, content_path, media_type, expected_id, expected_title, parsed_title, reason, size_bytes,
+	        indexer, status, created_at, resolution, resolved_at, reason_code FROM import_reviews ORDER BY id`,
 	`SELECT * FROM imports ORDER BY id`,
 }
 

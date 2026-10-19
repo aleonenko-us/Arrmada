@@ -1003,7 +1003,7 @@ _Every edition of an album is stored and a target edition is chosen by policy; f
     - **The archtest** (`internal/archtest/musictracks_test.go`) forbids SQL on `tracks` in every Go file, tests included, except `internal/store` (whose migration tests build pre-upgrade databases).
     - **Deferred:** filling `download_hash` (MUS-33 needs it for the seeding check; the import doesn't pass the hash down yet); writing `musicbrainz_old` external ids when MusicBrainz answers under a merged MBID (MUS-26 caches both; moving the artist row to the new id belongs with MUS-13's refresh); the edition picker and re-keying legacy editions (MUS-30).
 <a id="mus-30"></a>
-- [ ] **MUS-30 · Editions: store every release, pick a target by policy, let any acceptable edition satisfy the album, and switch by hand without losing files** — `P1` · `M` · Phase 15 · R2
+- [x] **MUS-30 · Editions: store every release, pick a target by policy, let any acceptable edition satisfy the album, and switch by hand without losing files** — `P1` · `M` · Phase 15 · R2
   - **Problem:** Today each album is read through one implicit edition (the earliest official release), not stored. Lidarr's version of this (one active edition, "most files then most tracks") is its most-reported import failure: a correct standard-edition download fails against a deluxe listing. Arrmada needs every edition stored, a stated policy, and editions that are really the same treated as one. This supersedes [MUS-19](#mus-19).
   - **Approach:** 1. metadata: `AlbumReleases(rgMBID)` from one browse call (`/release?release-group=…&inc=media&limit=100`, paged), giving status, date, country, label, barcode, media summary, track and disc counts; `ReleaseTracks(releaseMBID)` (`inc=recordings+artist-credits+isrcs`) fetched only for the target edition and for matcher candidates. Both through MUS-26's cache.
     2. Store summaries in music_releases (and music_media); full track lists only when fetched (`tracks_fetched = 1`).
@@ -1026,7 +1026,7 @@ _Every edition of an album is stored and a target edition is chosen by policy; f
   - **Risk:** Big box sets have many editions; the browse is paged and track lists are fetched only when needed. Policy defaults may not suit every genre (classical); the per-album pin covers it.
   - **Resolves:** music-5
 <a id="mus-31"></a>
-- [ ] **MUS-31 · A beets-style tiered matcher: confident imports go in, partial albums import what matches, doubtful ones go to Reviews with a per-field breakdown** — `P1` · `L` · Phase 15 · R2
+- [x] **MUS-31 · A beets-style tiered matcher: confident imports go in, partial albums import what matches, doubtful ones go to Reviews with a per-field breakdown** — `P1` · `L` · Phase 15 · R2
   - **Problem:** Import today needs the release name to contain the artist and album, then places files by filename number or exact title (MatchTracks). It can't use tags, editions, durations or MBIDs; it can't tell two pressings apart; and it has no middle ground between "placed" and "unmatched". Lidarr's version has fixed 80%/60% gates that reject a whole album over one track and silently pick between near-identical pressings. Library scans have the same gap (and supersede part of [MUS-20](#mus-20)).
   - **Approach:** Implement [Design: Matcher](#matcher-mus-31) in `internal/music/match/`:
     1. Grouping (disc folders merged, the tag-consensus split rule).
@@ -1053,7 +1053,7 @@ _Every edition of an album is stored and a target edition is chosen by policy; f
   - **Risk:** Thresholds that are too loose place wrong files; too strict floods Reviews. Defaults start stricter than Lidarr for unexpected files and near it for grabbed ones, and are settings. Watch the Reviews volume during MUS-12's soak and tune the defaults before graduation.
   - **Resolves:** music-4, music-5, music-14 (the matching parts)
 <a id="mus-32"></a>
-- [ ] **MUS-32 · AcoustID fingerprints as the matcher's second pass** — `P2` · `M` · Phase 15 · R2
+- [x] **MUS-32 · AcoustID fingerprints as the matcher's second pass** — `P2` · `M` · Phase 15 · R2
   - **Problem:** Files with junk or missing tags and messy names can't be identified from text. AcoustID turns an audio fingerprint into MusicBrainz recording IDs, which is how Picard rescues such files. The owner chose it as a second pass (2026-10-19).
   - **Approach:** 1. **Fingerprinter.** Check whether the bundled jellyfin-ffmpeg has the `chromaprint` muxer (`ffmpeg -hide_banner -muxers`). If yes, fingerprint with `ffmpeg -i f -t 120 -f chromaprint -fp_format base64 -`; if not, add Chromaprint's static `fpcalc` for amd64 and arm64 to the image as its own Dockerfile stage, pinned by SHA-256 like the hdrtools and kepubify stages (LGPL-2.1, added to the notices). Run through toolrun (idle priority).
     2. **Key.** The user's own AcoustID application key, entered in Settings → Connections (an apikeys Hidden entry with a Test button), kept out of logs and the support bundle. No key → the second pass is off and Reviews says "add an AcoustID key to identify files by sound". Never a key in code.

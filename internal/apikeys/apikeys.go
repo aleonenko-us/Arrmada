@@ -88,6 +88,13 @@ var Catalog = []Key{
 		Steps: "Your opensubtitles.com account password.",
 	},
 	{
+		// MUS-32: the music matcher's second pass. Each owner's own key; with none, nothing
+		// calls AcoustID.
+		ID: "acoustid", Label: "AcoustID", Purpose: "Music: identifies files with poor or missing tags by their sound. Optional — off until a key is set.",
+		HelpURL: "https://acoustid.org/new-application", EnvVar: "ARRMADA_ACOUSTID_API_KEY", Secret: true, Testable: true, TestsCandidate: true,
+		Steps: "Sign in at acoustid.org, register an application (free for non-commercial use) and paste its API key.",
+	},
+	{
 		// A URL rather than a key, but it shares the saved-first, env-fallback handling.
 		ID: "flaresolverr", Label: "FlareSolverr URL", Purpose: "Gets TorrentLeech, 1337x and TheXEM past Cloudflare. The Compose install and the all-in-one image bundle one.",
 		HelpURL: "https://github.com/FlareSolverr/FlareSolverr", EnvVar: "ARRMADA_FLARESOLVERR_URL", Secret: false, Testable: true,

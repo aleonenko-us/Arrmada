@@ -35,13 +35,13 @@ func requireFFmpegIT(t *testing.T) {
 	}
 }
 
-// makeTrack encodes 12 s of noise (big enough for the import's 256 KB floor) with tags
-// of its own that the house tags must replace (title) or keep (genre).
-func makeTrack(t *testing.T, path string, codec ...string) {
+// makeTrack encodes 12 s of noise (big enough for the import's 256 KB floor), titled as
+// its track so the matcher knows it, with a genre the house tags keep as found.
+func makeTrack(t *testing.T, path, title string, codec ...string) {
 	t.Helper()
 	args := []string{"-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anoisesrc=d=12:c=pink:r=44100:a=0.3", "-ac", "2"}
 	args = append(args, codec...)
-	args = append(args, "-metadata", "title=Old Title", "-metadata", "genre=Shoegaze", path)
+	args = append(args, "-metadata", "title="+title, "-metadata", "genre=Shoegaze", path)
 	if out, err := exec.Command("ffmpeg", args...).CombinedOutput(); err != nil {
 		t.Fatalf("ffmpeg: %v\n%s", err, out)
 	}
@@ -144,8 +144,8 @@ func houseImportOne(t *testing.T, ext string, codec []string) {
 		t.Fatal(err)
 	}
 	src1, src2 := filepath.Join(dl, "01 - One"+ext), filepath.Join(dl, "02 - Two"+ext)
-	makeTrack(t, src1, codec...)
-	makeTrack(t, src2, codec...)
+	makeTrack(t, src1, "One", codec...)
+	makeTrack(t, src2, "Two", codec...)
 	if err := os.Link(src1, filepath.Join(t.TempDir(), "seeding"+ext)); err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func houseImportOne(t *testing.T, ext string, codec []string) {
 	}
 	var found string
 	_ = db.QueryRowContext(h.ctx, `SELECT tags_json FROM music_track_files WHERE path = ?`, two.FilePath).Scan(&found)
-	if !strings.Contains(found, "Old Title") {
+	if !strings.Contains(found, "Shoegaze") {
 		t.Errorf("tags as found weren't kept: %q", found)
 	}
 }

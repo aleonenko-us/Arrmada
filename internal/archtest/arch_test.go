@@ -269,6 +269,89 @@ func TestNoBackgroundContextInHandlers(t *testing.T) {
 	}
 }
 
+// TestAudiotagNoticeShips: internal/audiotag links TagLib (LGPL-2.1) into the binary, so
+// THIRD_PARTY_NOTICES.md must say so and ship in the image: the Docker context keeps it
+// (.dockerignore drops other Markdown) and the image copies it.
+func TestAudiotagNoticeShips(t *testing.T) {
+	root := repoRoot(t)
+	read := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	if n := read("THIRD_PARTY_NOTICES.md"); !strings.Contains(n, "go.senan.xyz/taglib") || strings.Contains(n, "not in the shipped binary") {
+		t.Error("THIRD_PARTY_NOTICES.md must name go-taglib and say it ships")
+	}
+	if !strings.Contains(read(".dockerignore"), "!THIRD_PARTY_NOTICES.md") {
+		t.Error(".dockerignore drops *.md: it must keep THIRD_PARTY_NOTICES.md for the image")
+	}
+	if !strings.Contains(read("Dockerfile"), "THIRD_PARTY_NOTICES.md /usr/share/doc/arrmada/") {
+		t.Error("the Dockerfile must copy THIRD_PARTY_NOTICES.md into the image")
+	}
+	// LGPL-2.1 §1/§6: the full licence text goes with the binary, not just a link to it.
+	if lgpl := read("LICENSES/LGPL-2.1.txt"); !strings.Contains(lgpl, "GNU LESSER GENERAL PUBLIC LICENSE") ||
+		!strings.Contains(lgpl, "END OF TERMS AND CONDITIONS") {
+		t.Error("LICENSES/LGPL-2.1.txt must hold the full LGPL-2.1 text")
+	}
+	if !strings.Contains(read("Dockerfile"), "COPY LICENSES/ /usr/share/doc/arrmada/LICENSES/") {
+		t.Error("the Dockerfile must copy LICENSES/ into the image")
+	}
+	// Apache-2.0 §4(d): wazero's NOTICE travels with it.
+	if !strings.Contains(read("THIRD_PARTY_NOTICES.md"), "Copyright 2020-2023 wazero authors") {
+		t.Error("THIRD_PARTY_NOTICES.md must reproduce wazero's NOTICE")
+	}
+}
+
+// TestAudiotagImportersKnown: only the music import uses tags — the matcher reads them,
+// placement builds the house set and its staging step writes it; anything else that starts
+// importing internal/audiotag is a new place LGPL code is used, which the notices should
+// account for. Add it here when it's deliberate.
+func TestAudiotagImportersKnown(t *testing.T) {
+	root := repoRoot(t)
+	allowed := map[string]bool{
+		"internal/automation/music_match.go":     true,
+		"internal/automation/music_placement.go": true,
+		"internal/automation/music_retag.go":     true,
+		"internal/music/housetags.go":            true,
+		"internal/music/stage/job.go":            true,
+	}
+	const pkg = `"github.com/tristenlammi/arrmada/internal/audiotag"`
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if name := d.Name(); p != root && (name == "node_modules" || name == "web" || strings.HasPrefix(name, ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		rel := filepath.ToSlash(strings.TrimPrefix(p, root+string(filepath.Separator)))
+		if strings.HasPrefix(rel, "internal/audiotag/") {
+			return nil
+		}
+		f, perr := parser.ParseFile(token.NewFileSet(), p, nil, parser.ImportsOnly)
+		if perr != nil {
+			return nil
+		}
+		for _, imp := range f.Imports {
+			if imp.Path.Value == pkg && !allowed[rel] {
+				t.Errorf("%s imports internal/audiotag — a new user of the LGPL tag code: check THIRD_PARTY_NOTICES.md covers it, then list it in TestAudiotagImportersKnown", rel)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestOneMusicBrainzClient: only main builds a MusicBrainz client. Every client shares the
 // one rate limiter, but a client built elsewhere would carry its own config and logger and
 // invite a way round the shared cache. Tests may build their own.

@@ -222,11 +222,13 @@ GET /api/v1/movies/{id}/title-choices staff -
 GET /api/v1/movies/{id}/versions staff -
 GET /api/v1/movies/{id}/watch-stats staff -
 GET /api/v1/music/albums/{id} staff -
+GET /api/v1/music/albums/{id}/editions staff -
 GET /api/v1/music/albums/{id}/rename staff -
 GET /api/v1/music/artists staff -
 GET /api/v1/music/artists/{id} staff -
 GET /api/v1/music/artists/{id}/history staff -
 GET /api/v1/music/lookup staff -
+GET /api/v1/music/matching staff -
 GET /api/v1/music/naming/presets staff -
 GET /api/v1/music/naming/preview staff -
 GET /api/v1/music/organize staff -
@@ -566,9 +568,11 @@ PUT /api/v1/movies/{id}/display-title staff -
 PUT /api/v1/movies/{id}/monitor staff -
 PUT /api/v1/movies/{id}/profile staff -
 PUT /api/v1/movies/{id}/versions/{vid} staff -
+PUT /api/v1/music/albums/{id}/edition staff -
 PUT /api/v1/music/albums/{id}/monitor staff -
 PUT /api/v1/music/artists/{id}/monitor staff -
 PUT /api/v1/music/artists/{id}/profile staff -
+PUT /api/v1/music/matching staff -
 PUT /api/v1/notifications/{id} admin -
 PUT /api/v1/quality/profiles/{id} staff -
 PUT /api/v1/series/episodes/{eid}/monitor staff -

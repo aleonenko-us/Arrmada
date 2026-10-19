@@ -4,53 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strconv"
 	"strings"
 )
 
-// Placement (MUS-33, MUS-34, MUS-36): after the matcher decides which edition a group of
-// files is and which file is which track, placement decides how each file lands: its
-// house tags, its name, its extras. This file is the boundary between the two.
-
-// MatchResult is what the matcher decided for one group of files: the edition they are,
-// each file's release track, the files it couldn't place, and why (the score breakdown,
-// for the album's history and Reviews).
-type MatchResult struct {
-	AlbumID     int64
-	EditionID   int64 // the edition the files were matched to (0 = the album's target)
-	Assignments []Assignment
-	Unmatched   []AudioFile
-	Score       *ScoreBreakdown
-	// ContentRoot is the folder the files were found in (the download's folder, or one
-	// album's folder inside a discography). Extras only ever come from inside it; "" (or a
-	// single-file download) brings none, so a download saved straight into the downloads
-	// folder never pulls in its neighbours' files.
-	ContentRoot string
-}
-
-// Assignment is one file placed on one release track.
-type Assignment struct {
-	File           AudioFile
-	ReleaseTrackID int64
-}
-
-// ScoreBreakdown is the matcher's distance and its parts (MUS-31); placement only carries
-// it along.
-type ScoreBreakdown struct {
-	Distance   float64            `json:"distance"`
-	Components map[string]float64 `json:"components,omitempty"`
-	Notes      []string           `json:"notes,omitempty"`
-}
-
-// MatchFromTracks adapts today's track matching (MatchTracks: release track id → file)
-// to a MatchResult against the album's target edition.
-func MatchFromTracks(al Album, matched map[int64]AudioFile, unmatched []AudioFile, contentRoot string) MatchResult {
-	r := MatchResult{AlbumID: al.ID, EditionID: al.TargetEditionID, Unmatched: unmatched, ContentRoot: contentRoot}
-	for id, f := range matched {
-		r.Assignments = append(r.Assignments, Assignment{File: f, ReleaseTrackID: id})
-	}
-	return r
-}
+// Placement (MUS-33, MUS-34, MUS-36): after the matcher (MatchResult, matcher.go) decides
+// which edition a group of files is and which file is which track, placement decides how
+// each file lands: its house tags, its name, its extras. This is what placement reads.
 
 // VariousArtistsMBID is MusicBrainz's "Various Artists" special artist.
 const VariousArtistsMBID = "89ad4ac3-39f7-470e-963a-56509c546377"
@@ -242,16 +201,4 @@ type FileFacts struct {
 	Codec      string
 	BitDepth   int
 	SampleRate int
-}
-
-// yearOf reads the year from a MusicBrainz date ("1997-05-21", "1997").
-func yearOf(date string) int {
-	if len(date) < 4 {
-		return 0
-	}
-	y, err := strconv.Atoi(date[:4])
-	if err != nil || y <= 0 {
-		return 0
-	}
-	return y
 }
