@@ -9,8 +9,10 @@ import (
 )
 
 // seriesPlacement is where show s's episodes go: the importer (its TV folder fixed to the
-// folder the show's folder is in) and the show folder's name ("" = a new folder named by
-// the scheme). It refuses — with a *series.ShowFolderError — when that isn't safe:
+// folder the show's folder is in, so a show in the Anime folder never grows a second copy
+// in the default one; Using(ctx), so a hand import running as a job hears its own copies)
+// and the show folder's name ("" = a new folder named by the scheme). It refuses — with a
+// *series.ShowFolderError — when that isn't safe:
 //
 //   - the show has files, but none in a folder of its own (all in a folder named like a
 //     season, or one other shows' files are in), so where it lives can't be told;

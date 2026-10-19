@@ -391,6 +391,14 @@ func (m *Mover) plan(ctx context.Context, t title, dest Folder) ([]movePlan, err
 		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
 			return nil, fmt.Errorf("%w: can't place %s under %s", ErrBadPath, dir, dest.Path)
 		}
+		// A show's files in a folder named like a season right inside the library folder
+		// (<TV>/S13/…) were put there by mistake (#56): moving that folder along would carry
+		// the mistake to the new library folder.
+		if t.media == MediaSeries && rel == filepath.Base(dir) {
+			if _, season := library.SeasonFolderNumber(rel); season {
+				return nil, fmt.Errorf("%w: some of %s's files are in %s, a folder named like a season — put them back into the show's folder first (the show's page offers to)", ErrBadPath, t.name, dir)
+			}
+		}
 		if other, err := m.sharedWith(ctx, t, dir); err != nil {
 			return nil, err
 		} else if other != "" {

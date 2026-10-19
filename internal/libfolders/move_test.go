@@ -268,6 +268,31 @@ func TestMoveShowFolder(t *testing.T) {
 	}
 }
 
+// A show with files the #56 bug put in <TV>/S13/Season 12 isn't moved: the folder named
+// like a season would be carried to the new library folder as it is.
+func TestMoveRefusesASeasonNamedShowFolder(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	anime := f.add(t, MediaSeries, "anime", RuleAnime)
+	own := writeFile(t, filepath.Join(f.tv, "Frieren", "S01", "Frieren - S01E01.mkv"), "e1")
+	lost := writeFile(t, filepath.Join(f.tv, "S13", "Season 12", "Frieren - S12E01.mkv"), "e2")
+	db := f.st.DB()
+	if _, err := db.Exec(`INSERT INTO series (id, tmdb_id, title) VALUES (1, 209867, 'Frieren')`); err != nil {
+		t.Fatal(err)
+	}
+	for i, p := range []string{own, lost} {
+		if _, err := db.Exec(`INSERT INTO episodes (series_id, season_number, episode_number, has_file, file_path) VALUES (1, ?, 1, 1, ?)`, i+1, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m, _ := f.mover(t, filepath.Join(f.base, "bin"))
+	if _, err := m.Move(ctx, MediaSeries, 1, anime.ID, nil); !errors.Is(err, ErrBadPath) || !strings.Contains(err.Error(), "named like a season") {
+		t.Fatalf("move = %v, want refused", err)
+	}
+	readFile(t, own)
+	readFile(t, lost)
+}
+
 func TestMoveRefusals(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
