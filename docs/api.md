@@ -150,6 +150,13 @@ film, say. When nothing changes it, it is the same as `title`.
 - The setting is `display_title_mode` (`english`, `original` or `language`),
   `display_title_language` (a language code, for `language`) and `display_title_original_in`
   (language codes) in `GET`/`PUT /api/v1/settings`.
+- Overviews work the same way: `overview` is always TMDB's English overview, and
+  `display_overview` is the overview in the setting's language, sent only when the mode is
+  `language` and TMDB has the overview translated (otherwise it is absent and `overview` is
+  what the app shows). `GET /api/v1/movies/{id}`, `GET /api/v1/series/{id}`, the Discover
+  detail (`GET /api/v1/media/{media}/{id}`, and its `card`) and the trending cards
+  (`GET /api/v1/discover/trending`) carry it. The `english` and `original` modes and
+  `display_title_original_in` never change overviews; seasons and episodes keep English ones.
 
 ### Books: details edited by hand
 
