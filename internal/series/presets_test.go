@@ -74,7 +74,7 @@ func TestApplyMonitorPreset(t *testing.T) {
 	} {
 		t.Run(tc.preset, func(t *testing.T) {
 			repo, id := presetShow(t)
-			if err := repo.ApplyMonitorPreset(t.Context(), id, tc.preset, nil); err != nil {
+			if err := repo.ApplyMonitorPreset(t.Context(), id, tc.preset, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			eps, seasons := monitoredSet(t, repo, id)
@@ -91,16 +91,16 @@ func TestApplyMonitorPreset(t *testing.T) {
 	}
 	repo, id := presetShow(t)
 	off := false
-	if err := repo.ApplyMonitorPreset(t.Context(), id, PresetLatestSeason, &off); err != nil {
+	if err := repo.ApplyMonitorPreset(t.Context(), id, PresetLatestSeason, &off, nil); err != nil {
 		t.Fatal(err)
 	}
 	if sr, _ := repo.Get(t.Context(), id); sr.MonitorNewSeasons {
 		t.Error("an explicit monitor_new_seasons overrides the preset's own choice")
 	}
-	if err := repo.ApplyMonitorPreset(t.Context(), id, "everything", nil); !errors.Is(err, ErrUnknownPreset) {
+	if err := repo.ApplyMonitorPreset(t.Context(), id, "everything", nil, nil); !errors.Is(err, ErrUnknownPreset) {
 		t.Errorf("unknown preset = %v, want ErrUnknownPreset", err)
 	}
-	if err := repo.ApplyMonitorPreset(t.Context(), 999, PresetAll, nil); !errors.Is(err, ErrNotFound) {
+	if err := repo.ApplyMonitorPreset(t.Context(), 999, PresetAll, nil, nil); !errors.Is(err, ErrNotFound) {
 		t.Errorf("missing show = %v, want ErrNotFound", err)
 	}
 }
@@ -110,7 +110,7 @@ func TestApplyMonitorPreset(t *testing.T) {
 func TestEpisodeMonitorSyncsSeasonFlag(t *testing.T) {
 	repo, id := presetShow(t)
 	ctx := t.Context()
-	if err := repo.ApplyMonitorPreset(ctx, id, PresetNone, nil); err != nil {
+	if err := repo.ApplyMonitorPreset(ctx, id, PresetNone, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	ss, _ := repo.SeasonsFor(ctx, id)

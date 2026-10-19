@@ -83,6 +83,9 @@ func (r *Repo) MonitorOnlySeasons(ctx context.Context, id int64, seasons map[int
 		if _, err := tx.ExecContext(ctx, `UPDATE series SET monitor_new_seasons = ? WHERE id = ?`, b2i(newSeasons), id); err != nil {
 			return err
 		}
+		if err := markCustomTx(ctx, tx, id); err != nil {
+			return err
+		}
 		if err := syncSeasonsTx(ctx, tx, id, -1, newSeasons); err != nil {
 			return err
 		}
@@ -106,13 +109,17 @@ func (r *Repo) monitorForRequest(ctx context.Context, id int64, seasons []int, w
 			for _, q := range []string{
 				`UPDATE seasons SET monitored = 1 WHERE series_id = ? AND season_number > 0`,
 				`UPDATE episodes SET monitored = 1 WHERE series_id = ? AND season_number > 0`,
-				`UPDATE series SET monitor_new_seasons = 1, monitored = 1 WHERE id = ?`,
+				`UPDATE series SET monitor_new_seasons = 1, monitored = 1, monitor_preset = '` + PresetAll + `' WHERE id = ?`,
 			} {
 				if _, err := tx.ExecContext(ctx, q, id); err != nil {
 					return err
 				}
 			}
 			return nil
+		}
+		// Some seasons turned on by a request: no preset's rule says that.
+		if err := markCustomTx(ctx, tx, id); err != nil {
+			return err
 		}
 		in, args := seasonIn(seasons)
 		withID := append([]any{id}, args...)

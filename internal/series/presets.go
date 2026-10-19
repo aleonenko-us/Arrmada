@@ -22,6 +22,11 @@ const (
 	PresetNone         = "none"          // nothing (specials included)
 )
 
+// PresetCustom is what a show remembers (Series.MonitorPreset) once its seasons or
+// episodes were changed one by one after a preset: no preset's rule describes it any
+// more. It isn't a preset itself — it can't be applied.
+const PresetCustom = "custom"
+
 // KeyMonitorDefault is the setting naming the preset a new show gets when the add doesn't
 // choose one (the add dialog pre-selects it; requests use it as is).
 const KeyMonitorDefault = "series_monitor_default"
@@ -52,8 +57,10 @@ const airedSQL = `(air_date <> '' AND date(air_date) <= date('now'))`
 
 // ApplyMonitorPreset sets every regular episode's monitored flag by the preset's rule, sets
 // "monitor new seasons" (the preset's own choice unless newSeasons overrides it) and derives
-// each season's flag from its episodes — all in one transaction.
-func (r *Repo) ApplyMonitorPreset(ctx context.Context, id int64, preset string, newSeasons *bool) error {
+// each season's flag from its episodes and remembers the preset — all in one transaction.
+// monitored, when set, also sets the show's search gate in that transaction (picking a
+// preset on the series page turns searching on).
+func (r *Repo) ApplyMonitorPreset(ctx context.Context, id int64, preset string, newSeasons, monitored *bool) error {
 	if !ValidPreset(preset) {
 		return fmt.Errorf("%w: %q", ErrUnknownPreset, preset)
 	}
@@ -98,8 +105,13 @@ func (r *Repo) ApplyMonitorPreset(ctx context.Context, id int64, preset string, 
 				return err
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE series SET monitor_new_seasons = ? WHERE id = ?`, b2i(mns), id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE series SET monitor_new_seasons = ?, monitor_preset = ? WHERE id = ?`, b2i(mns), preset, id); err != nil {
 			return err
+		}
+		if monitored != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE series SET monitored = ? WHERE id = ?`, b2i(*monitored), id); err != nil {
+				return err
+			}
 		}
 		return syncSeasonsTx(ctx, tx, id, -1, mns)
 	})
@@ -128,7 +140,14 @@ func syncSeasonsTx(ctx context.Context, tx *sql.Tx, seriesID int64, season int, 
 // ApplyMonitorPreset applies a monitoring preset to a show (see Repo.ApplyMonitorPreset).
 // It doesn't touch the pause gate.
 func (s *Service) ApplyMonitorPreset(ctx context.Context, id int64, preset string, newSeasons *bool) error {
-	return s.repo.ApplyMonitorPreset(ctx, id, preset, newSeasons)
+	return s.repo.ApplyMonitorPreset(ctx, id, preset, newSeasons, nil)
+}
+
+// markCustomTx records that a show's seasons or episodes were changed one by one, so the
+// preset it remembers no longer describes them.
+func markCustomTx(ctx context.Context, tx *sql.Tx, seriesID int64) error {
+	_, err := tx.ExecContext(ctx, `UPDATE series SET monitor_preset = ? WHERE id = ?`, PresetCustom, seriesID)
+	return err
 }
 
 // SetMonitorDefaultFunc installs where the default preset for new shows is read from

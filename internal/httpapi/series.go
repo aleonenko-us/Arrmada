@@ -455,8 +455,9 @@ func (a *api) handleSetSeriesMonitored(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// All optional: the "monitor new seasons" checkbox and the preset menu mustn't pause
-	// the show by leaving monitored out. A preset applies first.
+	// All optional: the "monitor new seasons" checkbox mustn't turn searching off by
+	// leaving monitored out. A preset applies first and turns searching on unless
+	// monitored says otherwise (series.SetMonitoring).
 	var req struct {
 		Monitored         *bool  `json:"monitored"`
 		Preset            string `json:"preset"`
@@ -466,11 +467,12 @@ func (a *api) handleSetSeriesMonitored(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	if _, err := a.deps.Series.Get(ctx, id); errors.Is(err, series.ErrNotFound) {
+	before, err := a.deps.Series.Get(ctx, id)
+	if errors.Is(err, series.ErrNotFound) {
 		a.writeError(w, http.StatusNotFound, "series not found")
 		return
 	}
-	err := a.deps.Series.SetMonitoring(ctx, id, series.MonitorChange{
+	err = a.deps.Series.SetMonitoring(ctx, id, series.MonitorChange{
 		Monitored: req.Monitored, Preset: req.Preset, NewSeasons: req.MonitorNewSeasons,
 	})
 	if errors.Is(err, series.ErrUnknownPreset) {
@@ -486,7 +488,11 @@ func (a *api) handleSetSeriesMonitored(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "could not load series")
 		return
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"monitored": s.Monitored, "monitor_new_seasons": s.MonitorNewSeasons})
+	// resumed: this change turned the show's searching on, so the page can say so.
+	a.writeJSON(w, http.StatusOK, map[string]any{
+		"monitored": s.Monitored, "monitor_new_seasons": s.MonitorNewSeasons, "monitor_preset": s.MonitorPreset,
+		"resumed": s.Monitored && !before.Monitored,
+	})
 }
 
 func (a *api) handleSetSeriesProfile(w http.ResponseWriter, r *http.Request) {
