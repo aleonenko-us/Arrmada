@@ -766,6 +766,11 @@ func (s *Service) attachExisting(ctx context.Context, m Movie, video, eventPrefi
 		if err := r.ClearConvertedFrom(ctx, m.ID, 0); err != nil {
 			return err
 		}
+		// A found file has no known release (clearing the file cleared it already; this
+		// makes sure no older record's release is inherited).
+		if err := r.SetSourceRelease(ctx, m.ID, ""); err != nil {
+			return err
+		}
 		_ = r.AddEvent(ctx, m.ID, "detected", eventPrefix+filepath.Base(video))
 		return s.enqueue(ctx, tx, outbox.TopicMovieImported,
 			outbox.MovieImported{MovieID: m.ID, VersionID: 0, Path: video}, movieKey(m.ID))
@@ -1010,19 +1015,26 @@ func (s *Service) MarkImportedTo(ctx context.Context, id, versionID int64, path,
 	// downloaded, Convert, Subtitles and the requester are certain to hear about it. If
 	// anything fails nothing is written, and the import's attach is retried.
 	err = s.repo.inTx(ctx, func(tx *sql.Tx, r *Repo) error {
+		// The release goes with the file: a new file with no known release keeps none of the
+		// old one's (the same path keeps it — the same file attached again).
+		release, setRelease := sourceRelease, sourceRelease != "" || target.FilePath != path
 		if target.IsDefault {
 			if err := setDefaultFileIn(ctx, r, id, path, media); err != nil {
 				return err
 			}
-			if sourceRelease != "" {
-				_ = r.SetSourceRelease(ctx, id, sourceRelease)
+			if setRelease {
+				if err := r.SetSourceRelease(ctx, id, release); err != nil {
+					return err
+				}
 			}
 		} else {
 			if err := r.SetVersionFile(ctx, target.ID, path, size, media); err != nil {
 				return err
 			}
-			if sourceRelease != "" {
-				_ = r.SetVersionSourceRelease(ctx, target.ID, sourceRelease)
+			if setRelease {
+				if err := r.SetVersionSourceRelease(ctx, target.ID, release); err != nil {
+					return err
+				}
 			}
 		}
 		// A new file: whatever an earlier one was before Convert shrank it says nothing
@@ -1580,6 +1592,47 @@ func (s *Service) setDefaultFileWith(ctx context.Context, id int64, path string,
 	})
 }
 
+// adoptDefaultFile records the file a rescan found in m's folder in place of the one m
+// recorded. The release and pre-conversion baseline recorded for the old file are cleared
+// in the same transaction unless the new one is plainly the same file renamed outside
+// Arrmada (sameFileRenamed). Kept for another file, they'd describe the wrong file to
+// upgrades — and a rename would write the old file's quality, codec and group into this
+// one's name, over the only record of what it really is. Clearing is the safe direction.
+func (s *Service) adoptDefaultFile(ctx context.Context, m Movie, path string) error {
+	info := s.probeTrack(path)
+	same := s.sameFileRenamed(m, path, info)
+	media := mediaJSONOf(info)
+	return s.repo.inTx(ctx, func(_ *sql.Tx, r *Repo) error {
+		if err := setDefaultFileIn(ctx, r, m.ID, path, media); err != nil {
+			return err
+		}
+		if same {
+			return nil
+		}
+		if err := r.SetSourceRelease(ctx, m.ID, ""); err != nil {
+			return err
+		}
+		return r.ClearConvertedFrom(ctx, m.ID, 0)
+	})
+}
+
+// sameFileRenamed reports whether the file at path (read as info) is m's recorded file under
+// a new name: the old name is gone from disk, the cached read of the old file has the same
+// size and modification time (a rename keeps both), and nothing the new name states
+// contradicts the recorded release. Anything less is treated as another file.
+func (s *Service) sameFileRenamed(m Movie, path string, info *MovieFile) bool {
+	old, c := m.MovieFilePath, m.File
+	if old == "" || old == path || c == nil || c.Missing || c.SizeBytes <= 0 || c.MtimeUnix == 0 ||
+		info == nil || info.Missing || info.SizeBytes != c.SizeBytes || info.MtimeUnix != c.MtimeUnix {
+		return false
+	}
+	if _, err := s.statFile(old); !errors.Is(err, fs.ErrNotExist) {
+		return false // the old name is still there (or can't be read): not a rename
+	}
+	return library.RenameSource{FileName: filepath.Base(path), SourceRelease: m.SourceRelease}.ReleaseFits() ||
+		strings.TrimSpace(m.SourceRelease) == ""
+}
+
 // backfillRetry is how long a movie whose probe was tried waits before the list asks for
 // it again. A file ffprobe can't read stays "stale"; without the wait every poll of the
 // Movies grid would start another backfill for it.
@@ -1772,7 +1825,7 @@ func (s *Service) rescan(ctx context.Context, m *Movie) (adopted bool) {
 	case err == nil && found != "":
 		if found != m.MovieFilePath {
 			old := m.MovieFilePath
-			if err := s.setDefaultFile(ctx, m.ID, found); err != nil {
+			if err := s.adoptDefaultFile(ctx, *m, found); err != nil {
 				s.log.Warn("rescan: couldn't record the file on disk", "movie", m.Title, "path", found, "err", err)
 				return false
 			}

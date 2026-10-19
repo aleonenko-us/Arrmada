@@ -131,6 +131,13 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   language when TMDB has a translation, and in English otherwise. English and Original modes
   keep English descriptions; season and episode descriptions stay English. Existing libraries
   catch up in the background, about one title every two seconds.
+- **Rename fills in what the file name lost** (#48). The Rename preview for movies and episodes
+  now takes quality, source, codec and release group from the release Arrmada recorded, so a
+  naming scheme that gains `{codec}` or `{group}` works for files named by an older, shorter
+  scheme. Safeguards: a release that contradicts the file name, or belongs to a file replaced
+  outside Arrmada, is ignored; the codec the file actually has wins (Convert); editions never
+  come from the release; renames after a TV renumber still use the file name only. Nothing is
+  renamed until you apply the preview.
 - **SECURITY.md**: how to report a vulnerability privately, and which versions get fixes.
   The README now explains how Arrmada is built and tested.
 
