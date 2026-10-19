@@ -346,7 +346,7 @@ func (a *api) downloadConnections(ctx context.Context, now time.Time) ([]connect
 
 // metadataKeys are the keys that get a card of their own. The OpenSubtitles login rides on
 // the API key's card (its Test signs in), and FlareSolverr's URL is a search connection.
-var metadataKeys = map[string]bool{"tmdb": true, "tvdb": true, "omdb": true, "hardcover": true, "opensubtitles_api": true}
+var metadataKeys = map[string]bool{"tmdb": true, "tvdb": true, "omdb": true, "hardcover": true, "opensubtitles_api": true, "acoustid": true}
 
 // metadataConnections: TMDB, TheTVDB, OMDb, Hardcover and OpenSubtitles. Only an admin may
 // test or change a key, so a manager's cards are read-only.
