@@ -200,7 +200,7 @@ func (s *Service) EnsureMonitored(ctx context.Context, id int64, seasons []int, 
 	}
 	detail := "Monitored by request from " + who + ": " + what
 	if turnedOff {
-		detail += " (the show was paused, so its other seasons are no longer monitored)"
+		detail += " (the show's searching was off, so its other seasons are no longer monitored)"
 	}
 	s.AddEvent(ctx, id, "monitored", detail)
 	s.log.Info("series: monitored by request", "series", sr.Title, "seasons", what, "by", who)

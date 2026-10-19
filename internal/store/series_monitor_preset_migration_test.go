@@ -7,8 +7,8 @@ import (
 	"testing/fstest"
 )
 
-// 0335 gives shows a remembered monitoring preset. Shows already in the library get ''
-// (not known) and keep every other flag: the migration changes nothing they search.
+// 0335 gives shows a remembered monitoring preset. Shows already in the library get an
+// empty one (not known) and keep every other flag: the migration changes nothing they search.
 func TestSeriesMonitorPresetMigration(t *testing.T) {
 	ctx := context.Background()
 	full := embeddedMigrations()

@@ -31,7 +31,7 @@ type Series struct {
 	// PresetCustom once seasons or episodes were changed one by one since, or "" when not
 	// known (shows added before it was recorded).
 	MonitorPreset  string `json:"monitor_preset"`
-	QualityProfile    string `json:"quality_profile"`
+	QualityProfile string `json:"quality_profile"`
 	// SeriesType drives episode numbering. "standard" matches releases by SxxExx;
 	// "anime" also matches by absolute episode number (and falls back positionally),
 	// because anime releases number episodes 1..N across the whole run. Auto-set on
