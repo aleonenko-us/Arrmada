@@ -225,21 +225,15 @@ func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir stri
 // SeasonDirChooser picks, for an episode import of show seriesID, the season folder in its
 // show folder (library.SeasonDirChooser):
 //
-//   - the folder the scheme names, or an existing one it joins ("Season 01", "S12"), when
-//     that is there — as every release did;
-//   - otherwise the one folder in the show folder all of that season's recorded files are
-//     in, whatever it's called ("Stagione 1", "Staffel 01", "Series 1"), so a new episode
+//   - the one folder in the show folder all of that season's recorded files are in,
+//     whatever it's called ("Stagione 1", "Staffel 01", "Series 1", "S12"), so a new episode
 //     goes next to the others rather than into a new "Season 1" beside them;
 //   - refused when that folder is gone (a share that's away, a season folder deleted by
-//     hand): a parallel season folder is never made in its place.
-//
-// A season the show has no files of (or whose files are in several folders, or loose in
-// the show folder) gets the scheme's folder.
+//     hand): a parallel season folder is never made in its place;
+//   - otherwise — no files of that season yet, or in several folders, or loose in the show
+//     folder — the scheme's folder, or an existing one it joins, as every release did.
 func (s *Service) SeasonDirChooser(ctx context.Context, seriesID int64) func(showDir string, season int, def string) (string, error) {
 	return func(showDir string, season int, def string) (string, error) {
-		if fi, err := os.Stat(def); err == nil && fi.IsDir() {
-			return def, nil
-		}
 		paths, err := s.repo.SeasonFilePaths(ctx, seriesID, season)
 		if err != nil || len(paths) == 0 {
 			return def, nil
@@ -254,6 +248,9 @@ func (s *Service) SeasonDirChooser(ctx context.Context, seriesID int64) func(sho
 		if filepath.Dir(d) != showDir {
 			return def, nil // loose in the show folder, or somewhere else: the scheme decides
 		}
+		// The season's episodes are all in d: the next one goes beside them, even when a
+		// folder the scheme would join is there too (a "Season 1" of someone else's files
+		// next to the show's own "S01").
 		fi, err := os.Stat(d)
 		switch {
 		case err == nil && fi.IsDir():

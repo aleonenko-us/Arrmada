@@ -197,6 +197,21 @@ func TestRevESeasonFolderJoinedWhateverItsName(t *testing.T) {
 			noDir(t, filepath.Join(tv, "Show", "Season 1"), "a parallel season folder")
 		})
 	}
+	t.Run("beside its own S01, never a Season 1 of someone else's files", func(t *testing.T) {
+		h, tv := rbSetup(t, []rbFile{
+			{rel: "Star Trek/S01/Show - S01E01.mkv", tracked: [2]int{1, 1}},
+			{rel: "Star Trek/Season 1/Other - S01E01.mkv"},
+		})
+		s, _ := h.c.series.Get(h.ctx, h.seriesID)
+		const rel = "Show.S01E02.1080p.WEB-DL-GRP"
+		dl := h.download(t, rel, rel+".mkv")
+		if _, _, _, failed := h.c.importSeriesInto(h.ctx, s, dl, forceAll); failed != 0 {
+			t.Fatalf("import failed")
+		}
+		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 2); filepath.Dir(cur.Path) != filepath.Join(tv, "Star Trek", "S01") {
+			t.Errorf("S01E02 at %q, want in S01", cur.Path)
+		}
+	})
 	t.Run("season folder away", func(t *testing.T) {
 		h, tv := rbSetup(t, []rbFile{
 			{rel: "Show/S01/Show - S01E01.mkv", tracked: [2]int{1, 1}, missing: true},
