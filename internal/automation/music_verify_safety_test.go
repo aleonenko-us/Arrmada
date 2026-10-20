@@ -72,8 +72,9 @@ func TestVerifyRenameWithoutScanIsNeverSearched(t *testing.T) {
 
 // An album folder renamed AND retagged outside Arrmada (Picard, `beet import -w`): the same
 // inodes but new sizes and times, so the scan rightly doesn't follow them by inode. It
-// matches them as the album's files, and since the recorded paths are gone from disk the
-// album's tracks take them: re-linked, nothing flagged gone from disk, nothing to search.
+// matches them as the album's files, and once the file check has found the recorded paths
+// gone, the album's tracks take them: re-linked, nothing flagged gone from disk, nothing to
+// search.
 func TestScanRelinksRenamedAndRetaggedAlbum(t *testing.T) {
 	h, lib, a, _ := verifyLib(t, 10)
 	from := filepath.Join(lib.root, "Band", "Album 00")
@@ -91,9 +92,16 @@ func TestScanRelinksRenamedAndRetaggedAlbum(t *testing.T) {
 		lib.tags[p] = tagged("Band", "Album 00", i+1, []string{"One", "Two"}[i])
 		lib.mu.Unlock()
 	}
+	// The first scan matches them but leaves the records alone: the file check hasn't yet
+	// agreed the old files are gone (it notes them at the end of this scan), and a share that
+	// is away must never give its tracks to another copy.
 	res := h.scan(t, MusicScanOptions{})
-	if res.Moved != 0 || res.Tracks != 2 {
-		t.Fatalf("scan = %+v; want the two files matched and recorded (not followed)", res)
+	if res.Moved != 0 || res.Tracks != 0 || res.Held != 1 || res.Verify == nil || res.Verify.NotFound != 2 {
+		t.Fatalf("first scan = %+v (verify %+v); want the folder held and the old files noted", res, res.Verify)
+	}
+	// The next scan looks again, and the tracks take the files.
+	if res = h.scan(t, MusicScanOptions{}); res.Tracks != 2 || res.Held != 0 {
+		t.Fatalf("second scan = %+v; want the two files recorded (not followed)", res)
 	}
 	al := h.album(t, a.ID, "Album 00")
 	for _, title := range []string{"One", "Two"} {

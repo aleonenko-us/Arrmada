@@ -109,6 +109,28 @@ func TestSearchMissingTracksIsBounded(t *testing.T) {
 	}
 }
 
+// Runs capped at a few albums each still reach every album: the ones never searched go
+// first, then the longest since their last search.
+func TestSearchMissingTracksReachesEveryAlbum(t *testing.T) {
+	n := musicMissingPerRun + 2
+	h, _, _, _ := verifyLib(t, n)
+	var titles []string
+	for i := 0; i < n; i++ {
+		titles = append(titles, fmt.Sprintf("Album %02d", i))
+	}
+	h.markGone(t, titles...)
+	for run := 0; run < 2; run++ {
+		if _, err := h.c.SearchMissingTracks(h.ctx, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, title := range titles {
+		if !h.searchedFor(title) {
+			t.Errorf("%s was never searched in two runs", title)
+		}
+	}
+}
+
 // A folder whose matched files are held back by a track's other file still on disk (a
 // duplicate copy) isn't cached as done: the next scan looks at it again.
 func TestScanDuplicateFolderIsNotCachedDone(t *testing.T) {
@@ -128,7 +150,59 @@ func TestScanDuplicateFolderIsNotCachedDone(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(lib.root, "Band", "Album 00")); err != nil {
 		t.Fatal(err)
 	}
-	if third := h.scan(t, MusicScanOptions{}); third.Tracks != 2 || third.Held != 0 {
-		t.Errorf("third scan = %+v; want the copy recorded once the original is gone", third)
+	// The scan that finds the original gone still holds the copy back (its file check is
+	// what notes the original gone); the next one records the copy.
+	if third := h.scan(t, MusicScanOptions{}); third.Tracks != 0 || third.Held != 1 {
+		t.Errorf("third scan = %+v; want the copy still held until the check agrees", third)
+	}
+	if fourth := h.scan(t, MusicScanOptions{}); fourth.Tracks != 2 || fourth.Held != 0 {
+		t.Errorf("fourth scan = %+v; want the copy recorded once the original is found gone", fourth)
+	}
+}
+
+// A share mounted on a subfolder of the music folder drops (its mount point left empty)
+// while a leftover copy of one of its albums sits elsewhere in the music folder. The file
+// check skips the share's files, so they are never marked gone, and the scan never moves
+// the album's records to the leftover copy; when the share is back, its files are still
+// the album's.
+func TestScanShareAwayNeverGivesTracksToACopy(t *testing.T) {
+	h := musicTestCoord(t)
+	lib := newScanLib(t, h)
+	a := h.addArtist(t, "Band", "", []string{"Album A", "Album B"}, nil, "")
+	one := lib.add("Mount/Band/Album A/01 - One.flac", tagged("Band", "Album A", 1, "One"))
+	two := lib.add("Mount/Band/Album A/02 - Two.flac", tagged("Band", "Album A", 2, "Two"))
+	lib.add("Local/Band/Album B/01 - One.flac", tagged("Band", "Album B", 1, "One"))
+	lib.add("Local/Band/Album B/02 - Two.flac", tagged("Band", "Album B", 2, "Two"))
+	h.scan(t, MusicScanOptions{})
+	lib.add("Local/leftovers/Band - Album A/01 - One.flac", tagged("Band", "Album A", 1, "One"))
+	lib.add("Local/leftovers/Band - Album A/02 - Two.flac", tagged("Band", "Album A", 2, "Two"))
+	if res := h.scan(t, MusicScanOptions{}); res.Held != 1 {
+		t.Fatalf("with both copies: %+v; want the leftover held", res)
+	}
+	al := h.album(t, a.ID, "Album A")
+	away := filepath.Join(lib.root, "Mount", "Band")
+	parked := lib.root + "-parked"
+	if err := os.Rename(away, parked); err != nil { // the share drops: its mount point stays, empty
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		res := h.scan(t, MusicScanOptions{})
+		if res.Tracks != 0 {
+			t.Fatalf("scan %d with the share away = %+v; want nothing recorded", i, res)
+		}
+		if got := h.trackFiles(t, al.ID); got["One"] != one || got["Two"] != two {
+			t.Fatalf("scan %d: records = %v; want them still on the share", i, got)
+		}
+		h.backdate(t)
+	}
+	if err := os.Rename(parked, away); err != nil { // back
+		t.Fatal(err)
+	}
+	h.scan(t, MusicScanOptions{})
+	if got := h.trackFiles(t, al.ID); got["One"] != one || got["Two"] != two {
+		t.Errorf("share back: records = %v", got)
+	}
+	if tr := h.track(t, al.ID, "One"); tr.NotFoundSince != "" || tr.Missing {
+		t.Errorf("share back: track = %+v; want no marks", tr)
 	}
 }

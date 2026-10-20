@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/music"
 )
 
@@ -67,7 +68,10 @@ func (c *Coordinator) SearchMissingTracks(ctx context.Context, progress func(don
 		switch {
 		case errors.Is(err, ErrAlreadySearching):
 			continue
-		case out.Reason == ReasonIndexersFailed:
+		case out.Reason == ReasonIndexersFailed || out.Reason == ReasonIndexersPaused ||
+			out.Reason == ReasonNoIndexers || indexer.IsOutage(err):
+			// Nobody could answer: says nothing about the album, so it isn't stamped and
+			// stays at the front for the next run.
 			outages++
 			if outages >= musicMissingOutageStreak {
 				res.Stopped = true
@@ -80,6 +84,15 @@ func (c *Coordinator) SearchMissingTracks(ctx context.Context, progress func(don
 			outages = 0
 		default:
 			outages = 0
+			// Stamped, so the next run starts with the albums not searched yet: a grab clears
+			// the backoff, a miss just moves it to the back.
+			stamp := c.music.TouchSearch
+			if out.Grabbed > 0 {
+				stamp = c.music.ResetSearchMisses
+			}
+			if err := stamp(ctx, al.ID); err != nil {
+				c.log.Warn("music: couldn't stamp an album's search", "album", al.Title, "err", err)
+			}
 		}
 		res.Searched++
 		res.Grabbed += out.Grabbed

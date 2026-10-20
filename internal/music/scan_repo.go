@@ -186,25 +186,45 @@ type ScannedTrack struct {
 }
 
 // RecordScanned records the files the scan matched to an album's tracks, in one
-// transaction. A track whose recorded file is still on disk keeps it (the scan never
-// re-points a track away from a file that's there), and a path another track holds is left
-// alone; those are skipped and counted in heldBack, not errors. A track whose recorded file
-// is gone from its path (renamed and retagged elsewhere, say) takes the file the scan
-// matched: its row is re-linked, and any not-found or missing mark ends. It returns how
-// many were recorded.
+// transaction. A track whose recorded file the file check hasn't found gone keeps it (the
+// scan never re-points a track away from a file that may be there), and a path another
+// track holds is left alone; those are skipped and counted in heldBack, not errors.
+//
+// A track whose recorded file the file check has already found gone (missing_seen_at or
+// missing_since: so its guards against a share or disk that's away have agreed), and which
+// is still gone, takes the file the scan matched: its row is re-linked, and the marks end.
+// A folder renamed and retagged elsewhere is therefore linked by the scan after the check
+// notices, and a share that's away never gives its tracks to a leftover copy elsewhere.
+//
+// The disk is only looked at before the transaction: a stat that hangs on a network share
+// must never hold the database's write lock. It returns how many were recorded.
 func (s *Service) RecordScanned(ctx context.Context, files []ScannedTrack) (recorded, heldBack int, err error) {
+	// Before the transaction: may each track be taken over?
+	free := make([]bool, len(files))
+	for i, f := range files {
+		ok, err := s.trackFreeToTake(ctx, f.TrackID, f.Rec.Path)
+		if err != nil {
+			return 0, 0, err
+		}
+		free[i] = ok
+	}
 	err = store.WithTx(ctx, s.repo.db, func(tx *sql.Tx) error {
 		recorded, heldBack = 0, 0
-		for _, f := range files {
-			held, err := trackHeldTx(ctx, tx, f.TrackID, f.Rec.Path)
-			if err != nil {
+		for i, f := range files {
+			// Re-checked inside: a holding row the check hasn't marked (one that came back,
+			// or appeared, meanwhile) still holds the track.
+			var unmarked int
+			if err := tx.QueryRowContext(ctx, `
+				SELECT COUNT(*) FROM music_track_files
+				 WHERE release_track_id = ? AND path != ? AND missing_since IS NULL AND missing_seen_at IS NULL`,
+				f.TrackID, f.Rec.Path).Scan(&unmarked); err != nil {
 				return err
 			}
-			if held {
+			if !free[i] || unmarked > 0 {
 				heldBack++
 				continue
 			}
-			err = recordTrackFileTx(ctx, tx, f.TrackID, f.Rec)
+			err := recordTrackFileTx(ctx, tx, f.TrackID, f.Rec)
 			if errors.Is(err, ErrPathTaken) || errors.Is(err, ErrNotFound) {
 				heldBack++
 				continue
@@ -222,35 +242,45 @@ func (s *Service) RecordScanned(ctx context.Context, files []ScannedTrack) (reco
 	return recorded, heldBack, nil
 }
 
-// trackHeldTx reports whether a track is held by a recorded file other than path that is
-// still there: one not marked missing whose path can be seen on disk, or can't be checked
-// (an error that isn't "no such file" is never read as gone).
-func trackHeldTx(ctx context.Context, tx *sql.Tx, trackID int64, path string) (bool, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT path FROM music_track_files
-		 WHERE release_track_id = ? AND missing_since IS NULL AND path != ?`, trackID, path)
+// trackFreeToTake reports whether a track may take a file at path: every other file
+// recorded for it has been found gone by the file check (missing_seen_at or missing_since)
+// and is still not on disk. An unmarked one, one that is back, or one whose path can't be
+// checked (an error that isn't "no such file") holds the track. Reads and stats only; it
+// runs outside any transaction.
+func (s *Service) trackFreeToTake(ctx context.Context, trackID int64, path string) (bool, error) {
+	rows, err := s.repo.db.QueryContext(ctx, `
+		SELECT path, (missing_since IS NOT NULL OR missing_seen_at IS NOT NULL) FROM music_track_files
+		 WHERE release_track_id = ? AND path != ?`, trackID, path)
 	if err != nil {
 		return false, err
 	}
-	var held []string
+	var gone []string
+	free := true
 	for rows.Next() {
 		var p string
-		if err := rows.Scan(&p); err != nil {
+		var marked int
+		if err := rows.Scan(&p, &marked); err != nil {
 			rows.Close()
 			return false, err
 		}
-		held = append(held, p)
+		if marked == 0 {
+			free = false
+		}
+		gone = append(gone, p)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return false, err
 	}
-	for _, p := range held {
+	if !free {
+		return false, nil
+	}
+	for _, p := range gone {
 		if _, err := os.Lstat(p); !errors.Is(err, fs.ErrNotExist) {
-			return true, nil
+			return false, nil
 		}
 	}
-	return false, nil
+	return true, nil
 }
 
 // FollowMovedFile records that a recorded file is now at another path (the scan found it

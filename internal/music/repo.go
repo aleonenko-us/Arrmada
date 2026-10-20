@@ -496,12 +496,13 @@ func (r *Repo) WantedAlbums(ctx context.Context) ([]Album, error) {
 const missingFile = `mf.missing_since IS NOT NULL AND mf.release_track_id IS NOT NULL`
 
 // AlbumsWithMissingFiles lists the albums with a track file the file check found gone
-// from disk, for the "Search for missing tracks" bulk action. Monitoring doesn't matter:
-// the person asked.
+// from disk, for the "Search for missing tracks" bulk action: never searched first, then
+// the longest since their last search, so runs capped at a few albums each reach them all.
+// Monitoring doesn't matter: the person asked.
 func (r *Repo) AlbumsWithMissingFiles(ctx context.Context) ([]Album, error) {
 	return r.albums(ctx, `
 		WHERE EXISTS (SELECT 1 FROM music_track_files mf WHERE mf.album_id = al.id AND `+missingFile+`)
-		ORDER BY al.id`)
+		ORDER BY al.last_search_at IS NOT NULL, al.last_search_at, al.id`)
 }
 
 // openNote says whether a migration note ("n") still explains a track that reads as
