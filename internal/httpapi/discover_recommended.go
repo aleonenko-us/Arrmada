@@ -69,7 +69,7 @@ func (a *api) handleDiscoverRecommended(w http.ResponseWriter, r *http.Request) 
 		a.writeJSON(w, http.StatusOK, map[string]any{"items": []discoverCard{}})
 		return
 	}
-	cards := a.enrichCards(ctx, ranked)
+	cards := a.rowCards(ctx, ranked)
 
 	// Recommend things they DON'T already have or have in flight: drop in-library and
 	// anything already requested. This is the payoff of enriching before filtering.

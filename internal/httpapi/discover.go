@@ -16,6 +16,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/insights"
 	"github.com/tristenlammi/arrmada/internal/mediaserver"
 	"github.com/tristenlammi/arrmada/internal/metadata"
+	"github.com/tristenlammi/arrmada/internal/notinterested"
 	"github.com/tristenlammi/arrmada/internal/requests"
 	"github.com/tristenlammi/arrmada/internal/safego"
 )
@@ -163,7 +164,45 @@ func (a *api) buildDiscoverSnapshot(ctx context.Context) (snap *discoverEnrichSn
 // enrichDiscover attaches library + request status (and live download progress) to
 // a batch of discover items.
 func (a *api) enrichDiscover(w http.ResponseWriter, r *http.Request, items []metadata.DiscoverItem) {
-	a.writeJSON(w, http.StatusOK, map[string]any{"items": a.enrichCards(r.Context(), items)})
+	a.writeJSON(w, http.StatusOK, map[string]any{"items": a.rowCards(r.Context(), items)})
+}
+
+// rowCards is enrichCards for a row, grid or search: the viewer's hidden titles ("Not
+// interested") are left out. A title's own sheet, a person's credits and a collection's
+// page still show everything.
+func (a *api) rowCards(ctx context.Context, items []metadata.DiscoverItem) []discoverCard {
+	return dropHidden(a.enrichCards(ctx, items), a.hiddenFor(ctx))
+}
+
+// hiddenFor is the signed-in viewer's hidden titles; nil when there are none or they
+// can't be read (a row is better with a hidden title than missing).
+func (a *api) hiddenFor(ctx context.Context) map[string]bool {
+	if a.deps.NotInterested == nil {
+		return nil
+	}
+	u, _ := ctx.Value(userCtxKey).(*auth.User)
+	if u == nil {
+		return nil
+	}
+	keys, err := a.deps.NotInterested.Keys(ctx, u.ID)
+	if err != nil {
+		return nil
+	}
+	return keys
+}
+
+// dropHidden leaves out the cards whose key is in hidden.
+func dropHidden(cards []discoverCard, hidden map[string]bool) []discoverCard {
+	if len(hidden) == 0 {
+		return cards
+	}
+	out := cards[:0:0]
+	for _, c := range cards {
+		if !hidden[notinterested.Key(c.MediaType, c.TMDBID)] {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // enrichCards annotates raw discover items with the viewer's library/request/download
@@ -230,7 +269,7 @@ func (a *api) handleDiscoverTrending(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The hero shows these cards' overviews, so they come in the household's language.
-	cards := a.enrichCards(r.Context(), items)
+	cards := a.rowCards(r.Context(), items)
 	a.localizeTrendingOverviews(r.Context(), media, cards)
 	a.writeJSON(w, http.StatusOK, map[string]any{"items": cards})
 }
@@ -261,7 +300,7 @@ func (a *api) handleDiscoverSearch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.writeJSON(w, http.StatusOK, map[string]any{
-			"items": a.enrichCards(r.Context(), sr.Items), "people": sr.People, "page": sr.Page.Page, "total_pages": sr.TotalPages,
+			"items": a.rowCards(r.Context(), sr.Items), "people": sr.People, "page": sr.Page.Page, "total_pages": sr.TotalPages,
 		})
 		return
 	}
@@ -371,7 +410,7 @@ func (a *api) handleMediaDetail(w http.ResponseWriter, r *http.Request) {
 	shownOverview := a.displayPolicy(r.Context()).Overview(d.Overview, d.Overviews)
 	d.Overviews = nil
 	card := a.enrichCards(r.Context(), []metadata.DiscoverItem{itemFromDetail(d)})[0]
-	similar := a.enrichCards(r.Context(), d.Similar)
+	similar := a.rowCards(r.Context(), d.Similar)
 	if shownOverview != d.Overview {
 		card.DisplayOverview = shownOverview
 	} else {
@@ -442,7 +481,7 @@ func (a *api) handleDiscoverGenres(w http.ResponseWriter, r *http.Request) {
 // handleDiscoverBrowse is one page of a browse grid ("See all" on a row, or the filters):
 //
 //	GET /api/v1/discover/browse?media=movie|series&list=&genre=878,12&year_from=&year_to=
-//	    &rating=&runtime_min=&runtime_max=&provider=&lang=&sort=&page=
+//	    &rating=&votes=&runtime_min=&runtime_max=&provider=&lang=&cert=&sort=&page=
 //
 // It answers {items, page, total_pages}. The provider whitelists and clamps every value;
 // a sort, list or media it doesn't know is a 400, never passed to TMDB.
@@ -464,7 +503,7 @@ func (a *api) handleDiscoverBrowse(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	a.writeJSON(w, http.StatusOK, map[string]any{"items": a.enrichCards(r.Context(), p.Items), "page": p.Page, "total_pages": p.TotalPages})
+	a.writeJSON(w, http.StatusOK, map[string]any{"items": a.rowCards(r.Context(), p.Items), "page": p.Page, "total_pages": p.TotalPages})
 }
 
 // browseQueryFrom reads a browse query from the address. Numbers that don't parse are
@@ -476,6 +515,7 @@ func browseQueryFrom(v url.Values) metadata.BrowseQuery {
 		Media: v.Get("media"), List: v.Get("list"), Sort: v.Get("sort"), Language: v.Get("lang"),
 		YearFrom: num("year_from"), YearTo: num("year_to"), RatingMin: rating,
 		RuntimeMin: num("runtime_min"), RuntimeMax: num("runtime_max"), Provider: num("provider"), Page: num("page"),
+		VotesMin: num("votes"), Certification: v.Get("cert"),
 	}
 	for _, g := range strings.Split(v.Get("genre"), ",") {
 		if id, err := strconv.Atoi(strings.TrimSpace(g)); err == nil && id > 0 {

@@ -60,8 +60,10 @@ import (
 	"github.com/tristenlammi/arrmada/internal/music"
 	"github.com/tristenlammi/arrmada/internal/music/stage"
 	"github.com/tristenlammi/arrmada/internal/notify"
+	"github.com/tristenlammi/arrmada/internal/notinterested"
 	"github.com/tristenlammi/arrmada/internal/outbox"
 	"github.com/tristenlammi/arrmada/internal/plexscan"
+	"github.com/tristenlammi/arrmada/internal/plexwatch"
 	"github.com/tristenlammi/arrmada/internal/push"
 	"github.com/tristenlammi/arrmada/internal/quality"
 	"github.com/tristenlammi/arrmada/internal/realtime"
@@ -1261,6 +1263,25 @@ func main() {
 		log.Info("insights: marked imports left unfinished by the last run as interrupted", "runs", n)
 	}
 	grp.Loop("insights: poller", insightsSvc.Run) // Plex watch-monitoring poller (records when enabled + configured)
+	// Discover's "Your Plex watchlist" (the owner's, read with the Plex token above) and
+	// "Request everything on my Plex watchlist automatically": a pass every half hour asks
+	// for each new watchlist title through the normal request path, once each.
+	plexWatchlist := plexwatch.New(plexwatch.Deps{
+		DB: st.DB(), Access: insightsSvc, Settings: settingsSvc, Details: tmdb, Users: authSvc, Requests: requestsSvc,
+		InLibrary: func(ctx context.Context, media string, tmdbID int) bool {
+			if media == "series" {
+				_, err := seriesSvc.GetByTMDB(ctx, tmdbID)
+				return err == nil
+			}
+			_, err := movieSvc.GetByTMDB(ctx, tmdbID)
+			return err == nil
+		},
+		TVDB: tmdb.SeriesByTVDB,
+		Log:  modLog(log, "requests"),
+	})
+	sched.Register("plex-watchlist-requests", 30*time.Minute, false, plexWatchlist.AutoRequest,
+		scheduler.Label("Request the Plex watchlist"),
+		scheduler.Description("When “Request everything on my Plex watchlist automatically” is on (Discover), asks for each new watchlist title, up to ten a run, through the normal request path."))
 	// Alerts link back to the app at its outside address and carry the title's poster:
 	// the library's stored TMDB / Open Library image, or a Plex image fetched server-side.
 	notifySvc.SetPublicURL(settingsSvc.PublicURL)
@@ -1582,42 +1603,45 @@ func main() {
 		Folders:      libFolders,
 		FolderMover:  folderMover,
 		SeriesByTVDB: tmdb.SeriesByTVDB, // Sonarr imports: TVDB ids → TMDB
-		Config:       cfg,
-		Log:          modLog(log, "api"),
-		Store:        st,
-		Bus:          bus,
-		Auth:         authSvc,
-		Realtime:     hub,
-		Indexers:     indexers,
-		Downloads:    downloads,
-		DiskGuard:    diskGuard,
-		Library:      imports,
-		Movies:       movieSvc,
-		Quality:      qualitySvc,
-		Settings:     settingsSvc,
-		Automation:   coordinator,
-		Notify:       notifySvc,
-		Series:       seriesSvc,
-		Requests:     requestsSvc,
-		Issues:       issuesSvc,
-		Discovery:    tmdb,
-		Ratings:      omdb,
-		Books:        booksSvc,
-		Music:        musicSvc,
-		MusicBrainz:  mbClient,
-		Subtitles:    subtitlesSvc,
-		Convert:      convertSvc,
-		Insights:     insightsSvc,
-		Push:         pushSvc,
-		Recycle:      recycleSvc,
-		Logs:         logRing,
-		LogLevel:     logLevel,
-		APIKeys:      keyStore,
-		FlareSolverr: flare,
-		ConnStatus:   connStatus,
-		KeyVerifiers: keyVerifiers,
-		AudioServer:  audioSrv,
-		AudioManager: audioMgr,
+		// Discover: each person's hidden titles, and the owner's Plex watchlist.
+		NotInterested: notinterested.New(st.DB()),
+		PlexWatchlist: plexWatchlist,
+		Config:        cfg,
+		Log:           modLog(log, "api"),
+		Store:         st,
+		Bus:           bus,
+		Auth:          authSvc,
+		Realtime:      hub,
+		Indexers:      indexers,
+		Downloads:     downloads,
+		DiskGuard:     diskGuard,
+		Library:       imports,
+		Movies:        movieSvc,
+		Quality:       qualitySvc,
+		Settings:      settingsSvc,
+		Automation:    coordinator,
+		Notify:        notifySvc,
+		Series:        seriesSvc,
+		Requests:      requestsSvc,
+		Issues:        issuesSvc,
+		Discovery:     tmdb,
+		Ratings:       omdb,
+		Books:         booksSvc,
+		Music:         musicSvc,
+		MusicBrainz:   mbClient,
+		Subtitles:     subtitlesSvc,
+		Convert:       convertSvc,
+		Insights:      insightsSvc,
+		Push:          pushSvc,
+		Recycle:       recycleSvc,
+		Logs:          logRing,
+		LogLevel:      logLevel,
+		APIKeys:       keyStore,
+		FlareSolverr:  flare,
+		ConnStatus:    connStatus,
+		KeyVerifiers:  keyVerifiers,
+		AudioServer:   audioSrv,
+		AudioManager:  audioMgr,
 		// KEPUBs for Kobo's stock reader, made on demand into a bounded cache under the data
 		// folder (never next to the library file). Settings → Book server switches it off.
 		Kepub: kepub.New(kepub.Options{

@@ -49,6 +49,9 @@ func (a *api) handleDiscoverRow(w http.ResponseWriter, r *http.Request) {
 		items, err = rows.HiddenGems(ctx, media)
 	case "region":
 		items, err = rows.FromRegion(ctx, media)
+	case "just_out":
+		a.handleJustOut(w, r)
+		return
 	default:
 		a.writeError(w, http.StatusNotFound, "unknown row")
 		return
@@ -58,6 +61,29 @@ func (a *api) handleDiscoverRow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.enrichDiscover(w, r, items)
+}
+
+// handleJustOut is "Just out at home": films whose first digital or disc release anywhere
+// was in the last two weeks, newest first, minus what the library has. The cards carry
+// home_release (the day).
+func (a *api) handleJustOut(w http.ResponseWriter, r *http.Request) {
+	home, ok := a.deps.Discovery.(metadata.HomeReleases)
+	if !ok {
+		a.writeError(w, http.StatusNotFound, "not available")
+		return
+	}
+	items, err := home.JustOutAtHome(r.Context())
+	if err != nil {
+		a.writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	cards := make([]discoverCard, 0, len(items))
+	for _, c := range a.rowCards(r.Context(), items) {
+		if !c.InLibrary && !c.HasFile {
+			cards = append(cards, c)
+		}
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"items": cards})
 }
 
 // handleDiscoverProviders lists the region's streaming services for the chips.
@@ -100,7 +126,7 @@ func (a *api) handleDiscoverProviderNew(w http.ResponseWriter, r *http.Request) 
 
 // --- "Because you watched X" ---
 
-const becauseRows = 2
+const becauseRows = 3
 
 type discoverRow struct {
 	Title string         `json:"title"`
@@ -114,8 +140,9 @@ type titledSeed struct {
 	verb  string // "watched" | "requested"
 }
 
-// becauseSeeds are the viewer's two most recent titles with a name attached: what
-// they last watched (Plex, matched to the library), then what they last requested.
+// becauseSeeds are the viewer's three most recent titles with a name attached: what
+// they last watched on Plex or Jellyfin (matched to the library), then, while there are
+// fewer than three, what they last requested.
 func (a *api) becauseSeeds(ctx context.Context, userID int64) []titledSeed {
 	var out []titledSeed
 	seen := map[string]bool{}
@@ -164,7 +191,7 @@ func (a *api) becauseSeeds(ctx context.Context, userID int64) []titledSeed {
 	return out
 }
 
-// handleDiscoverBecause returns up to two per-seed rows, each the recommendations for
+// handleDiscoverBecause returns up to three per-seed rows, each the recommendations for
 // one title the viewer engaged with, minus what they already have or asked for.
 func (a *api) handleDiscoverBecause(w http.ResponseWriter, r *http.Request) {
 	out := []discoverRow{}
@@ -179,7 +206,7 @@ func (a *api) handleDiscoverBecause(w http.ResponseWriter, r *http.Request) {
 		if err != nil || len(recs) == 0 {
 			continue
 		}
-		cards := a.enrichCards(ctx, recs)
+		cards := a.rowCards(ctx, recs)
 		items := make([]discoverCard, 0, recResultCap)
 		for _, c := range cards {
 			if c.InLibrary || c.RequestStatus == "pending" || c.RequestStatus == "approved" {
@@ -275,14 +302,14 @@ func (a *api) handleDiscoverCollections(w http.ResponseWriter, r *http.Request) 
 	}
 	out := make([]collectionRow, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, collectionRow{CollectionID: row.id, Title: row.title, Items: a.enrichCards(ctx, row.items)})
+		out = append(out, collectionRow{CollectionID: row.id, Title: row.title, Items: a.rowCards(ctx, row.items)})
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{"rows": out})
 }
 
 // buildCollectionRows picks the rows: the started collections (most films owned first,
-// capped so this stays a few requests), each judged on its released members, ordered by
-// how complete it is.
+// capped so this stays a few requests), each judged on its released members, those the
+// library holds two or more of first, then by how complete each is.
 func buildCollectionRows(ctx context.Context, getter collectionGetter, library []movies.Movie) []collectionRowItems {
 	owned := map[int]bool{}
 	ownedPer := map[int]int{}
@@ -346,6 +373,11 @@ func buildCollectionRows(ctx context.Context, getter collectionGetter, library [
 		})
 	}
 	sort.SliceStable(cands, func(i, j int) bool {
+		// A collection the library holds two or more of is one being collected; a single
+		// film may just be a film someone liked. Those come first.
+		if si, sj := cands[i].have >= 2, cands[j].have >= 2; si != sj {
+			return si
+		}
 		if cands[i].complete != cands[j].complete {
 			return cands[i].complete > cands[j].complete
 		}

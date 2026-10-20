@@ -114,3 +114,15 @@ func (s *Service) mergeOwnerSessions(ctx context.Context, realID, username, thum
 		s.log.Debug("insights: could not retire the owner placeholder row", "err", err)
 	}
 }
+
+// WatchlistAccess is what reading the server owner's Plex watchlist needs: Arrmada's Plex
+// client id, the owner's token (empty when Plex isn't connected) and the owner's Plex
+// account id once the poller has resolved it ("" until then). The token is only for the
+// watchlist call itself; nothing may log or return it.
+func (s *Service) WatchlistAccess(ctx context.Context) (clientID, token, ownerID string) {
+	token = s.settings.Get(ctx, keyToken, "")
+	if token == "" {
+		return "", "", ""
+	}
+	return s.clientID(ctx), token, s.settings.Get(ctx, keyOwnerID, "")
+}

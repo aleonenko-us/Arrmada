@@ -41,7 +41,9 @@ import (
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/music"
 	"github.com/tristenlammi/arrmada/internal/notify"
+	"github.com/tristenlammi/arrmada/internal/notinterested"
 	"github.com/tristenlammi/arrmada/internal/plexscan"
+	"github.com/tristenlammi/arrmada/internal/plexwatch"
 	"github.com/tristenlammi/arrmada/internal/push"
 	"github.com/tristenlammi/arrmada/internal/quality"
 	"github.com/tristenlammi/arrmada/internal/realtime"
@@ -195,6 +197,12 @@ type Deps struct {
 	// SeriesByTVDB finds a show's TMDB id from its TVDB id (TMDB's /find), for bringing a
 	// Sonarr library over. nil = Sonarr shows without a TMDB id can't be matched.
 	SeriesByTVDB func(ctx context.Context, tvdbID int) (int, error)
+	// NotInterested is each person's hidden Discover titles. nil = nothing is hidden and
+	// its routes answer 503.
+	NotInterested *notinterested.Store
+	// PlexWatchlist reads the owner's Plex watchlist for Discover and requests it
+	// automatically when switched on. nil = no watchlist row.
+	PlexWatchlist *plexwatch.Service
 }
 
 type api struct {
@@ -1065,6 +1073,15 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/discover/browse", a.signedIn(a.handleDiscoverBrowse).ext())
 	mux.HandleFunc("GET /api/v1/discover/person/{id}", a.signedIn(a.handleDiscoverPerson).ext())
 	mux.HandleFunc("GET /api/v1/discover/collection/{id}", a.signedIn(a.handleDiscoverCollection).ext())
+	mux.HandleFunc("GET /api/v1/discover/certifications", a.signedIn(a.handleDiscoverCertifications).ext())
+	// "Not interested": each person's hidden titles (discover_hidden.go).
+	mux.HandleFunc("GET /api/v1/discover/hidden", a.signedIn(a.handleHiddenList).ext())
+	mux.HandleFunc("POST /api/v1/discover/hidden", a.signedIn(a.handleHide).ext())
+	mux.HandleFunc("DELETE /api/v1/discover/hidden/{media}/{id}", a.signedIn(a.handleUnhide).ext())
+	// "Your Plex watchlist" and its automatic requests (discover_watchlist.go): the
+	// handlers check the viewer is the one whose watchlist it is.
+	mux.HandleFunc("GET /api/v1/discover/plex-watchlist", a.signedIn(a.handlePlexWatchlist).ext())
+	mux.HandleFunc("PUT /api/v1/discover/plex-watchlist/auto", a.requireRole(auth.RoleRequester, a.handlePlexWatchlistAuto).ext())
 	mux.HandleFunc("GET /api/v1/discover", a.signedIn(a.handleDiscoverByGenre).ext())
 	mux.HandleFunc("GET /api/v1/media/{media}/{id}", a.signedIn(a.handleMediaDetail).ext())
 	mux.HandleFunc("GET /api/v1/media/series/{id}/seasons", a.signedIn(a.handleSeriesSeasons).ext())

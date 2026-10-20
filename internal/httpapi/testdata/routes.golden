@@ -7,6 +7,7 @@ DELETE /api/v1/books/{id}/audio-versions/{vid} staff -
 DELETE /api/v1/books/{id}/audio-versions/{vid}/file staff -
 DELETE /api/v1/books/{id}/file staff -
 DELETE /api/v1/convert/requests staff -
+DELETE /api/v1/discover/hidden/{media}/{id} user ext
 DELETE /api/v1/downloadclients/{id} staff -
 DELETE /api/v1/emby admin -
 DELETE /api/v1/indexers/{id} staff -
@@ -115,10 +116,13 @@ GET /api/v1/dashboard staff -
 GET /api/v1/discover user ext key
 GET /api/v1/discover/because user ext key
 GET /api/v1/discover/browse user ext key
+GET /api/v1/discover/certifications user ext key
 GET /api/v1/discover/collection/{id} user ext key
 GET /api/v1/discover/collections user ext key
 GET /api/v1/discover/genres user ext key
+GET /api/v1/discover/hidden user ext key
 GET /api/v1/discover/person/{id} user ext key
+GET /api/v1/discover/plex-watchlist user ext key
 GET /api/v1/discover/popular user ext key
 GET /api/v1/discover/provider user ext key
 GET /api/v1/discover/providers user ext key
@@ -383,6 +387,7 @@ POST /api/v1/convert/reindex staff -
 POST /api/v1/convert/requests staff -
 POST /api/v1/convert/series/{series} staff -
 POST /api/v1/convert/skips/clear staff -
+POST /api/v1/discover/hidden user ext
 POST /api/v1/downloadclients staff - setup
 POST /api/v1/downloadclients/restore-bundled staff -
 POST /api/v1/downloadclients/{id}/categories staff -
@@ -578,6 +583,7 @@ PUT /api/v1/books/{id}/metadata staff -
 PUT /api/v1/books/{id}/monitor staff -
 PUT /api/v1/books/{id}/profile staff -
 PUT /api/v1/convert/settings staff -
+PUT /api/v1/discover/plex-watchlist/auto requester ext
 PUT /api/v1/downloadclients/{id} staff -
 PUT /api/v1/downloadclients/{id}/settings staff -
 PUT /api/v1/emby admin - setup
