@@ -344,6 +344,11 @@ func (s *Service) FolderUnclear(ctx context.Context, seriesID int64) string {
 	return ""
 }
 
+// NameFitsShow reports whether a file name says it's show sr's episode (fitsShow): the
+// duplicate check offers only such files — or ones the show recorded — for deletion, never
+// one read on the benefit of the doubt in the show's own folder.
+func NameFitsShow(name string, sr Series) bool { return fitsShow(parser.Parse(name), sr) }
+
 // fitsShow reports whether a file's parsed name is show sr's: FitRelease against its title
 // and aliases, or against its display title or title override — every one with the year
 // and country checks, so "The Office (2001)" or "The Office UK" is never the 2005 US show.

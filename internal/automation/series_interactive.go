@@ -916,8 +916,22 @@ func (c *Coordinator) SeriesDuplicates(ctx context.Context, seriesID int64) ([]D
 		return nil, ferr
 	}
 
+	// Offered for deletion: only a file the show recorded, or one whose name says it's the
+	// show's — never one a rescan reads on the benefit of the doubt ("Other Show - S01E01"
+	// in the show's own Season 1).
+	recorded := map[string]bool{}
+	for _, sn := range s.Seasons {
+		for _, e := range sn.Episodes {
+			if e.HasFile && e.FilePath != "" {
+				recorded[filepath.Clean(e.FilePath)] = true
+			}
+		}
+	}
 	byEpisode := map[[2]int][]library.FoundVideo{}
 	for _, v := range c.showEpisodeVideos(ctx, s, imp, folder) {
+		if !recorded[filepath.Clean(v.Path)] && !series.NameFitsShow(filepath.Base(v.Path), s) {
+			continue
+		}
 		for _, ref := range c.series.ResolveEpisodes(ctx, seriesID, parser.Parse(filepath.Base(v.Path))) {
 			key := [2]int{ref.Season, ref.Episode}
 			byEpisode[key] = append(byEpisode[key], v)

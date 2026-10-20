@@ -358,7 +358,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   show's own, an episode is the show's however it's named (`Shingeki no Kyojin`, `Frieren`,
   `Top Gear 2023 S33E01`) unless its name says it's another show in your library
   (`Bluey - S01E02.mkv`, or `The Office (2001) - …` beside the 2005 show) — that one is never
-  claimed, nor offered as a duplicate to delete. A file whose name has no title
+  claimed, nor offered as a duplicate to delete. The duplicate check offers for deletion
+  only files the show has recorded or whose name says they're the show's. A file whose
+  name has no title
   (`S01E01.mkv`, `01.mkv`) counts only in a folder where the show already has files. A
   video loose in the folder of a show kept in season folders isn't taken for an episode.
   Featurettes in Plex extras folders (Extras, Featurettes, Behind The Scenes, Deleted Scenes,

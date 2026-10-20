@@ -165,6 +165,28 @@ func TestRevFDarkMatterPair(t *testing.T) {
 	rbExists(t, tv, "Show/Season 01/Show - S01E01.mkv", "Show/Season 01/Show - S01E02.mkv")
 }
 
+// ops6-st-sib-season-named: another show's file in the show's own Season 1 may be read on
+// the benefit of the doubt, but is never offered as a duplicate to delete.
+func TestRevFDuplicatesOfferOnlyTheShowsNamedFiles(t *testing.T) {
+	h, tv := rbSetup(t, []rbFile{
+		{rel: "Star Trek/S01/Show - S01E01.mkv", tracked: [2]int{1, 1}},
+		{rel: "Star Trek/S01/Show - S01E02.mkv", tracked: [2]int{1, 2}},
+		{rel: "Star Trek/Season 1/Other Show - S01E01.mkv"},
+		{rel: "Star Trek/S01/Show.S01E02.720p.HDTV-GRP.mkv"},
+	})
+	dups := rcDupPaths(t, h)
+	if dups[filepath.Join(tv, "Star Trek", "Season 1", "Other Show - S01E01.mkv")] {
+		t.Error("the duplicate check offers another show's file")
+	}
+	if !dups[filepath.Join(tv, "Star Trek", "S01", "Show.S01E02.720p.HDTV-GRP.mkv")] {
+		t.Error("the show's own extra copy isn't listed")
+	}
+	if err := h.c.DeleteSeriesDuplicate(h.ctx, h.seriesID, filepath.Join(tv, "Star Trek", "Season 1", "Other Show - S01E01.mkv")); err == nil {
+		t.Error("deleting another show's file as a duplicate was allowed")
+	}
+	rbExists(t, tv, "Star Trek/Season 1/Other Show - S01E01.mkv")
+}
+
 // M: a show in <TV>/Kids/S01 beside an untracked flat show folder, a loose video of
 // another show, or a show in season folders: its folder can't be told, so Move to folder
 // refuses, and nothing of the other show's moves.
