@@ -60,6 +60,22 @@ export function prowlarrLastSyncLine(ls: ProwlarrLastSync | undefined): StatusLi
   return { text: `Last synced ${hhmm(ls.at)}: ${parts.length > 0 ? parts.join(", ") : "nothing changed"}`, color: "var(--ink-dim)" };
 }
 
+// isBundledProwlarr says u is a Prowlarr that ships with Arrmada: the Compose install's, by
+// its service name, or the Unraid all-in-one image's (bundledUrl, from the server while
+// it runs), by host and port. The server decides the same way.
+export function isBundledProwlarr(u: string, bundledUrl?: string): boolean {
+  try {
+    const a = new URL(u);
+    if (a.hostname.toLowerCase() === "arrmada-prowlarr") return true;
+    if (!bundledUrl) return false;
+    const b = new URL(bundledUrl);
+    const port = (x: URL) => x.port || (x.protocol === "https:" ? "443" : "80");
+    return a.hostname.toLowerCase() === b.hostname.toLowerCase() && port(a) === port(b);
+  } catch {
+    return false;
+  }
+}
+
 // prowlarrUILink is where "Open Prowlarr" goes: a saved address for a Prowlarr on another
 // machine, else this host on the port Prowlarr's UI is published on — which install.sh
 // may have moved to 9697 or 9698 when 9696 was taken. Only http(s) addresses are linked.

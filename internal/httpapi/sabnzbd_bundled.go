@@ -68,7 +68,7 @@ func (a *api) handleBundledSABLogin(w http.ResponseWriter, r *http.Request) {
 func (a *api) restoreBundledSAB(w http.ResponseWriter, r *http.Request) {
 	key := a.bundledSABKey()
 	if key == "" {
-		a.writeError(w, http.StatusBadRequest, "this install has no bundled SABnzbd (install.sh --with-sabnzbd adds one)")
+		a.writeError(w, http.StatusBadRequest, "this install has no bundled SABnzbd running (install.sh --with-sabnzbd adds one; on Unraid, switch on Built-in SABnzbd in the container's settings)")
 		return
 	}
 	if err := a.deps.Downloads.RestoreBundledSAB(r.Context(), a.deps.Config.SABnzbdURL, key); err != nil {

@@ -45,6 +45,11 @@ func (a *api) handleProwlarrInfo(w http.ResponseWriter, r *http.Request) {
 		"ui_port": prowlarrUIPort(),
 		"ui_url":  a.deps.Settings.Get(ctx, indexer.SettingProwlarrUIURL, ""),
 	}
+	// The all-in-one image's own Prowlarr, while it runs: the page treats it as bundled
+	// (it gets Arrmada's FlareSolverr without asking), as the server does.
+	if u := a.deps.Config.AIOProwlarrURL; u != "" {
+		out["bundled_url"] = u
+	}
 	if ls, ok := indexer.ReadProwlarrLastSync(ctx, a.deps.Settings); ok {
 		out["last_sync"] = ls
 	}
