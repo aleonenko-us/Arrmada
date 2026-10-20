@@ -20,6 +20,27 @@ test.describe("requester on a desktop", () => {
 test.describe("browse grids on a desktop", () => {
   test.use({ persona: "requester" });
 
+  test("Discover labels movies and TV, and can hide library titles", async ({ page, api }) => {
+    await page.goto("/discover?q=harbour");
+    await api.quiet();
+    await expect(page.getByText("Movie", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("TV show", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "View details for Anchor Point" })).toBeVisible();
+
+    await page.getByRole("checkbox", { name: "Hide in library" }).check();
+    await expect(page).toHaveURL(/hide_in_library=1/);
+    await expect(page.getByRole("button", { name: "View details for Anchor Point" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: `View details for ${requestableCard.title}` })).toBeVisible();
+    await page.reload();
+    await api.quiet();
+    await expect(page.getByRole("checkbox", { name: "Hide in library" })).toBeChecked();
+    await expect(page.getByRole("button", { name: "View details for Anchor Point" })).toHaveCount(0);
+    await page.getByRole("tab", { name: "Movies" }).click();
+    await api.quiet();
+    await expect(page.getByRole("checkbox", { name: "Hide in library" })).toBeChecked();
+    await expect(page.getByRole("button", { name: "View details for Anchor Point" })).toHaveCount(0);
+  });
+
   // REQ-19: a row's See all opens its whole list, which keeps loading past 20 titles.
   test("See all on Popular movies pages as it scrolls", async ({ page, api }) => {
     await page.goto("/discover");

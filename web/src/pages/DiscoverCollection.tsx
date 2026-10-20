@@ -3,7 +3,7 @@ import { api, type ApiError, type CollectionDetail } from "../lib/api";
 import { useMe, isStaff } from "../lib/me";
 import { useTitle } from "../lib/title";
 import { Button, IconButton, Sheet } from "../ui";
-import { badgeFor, CardSkeleton, GRID, MediaCard, useCloseOverlay, type RowCtx } from "../features/discover/shared";
+import { badgeFor, CardSkeleton, GRID, MediaCard, useCloseOverlay, visibleCards, type RowCtx } from "../features/discover/shared";
 
 // A movie collection's page (REQ-21), at /discover/collection/<id> over the page it was
 // opened from: the backdrop, what the franchise is, how much of it the library has, and
@@ -44,6 +44,7 @@ export function CollectionSheet({ id, ctx }: { id: number; ctx: RowCtx }) {
   }
 
   const items = c?.items ?? [];
+  const visible = visibleCards(items, ctx);
   // What's out and nobody has or has asked for: what "Request the rest" would ask for.
   const missing = items.filter((m) => !badgeFor(m, ctx.isRequested(m)) && !!m.release_date && m.release_date <= today());
   const requestRest = async () => {
@@ -76,7 +77,7 @@ export function CollectionSheet({ id, ctx }: { id: number; ctx: RowCtx }) {
           <div className="mt-5 grid gap-x-3 gap-y-5" style={GRID}>
             {c === null
               ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} full />)
-              : items.map((m) => <MediaCard key={m.tmdb_id} c={m} ctx={ctx} full />)}
+              : visible.map((m) => <MediaCard key={m.tmdb_id} c={m} ctx={ctx} full />)}
           </div>
         </div>
       </div>
