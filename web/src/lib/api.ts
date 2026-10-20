@@ -2039,7 +2039,7 @@ export interface UpdateStatus {
 export interface UpdateProgress {
   state: "idle" | "running" | "done" | "failed";
   started_at: string;
-  /** The end of update.sh's output. */
+  /** The end of the updater's output. */
   log: string;
 }
 

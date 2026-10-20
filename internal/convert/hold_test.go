@@ -88,7 +88,8 @@ func TestHoldKeepsTheOriginalOnItsDrive(t *testing.T) {
 	if e.HoldState != HoldHeld || e.HoldPath != want {
 		t.Fatalf("hold %q at %q, want held at %q", e.HoldState, e.HoldPath, want)
 	}
-	if d := time.Until(time.Unix(e.HoldUntil, 0)); d < 14*24*time.Hour-time.Minute || d > 14*24*time.Hour+time.Minute {
+	// 14 calendar days in local time: an hour either way when a daylight-saving change falls inside.
+	if d := time.Until(time.Unix(e.HoldUntil, 0)); d < 14*24*time.Hour-time.Hour-time.Minute || d > 14*24*time.Hour+time.Hour+time.Minute {
 		t.Fatalf("held for %s, want 14 days", d)
 	}
 	after, err := os.Stat(want)

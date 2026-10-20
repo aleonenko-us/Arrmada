@@ -59,7 +59,7 @@ export function useUpdateRun(currentVersion: string) {
       const p = await systemApi.updateProgress();
       if (!alive.current) return;
       setLog(p.log);
-      if (p.state === "failed") return fail("update.sh reported a problem; the log below says what. Arrmada goes back to the version it had if the new one didn't start.");
+      if (p.state === "failed") return fail("The updater reported a problem; the log below says what. Arrmada goes back to the version it had if the new one didn't start.");
       if (p.state === "done") {
         // The updater only says done once the app answers: a new version means reload into
         // it, the same version means the update changed nothing.
