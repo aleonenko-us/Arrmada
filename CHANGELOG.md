@@ -194,6 +194,14 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Fixed
 
+- **Shows kept inside a category folder stay there** (#56 follow-up). A show in
+  `<TV folder>/Anime/Show/` (or under a TV folder set one level too high) now gets its new
+  episodes in its own folder, `S01`-style season folders included, where v0.3.2 and earlier
+  put them in a new `<TV folder>/Show/` beside the category. A show's folder is never a
+  folder above the one holding its files (other than the show's folder above its season
+  folders), never a folder named like a download or disc unless it's right inside the TV
+  folder, and never a folder that also holds another show, tracked or not; when it can't be
+  told, the download waits in Needs you.
 - **Music (Preview) writes proper tags and follows your naming.** Each import is copied into a
   hidden staging folder, given clean tags (every artist, MusicBrainz IDs, compilation flag,
   embedded cover plus `cover.jpg`), checked so the audio is unchanged, then moved into place in one
@@ -274,18 +282,24 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
   The next release adds **Put misplaced files back** to the show's page, which does this for
   you with a preview, and a health check listing the shows affected.
-- **A show whose own folder is named like a season** (`Specials`, `S1`, `Series 7`) can't
-  take new episodes: they wait in Needs you. Rename its folder (adding the year is enough),
-  then rescan the show.
+- **Some shows now wait in Needs you instead of importing**, where Arrmada can't tell
+  which folder they live in. Rename or move the show's folder, then rescan the show:
+  - a show whose own folder is named like a season (`Specials`, `S1`, `Series 7`): adding
+    the year to the folder name is enough;
+  - a show with `S01`-style season folders inside another folder in the TV folder
+    (`<TV folder>/Anime/Show/S01`): v0.3.1 put its episodes in the wrong place, and this
+    release doesn't guess;
+  - a show whose episode files are spread over folders with different names.
 
 ### Fixed
 
-- **TV episodes no longer import into the wrong folder when season folders aren't named
-  "Season N"** (#56). A show's folder is now found from the TV folder it's in, so `S01`,
-  `Stagione 1`, `Saison 1`, `Staffel 1`, `Temporada 1`, `Series 1`, `Season.01` and your own
-  season folder template all work, and shows named like a number ("1992", "24") stay
-  themselves. New episodes join the season folder the show already has (`S13`) rather than
-  a new `Season 13` beside it.
+- **TV episodes no longer import into a folder named like a season** (#56). When a show's
+  season folders aren't named "Season N" (`S01`, `Stagione 1`, `Saison 1`, `Staffel 1`,
+  `Temporada 1`, `Series 1`, `Season.01`, or your own season folder template), Arrmada now
+  uses the show's folder above them, when that folder is right inside the TV folder. Shows
+  named like a number ("1992", "24") stay themselves, and new episodes join the season
+  folder the show already has (`S13`) rather than a new `Season 13` beside it. Everything
+  else imports exactly where v0.3.1 put it.
 - **An upgrade no longer makes a second folder for a show** whose season folders are named
   `S01` (for example by an `S{season00}` season folder template). This was the other half of
   #56, seen with The Pitt.
@@ -293,6 +307,8 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   season.** It used to warn in the log and import anyway. Now the download waits in
   Activity → Needs you saying "Can't tell which folder *the show* lives in". Rescan, Rename and
   the duplicate check refuse such a folder too.
+- **Deleting a show with its files never removes a symlinked folder**, such as a category
+  folder on another disk, or a folder above the show's own.
 
 ## [0.3.1] - 2026-10-18
 
