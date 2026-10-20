@@ -1,15 +1,29 @@
 #!/bin/sh
-# Run Arrmada locally for development: the built binary, the data folder in .dev-data, :7979.
-#   ./dev.sh build   rebuild the web UI and the binary
-#   ./dev.sh run     start it (default)
+# Run Arrmada locally for development. One app, one port (7979).
+#   ./dev.sh build         rebuild the web UI and the binary
+#   ./dev.sh run           (re)start it on the NAS configuration copy in .dev-data
+#   ./dev.sh run --fresh   (re)start it as an EMPTY install, to see first-run onboarding
+#   ./dev.sh stop          stop it
+# Starting always replaces whatever is already on the port, so there is never a second copy.
 # .dev-data holds a copy of the NAS configuration with every live link switched off
 # (download clients, indexers, Plex, Prowlarr, queued messages), so it can't act on the
-# real setup. Never point this at the NAS's own data folder.
+# real setup. .dev-fresh is wiped on every --fresh. Never point this at the NAS's data.
 set -eu
 cd "$(dirname "$0")"
+PORT="${ARRMADA_PORT:-7979}"
+
+stop_app() {
+  pid=$(ss -ltnp 2>/dev/null | grep ":$PORT " | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)
+  if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; sleep 2; fi
+}
+
 case "${1:-run}" in
   build) (cd web && npm run build) && go build -o bin/arrmada ./cmd/arrmada ;;
-  run)   mkdir -p .dev-data
-         ARRMADA_DATA_DIR="$PWD/.dev-data" ARRMADA_PORT="${ARRMADA_PORT:-7979}" exec ./bin/arrmada ;;
-  *)     echo "usage: ./dev.sh [build|run]" >&2; exit 2 ;;
+  stop)  stop_app ;;
+  run)   stop_app
+         dir=.dev-data
+         if [ "${2:-}" = "--fresh" ]; then dir=.dev-fresh; rm -rf "$dir"; fi
+         mkdir -p "$dir"
+         ARRMADA_DATA_DIR="$PWD/$dir" ARRMADA_PORT="$PORT" exec ./bin/arrmada ;;
+  *)     echo "usage: ./dev.sh [build|run [--fresh]|stop]" >&2; exit 2 ;;
 esac
