@@ -261,6 +261,7 @@ describe("SetupWizard steps", () => {
     await click("Continue"); // keys
     await click("Save and continue"); // folders
     await click("Skip this step"); // Media server
+    await click("Skip this step"); // Downloads
     await click("Skip this step"); // Indexers
     const todo = await screen.findByRole("link", { name: /Add an indexer \(to do\)/ });
     expect(todo.getAttribute("href")).toBe("/settings/connections#search");
@@ -331,14 +332,14 @@ describe("SetupWizard Media server step", () => {
     await toMedia();
     await click("Skip this step");
     expect(save).not.toHaveBeenCalled();
-    expect(await screen.findByText("Where releases come from")).toBeTruthy();
+    expect(await screen.findByText("Where downloads happen")).toBeTruthy();
 
     await click("Back");
     await pick("Later");
     expect(screen.getByText(/Nothing to do here for now/)).toBeTruthy();
     expect(screen.queryByText("Skip this step")).toBeNull();
     await click("Continue");
-    expect(await screen.findByText("Where releases come from")).toBeTruthy();
+    expect(await screen.findByText("Where downloads happen")).toBeTruthy();
     expect(save).not.toHaveBeenCalled();
   });
 
@@ -414,6 +415,7 @@ describe("SetupWizard Indexers step", () => {
     await click("Continue");
     await click("Save and continue");
     await click("Skip this step"); // Media server
+    await click("Skip this step"); // Downloads
     expect(await screen.findByText("Where releases come from")).toBeTruthy();
   };
   beforeEach(() => {

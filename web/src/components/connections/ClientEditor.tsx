@@ -32,8 +32,13 @@ export function clientBody(c: DownloadClient, change: Partial<NewDownloadClient>
   return { name: c.name, kind: c.kind, url: c.url, username: c.username ?? "", password: "", enabled: c.enabled, ...change };
 }
 
-export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onSaved: (c: DownloadClient) => void }) {
-  const [kind, setKind] = useState<Kind>(editing?.kind === "sabnzbd" ? "sabnzbd" : "qbittorrent");
+export function ClientForm({ editing, initialKind, onSaved }: {
+  editing?: DownloadClient;
+  /** A new client's kind to start on (the setup wizard opens it as qBittorrent or SABnzbd). */
+  initialKind?: Kind;
+  onSaved: (c: DownloadClient) => void;
+}) {
+  const [kind, setKind] = useState<Kind>(editing?.kind === "sabnzbd" ? "sabnzbd" : initialKind ?? "qbittorrent");
   const usenet = kind === "sabnzbd";
   const [name, setName] = useState(editing?.name ?? defaultName(kind));
   // No default URL: localhost:8080 inside the Arrmada container is Arrmada itself.

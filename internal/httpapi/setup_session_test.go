@@ -157,7 +157,7 @@ func TestSetupSessionOtherEndpointsRefused(t *testing.T) {
 		"GET /api/v1/auth/me", "GET /api/v1/me/api-keys", "POST /api/v1/me/api-keys", "GET /api/v1/me/account",
 		"GET /api/v1/system/backups", "POST /api/v1/system/backups", "GET /api/v1/logs", "GET /api/v1/system/status",
 		"DELETE /api/v1/jellyfin", "DELETE /api/v1/emby", "DELETE /api/v1/apikeys/tmdb", "DELETE /api/v1/indexers/1",
-		"GET /api/v1/indexers", "PUT /api/v1/indexers/1", "GET /api/v1/downloadclients", "GET /api/v1/movies",
+		"GET /api/v1/indexers", "PUT /api/v1/indexers/1", "DELETE /api/v1/downloadclients/1", "GET /api/v1/movies",
 		"GET /api/v1/discover/trending", "GET /api/v1/requests", "PUT /api/v1/insights/plex/monitoring",
 		"POST /api/v1/system/library/folders", "GET /api/v1/settings/smtp", "GET /api/v1/audioserver",
 	} {

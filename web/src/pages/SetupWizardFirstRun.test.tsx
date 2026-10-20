@@ -53,6 +53,7 @@ async function toAccount() {
   await click("Skip this step"); // media
   await click("Continue"); // keys
   await click("Save and continue"); // folders
+  await click("Skip this step"); // downloads
   await click("Skip this step"); // indexers
   expect(await screen.findByText("Create your account")).toBeTruthy();
 }
@@ -70,7 +71,7 @@ describe("SetupWizard on a fresh install", () => {
     page();
     await screen.findByText("Welcome to Arrmada");
     const steps = within(screen.getByRole("list", { name: "Setup steps" })).getAllByRole("listitem").map((li) => li.textContent);
-    expect(steps.map((t) => t?.replace("›", "").trim())).toEqual(["1. Media server", "2. Keys", "3. Folders", "4. Indexers", "5. Account"]);
+    expect(steps.map((t) => t?.replace("›", "").trim())).toEqual(["1. Media server", "2. Keys", "3. Folders", "4. Downloads", "5. Indexers", "6. Account"]);
   });
 
   it("goes media, keys, folders, indexers, then the account, with no account made before", async () => {
@@ -167,7 +168,7 @@ describe("SetupWizard on a fresh install", () => {
     await click("Save and continue"); // folders
     expect(save).toHaveBeenCalledTimes(2);
     expect(startSession).toHaveBeenCalledTimes(2);
-    expect(await screen.findByText("Where releases come from")).toBeTruthy();
+    expect(await screen.findByText("Where downloads happen")).toBeTruthy();
   });
 
   it("says nothing was started when a setup session can't be opened", async () => {

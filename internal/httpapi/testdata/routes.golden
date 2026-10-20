@@ -128,7 +128,7 @@ GET /api/v1/discover/rows/{kind} user ext key
 GET /api/v1/discover/search user ext key
 GET /api/v1/discover/trending user ext key
 GET /api/v1/discover/upcoming user ext key
-GET /api/v1/downloadclients staff -
+GET /api/v1/downloadclients staff - setup
 GET /api/v1/downloadclients/bundled-login admin -
 GET /api/v1/downloadclients/{id}/settings staff -
 GET /api/v1/downloadclients/{id}/status staff -
@@ -380,10 +380,10 @@ POST /api/v1/convert/reindex staff -
 POST /api/v1/convert/requests staff -
 POST /api/v1/convert/series/{series} staff -
 POST /api/v1/convert/skips/clear staff -
-POST /api/v1/downloadclients staff -
+POST /api/v1/downloadclients staff - setup
 POST /api/v1/downloadclients/restore-bundled staff -
 POST /api/v1/downloadclients/{id}/categories staff -
-POST /api/v1/downloadclients/{id}/test staff -
+POST /api/v1/downloadclients/{id}/test staff - setup
 POST /api/v1/emby/scan/test staff -
 POST /api/v1/emby/test staff - setup
 POST /api/v1/grab staff -

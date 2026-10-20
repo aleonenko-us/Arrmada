@@ -60,7 +60,7 @@ function Catalogue({ usenet, onPick }: { usenet: boolean; onPick: (p: IndexerPre
       <h3 className="m-0 mb-1.5 mt-4 text-xs font-bold uppercase tracking-wide text-ink-faint">Usenet</h3>
       {!usenet && (
         <p className="m-0 mb-2 text-xs text-ink-dim">
-          Usenet needs a usenet download client first (SABnzbd or NZBGet): add one in Settings → Connections → Download clients, then come back here.
+          Usenet needs SABnzbd connected first: add it under Download clients (or on setup's Downloads step), then come back here.
         </p>
       )}
       <ul className={grid}>{usenetPresets().map((p) => tile(p, !usenet))}</ul>

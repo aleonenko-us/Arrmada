@@ -13,14 +13,19 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/httpua"
 )
 
-// Hosts maps an icon slug (what the UI asks for) to the site it comes from.
+// Hosts maps an icon slug (what the UI asks for) to the site it comes from, or straight
+// to the icon's own address for a project whose site is somewhere else (Jackett's is
+// GitHub).
 var Hosts = map[string]string{
+	"jackett":     "https://raw.githubusercontent.com/Jackett/Jackett/master/src/Jackett.Common/Content/favicon.ico",
+	"qbittorrent": "www.qbittorrent.org",
 	// Torrent
 	"torrentleech":   "www.torrentleech.org",
 	"myanonamouse":   "www.myanonamouse.net",
@@ -90,7 +95,7 @@ func (s *Service) Get(ctx context.Context, slug string) ([]byte, string, error) 
 		return answer(b)
 	}
 	var b []byte
-	for _, u := range []string{"https://" + host + "/favicon.ico", "https://icons.duckduckgo.com/ip3/" + host + ".ico"} {
+	for _, u := range sources(host) {
 		if got, err := s.fetch(ctx, u); err == nil {
 			b = got
 			break
@@ -103,6 +108,20 @@ func (s *Service) Get(ctx context.Context, slug string) ([]byte, string, error) 
 		_ = os.WriteFile(path, b, 0o644) // empty: a miss, kept for a day
 	}
 	return answer(b)
+}
+
+// sources are where an icon is looked for, in turn: the site's own /favicon.ico, then
+// DuckDuckGo's and Google's icon services (both answer 404 when they have none), which
+// reach sites a plain request can't (Cloudflare in front of 1337x, say).
+func sources(host string) []string {
+	if strings.HasPrefix(host, "https://") {
+		return []string{host}
+	}
+	return []string{
+		"https://" + host + "/favicon.ico",
+		"https://icons.duckduckgo.com/ip3/" + host + ".ico",
+		"https://www.google.com/s2/favicons?domain=" + host + "&sz=64",
+	}
 }
 
 func answer(b []byte) ([]byte, string, error) {

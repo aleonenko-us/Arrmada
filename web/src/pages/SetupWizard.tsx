@@ -12,6 +12,10 @@ import { useMe } from "../lib/me";
 import { setupApi } from "../lib/setupApi";
 import { Button, StatusChip, useConfirm, useToast } from "../ui";
 import { ServerChoiceTile } from "../components/brand/ServerBadge";
+import { ClientForm } from "../components/connections/ClientEditor";
+import { SiteIcon } from "../components/connections/SiteIcon";
+import { downloadClientApi, type DownloadClientTest } from "../lib/downloadClientApi";
+import type { DownloadClient } from "../lib/api";
 import { Icon, type IconName } from "../components/icons";
 import { PlexConnect } from "./settings/PlexConnection";
 import { JellyfinConnect } from "./settings/JellyfinConnection";
@@ -27,7 +31,7 @@ import { JellyfinConnect } from "./settings/JellyfinConnection";
 // own small "Finish setup later" link, which says what's left.
 // Settings → System → Run setup again opens it again with what's set shown.
 
-type Step = "keys" | "folders" | "media" | "indexers" | "finish" | "account";
+type Step = "keys" | "folders" | "media" | "downloads" | "indexers" | "finish" | "account";
 
 // A fresh install (firstRun) has no account yet, so the order is providers first and the
 // account last: Sign in with Plex needs a connected server to check against.
@@ -35,6 +39,7 @@ const FIRST_RUN_STEPS: { id: Step; label: string }[] = [
   { id: "media", label: "Media server" },
   { id: "keys", label: "Keys" },
   { id: "folders", label: "Folders" },
+  { id: "downloads", label: "Downloads" },
   { id: "indexers", label: "Indexers" },
   { id: "account", label: "Account" },
 ];
@@ -43,6 +48,7 @@ const STEPS: { id: Step; label: string }[] = [
   { id: "keys", label: "Keys" },
   { id: "folders", label: "Folders" },
   { id: "media", label: "Media server" },
+  { id: "downloads", label: "Downloads" },
   { id: "indexers", label: "Indexers" },
   { id: "finish", label: "Finish" },
 ];
@@ -362,6 +368,10 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
   // The Indexers step asks whether a Prowlarr answers (which can take a few seconds) only
   // when it opens; null while it's asking. showProwlarr: the sync panel is open.
   const [prowlarr, setProwlarr] = useState<boolean | null>(null);
+  // The Downloads step's clients: null until read.
+  const [clients, setClients] = useState<DownloadClient[] | null>(null);
+  const refreshClients = useCallback(() => downloadClientApi.downloadClients().then(setClients).catch(() => setClients([])), []);
+  useEffect(() => { if (step === "downloads") void refreshClients(); }, [step, refreshClients]);
   const [showProwlarr, setShowProwlarr] = useState(false);
   const [addingIndexer, setAddingIndexer] = useState(false);
   const refreshIndexers = useCallback(() => setupApi.stateWithProwlarr().then((s) => {
@@ -710,6 +720,35 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
         />
       )}
 
+      {step === "downloads" && (
+        <>
+          <h1 className="m-0 text-2xl font-bold">Where downloads happen</h1>
+          <p className="mb-4 mt-1 text-md text-ink-dim">
+            Arrmada hands what it finds to a download client: qBittorrent for torrents, SABnzbd for Usenet. Connect the ones you use; you need at least one.
+          </p>
+          <div className="flex flex-col gap-3">
+            {DOWNLOADERS.map((d) => (
+              <DownloaderCard
+                key={d.kind}
+                kind={d.kind}
+                name={d.name}
+                what={d.what}
+                clients={(clients ?? []).filter((c) => c.kind === d.kind)}
+                loading={clients === null}
+                onSaved={() => { void refreshClients(); void load(); }}
+              />
+            ))}
+          </div>
+          <Nav
+            busy={busy}
+            onBack={() => go(prv("downloads")!)}
+            skip={(clients ?? []).length > 0 ? undefined : { label: "Skip this step", onClick: () => go(nxt("downloads")) }}
+            onNext={() => go(nxt("downloads"))}
+            nextLabel="Continue"
+          />
+        </>
+      )}
+
       {step === "indexers" && (
         <>
           <h1 className="m-0 text-2xl font-bold">Where releases come from</h1>
@@ -743,7 +782,7 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
             <p className="m-0 text-sm text-ink-dim">
               {state.usenet_client
                 ? "Usenet indexers (NZBgeek, DrunkenSlug, NZBFinder and more) are in the list too."
-                : "Usenet indexers are in the list too; they need SABnzbd or NZBGet, which you can add in Settings → Connections after setup."}
+                : "Usenet indexers are in the list too; connect SABnzbd on the Downloads step to use them."}
             </p>
           </div>
           {addingIndexer && (
@@ -1034,5 +1073,63 @@ function Callout({ tone, role, className = "", children }: { tone: "error" | "wa
       </span>
       <div className="min-w-0 flex-1 self-center leading-snug" style={{ color: "var(--ink)" }}>{children}</div>
     </div>
+  );
+}
+
+const DOWNLOADERS: { kind: "qbittorrent" | "sabnzbd"; name: string; what: string }[] = [
+  { kind: "qbittorrent", name: "qBittorrent", what: "Torrents: public and private trackers" },
+  { kind: "sabnzbd", name: "SABnzbd", what: "Usenet: needs a Usenet provider and indexers like NZBgeek" },
+];
+
+// DownloaderCard is one download client on the Downloads step: what's connected (with a
+// Test), or Add, which opens the same form Settings → Connections uses.
+function DownloaderCard({ kind, name, what, clients, loading, onSaved }: {
+  kind: "qbittorrent" | "sabnzbd"; name: string; what: string; clients: DownloadClient[]; loading: boolean; onSaved: () => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [tests, setTests] = useState<Record<number, DownloadClientTest | "busy">>({});
+  const test = async (id: number) => {
+    setTests((t) => ({ ...t, [id]: "busy" }));
+    const r = await downloadClientApi.testDownloadClient(id).catch((e: Error) => ({ ok: false, error: e.message }));
+    setTests((t) => ({ ...t, [id]: r }));
+  };
+  return (
+    <section className="rounded-xl p-3.5" style={{ border: "1px solid var(--line)", background: "var(--panel)" }} aria-label={name}>
+      <div className="flex items-center gap-3">
+        <SiteIcon slug={kind} monogram={kind === "sabnzbd" ? "SB" : "QB"} size={40} />
+        <div className="min-w-0 flex-1">
+          <div className="text-md font-semibold">{name}</div>
+          <div className="text-xs text-ink-faint">{what}</div>
+        </div>
+        {!adding && !loading && (
+          <Button size="sm" variant={clients.length ? "secondary" : "primary"} onClick={() => setAdding(true)}>
+            {clients.length ? "Add another" : `Add ${name}`}
+          </Button>
+        )}
+      </div>
+      {clients.map((c) => {
+        const t = tests[c.id];
+        return (
+          <div key={c.id} className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2 text-sm" style={{ background: "var(--panel-2)" }}>
+            <span className="font-semibold" style={{ color: "var(--good-text)" }}>✓ {c.name}</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-faint">{c.url}</span>
+            <button type="button" onClick={() => void test(c.id)} disabled={t === "busy"} className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>
+              {t === "busy" ? "Testing…" : "Test"}
+            </button>
+            {t && t !== "busy" && (
+              <span className="basis-full text-xs" style={{ color: t.ok ? "var(--good-text)" : "var(--reject-text)" }}>
+                {t.ok ? "Connected." : t.error || "Couldn't connect."}
+              </span>
+            )}
+          </div>
+        );
+      })}
+      {adding && (
+        <div className="mt-3">
+          <ClientForm initialKind={kind} onSaved={() => { setAdding(false); onSaved(); }} />
+          <button type="button" onClick={() => setAdding(false)} className="mt-2 text-sm text-ink-faint underline">Cancel</button>
+        </div>
+      )}
+    </section>
   );
 }

@@ -8,7 +8,7 @@ import { useState } from "react";
 // containing one of these gets it: "NZBgeek (Prowlarr)" still finds nzbgeek.
 const BY_NAME: [string, string][] = [
   ["torrentleech", "torrentleech"], ["myanonamouse", "myanonamouse"], ["mam", "myanonamouse"],
-  ["1337x", "1337x"], ["prowlarr", "prowlarr"], ["iptorrents", "iptorrents"],
+  ["1337x", "1337x"], ["prowlarr", "prowlarr"], ["jackett", "jackett"], ["qbittorrent", "qbittorrent"], ["sabnzbd", "sabnzbd"], ["iptorrents", "iptorrents"],
   ["torrentday", "torrentday"], ["yts", "yts"], ["eztv", "eztv"], ["nyaa", "nyaa"],
   ["piratebay", "thepiratebay"], ["tpb", "thepiratebay"], ["limetorrents", "limetorrents"],
   ["torrentgalaxy", "torrentgalaxy"], ["filelist", "filelist"], ["beyondhd", "beyondhd"],

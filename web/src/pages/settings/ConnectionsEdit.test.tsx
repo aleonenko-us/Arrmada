@@ -86,7 +86,7 @@ describe("adding an indexer", () => {
     }
     const nzb = within(dialog).getByRole("button", { name: /NZBgeek/ });
     expect((nzb as HTMLButtonElement).disabled).toBe(true);
-    expect(within(dialog).getByText(/Usenet needs a usenet download client first/)).toBeTruthy();
+    expect(within(dialog).getByText(/Usenet needs SABnzbd connected first/)).toBeTruthy();
     // Two tiles a row from 400px, one on a 375px phone.
     expect((dialog.querySelector("ul") as HTMLElement).className).toMatch(/grid-cols-1 .*min-\[400px\]:grid-cols-2/);
   });

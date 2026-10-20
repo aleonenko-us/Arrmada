@@ -97,6 +97,7 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
   },
   {
     id: "torznab",
+    icon: "jackett",
     label: "Jackett / other Torznab",
     monogram: "TZ",
     blurb: "Any Torznab feed by URL and key",
@@ -119,7 +120,7 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
     mediaTypes: [],
     defaultUrl: "https://api.nzbgeek.info/api",
     urlPlaceholder: "https://api.nzbgeek.info/api",
-    help: "Paste your API key from your NZBgeek profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    help: "Paste your API key from your NZBgeek profile page; the address is filled in. What it finds goes to SABnzbd. Usenet doesn't seed, so there are no seed rules.",
     usenet: true,
   },
   {
@@ -134,7 +135,7 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
     mediaTypes: [],
     defaultUrl: "https://drunkenslug.com/api",
     urlPlaceholder: "https://drunkenslug.com/api",
-    help: "Paste your API key from your DrunkenSlug profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    help: "Paste your API key from your DrunkenSlug profile page; the address is filled in. What it finds goes to SABnzbd. Usenet doesn't seed, so there are no seed rules.",
     usenet: true,
   },
   {
@@ -149,7 +150,7 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
     mediaTypes: [],
     defaultUrl: "https://nzbfinder.ws/api",
     urlPlaceholder: "https://nzbfinder.ws/api",
-    help: "Paste your API key from your NZBFinder profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    help: "Paste your API key from your NZBFinder profile page; the address is filled in. What it finds goes to SABnzbd. Usenet doesn't seed, so there are no seed rules.",
     usenet: true,
   },
   {
@@ -164,7 +165,7 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
     mediaTypes: [],
     defaultUrl: "https://api.nzbplanet.net/api",
     urlPlaceholder: "https://api.nzbplanet.net/api",
-    help: "Paste your API key from your NZBPlanet profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    help: "Paste your API key from your NZBPlanet profile page; the address is filled in. What it finds goes to SABnzbd. Usenet doesn't seed, so there are no seed rules.",
     usenet: true,
   },
   {
@@ -179,7 +180,7 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
     mediaTypes: [],
     defaultUrl: "https://api.dognzb.cr/api",
     urlPlaceholder: "https://api.dognzb.cr/api",
-    help: "Paste your API key from your DOGnzb profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    help: "Paste your API key from your DOGnzb profile page; the address is filled in. What it finds goes to SABnzbd. Usenet doesn't seed, so there are no seed rules.",
     usenet: true,
   },
   {
@@ -194,7 +195,7 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
     mediaTypes: [],
     defaultUrl: "https://api.althub.co.za/api",
     urlPlaceholder: "https://api.althub.co.za/api",
-    help: "Paste your API key from your altHUB profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    help: "Paste your API key from your altHUB profile page; the address is filled in. What it finds goes to SABnzbd. Usenet doesn't seed, so there are no seed rules.",
     usenet: true,
   },
   {
@@ -209,7 +210,7 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
     mediaTypes: [],
     defaultUrl: "https://ninjacentral.co.za/api",
     urlPlaceholder: "https://ninjacentral.co.za/api",
-    help: "Paste your API key from your NinjaCentral profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    help: "Paste your API key from your NinjaCentral profile page; the address is filled in. What it finds goes to SABnzbd. Usenet doesn't seed, so there are no seed rules.",
     usenet: true,
   },
   {
