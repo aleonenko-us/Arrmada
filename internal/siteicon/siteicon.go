@@ -26,7 +26,6 @@ var Hosts = map[string]string{
 	"myanonamouse":   "www.myanonamouse.net",
 	"1337x":          "1337x.to",
 	"prowlarr":       "prowlarr.com",
-	"jackett":        "github.com",
 	"iptorrents":     "iptorrents.com",
 	"torrentday":     "www.torrentday.com",
 	"yts":            "yts.mx",
