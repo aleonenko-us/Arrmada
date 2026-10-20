@@ -49,6 +49,9 @@ var pathColumns = []pathColumn{
 	{table: "subtitle_probe_cache", column: "path", pk: true},
 	// A one-click issue fix remembers the file it acted on.
 	{table: "issues", column: "action_file"},
+	// The file check: a moved file is the same file, so it isn't probed again.
+	{table: "file_checks", column: "path"},
+	{table: "file_check_findings", column: "path"},
 }
 
 // ignoredPathColumns are path columns that never hold a Movies or TV library file, or
