@@ -218,6 +218,22 @@ func (b singleBin) For(string) (string, error) {
 	return string(b), nil
 }
 
+func (b singleBin) IsOff() bool { return b == "" }
+
+// BinOff reports whether bin is deliberately switched off, so a delete through it would be
+// permanent. Unlike For it creates nothing, so a preview can ask. A bin that can't say
+// without For is asked through For; any error there but ErrRecycleDisabled reads as on.
+func BinOff(bin Bin) bool {
+	if bin == nil {
+		return true
+	}
+	if o, ok := bin.(interface{ IsOff() bool }); ok {
+		return o.IsOff()
+	}
+	_, err := bin.For("")
+	return errors.Is(err, ErrRecycleDisabled)
+}
+
 // RemoveToBin is the one way a library file should be deleted: it moves path into the
 // bin and returns where it went. Only a bin that is deliberately off hard-deletes. If the
 // bin can't take the file, nothing is deleted and the error says so — it never falls back

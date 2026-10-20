@@ -23,6 +23,24 @@ func rootsOf(rs ...libroots.Root) func() []libroots.Root {
 	return func() []libroots.Root { return rs }
 }
 
+// BinOff answers without creating a library folder's bin, so a delete preview can ask.
+func TestBinOffCreatesNothing(t *testing.T) {
+	lib := t.TempDir()
+	on := &library.RootBins{Roots: rootsOf(libroots.Root{Name: "movies", Path: lib})}
+	if library.BinOff(on) {
+		t.Error("per-library bins read as off")
+	}
+	if _, err := os.Stat(filepath.Join(lib, library.RecycleDirName)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("asking created the bin: %v", err)
+	}
+	if !library.BinOff(&library.RootBins{Off: true}) || !library.BinOff(library.SingleBin("")) || !library.BinOff(nil) {
+		t.Error("a switched-off bin reads as on")
+	}
+	if library.BinOff(library.SingleBin(filepath.Join(lib, "bin"))) {
+		t.Error("a single bin reads as off")
+	}
+}
+
 // Nested library folders: a file goes to the bin of the deepest folder holding it.
 func TestRootBinsLongestPrefix(t *testing.T) {
 	base := t.TempDir()

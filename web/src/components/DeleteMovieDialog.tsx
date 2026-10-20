@@ -6,6 +6,19 @@ import { shownTitle } from "../lib/displayTitle";
 
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
+// extrasLine names every leftover file the delete moves from the movie's own folder.
+function extrasLine(p: MovieDeletePreview): string {
+  const extras = p.extras ?? [];
+  return extras.length ? ` Also its artwork and metadata: ${extras.map((x) => x.name).join(", ")}.` : "";
+}
+
+// foldersLine says which folders go, and why one whose other files stay is kept.
+function foldersLine(p: MovieDeletePreview): string {
+  return (p.folders ?? []).map((f) => f.removed
+    ? ` The folder “${f.name}” is removed.`
+    : f.kept ? ` The folder “${f.name}” stays: ${f.kept}.` : "").join("");
+}
+
 // DeleteMovieDialog is the one way to remove a movie, from the grid or its page. Removing
 // it from the library is the default; deleting its files is an explicit tick that first
 // shows which files, how big, and whether they go to the recycle bin or are gone for good.
@@ -50,12 +63,14 @@ export function DeleteMovieDialog({ movie, onClose, onDeleted }: {
   };
 
   const filesHint = !deleteFiles
-    ? (binMode && !binMode.enabled ? "Permanently deletes the movie's files and subtitles — the recycle bin is switched off." : "Moves the movie's files and subtitles to the recycle bin.")
+    ? (binMode && !binMode.enabled
+      ? "Permanently deletes the movie's files and subtitles — the recycle bin is switched off. Artwork and metadata stay."
+      : "Moves the movie's files and subtitles to the recycle bin, with the artwork and metadata in its own folder.")
     : !preview
       ? "Listing the movie's files…"
       : preview.versions.length === 0
         ? "This movie has no files on disk."
-        : `${preview.versions.map((v) => v.file_name).join(", ")}${preview.sidecars ? ` and ${plural(preview.sidecars, "subtitle")}` : ""}. ${disposalLine(preview.bytes, binMode)}.`;
+        : `${preview.versions.map((v) => v.file_name).join(", ")}${preview.sidecars ? ` and ${plural(preview.sidecars, "subtitle")}` : ""}.${extrasLine(preview)}${foldersLine(preview)} ${disposalLine(preview.bytes, binMode)}.`;
 
   const box = (on: boolean) => ({ border: `1px solid ${on ? "var(--reject)" : "var(--line)"}`, background: on ? "var(--reject-soft)" : "var(--panel-2)", cursor: "pointer" });
 
@@ -144,8 +159,8 @@ export function DeleteMoviesDialog({ movies, onClose, onDone }: {
   const filesHint = !deleteFiles
     ? "Their files stay on disk."
     : mode && !mode.enabled
-      ? "Permanently deletes their files and subtitles — the recycle bin is switched off."
-      : "Moves their files and subtitles to the recycle bin.";
+      ? "Permanently deletes their files and subtitles — the recycle bin is switched off. Artwork and metadata stay."
+      : "Moves their files and subtitles to the recycle bin, with the artwork, metadata and folder of each film that has a folder of its own.";
   const box = (on: boolean) => ({ border: `1px solid ${on ? "var(--reject)" : "var(--line)"}`, background: on ? "var(--reject-soft)" : "var(--panel-2)", cursor: "pointer" });
 
   return (

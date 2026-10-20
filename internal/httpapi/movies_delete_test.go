@@ -43,12 +43,16 @@ func movieDeleteServer(t *testing.T, bin string) (*routeServer, *http.Cookie, in
 	return s, mgr, id, video
 }
 
-// The preview names each file with its size, counts the subtitles that go with them, and
-// says where they'd go — the bin's path, or that the bin is off.
+// The preview names each file with its size, counts the subtitles that go with them, lists
+// the artwork in the movie's own folder and that the folder goes, and says where they'd
+// go — the bin's path, or that the bin is off.
 func TestMovieDeletePreview(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "bin")
 	s, mgr, id, video := movieDeleteServer(t, bin)
 	if err := os.WriteFile(video[:len(video)-len(".mkv")]+".en.srt", []byte("subs"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(video), "poster.jpg"), []byte("art"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.st.DB().Exec(`INSERT INTO grabs (movie_id, title, media_type, info_hash) VALUES (?, 'Heat.1995.2160p', 'movie', '0123456789abcdef0123456789abcdef01234567')`, id); err != nil {
@@ -67,7 +71,16 @@ func TestMovieDeletePreview(t *testing.T) {
 		} `json:"versions"`
 		Sidecars int   `json:"sidecars"`
 		Bytes    int64 `json:"bytes"`
-		Recycle  struct {
+		Extras   []struct {
+			Folder    string `json:"folder"`
+			Name      string `json:"name"`
+			SizeBytes int64  `json:"size_bytes"`
+		} `json:"extras"`
+		Folders []struct {
+			Name    string `json:"name"`
+			Removed bool   `json:"removed"`
+		} `json:"folders"`
+		Recycle struct {
 			Enabled bool `json:"enabled"`
 		} `json:"recycle"`
 		Pending []struct {
@@ -81,8 +94,14 @@ func TestMovieDeletePreview(t *testing.T) {
 	if len(got.Versions) != 1 || got.Versions[0].FileName != "Heat (1995).mkv" || got.Versions[0].SizeBytes != 10 {
 		t.Errorf("versions = %+v", got.Versions)
 	}
-	if got.Sidecars != 1 || got.Bytes != 14 {
-		t.Errorf("sidecars = %d, bytes = %d; want 1 and 14", got.Sidecars, got.Bytes)
+	if got.Sidecars != 1 || got.Bytes != 17 {
+		t.Errorf("sidecars = %d, bytes = %d; want 1 and 17", got.Sidecars, got.Bytes)
+	}
+	if len(got.Extras) != 1 || got.Extras[0].Name != "poster.jpg" || got.Extras[0].Folder != "Heat (1995)" || got.Extras[0].SizeBytes != 3 {
+		t.Errorf("extras = %+v, want the poster", got.Extras)
+	}
+	if len(got.Folders) != 1 || got.Folders[0].Name != "Heat (1995)" || !got.Folders[0].Removed {
+		t.Errorf("folders = %+v, want Heat (1995) removed", got.Folders)
 	}
 	if !got.Recycle.Enabled {
 		t.Error("the route server's bin is on; the preview should say so")

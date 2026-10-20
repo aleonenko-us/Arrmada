@@ -1657,6 +1657,10 @@ export interface OrganizeSummary {
 export interface MovieDeletePreview {
   versions: { id: number; label: string; file_name: string; size_bytes: number }[];
   sidecars: number;
+  // Artwork and metadata in the movie's own folder that go too (name is relative to it).
+  extras?: { folder: string; name: string; size_bytes: number }[];
+  // Each folder holding its files: removed, or why its other files stay.
+  folders?: { name: string; path: string; removed: boolean; kept?: string }[];
   bytes: number;
   recycle: RecycleMode;
   // Downloads still in flight for it; progress 0..1 (0 when the client doesn't list it).

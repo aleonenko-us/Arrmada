@@ -126,6 +126,14 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 - **Alerts and webhooks name people without their email.** "New request", "Auto-approved
   request" and "Problem reported" now carry the person's Plex or Jellyfin name, or the part
   of their account name before the @. Check any n8n workflow that matched on that field.
+- **Deleting a movie with its files now empties its own folder** (#59). Its artwork,
+  `.nfo`, subtitles, theme music and similar files go to the recycle bin with the video, and
+  the empty folder is removed. This only happens when the folder is clearly the movie's own:
+  inside a Movies folder, named with the movie's title and year, not a link, and holding no
+  other video and no file of a type Arrmada doesn't know. Otherwise only the movie's files and
+  subtitles go, as before, and the delete dialog says why the folder stays. With the recycle
+  bin off, the artwork and metadata are never deleted; they stay in the folder. Deleting one
+  version or one file works as before.
 
 ### New
 
@@ -274,6 +282,13 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Fixed
 
+- Movies: deleting a movie left its artwork and `.nfo` files behind, so its folder stayed
+  (#59). The delete dialog now lists every file that goes and whether the folder is removed.
+  If the recycle bin won't take one of those extra files, it stays and the delete still
+  finishes.
+- Movies: deleting a movie or its file no longer removes a folder that is a link to another
+  folder. Before, the link itself could be removed, however much was in the folder it
+  pointed to.
 - Library folders: a show, artist or album whose name is only dots can no longer reach
   outside its library folder. Names like "..." are still allowed.
 - Archive extraction: a refused archive no longer stops the rest of the download. Zips of RAR
