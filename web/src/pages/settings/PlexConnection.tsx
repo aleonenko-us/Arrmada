@@ -93,7 +93,7 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
       )}
       <div className="flex flex-col gap-2">
         <button onClick={() => { setTest(null); plex.begin(); }} disabled={signingIn} className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-md font-semibold disabled:opacity-60" style={{ background: "#e5a00d", color: "#1f1200" }}>
-          {plex.phase === "finishing" ? "Finishing Plex sign-in…" : signingIn ? "Waiting for Plex…" : (cfg?.token_set ? "Re-sign in with Plex" : "Sign in with Plex")}
+          {plex.phase === "finishing" ? "Signed in — finding your server…" : signingIn ? "Waiting for Plex…" : (cfg?.token_set ? "Re-sign in with Plex" : "Sign in with Plex")}
         </button>
         {(plex.phase === "waiting" || plex.phase === "slow") && (
           <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm">

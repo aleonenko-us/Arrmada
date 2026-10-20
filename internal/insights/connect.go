@@ -3,8 +3,10 @@ package insights
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/tristenlammi/arrmada/internal/plex"
+	"github.com/tristenlammi/arrmada/internal/safego"
 )
 
 // configured: a URL and a token are both saved.
@@ -115,20 +117,7 @@ func (s *Service) PollPlexAuth(ctx context.Context, pinID int) (PlexAuthResult, 
 		_ = s.settings.Set(ctx, keyURL, "")
 		s.saveIdentity(ctx, "", "")
 	}
-	var answering []ServerChoice
-	for _, c := range cands {
-		for _, conn := range c.Conns {
-			id, name, ok := s.ownedProbe(ctx, conn.URL(), token, []plex.ServerCandidate{c})
-			if !ok {
-				continue // dead, or something else answering at that address
-			}
-			if name == "" {
-				name = c.Name
-			}
-			answering = append(answering, ServerChoice{Name: name, MachineID: id, URL: conn.URL()})
-			break
-		}
-	}
+	answering := s.probeCandidates(ctx, cands, token)
 	switch len(answering) {
 	case 0:
 		s.log.Warn("insights: signed in with Plex, but none of your servers answered", "servers", len(cands))
@@ -147,6 +136,46 @@ func (s *Service) PollPlexAuth(ctx context.Context, pinID int) (PlexAuthResult, 
 		s.markUnbound(ctx, answering, cands) // one of these is picked next
 	}
 	return res, nil
+}
+
+// probeCandidates tries every address of every server at once (a dead one costs the probe
+// timeout, not the timeout times how many there are) and keeps, per server, the best-ranked
+// address that answered as that server. Servers come back in the order plex.tv listed them.
+func (s *Service) probeCandidates(ctx context.Context, cands []plex.ServerCandidate, token string) []ServerChoice {
+	type hit struct {
+		id, name string
+		ok       bool
+	}
+	hits := make([][]hit, len(cands))
+	var wg sync.WaitGroup
+	for i, c := range cands {
+		hits[i] = make([]hit, len(c.Conns))
+		for j, conn := range c.Conns {
+			wg.Add(1)
+			safego.Go(s.log, "plex probe", func() {
+				defer wg.Done()
+				id, name, ok := s.ownedProbe(ctx, conn.URL(), token, []plex.ServerCandidate{c})
+				hits[i][j] = hit{id, name, ok}
+			})
+		}
+	}
+	wg.Wait()
+	var answering []ServerChoice
+	for i, c := range cands {
+		for j, conn := range c.Conns { // already ranked: local http first
+			h := hits[i][j]
+			if !h.ok {
+				continue
+			}
+			name := h.name
+			if name == "" {
+				name = c.Name
+			}
+			answering = append(answering, ServerChoice{Name: name, MachineID: h.id, URL: conn.URL()})
+			break
+		}
+	}
+	return answering
 }
 
 // ownedProbe checks url without the token first: only a server that says it's one of

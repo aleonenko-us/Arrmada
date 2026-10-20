@@ -29,6 +29,7 @@ const POLL_MS = 2000;
 const POPUP_TRIES = 90; // ~3 minutes with the Plex window open
 const RESUME_TRIES = 15; // ~30 seconds after coming back from plex.tv
 const SLOW_MS = 5000; // then offer "Continue in this tab"
+const FINDING_MS = 1500; // a poll slower than this is the server being looked for
 
 const storeKey = (kind: PlexFlowKind) => `arrmada.plexpin.${kind}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -81,7 +82,7 @@ export interface PlexRun<T> {
 // browser cut this page's handle to it (a Cross-Origin-Opener-Policy somewhere on the way,
 // say a proxy's). Then closing can't be seen, so it just keeps waiting, with Cancel and
 // "Continue in this tab" on offer. A network blip while polling is waited out too.
-export function runPlexFlow<T>(flow: PlexFlow<T>, popup: Window | null, onSlow?: () => void): PlexRun<T> {
+export function runPlexFlow<T>(flow: PlexFlow<T>, popup: Window | null, onSlow?: () => void, onFinding?: () => void): PlexRun<T> {
   let cancelled = false;
   let slow: ReturnType<typeof setTimeout> | undefined;
   const close = () => {
@@ -107,11 +108,16 @@ export function runPlexFlow<T>(flow: PlexFlow<T>, popup: Window | null, onSlow?:
         try { closed = popup.closed; } catch { watchClosed = false; }
         if (closed && i === 0) watchClosed = false; // severed, not closed (see above)
         let r: T | null = null;
+        // A poll that takes a while is the server looking for the person's Plex server after
+        // they approved: say so, instead of still waiting on a window that said "close me".
+        const finding = setTimeout(() => { if (!cancelled) onFinding?.(); }, FINDING_MS);
         try {
           r = await flow.poll(pin.id);
         } catch (e) {
           if (e instanceof TypeError) continue; // fetch failed: the network, not an answer
           throw e;
+        } finally {
+          clearTimeout(finding);
         }
         if (cancelled) return "cancelled";
         if (r !== null) return { done: r };
@@ -189,7 +195,12 @@ export function usePlexPinSignIn<T>(opts: Options<T>) {
   const go = useCallback((popup: Window | null) => {
     run.current?.cancel();
     setPhase("waiting");
-    const r = runPlexFlow(ref.current.flow, popup, () => setPhase((p) => (p === "waiting" ? "slow" : p)));
+    const r = runPlexFlow(
+      ref.current.flow,
+      popup,
+      () => setPhase((p) => (p === "waiting" ? "slow" : p)),
+      () => setPhase((p) => (p === "waiting" || p === "slow" ? "finishing" : p)),
+    );
     run.current = r;
     r.outcome.then(
       (o) => {

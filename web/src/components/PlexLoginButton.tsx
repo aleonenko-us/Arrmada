@@ -38,7 +38,7 @@ export default function PlexLoginButton({ disabled, onBusy, onError, onSignedIn 
         style={{ background: "var(--plex)", color: "var(--plex-ink)" }}
       >
         <PlexMark />
-        {phase === "finishing" ? "Finishing Plex sign-in…" : busy ? "Waiting for Plex…" : "Sign in with Plex"}
+        {phase === "finishing" ? "Signed in — finishing up…" : busy ? "Waiting for Plex…" : "Sign in with Plex"}
       </button>
       {(phase === "waiting" || phase === "slow") && (
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm">
