@@ -112,29 +112,31 @@ function RequestPoster({ rq, staff, queueKnown = true, onOpen }: { rq: MediaRequ
         ) : (
           <PosterPlaceholder title={rq.title} year={rq.year} />
         )}
-        {/* One flex row, not two independent absolutes: a long username shrinks and
-            truncates while the status badge always keeps its full width. */}
+        {/* The status badge keeps the top row to itself (with "Following" beside it): a
+            150 px poster has no room for a name next to "SEARCHING". */}
         <span className="absolute inset-x-1.5 top-1.5 z-10 flex items-start justify-between gap-1">
-          {/* Who asked for it — staff only, since staff see everyone's requests and
-              "whose is this?" is the first question. */}
-          {staff && rq.requested_by_name ? (
-            <span
-              className="flex min-w-0 items-center gap-1 rounded-full py-[2px] pl-[2px] pr-1.5"
-              style={{ background: POSTER_CHIP_BG, border: "1px solid rgba(255,255,255,.18)" }}
-              title={`Requested by ${rq.requested_by_name}`}
-            >
-              <span className="grid h-[14px] w-[14px] flex-none place-items-center rounded-full text-xs font-bold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
-                {rq.requested_by_name[0]?.toUpperCase()}
-              </span>
-              <span className="truncate text-xs font-semibold text-white">{rq.requested_by_name}</span>
-            </span>
-          ) : following ? (
+          {following && !(staff && rq.requested_by_name) ? (
             <StatusChip tone="faint" surface="poster" className="min-w-0 truncate">Following</StatusChip>
           ) : (
             <span />
           )}
           <StatusChip tone={stage.tone} surface="poster" className="flex-none">{stage.badge}</StatusChip>
         </span>
+        {/* Who asked for it — staff only, since staff see everyone's requests and "whose is
+            this?" is the first question. Along the bottom, the full width of the poster, so the
+            name reads whole; only a very long one truncates. */}
+        {staff && rq.requested_by_name && (
+          <span
+            className={`absolute left-1.5 z-10 flex max-w-[calc(100%-12px)] items-center gap-1 rounded-full py-[2px] pl-[2px] pr-1.5 ${showBar ? "bottom-3" : "bottom-1.5"}`}
+            style={{ background: POSTER_CHIP_BG, border: "1px solid rgba(255,255,255,.18)" }}
+            title={`Requested by ${rq.requested_by_name}`}
+          >
+            <span className="grid h-[14px] w-[14px] flex-none place-items-center rounded-full text-xs font-bold" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>
+              {rq.requested_by_name[0]?.toUpperCase()}
+            </span>
+            <span className="truncate text-xs font-semibold text-white">{rq.requested_by_name}</span>
+          </span>
+        )}
         {/* Progress along the bottom while it's on its way; importing fills the bar. */}
         {showBar && (
           <span className="absolute inset-x-0 bottom-0 z-10 block h-1.5" style={{ background: "rgba(20,12,7,.55)" }}>
