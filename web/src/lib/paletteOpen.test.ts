@@ -69,7 +69,8 @@ describe("the palette shortcut", () => {
     expect(l.got).toEqual([]);
     unmount();
     l.stop();
-  });
+    // The first import of @testing-library/react can take over 5 s on a loaded machine.
+  }, 30_000);
 
   it("hands a button press from before the host mounted to the host", () => {
     openPalette("dune");
