@@ -20,17 +20,19 @@ import (
 // counts as the release's WHOLE artist part (what comes before " - ", or before the first
 // "-" of a dotted or underscored scene name), never as words found somewhere in the name.
 // That is foldMusic's whole-segment rule for short spellings (artistNamed), applied to every
-// alias: Kanye West's alias "Ye" names "Ye - Donda", never "Ye Vagabonds - Live". On top of
-// that, an alias that folds to another artist's name or alias is dropped (NameIndex), so it
-// can't make one release look like two artists'.
+// alias: "Utada Hikaru - First Love", never "Utada Hikaru Tribute Band - First Love". On top
+// of that, only real names count for matching: never a search hint (mostly misspellings,
+// listed for MusicBrainz's own search), never one shorter than three letters or digits
+// ("Ye"), and never one that folds to another artist's name or alias (NameIndex), so an
+// alias can't make one release look like two artists'.
 
 // ArtistNames is an artist's name with the aliases it may be released under, best first.
 type ArtistNames struct {
 	Name    string
 	Aliases []string
 	// Search are the aliases worth a second search query when the name finds nothing:
-	// artist and legal names (no search hints, which are mostly misspellings), the Latin
-	// ones first when the name isn't written in Latin letters.
+	// the matchable ones (no search hints, which are mostly misspellings, nothing too
+	// short), the Latin ones first when the name isn't written in Latin letters.
 	Search []string
 }
 
@@ -84,7 +86,7 @@ func aliasIsReleaseArtist(hay, alias string) bool {
 				continue
 			}
 			for _, short := range shortArtistForms(foldMusicWith(alias, join, false)) {
-				if short != "" && part == short {
+				if longEnough(short) && part == short {
 					return true
 				}
 			}
@@ -107,6 +109,27 @@ func artistSegments(hay string) []string {
 		}
 	}
 	return out
+}
+
+// minAliasLen is the fewest letters or digits an alias needs to count for matching: a
+// one- or two-letter name is too easily something else.
+const minAliasLen = 3
+
+// longEnough reports whether a folded name has at least minAliasLen letters or digits.
+func longEnough(folded string) bool {
+	n := 0
+	for _, r := range folded {
+		if isWordRune(r) {
+			n++
+		}
+	}
+	return n >= minAliasLen
+}
+
+// matchable reports whether a stored alias may be used to match releases and folders: not
+// a search hint, and long enough.
+func matchable(a aliasRow) bool {
+	return !strings.EqualFold(a.Type, "search hint") && longEnough(NormKey(a.Name))
 }
 
 // isLatin reports whether every letter of s is a Latin one (a name with no letters is not).
@@ -199,7 +222,7 @@ func buildNameIndex(artists map[int64]string, aliases []aliasRow) *NameIndex {
 		add(NormKey(name), id)
 	}
 	for _, a := range aliases {
-		if _, ok := artists[a.ArtistID]; ok {
+		if _, ok := artists[a.ArtistID]; ok && matchable(a) {
 			add(NormKey(a.Name), a.ArtistID)
 		}
 	}
@@ -207,7 +230,7 @@ func buildNameIndex(artists map[int64]string, aliases []aliasRow) *NameIndex {
 	for _, a := range aliases {
 		k := NormKey(a.Name)
 		name, ok := artists[a.ArtistID]
-		if !ok || k == "" || k == NormKey(name) || len(claim[k]) > 1 {
+		if !ok || k == "" || k == NormKey(name) || len(claim[k]) > 1 || !matchable(a) {
 			continue
 		}
 		byArtist[a.ArtistID] = append(byArtist[a.ArtistID], a)
@@ -225,7 +248,7 @@ func buildNameIndex(artists map[int64]string, aliases []aliasRow) *NameIndex {
 			}
 			seen[k] = true
 			n.Aliases = append(n.Aliases, a.Name)
-			if !strings.EqualFold(a.Type, "search hint") && (isLatin(a.Name) || !isLatin(name)) {
+			if isLatin(a.Name) || !isLatin(name) {
 				n.Search = append(n.Search, a.Name)
 			}
 		}

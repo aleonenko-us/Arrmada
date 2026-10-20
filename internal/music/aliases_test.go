@@ -15,7 +15,7 @@ import (
 func TestArtistNamesReleaseIsForAlbum(t *testing.T) {
 	utada := ArtistNames{Name: "宇多田ヒカル", Aliases: []string{"Utada Hikaru", "Hikaru Utada"}}
 	beyonce := ArtistNames{Name: "Beyoncé", Aliases: []string{"Beyoncé Knowles"}}
-	kanye := ArtistNames{Name: "Kanye West", Aliases: []string{"Ye"}}
+	kanye := ArtistNames{Name: "Kanye West", Aliases: []string{"Ye", "Yeezy"}}
 	cases := []struct {
 		names        ArtistNames
 		release, alb string
@@ -32,7 +32,9 @@ func TestArtistNamesReleaseIsForAlbum(t *testing.T) {
 		{utada, "Utada Hikaru - Discography 1998-2010", "Discography", false, "a discography is never one album"},
 		{beyonce, "Beyonce - Lemonade", "Lemonade", true, "accents fold on the name"},
 		{beyonce, "Beyonce Knowles - Dangerously in Love", "Dangerously in Love", true, "the legal name"},
-		{kanye, "Ye - Donda (2021)", "Donda", true, "a one-word alias as the whole artist part"},
+		{kanye, "Yeezy - Donda (2021)", "Donda", true, "a one-word alias as the whole artist part"},
+		{kanye, "Ye - Donda (2021)", "Donda", false, "an alias too short to trust"},
+		{kanye, "Yeezy Tribute - Donda", "Donda", false, "a one-word alias inside another name"},
 		{kanye, "Ye Vagabonds - Donda", "Donda", false, "a one-word alias inside another band's name"},
 		{kanye, "Donda by Ye", "Donda", false, "no artist part to compare"},
 	}
@@ -48,7 +50,7 @@ func TestArtistNamesReleaseIsForAlbum(t *testing.T) {
 
 // The index drops an alias that is another artist's name, or that two artists share, and
 // orders the rest: primary first, Latin ones first for a name in another script. Search
-// hints never become search queries.
+// hints and names under three letters never match or become search queries.
 func TestBuildNameIndex(t *testing.T) {
 	ix := buildNameIndex(map[int64]string{1: "宇多田ヒカル", 2: "Prince", 3: "The Artist", 4: "Kanye West", 5: "Jay-Z"},
 		[]aliasRow{
@@ -57,13 +59,14 @@ func TestBuildNameIndex(t *testing.T) {
 			{ArtistID: 1, Name: "Utada Hikaru", Type: "Artist name", Primary: true},
 			{ArtistID: 2, Name: "The Artist", Type: "Artist name"}, // another artist's name
 			{ArtistID: 2, Name: "Prince Rogers Nelson", Type: "Legal name"},
-			{ArtistID: 4, Name: "Ye", Type: "Artist name"},
-			{ArtistID: 5, Name: "Ye", Type: "Search hint"},    // shared: nobody gets it
+			{ArtistID: 2, Name: "TA", Type: "Artist name"}, // too short to match by
+			{ArtistID: 4, Name: "Yeezy", Type: "Artist name"},
+			{ArtistID: 5, Name: "Yeezy", Type: "Legal name"},  // shared: nobody gets it
 			{ArtistID: 5, Name: "JAY Z", Type: "Artist name"}, // folds to the name itself
 		})
 	u := ix.Names(1, "")
-	if len(u.Aliases) != 3 || u.Aliases[0] != "Utada Hikaru" || u.Aliases[2] != "Utada" {
-		t.Errorf("utada aliases = %v, want the primary first and the search hint last", u.Aliases)
+	if len(u.Aliases) != 2 || u.Aliases[0] != "Utada Hikaru" || u.Aliases[1] != "Hikaru Utada" {
+		t.Errorf("utada aliases = %v, want the primary first and no search hint", u.Aliases)
 	}
 	if len(u.Search) != 2 || u.Search[0] != "Utada Hikaru" {
 		t.Errorf("utada search aliases = %v, want the two artist names, no search hint", u.Search)
