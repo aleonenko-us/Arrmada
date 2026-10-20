@@ -329,7 +329,8 @@ func (s *Service) NoFilesFolderUnproven(ctx context.Context, sr Series, dir stri
 // its folder can't be told (FolderUnclear), or the folder holds — at any depth — an episode
 // it hasn't recorded whose name doesn't say it's this show's (strictly: fitsShow, no benefit
 // of the doubt), or that names another library show. Moving the folder would carry that
-// file along. Themes, backdrops, samples, trailers and other non-episode videos don't count.
+// file along. Any size counts, samples too; only videos not shaped like an episode, and Plex
+// extras by name (trailer, theme, featurette…), don't.
 func (s *Service) MoveBlocked(ctx context.Context, seriesID int64) string {
 	if why := s.FolderUnclear(ctx, seriesID); why != "" {
 		return why
@@ -352,11 +353,9 @@ func (s *Service) MoveBlocked(ctx context.Context, seriesID int64) string {
 			return nil
 		}
 		n := d.Name()
-		if !library.IsVideoFile(n) || j.isRecorded(p) || rePlexExtraName.MatchString(n) ||
-			strings.Contains(strings.ToLower(n), "sample") {
-			return nil
-		}
-		if fi, err := d.Info(); err != nil || fi.Size() < library.MinEpisodeVideoSize {
+		// Whatever its size, sample or not: Move is rare and a refusal cheap, while carrying
+		// a small other-show episode along is not.
+		if !library.IsVideoFile(n) || j.isRecorded(p) || rePlexExtraName.MatchString(n) {
 			return nil
 		}
 		rel := parser.Parse(n)

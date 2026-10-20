@@ -46,7 +46,8 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   name doesn't say it's this show's (`Other Show - S01E03.mkv` in its `S01` or `Season 1`),
   or one naming another show in your library, the move is refused and the message names the
   file: moving the folder would carry it along. Import it, or move it out, then move the
-  show. Themes, backdrops, samples and trailers don't count.
+  show. Themes, backdrops and trailers don't count; a small file or a sample named as an
+  episode does.
 - **The way out for a show whose files were moved** now needs a folder named with the
   show's year (`Show (2019)`) or one already holding its files; see Fixed below.
 - **Missing music files are flagged, not downloaded again.** When a track file is gone on two

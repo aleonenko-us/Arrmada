@@ -16,22 +16,28 @@ import (
 )
 
 // Move to folder never carries an episode the show hasn't recorded whose name doesn't say
-// it's the show's — in any layout — and says which file blocks it. The show's own recorded
-// files move whatever they're called. Temp dirs only.
+// it's the show's — in any layout, at any size, sample or not — and says which file blocks
+// it. The show's own recorded files move whatever they're called; a theme doesn't count.
+// Temp dirs only.
 func TestRevHMoveRefusesAnEpisodeNotTheShowsInside(t *testing.T) {
 	for _, c := range []struct {
 		name, title string
 		recorded    []string // the show's own, recorded
 		untracked   string   // "" = none
 		refused     bool
+		size        int64 // the untracked file's size; 0 = 60 MB
 	}{
-		{"ops12-other-in-S01", "Pechino Express", []string{"Pechino Express/S01/Pechino Express - S01E01.mkv"}, "Pechino Express/S01/Other Show - S01E03.mkv", true},
-		{"ops12-other-in-category-S01", "The Pitt", []string{"Anime/The Pitt/S01/The Pitt - S01E01.mkv"}, "Anime/The Pitt/S01/Other Show - S01E03.mkv", true},
-		{"ops12-other-in-season-n", "Show", []string{"Show (2010)/Season 1/Show - S01E01.mkv"}, "Show (2010)/Season 1/Other Show - S01E03.mkv", true},
-		{"romaji recorded files move", "Attack on Titan", []string{"Attack on Titan (2013)/Season 1/Shingeki no Kyojin - S01E01.mkv", "Attack on Titan (2013)/Season 1/Shingeki no Kyojin - S01E02.mkv"}, "", false},
-		{"short-name recorded files move", "Frieren Beyond Journeys End", []string{"Frieren (2023)/Season 1/Frieren - S01E01.mkv"}, "", false},
-		{"own unrecorded odd name refuses", "Attack on Titan", []string{"Attack on Titan (2013)/Season 1/Attack on Titan - S01E01.mkv"}, "Attack on Titan (2013)/Season 1/Shingeki no Kyojin - S01E05.mkv", true},
-		{"theme and trailer don't count", "Show", []string{"Show (2010)/Season 1/Show - S01E01.mkv"}, "Show (2010)/backdrops/theme.mkv", false},
+		{"ops12-other-in-S01", "Pechino Express", []string{"Pechino Express/S01/Pechino Express - S01E01.mkv"}, "Pechino Express/S01/Other Show - S01E03.mkv", true, 0},
+		{"ops12-other-in-category-S01", "The Pitt", []string{"Anime/The Pitt/S01/The Pitt - S01E01.mkv"}, "Anime/The Pitt/S01/Other Show - S01E03.mkv", true, 0},
+		{"ops12-other-in-season-n", "Show", []string{"Show (2010)/Season 1/Show - S01E01.mkv"}, "Show (2010)/Season 1/Other Show - S01E03.mkv", true, 0},
+		{"romaji recorded files move", "Attack on Titan", []string{"Attack on Titan (2013)/Season 1/Shingeki no Kyojin - S01E01.mkv", "Attack on Titan (2013)/Season 1/Shingeki no Kyojin - S01E02.mkv"}, "", false, 0},
+		{"short-name recorded files move", "Frieren Beyond Journeys End", []string{"Frieren (2023)/Season 1/Frieren - S01E01.mkv"}, "", false, 0},
+		{"own unrecorded odd name refuses", "Attack on Titan", []string{"Attack on Titan (2013)/Season 1/Attack on Titan - S01E01.mkv"}, "Attack on Titan (2013)/Season 1/Shingeki no Kyojin - S01E05.mkv", true, 0},
+		{"theme in backdrops", "Show", []string{"Show (2010)/Season 1/Show - S01E01.mkv"}, "Show (2010)/backdrops/theme.mkv", false, 0},
+		{"small theme in backdrops", "Show", []string{"Show (2010)/Season 1/Show - S01E01.mkv"}, "Show (2010)/backdrops/theme.mkv", false, 4},
+		{"small other-show episode in S01", "Show", []string{"Show/S01/Show - S01E01.mkv"}, "Show/S01/Peppa Pig - S01E02.mkv", true, 40 << 20},
+		{"small other-show episode in Season 1", "Show", []string{"Show (2010)/Season 1/Show - S01E01.mkv"}, "Show (2010)/Season 1/Peppa Pig - S01E02.mkv", true, 40 << 20},
+		{"other-show sample", "Show", []string{"Show/S01/Show - S01E01.mkv"}, "Show/S01/Other Show - S01E02 - sample.mkv", true, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h := newStallHarness(t)
@@ -62,7 +68,11 @@ func TestRevHMoveRefusesAnEpisodeNotTheShowsInside(t *testing.T) {
 				setEpisodeFile(t, h.c, s.ID, 1, i+1, libFile(t, filepath.Join(tv, filepath.FromSlash(rel))), "x")
 			}
 			if c.untracked != "" {
-				libFile(t, filepath.Join(tv, filepath.FromSlash(c.untracked)))
+				size := c.size
+				if size == 0 {
+					size = 60 << 20
+				}
+				sparseFile(t, filepath.Join(tv, filepath.FromSlash(c.untracked)), size)
 			}
 			m := &libfolders.Mover{DB: h.c.db, Folders: folders, Bin: library.SingleBin(filepath.Join(t.TempDir(), "bin")),
 				ShowFolders: svc.ShowFoldersOf, Unclear: svc.MoveBlocked, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
