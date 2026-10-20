@@ -1659,6 +1659,11 @@ export interface OrganizeSummary {
 export interface MovieDeletePreview {
   versions: { id: number; label: string; file_name: string; size_bytes: number }[];
   sidecars: number;
+  // Artwork and metadata in the movie's own folder that go too (name is relative to it).
+  // The delete is sent back their paths: only the ones shown here can go.
+  extras?: { folder: string; name: string; path: string; size_bytes: number }[];
+  // Each folder holding its files: removed, or why its other files stay.
+  folders?: { name: string; path: string; removed: boolean; kept?: string }[];
   bytes: number;
   recycle: RecycleMode;
   // Downloads still in flight for it; progress 0..1 (0 when the client doesn't list it).
@@ -3286,12 +3291,16 @@ export const api = {
     req<{ status: string } & JobRef>("/api/v1/books/series-backfill", { method: "POST" }),
   grabBookTorrent: (id: number, torrent: string, filename: string, title: string, versionId?: number) =>
     req<{ status: string }>(`/api/v1/books/${id}/grabtorrent`, { method: "POST", body: JSON.stringify({ torrent, filename, title, version_id: versionId || 0 }) }),
-  deleteMovie: (id: number, deleteFiles?: boolean, cancelDownloads?: boolean) => {
+  /** leftovers: the artwork and metadata paths the delete preview listed; only those can go. */
+  deleteMovie: (id: number, deleteFiles?: boolean, cancelDownloads?: boolean, leftovers?: string[]) => {
     const q = new URLSearchParams();
     if (deleteFiles) q.set("delete_files", "true");
     if (cancelDownloads) q.set("cancel_downloads", "true");
     const qs = q.toString();
-    return req<void>(`/api/v1/movies/${id}${qs ? `?${qs}` : ""}`, { method: "DELETE" });
+    return req<void>(`/api/v1/movies/${id}${qs ? `?${qs}` : ""}`, {
+      method: "DELETE",
+      ...(deleteFiles && leftovers?.length ? { body: JSON.stringify({ leftovers }) } : {}),
+    });
   },
   movieDeletePreview: (id: number) => req<MovieDeletePreview>(`/api/v1/movies/${id}/delete-preview`),
   searchMovie: (id: number) =>

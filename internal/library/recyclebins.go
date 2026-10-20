@@ -64,6 +64,9 @@ type RootBins struct {
 	warned map[string]bool
 }
 
+// IsOff reports whether every delete is permanent, without creating anything (BinOff).
+func (b *RootBins) IsOff() bool { return b.Off }
+
 // For returns the bin path should go to, creating a library folder's bin (and its
 // marker files) on first use.
 func (b *RootBins) For(path string) (string, error) {

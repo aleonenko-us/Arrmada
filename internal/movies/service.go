@@ -61,6 +61,9 @@ type Service struct {
 	// onFileRemoved runs synchronously whenever a library file is deleted, so the import
 	// pipeline forgets it before anything can import it back (nil = nothing to tell).
 	onFileRemoved func(ctx context.Context, path string)
+	// protected lists the other library folders and the downloads folders: a movie
+	// delete never removes or empties one (SetProtectedDirs).
+	protected func() []string
 
 	// The only ways this service looks at a library file: ffprobe and stat. Swappable so
 	// tests can count them — periodic jobs must cause neither (see VersionRows).
@@ -153,6 +156,11 @@ func (s *Service) libRoot() string {
 	}
 	return s.root
 }
+
+// SetProtectedDirs names the folders, beyond the Movies folders, that a movie delete
+// never removes even when empty, nor empties: every library folder of any kind and every
+// downloads folder. Call it at startup, before anything runs.
+func (s *Service) SetProtectedDirs(fn func() []string) { s.protected = fn }
 
 // Folders is the Movies library's folders when it has more than one (internal/libfolders).
 type Folders interface {
