@@ -288,11 +288,36 @@ func (a *api) handleScanMusicLibrary(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength > 0 && !a.decodeJSON(w, r, &req) { // body optional
 		return
 	}
-	full := req.Full
-	// One scan at a time (single-flight): two overlapping runs would double every
-	// MusicBrainz lookup and race each other's writes. Its own class, so an hours-long music
-	// scan doesn't hold up the other libraries' scans.
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "music.scan", Target: "all", Class: "music.scan", Timeout: libraryScanTimeout,
+	jobID, existing, ok := a.submitOr503(w, r, a.musicScanJob(req.Full))
+	if !ok {
+		return
+	}
+	if existing {
+		a.alreadyRunning(w, jobID, "a music scan is already running")
+		return
+	}
+	a.accepted(w, jobID, false, map[string]any{"status": "scanning"})
+}
+
+// musicScanFollowUp queues an incremental music scan as a job (the file check's follow-up,
+// MUS-15): files it just found gone may be ones renamed elsewhere, which only a scan links
+// again. Single-flight with any scan already running.
+func (a *api) musicScanFollowUp() {
+	if _, _, err := a.submit(nil, withTrigger(a.musicScanJob(false), "system:music-file-check")); err != nil {
+		a.deps.Log.Warn("music: couldn't queue the scan after the file check", "err", err)
+	}
+}
+
+func withTrigger(s jobs.Spec, trigger string) jobs.Spec {
+	s.Trigger = trigger
+	return s
+}
+
+// musicScanJob is the library scan as a job. One scan at a time (single-flight): two
+// overlapping runs would double every MusicBrainz lookup and race each other's writes. Its
+// own class, so an hours-long music scan doesn't hold up the other libraries' scans.
+func (a *api) musicScanJob(full bool) jobs.Spec {
+	return jobs.Spec{Kind: "music.scan", Target: "all", Class: "music.scan", Timeout: libraryScanTimeout,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
 			p.SetMessage("Walking the music folder…")
 			res, err := a.deps.Automation.ScanMusicLibraryWith(ctx, automation.MusicScanOptions{Full: full}, func(done, total int) {
@@ -311,15 +336,7 @@ func (a *api) handleScanMusicLibrary(w http.ResponseWriter, r *http.Request) {
 			})
 			p.SetMessage(musicScanMessage(res))
 			return res, nil
-		}})
-	if !ok {
-		return
-	}
-	if existing {
-		a.alreadyRunning(w, jobID, "a music scan is already running")
-		return
-	}
-	a.accepted(w, jobID, false, map[string]any{"status": "scanning"})
+		}}
 }
 
 // musicScanMessage is a finished scan's one line: what it found, and what's left to do.

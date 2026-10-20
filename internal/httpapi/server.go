@@ -230,6 +230,11 @@ func New(d Deps) *http.Server {
 	if d.Health != nil {
 		a.registerHealthChecks(d.Health)
 	}
+	// Files the daily music file check finds gone may only be renamed: it queues a scan,
+	// which links them again (MUS-15).
+	if d.Automation != nil {
+		d.Automation.SetMusicRescan(a.musicScanFollowUp)
+	}
 
 	// Chain: recover → authenticate (resolves the user) → external gate (LAN vs
 	// outside) → log → gzip for larger JSON → routes.

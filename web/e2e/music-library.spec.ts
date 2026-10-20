@@ -162,7 +162,11 @@ test.describe("Music on the kit", () => {
     // Never searched by itself: the album page offers the search.
     const note = page.getByRole("region", { name: "Track files gone from disk" });
     await expect(note.getByText(/doesn't download them again by itself/)).toBeVisible();
+    await expect(note.getByText(/Run a library scan first/)).toBeVisible();
     await note.getByRole("button", { name: "Search for missing tracks" }).click();
+    const ask = page.getByRole("dialog", { name: "Search for the missing tracks?" });
+    await expect(ask.getByText(/Moved or retagged these files yourself\?/)).toBeVisible();
+    await ask.getByRole("button", { name: "Search" }).click();
     await expect.poll(() => searched).toBe(1);
   });
 

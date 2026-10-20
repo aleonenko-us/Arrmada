@@ -75,6 +75,9 @@ type MusicScanResult struct {
 	Full      bool `json:"full,omitempty"`
 	// Verify is the file check that runs after the scan (MUS-15).
 	Verify *MusicVerifyResult `json:"verify,omitempty"`
+	// FollowUp says the check found files newly gone and one more incremental pass ran
+	// (its counts are in the totals), to link files renamed outside Arrmada.
+	FollowUp bool `json:"follow_up,omitempty"`
 	// Timings, in milliseconds: the walk, the reading of new files (summed over the
 	// workers), and the whole scan.
 	WalkMs  int64 `json:"walk_ms"`
@@ -90,6 +93,10 @@ type MusicScanOptions struct {
 	Workers int
 	// FoldersPerRun overrides musicScanFoldersPerRun (0: the default).
 	FoldersPerRun int
+
+	// followUp marks the one follow-up pass a scan runs after its file check found files
+	// newly gone: it never runs another.
+	followUp bool
 }
 
 // musicScanFoldersPerRun caps the album folders one scan reads. A first scan of a big
@@ -243,8 +250,26 @@ func (c *Coordinator) ScanMusicLibraryWith(ctx context.Context, opt MusicScanOpt
 	res.Measured = c.measureUnmeasuredTracks(ctx, musicMeasurePerScan)
 	// Then the verify pass (MUS-15), after moved files were followed: files gone from disk
 	// and files changed outside Arrmada, with its guards.
-	if v, err := c.VerifyMusicFiles(ctx); err == nil {
+	if v, err := c.verifyMusicFiles(ctx, false); err == nil {
 		res.Verify = &v
+		// Files it newly found gone may only be renamed (and retagged, so not followed
+		// by inode): their tracks can only take the new files now that the check has
+		// noted the old ones. One incremental pass more links them; its own check never
+		// asks for another, so a scan never loops.
+		if !opt.followUp && v.NotFound > 0 && v.Refused == "" && ctx.Err() == nil {
+			fopt := opt
+			fopt.Full, fopt.followUp = false, true
+			if fu, err := c.ScanMusicLibraryWith(ctx, fopt, nil); err == nil {
+				res.Tracks += fu.Tracks
+				res.Albums += fu.Albums
+				res.Moved += fu.Moved
+				res.Artists += fu.Artists
+				res.Held, res.Waiting = fu.Held, fu.Waiting
+				res.FollowUp = true
+			} else if ctx.Err() == nil {
+				c.log.Warn("music scan: the follow-up pass after the file check failed", "err", err)
+			}
+		}
 	} else if ctx.Err() == nil {
 		c.log.Warn("music scan: the file check after the scan failed", "err", err)
 	}

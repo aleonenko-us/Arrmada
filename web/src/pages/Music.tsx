@@ -10,6 +10,7 @@ import { Button, ErrorState, FilterBar, IconButton, LibraryToolbar, Modal, Skele
 import { LibraryEmpty } from "../features/library/LibraryEmpty";
 import { NewReleasesModal } from "../components/music/NewReleases";
 import { ScanResultsModal } from "../components/music/ScanResults";
+import { MISSING_MOVED_HINT } from "../components/music/fileMarks";
 import { musicApi } from "../lib/musicApi";
 import { Page } from "../ui/Page";
 
@@ -117,7 +118,15 @@ export function Music() {
   const searchAllMissing = async () => {
     const ok = await confirm({
       title: `Search for the missing tracks of ${missingAlbums} album${missingAlbums === 1 ? "" : "s"}?`,
-      body: "Their track files are gone from disk. Arrmada doesn't download them again by itself, because they may only be renamed or on a disk that's away. Search only if they're really gone. One run searches up to 25 albums; run it again for the rest.",
+      body: (
+        <>
+          <p className="m-0">
+            Their track files are gone from disk. Arrmada doesn't download them again by itself, because they may only be renamed or on a disk
+            that's away. Search only if they're really gone. One run searches up to 25 albums; run it again for the rest.
+          </p>
+          <p className="mb-0 mt-2">{MISSING_MOVED_HINT}</p>
+        </>
+      ),
       confirmLabel: "Search",
     });
     if (!ok) return;

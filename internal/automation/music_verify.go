@@ -94,6 +94,8 @@ type musicVerifyState struct {
 	last MusicVerifyResult
 	// houseFn checks a changed file's house tags (nil: houseTagsHold on the real file).
 	houseFn func(tc music.TagContext, trackID int64, path string) (hold, ok bool)
+	// rescan queues the follow-up library scan (SetMusicRescan).
+	rescan func()
 }
 
 // LastMusicVerify is the most recent verify pass's outcome (zero before the first).
@@ -112,9 +114,27 @@ type verifyStat struct {
 	err error
 }
 
-// VerifyMusicFiles is the verify pass (see the top of this file). A pass cut short by ctx
-// writes nothing.
+// SetMusicRescan wires the follow-up scan the file check queues when it finds files newly
+// gone (nil: none). It must not wait for the scan.
+func (c *Coordinator) SetMusicRescan(fn func()) {
+	c.musicVerify.mu.Lock()
+	c.musicVerify.rescan = fn
+	c.musicVerify.mu.Unlock()
+}
+
+// VerifyMusicFiles is the verify pass on its own (the daily task; see the top of this
+// file). A pass cut short by ctx writes nothing. When it newly finds files gone (and wasn't
+// refused), it queues an incremental library scan: a file renamed and retagged outside
+// Arrmada is only linked again by a scan after the check has noted its old path, and
+// otherwise the album would read "gone from disk" until someone scanned by hand.
 func (c *Coordinator) VerifyMusicFiles(ctx context.Context) (MusicVerifyResult, error) {
+	out, err := c.verifyMusicFiles(ctx, true)
+	return out, err
+}
+
+// verifyMusicFiles is the pass; queueScan asks for the follow-up scan (a scan running the
+// pass itself runs its own follow-up instead).
+func (c *Coordinator) verifyMusicFiles(ctx context.Context, queueScan bool) (MusicVerifyResult, error) {
 	out := MusicVerifyResult{At: time.Now()}
 	if c.music == nil || c.imp == nil {
 		return out, nil
@@ -306,7 +326,12 @@ func (c *Coordinator) VerifyMusicFiles(ctx context.Context) (MusicVerifyResult, 
 	}
 	c.musicVerify.mu.Lock()
 	c.musicVerify.last = out
+	rescan := c.musicVerify.rescan
 	c.musicVerify.mu.Unlock()
+	if queueScan && rescan != nil && out.NotFound > 0 && out.Refused == "" {
+		c.log.Info("music file check: files newly gone — queuing a library scan to link any that were only moved", "not_found", out.NotFound)
+		rescan()
+	}
 	return out, nil
 }
 

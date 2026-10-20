@@ -4,6 +4,9 @@ import type { MusicAlbum, MusicTrack } from "../../lib/api";
 // downloaded again by themselves), files not found once (not missing yet), and files
 // changed outside Arrmada.
 
+/** The one line every "Search for missing tracks" place says first (MUS-15). */
+export const MISSING_MOVED_HINT = "Moved or retagged these files yourself? Run a library scan first; Arrmada links them again instead of downloading.";
+
 /** An album row's line about its files, or "" when there's nothing to say. */
 export function albumFileMarks(al: Pick<MusicAlbum, "missing_tracks" | "changed_tracks">): string {
   const parts: string[] = [];

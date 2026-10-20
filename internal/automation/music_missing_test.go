@@ -150,13 +150,10 @@ func TestScanDuplicateFolderIsNotCachedDone(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(lib.root, "Band", "Album 00")); err != nil {
 		t.Fatal(err)
 	}
-	// The scan that finds the original gone still holds the copy back (its file check is
-	// what notes the original gone); the next one records the copy.
-	if third := h.scan(t, MusicScanOptions{}); third.Tracks != 0 || third.Held != 1 {
-		t.Errorf("third scan = %+v; want the copy still held until the check agrees", third)
-	}
-	if fourth := h.scan(t, MusicScanOptions{}); fourth.Tracks != 2 || fourth.Held != 0 {
-		t.Errorf("fourth scan = %+v; want the copy recorded once the original is found gone", fourth)
+	// The scan that finds the original gone holds the copy back on its first pass; its file
+	// check notes the original gone, and its follow-up pass records the copy.
+	if third := h.scan(t, MusicScanOptions{}); third.Tracks != 2 || third.Held != 0 || !third.FollowUp {
+		t.Errorf("third scan = %+v; want the copy recorded by the follow-up once the original is found gone", third)
 	}
 }
 

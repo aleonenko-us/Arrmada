@@ -92,16 +92,13 @@ func TestScanRelinksRenamedAndRetaggedAlbum(t *testing.T) {
 		lib.tags[p] = tagged("Band", "Album 00", i+1, []string{"One", "Two"}[i])
 		lib.mu.Unlock()
 	}
-	// The first scan matches them but leaves the records alone: the file check hasn't yet
-	// agreed the old files are gone (it notes them at the end of this scan), and a share that
-	// is away must never give its tracks to another copy.
+	// The scan's first pass matches them but leaves the records alone (the file check hasn't
+	// yet agreed the old files are gone, and a share that is away must never give its tracks
+	// to another copy). Its file check then notes the old files, and its one follow-up pass
+	// links the new ones: all in the one scan, nothing followed by inode.
 	res := h.scan(t, MusicScanOptions{})
-	if res.Moved != 0 || res.Tracks != 0 || res.Held != 1 || res.Verify == nil || res.Verify.NotFound != 2 {
-		t.Fatalf("first scan = %+v (verify %+v); want the folder held and the old files noted", res, res.Verify)
-	}
-	// The next scan looks again, and the tracks take the files.
-	if res = h.scan(t, MusicScanOptions{}); res.Tracks != 2 || res.Held != 0 {
-		t.Fatalf("second scan = %+v; want the two files recorded (not followed)", res)
+	if res.Moved != 0 || res.Tracks != 2 || res.Held != 0 || !res.FollowUp || res.Verify == nil || res.Verify.NotFound != 2 {
+		t.Fatalf("scan = %+v (verify %+v); want the old files noted and the new ones linked by the follow-up", res, res.Verify)
 	}
 	al := h.album(t, a.ID, "Album 00")
 	for _, title := range []string{"One", "Two"} {
@@ -116,6 +113,53 @@ func TestScanRelinksRenamedAndRetaggedAlbum(t *testing.T) {
 	}
 	if got := h.album(t, a.ID, "Album 00"); got.MissingTracks != 0 {
 		t.Errorf("album missing_tracks = %d", got.MissingTracks)
+	}
+}
+
+// With no scan by hand at all: the daily file check notes the renamed album's old files
+// gone and queues one library scan, which links the new ones. That scan's own check finds
+// nothing newly gone, so nothing more is queued.
+func TestFileCheckQueuesTheScanThatRelinks(t *testing.T) {
+	h, lib, a, _ := verifyLib(t, 10)
+	from := filepath.Join(lib.root, "Band", "Album 00")
+	to := filepath.Join(lib.root, "Band", "Album 00 (1999) [FLAC]")
+	if err := os.Rename(from, to); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(3 * time.Hour)
+	for i, n := range []string{"01 - One.flac", "02 - Two.flac"} {
+		p := filepath.Join(to, n)
+		if err := os.Chtimes(p, later, later); err != nil {
+			t.Fatal(err)
+		}
+		lib.mu.Lock()
+		lib.tags[p] = tagged("Band", "Album 00", i+1, []string{"One", "Two"}[i])
+		lib.mu.Unlock()
+	}
+	queued := 0
+	var scanned MusicScanResult
+	h.c.SetMusicRescan(func() {
+		queued++
+		res, err := h.c.ScanMusicLibraryWith(h.ctx, MusicScanOptions{}, nil)
+		if err != nil {
+			t.Errorf("the queued scan: %v", err)
+		}
+		scanned = res
+	})
+	v := h.verify(t)
+	if v.NotFound != 2 || queued != 1 {
+		t.Fatalf("file check = %+v, %d scan(s) queued; want the old files noted and one scan", v, queued)
+	}
+	if scanned.Tracks != 2 || scanned.FollowUp || scanned.Verify == nil || scanned.Verify.NotFound != 0 {
+		t.Errorf("queued scan = %+v (verify %+v); want the files linked in one pass, nothing newly gone", scanned, scanned.Verify)
+	}
+	al := h.album(t, a.ID, "Album 00")
+	if tr := h.track(t, al.ID, "One"); !tr.HasFile || !strings.HasPrefix(tr.FilePath, to) || tr.NotFoundSince != "" {
+		t.Errorf("track One = %+v; want it linked at %s", tr, to)
+	}
+	// Nothing newly gone: no scan queued.
+	if v := h.verify(t); v.NotFound != 0 || queued != 1 {
+		t.Errorf("next check = %+v, %d scan(s) queued; want none more", v, queued)
 	}
 }
 
