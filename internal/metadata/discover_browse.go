@@ -35,9 +35,15 @@ type BrowseQuery struct {
 	RuntimeMin, RuntimeMax int
 	Provider               int
 	Language               string
-	Sort                   string
-	List                   string
-	Page                   int
+	// VotesMin raises the vote floor (never lowers it): a rating sort or a high minimum
+	// rating isn't topped by a title three people scored.
+	VotesMin int
+	// Certification is an age rating in the discovery region ("PG-13", "12"): titles
+	// rated at most that. Only a code TMDB lists for the region and media is sent.
+	Certification string
+	Sort          string
+	List          string
+	Page          int
 }
 
 // Page is one page of a paged list.
@@ -75,6 +81,13 @@ const (
 )
 
 var langCode = regexp.MustCompile(`^[a-z]{2}$`)
+
+// certCode is what an age rating may look like ("PG-13", "TV-MA", "12", "R18+"); anything
+// else is dropped before it could reach TMDB.
+var certCode = regexp.MustCompile(`^[A-Za-z0-9+\-]{1,8}$`)
+
+// maxVotesMin bounds the vote floor a browser may ask for.
+const maxVotesMin = 100000
 
 // normalize validates and clamps a query: an unknown media, list or sort is refused;
 // numbers are clamped into sane ranges; the page into 1..500.
@@ -136,6 +149,11 @@ func (q BrowseQuery) normalize() (BrowseQuery, error) {
 	q.RuntimeMin = min(max(q.RuntimeMin, 0), 600)
 	q.RuntimeMax = min(max(q.RuntimeMax, 0), 600)
 	q.Provider = max(q.Provider, 0)
+	q.VotesMin = min(max(q.VotesMin, 0), maxVotesMin)
+	q.Certification = strings.TrimSpace(q.Certification)
+	if !certCode.MatchString(q.Certification) {
+		q.Certification = ""
+	}
 	q.Language = strings.ToLower(strings.TrimSpace(q.Language))
 	if q.Language != "" && !langCode.MatchString(q.Language) {
 		q.Language = ""
@@ -214,6 +232,7 @@ func (t *TMDB) browseRequest(q BrowseQuery) (path string, v url.Values, def stri
 	if q.Sort == "vote_average.desc" {
 		floor = ratingSortVotes
 	}
+	floor = max(floor, q.VotesMin)
 	v.Set("vote_count.gte", strconv.Itoa(floor))
 	if len(q.Genres) > 0 {
 		ids := make([]string, len(q.Genres))
@@ -253,6 +272,11 @@ func (t *TMDB) browseRequest(q BrowseQuery) (path string, v url.Values, def stri
 	}
 	if q.Language != "" {
 		v.Set("with_original_language", q.Language)
+	}
+	if q.Certification != "" {
+		// "Up to" this rating, in the region's own scale.
+		v.Set("certification_country", t.regionOrDefault())
+		v.Set("certification.lte", q.Certification)
 	}
 	if seg == "movie" {
 		if r := t.regionCode(); r != "" {

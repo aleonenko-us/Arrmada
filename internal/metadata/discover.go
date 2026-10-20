@@ -24,6 +24,9 @@ type DiscoverItem struct {
 	VoteAverage float64  `json:"vote_average"`
 	ReleaseDate string   `json:"release_date,omitempty"`
 	Genres      []string `json:"genres,omitempty"` // up to three, for the card
+	// HomeRelease is the film's first digital or disc release (YYYY-MM-DD), on the
+	// "Just out at home" row only.
+	HomeRelease string `json:"home_release,omitempty"`
 }
 
 // Genre is a TMDB genre (for the genre explorer).
