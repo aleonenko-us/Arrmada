@@ -178,10 +178,10 @@ func TestImportFlatShowInsideACategory(t *testing.T) {
 		}
 		noDir(t, filepath.Join(tv, "Anime", "Season 1"), "the import went into the category folder")
 	})
-	t.Run("nothing ties the folder to the show", func(t *testing.T) {
+	t.Run("named like a download: refused", func(t *testing.T) {
 		h := newLifecycleHarness(t)
 		tv := h.c.imp.TVRoot()
-		setEpisodeFile(t, h.c, h.seriesID, 1, 1, libFile(t, filepath.Join(tv, "Anime", "Sousou no Show", "Show - S01E01.mkv")), "Show.S01E01")
+		setEpisodeFile(t, h.c, h.seriesID, 1, 1, libFile(t, filepath.Join(tv, "Anime", "Show 1080p", "Show - S01E01.mkv")), "Show.S01E01")
 		s, _ := h.c.series.Get(h.ctx, h.seriesID)
 		if _, _, err := h.c.seriesPlacement(h.ctx, s); !errors.Is(err, series.ErrNoShowFolder) {
 			t.Fatalf("placement = %v, want refused", err)
