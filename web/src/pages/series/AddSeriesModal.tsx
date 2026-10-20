@@ -8,8 +8,10 @@ import { DEFAULT_MONITOR_PRESET, MONITOR_PRESETS, isMonitorPreset, type MonitorP
 // AddSeriesModal is the library's "+ Add series": search TMDB, pick a show, and add it on a
 // profile with a monitoring preset, searching for it at once or not. folderId preselects
 // the folder the library page is showing; left out, each show goes where the rules put it.
-export function AddSeriesModal({ onClose, onAdded, folderId }: { onClose: () => void; onAdded: () => void; folderId?: number }) {
-  const [q, setQ] = useState("");
+// initialQuery fills the search box and runs it (a scan's needs-you list opens Add series
+// with the folder's name).
+export function AddSeriesModal({ onClose, onAdded, folderId, initialQuery }: { onClose: () => void; onAdded: () => void; folderId?: number; initialQuery?: string }) {
+  const [q, setQ] = useState(initialQuery ?? "");
   const [results, setResults] = useState<SeriesLookup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +38,15 @@ export function AddSeriesModal({ onClose, onAdded, folderId }: { onClose: () => 
       setSearchOnAdd(s.search_on_add);
       if (isMonitorPreset(s.series_monitor_default)) setMonitor(s.series_monitor_default);
     }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const first = initialQuery?.trim();
+    if (!first) return;
+    setLoading(true);
+    api.lookupSeries(first).then(setResults).catch((e) => setError((e as Error).message)).finally(() => setLoading(false));
+    // Once, when the dialog opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleSearchOnAdd = () => setSearchOnAdd((v) => !v);

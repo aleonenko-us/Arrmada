@@ -42,7 +42,16 @@ export function Series() {
   // the library with searching off, one show at a time is hundreds of clicks — point at the
   // bulk switch. "show them" picks the Searching off filter, keeping the rest of the address.
   const offCount = manyOff(list ?? []);
-  const [, setParams] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  // /series?find=Some Show (a scan's needs-you list) opens it with that name searched.
+  const [findTitle, setFindTitle] = useState<string | undefined>();
+  const wanted = params.get("find");
+  useEffect(() => {
+    if (!wanted) return;
+    setFindTitle(wanted);
+    setAdding(true);
+    setParams((p) => { const next = new URLSearchParams(p); next.delete("find"); return next; }, { replace: true });
+  }, [wanted, setParams]);
   const showOff = () => setParams((p) => { const next = new URLSearchParams(p); next.set("filter", "searching-off"); return next; });
   useEffect(() => {
     qualityApi.qualityProfiles("series").then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name })))).catch(() => {});
@@ -151,7 +160,7 @@ export function Series() {
       {searchFor && (
         <SeriesSearchModal id={searchFor.id} title={shownTitle(searchFor)} onClose={() => setSearchFor(null)} onGrabbed={() => { toast(`Grabbed for ${shownTitle(searchFor)} — follow it in Activity → Queue.`); refresh(); }} />
       )}
-      {adding && <AddSeriesModal folderId={folder.folderId} onClose={() => setAdding(false)} onAdded={() => { setAdding(false); refresh(); }} />}
+      {adding && <AddSeriesModal folderId={folder.folderId} initialQuery={findTitle} onClose={() => { setAdding(false); setFindTitle(undefined); }} onAdded={() => { setAdding(false); refresh(); }} />}
       {confirmDelete && <DeleteSeriesDialog series={confirmDelete} onClose={() => setConfirmDelete(null)} onDeleted={() => { setConfirmDelete(null); refresh(); }} />}
     </>
   );

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LINKS } from "../lib/links";
-import { api, type LibraryPaths, type BrowseResult, type FolderCheck, type UnmatchedFolder, type MatchCandidate } from "../lib/api";
+import { api, type LibraryPaths, type BrowseResult, type FolderCheck } from "../lib/api";
+import { UnmatchedReview } from "../components/UnmatchedReview";
 import { useMe, isAdmin } from "../lib/me";
-import { foldersApi } from "../lib/foldersApi";
 import { fmtBytes } from "../lib/disposal";
 import { announceFoldersSaved } from "../lib/restart";
 import { useAutoSave } from "../lib/useAutoSave";
@@ -180,104 +180,6 @@ function FolderRow({ row, paths, admin, canScan, onScanned, onSaved }: {
           onSelect={(p) => { setPicking(false); void folder.commit(p); }}
         />
       )}
-    </div>
-  );
-}
-
-// UnmatchedReview lists folders the last scan couldn't confidently identify and
-// lets the admin pick the right title (from candidates or a manual search), so a
-// mis-titled folder never gets silently mis-filed.
-function UnmatchedReview({ media, reloadKey }: { media: "movie" | "series"; reloadKey: number }) {
-  const toast = useToast();
-  const label = media === "movie" ? "Movies" : "TV Shows";
-  const [items, setItems] = useState<UnmatchedFolder[] | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const load = () =>
-    (media === "movie" ? api.moviesUnmatched() : api.seriesUnmatched()).then(setItems).catch(() => setItems([]));
-  useEffect(() => { load(); }, [reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const pick = async (folder: string, tmdb_id: number, root?: string) => {
-    setBusy(true);
-    try {
-      await foldersApi.importFolder(media, folder, tmdb_id, root);
-      setItems((xs) => (xs ?? []).filter((u) => u.folder !== folder || u.root !== root));
-      toast(`Imported “${folder}”.`, { tone: "good" });
-    } catch (e) { toast((e as Error).message, { tone: "error", ms: 6000 }); } finally { setBusy(false); }
-  };
-
-  if (items === null || items.length === 0) return null;
-  return (
-    <div className="mt-4 rounded-xl p-3.5" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-md font-semibold">
-            {label} — needs review
-            <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-xs font-bold" style={{ background: "var(--reject-soft)", color: "var(--reject-text)" }}>{items.length}</span>
-          </div>
-          <div className="text-xs text-ink-faint">Arrmada couldn't confidently identify these — pick the right title so nothing is mis-filed.</div>
-        </div>
-        <button onClick={load} className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>Refresh</button>
-      </div>
-      <div className="mt-3 flex flex-col gap-2.5">
-        {items.map((u) => <UnmatchedRow key={`${u.root ?? ""}/${u.folder}`} media={media} item={u} busy={busy} onPick={pick} />)}
-      </div>
-    </div>
-  );
-}
-
-function UnmatchedRow({ media, item, busy, onPick }: { media: "movie" | "series"; item: UnmatchedFolder; busy: boolean; onPick: (folder: string, tmdb: number, root?: string) => void }) {
-  const [q, setQ] = useState(item.title);
-  const [results, setResults] = useState<MatchCandidate[] | null>(null);
-  const [searching, setSearching] = useState(false);
-
-  const search = async () => {
-    if (!q.trim()) return;
-    setSearching(true);
-    try {
-      const r = media === "movie" ? await api.lookupMovies(q) : await api.lookupSeries(q);
-      setResults(r.map((x) => ({ tmdb_id: x.tmdb_id, title: x.title, year: x.year, poster_url: x.poster_url })));
-    } catch { setResults([]); } finally { setSearching(false); }
-  };
-  const shown = results ?? item.candidates;
-
-  return (
-    <div className="rounded-lg p-2.5" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
-      <div className="flex items-center gap-2 text-sm">
-        <span style={{ color: "var(--accent-text)" }}>📁</span>
-        <span className="font-mono font-semibold">{item.folder}</span>
-        <span className="text-ink-faint">— looked for “{item.title}”{item.year ? ` (${item.year})` : ""}</span>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {shown.length === 0 && <span className="text-xs text-ink-faint">No candidates — search a different title below.</span>}
-        {shown.map((c) => (
-          <button
-            key={c.tmdb_id}
-            disabled={busy}
-            onClick={() => onPick(item.folder, c.tmdb_id, item.root)}
-            title={c.overview}
-            className="flex items-center gap-2 rounded-lg px-2 py-1 text-left text-sm disabled:opacity-50"
-            style={{ border: "1px solid var(--line)", background: "var(--panel)" }}
-          >
-            {c.poster_url
-              ? <img src={c.poster_url} alt="" className="h-9 w-6 flex-none rounded object-cover" />
-              : <span className="grid h-9 w-6 flex-none place-items-center rounded text-xs text-ink-faint" style={{ background: "var(--panel-2)" }}>?</span>}
-            <span><span className="font-semibold">{c.title}</span>{c.year ? <span className="text-ink-faint"> ({c.year})</span> : ""}</span>
-          </button>
-        ))}
-      </div>
-      <div className="mt-2 flex gap-1.5">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && search()}
-          placeholder="Search a different title…"
-          aria-label="Search a different title"
-          className="flex-1 rounded-lg px-2 py-1 text-sm"
-          style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}
-        />
-        <button onClick={search} disabled={searching} className="rounded-lg px-2.5 py-1 text-xs font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink)" }}>{searching ? "…" : "Search"}</button>
-      </div>
     </div>
   );
 }

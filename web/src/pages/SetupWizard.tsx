@@ -670,7 +670,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
           <div className="mt-4 rounded-xl p-2.5" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
             {checklist.data ? (
               // A restart has to come first, so the steps aren't links until it's done.
-              <ChecklistRows items={checklist.data.items} onOpen={restartFirst ? undefined : (to) => finish(to)} />
+              <ChecklistRows items={checklist.data.items} onOpen={restartFirst ? undefined : (to) => finish(to)} onChanged={checklist.refetch} />
             ) : (
               <p className="m-0 px-2 py-1.5 text-sm text-ink-faint">{checklist.error ? "Couldn't read the checklist — the Dashboard shows it too." : "Checking…"}</p>
             )}

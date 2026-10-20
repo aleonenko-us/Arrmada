@@ -5,6 +5,7 @@ import { useQuery } from "../lib/query";
 import { usePoll } from "../lib/usePoll";
 import { setupApi, type ChecklistItem, type SetupChecklist } from "../lib/setupApi";
 import { Button, useToast } from "../ui";
+import { LibraryImport } from "./LibraryImport";
 
 // Getting started: the steps from a fresh install to the first imported download, each
 // ticked by the server from what's really set up. The Dashboard shows it (admins only)
@@ -26,10 +27,11 @@ export function useSetupChecklist(enabled = true, { stopWhenDismissed = false } 
 
 // ChecklistRows is the list itself: ✓ or ○, each a link to where that step is done.
 // onOpen replaces plain navigation (the wizard finishes setup before leaving).
-export function ChecklistRows({ items, onOpen }: { items: ChecklistItem[]; onOpen?: (to: string) => void }) {
+export function ChecklistRows({ items, onOpen, onChanged }: { items: ChecklistItem[]; onOpen?: (to: string) => void; onChanged?: () => void }) {
   return (
     <ul className="m-0 flex list-none flex-col gap-1 p-0">
       {items.map((it) => {
+        if (it.action === "import_library") return <ImportRow key={it.key} item={it} onChanged={onChanged} />;
         const to = fixLink(it);
         const label = (
           <>
@@ -57,6 +59,22 @@ export function ChecklistRows({ items, onOpen }: { items: ChecklistItem[]; onOpe
         );
       })}
     </ul>
+  );
+}
+
+// ImportRow is the step that runs itself: its row says how much is on disk against in
+// Arrmada, and the import's button, progress and report sit under it.
+function ImportRow({ item, onChanged }: { item: ChecklistItem; onChanged?: () => void }) {
+  return (
+    <li>
+      <div className="flex items-center gap-2.5 px-2 py-1.5 text-base">
+        <span aria-hidden className="w-4 flex-none text-center font-semibold" style={{ color: item.done ? "var(--good-text)" : "var(--ink-faint)" }}>{item.done ? "✓" : "○"}</span>
+        <span className={item.done ? "text-ink-dim line-through decoration-[var(--ink-faint)]" : ""}>{item.label}</span>
+        <span className="sr-only">{item.done ? " (done)" : " (to do)"}</span>
+        {item.detail && <span className="ml-auto text-sm text-ink-faint">{item.detail}</span>}
+      </div>
+      <LibraryImport onChanged={onChanged} />
+    </li>
   );
 }
 
@@ -93,7 +111,7 @@ export function GettingStarted() {
       </div>
       <div className="rounded-xl p-4" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
         <p className="m-0 mb-2 px-2 text-sm text-ink-dim">Each step ticks itself off once it's done.</p>
-        <ChecklistRows items={c.items} />
+        <ChecklistRows items={c.items} onChanged={q.refetch} />
       </div>
     </section>
   );

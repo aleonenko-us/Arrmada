@@ -2220,7 +2220,15 @@ export interface UnmatchedFolder {
   title: string;
   year: number;
   candidates: MatchCandidate[];
+  /** Why the folder needs you (TV scans): no_results, ambiguous, import_failed, no_video, duplicate or no_episodes. */
+  reason?: UnmatchedReason;
+  /** The reason in plain words. */
+  detail?: string;
+  /** The show a folder was added as (no_episodes) or already became (duplicate). */
+  series_id?: number;
 }
+
+export type UnmatchedReason = "no_results" | "ambiguous" | "import_failed" | "no_video" | "duplicate" | "no_episodes";
 
 // A finished movie library scan's job result (GET /api/v1/jobs/{id}.result): unmatched is
 // how many folders landed on the needs-review list.

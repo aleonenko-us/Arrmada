@@ -11,6 +11,10 @@ export interface ChecklistItem {
   /** Where to do it: link_key names a LINKS entry (resolved first), link is the path. */
   link: string;
   link_key?: string;
+  /** A step the checklist does itself instead of linking out: "import_library" scans the existing library in. */
+  action?: string;
+  /** A line under the step. */
+  detail?: string;
 }
 
 export interface SetupChecklist {
