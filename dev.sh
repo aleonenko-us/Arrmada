@@ -1,6 +1,10 @@
 #!/bin/sh
-# Run Arrmada locally for development: the built binary, a throwaway data folder, :7979.
-# Rebuild first with ./dev.sh build. Never points at the NAS or its data.
+# Run Arrmada locally for development: the built binary, the data folder in .dev-data, :7979.
+#   ./dev.sh build   rebuild the web UI and the binary
+#   ./dev.sh run     start it (default)
+# .dev-data holds a copy of the NAS configuration with every live link switched off
+# (download clients, indexers, Plex, Prowlarr, queued messages), so it can't act on the
+# real setup. Never point this at the NAS's own data folder.
 set -eu
 cd "$(dirname "$0")"
 case "${1:-run}" in

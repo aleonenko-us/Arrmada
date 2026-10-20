@@ -23,7 +23,9 @@ const dist = process.argv[2] ?? fileURLToPath(new URL("../../internal/webui/dist
 // roadmap's 350 KB cap; the brotli one is that measurement plus 10%, tighter than the
 // roadmap's 110 KB. Raise them on purpose, in review, never just to make a build pass.
 const BUDGET_RAW = 350 * 1024;
-const BUDGET_BR = 97 * 1024;
+// 2026-10-20: 97 -> 98 KB brotli on purpose. Merging the Music and Audiobooks Discover tabs,
+// Emby and the update card took the first load to 97.3 KB (336.7 KB raw, under the raw cap).
+const BUDGET_BR = 98 * 1024;
 
 const REQUESTER_PAGE = "src/pages/Discover.tsx";
 const ADMIN_ONLY = ["Quality", "Convert", "Insights", "Settings", "AudiobooksAdmin"].map((p) => `src/pages/${p}.tsx`);
