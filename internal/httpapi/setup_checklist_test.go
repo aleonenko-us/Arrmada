@@ -136,6 +136,21 @@ func TestSetupChecklist(t *testing.T) {
 	if checklistDone(getChecklist(t, a))["download_client"] {
 		t.Error("a client that doesn't answer, but download_client is ticked")
 	}
+	// The row says why, and names the connection its Test button checks.
+	for _, it := range getChecklist(t, a).Items {
+		if it.Key != "download_client" {
+			continue
+		}
+		if it.TestKind != "download_client" || it.TestRef != fmt.Sprint(cl.ID) {
+			t.Errorf("download_client test target = %q/%q, want download_client/%d", it.TestKind, it.TestRef, cl.ID)
+		}
+		if !strings.Contains(it.Reason, "Connection refused") {
+			t.Errorf("download_client reason = %q, want a plain connection-refused explanation", it.Reason)
+		}
+		if strings.Contains(it.Reason, deadURL) {
+			t.Errorf("reason echoes the full address: %q", it.Reason)
+		}
+	}
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/auth/login":

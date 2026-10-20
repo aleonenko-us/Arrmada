@@ -39,10 +39,19 @@ func (a *api) plexServerID(ctx context.Context, clientID, adminToken string) (st
 	return plex.OwnedServerID(ctx, clientID, adminToken)
 }
 
+// plexLoginUsable: Plex sign-in is switched on AND there is a Plex server address and owner
+// token to check a signing-in user's access against. Without them the button could only fail.
+func (a *api) plexLoginUsable(ctx context.Context) bool {
+	st := a.deps.Settings
+	return st.GetBool(ctx, "plex_login_enabled", false) &&
+		st.Get(ctx, "insights_plex_url", "") != "" &&
+		st.Get(ctx, "insights_plex_token", "") != ""
+}
+
 // handlePlexLoginStart begins a Plex sign-in: returns a PIN id + the plex.tv URL to authorize it.
 func (a *api) handlePlexLoginStart(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if !a.deps.Settings.GetBool(ctx, "plex_login_enabled", false) {
+	if !a.plexLoginUsable(ctx) {
 		a.writeError(w, http.StatusForbidden, "Plex sign-in is disabled")
 		return
 	}

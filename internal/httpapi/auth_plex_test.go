@@ -56,6 +56,7 @@ func plexLoginServer(t *testing.T) (*routeServer, *fakePlexTV) {
 	ctx := context.Background()
 	_ = s.deps.Settings.SetBool(ctx, "plex_login_enabled", true)
 	_ = s.deps.Settings.Set(ctx, "insights_plex_token", "owner-token")
+	_ = s.deps.Settings.Set(ctx, "insights_plex_url", "http://plex.test:32400")
 	tv.account("owner-token", plex.Account{ID: 1, Username: "owner"}, fakeResource{Name: "Home", ID: "M1", Owned: true})
 	return s, tv
 }
@@ -120,5 +121,49 @@ func TestSecurityHeadersCOOP(t *testing.T) {
 	rec := s.do("GET", "/api/health", nil)
 	if got := rec.Header().Get("Cross-Origin-Opener-Policy"); got != "same-origin-allow-popups" {
 		t.Errorf("COOP = %q, want same-origin-allow-popups", got)
+	}
+}
+
+// The login page only offers Plex when sign-in is on and a server address and token exist.
+func TestStatusPlexLoginNeedsConfiguredServer(t *testing.T) {
+	cases := []struct {
+		name        string
+		enabled     bool
+		url, token  string
+		wantOffered bool
+	}{
+		{"nothing configured", false, "", "", false},
+		{"enabled but no server", true, "", "", false},
+		{"enabled, address only", true, "http://plex.test:32400", "", false},
+		{"enabled, token only", true, "", "tok", false},
+		{"configured but switched off", false, "http://plex.test:32400", "tok", false},
+		{"enabled and configured", true, "http://plex.test:32400", "tok", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newRouteServer(t, nil)
+			ctx := context.Background()
+			_ = s.deps.Settings.SetBool(ctx, "plex_login_enabled", tc.enabled)
+			if tc.url != "" {
+				_ = s.deps.Settings.Set(ctx, "insights_plex_url", tc.url)
+			}
+			if tc.token != "" {
+				_ = s.deps.Settings.Set(ctx, "insights_plex_token", tc.token)
+			}
+			rec := s.doCookies("GET", "/api/v1/status", "")
+			var out struct {
+				PlexLogin bool `json:"plex_login"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+				t.Fatalf("HTTP %d %s", rec.Code, rec.Body)
+			}
+			if out.PlexLogin != tc.wantOffered {
+				t.Errorf("plex_login = %v, want %v", out.PlexLogin, tc.wantOffered)
+			}
+			start := s.doCookies("POST", "/api/v1/auth/plex/pin", "")
+			if !tc.wantOffered && start.Code != http.StatusForbidden {
+				t.Errorf("pin start HTTP %d, want 403 when not offered", start.Code)
+			}
+		})
 	}
 }

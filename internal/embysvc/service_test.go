@@ -243,7 +243,7 @@ func TestTestNeverSendsSavedKeyElsewhere(t *testing.T) {
 	if r := h.s.Test(ctx, "", ""); r.OK || !strings.Contains(r.Detail, "address") {
 		t.Fatalf("nothing saved = %+v", r)
 	}
-	if r := h.s.Test(ctx, "http://127.0.0.1:1", ""); r.OK || !strings.Contains(r.Detail, "reachable") {
+	if r := h.s.Test(ctx, "http://127.0.0.1:1", ""); r.OK || !strings.Contains(r.Detail, "nothing is listening") {
 		t.Fatalf("unreachable = %+v", r)
 	}
 	if r := h.s.Test(ctx, h.jf.URL, "wrong-key"); r.OK || !strings.Contains(r.Detail, "rejected the API key") || strings.Contains(r.Detail, "wrong-key") {

@@ -15,6 +15,11 @@ export interface ChecklistItem {
   action?: string;
   /** A line under the step. */
   detail?: string;
+  /** Plain-words reason a configured step's connection isn't working. */
+  reason?: string;
+  /** The connection the row's inline Test checks; both are absent until something is configured. */
+  test_kind?: string;
+  test_ref?: string;
 }
 
 export interface SetupChecklist {

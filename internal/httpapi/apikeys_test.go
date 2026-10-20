@@ -110,7 +110,7 @@ func TestTestAPIKeyDispatchesAndNeverStoresCandidate(t *testing.T) {
 		t.Errorf("saved: %v %q", ok, detail)
 	}
 	// A candidate is tested and reported, and the saved key is unchanged afterwards.
-	if ok, detail := result(s.doBody("POST", "/api/v1/apikeys/omdb/test", `{"value":"  bad "}`, admin)); ok || detail != "OMDb: Invalid API key!" {
+	if ok, detail := result(s.doBody("POST", "/api/v1/apikeys/omdb/test", `{"value":"  bad "}`, admin)); ok || !strings.Contains(detail, "didn't accept the login") {
 		t.Errorf("candidate: %v %q", ok, detail)
 	}
 	if strings.Join(gotCandidate, ",") != ",bad" {

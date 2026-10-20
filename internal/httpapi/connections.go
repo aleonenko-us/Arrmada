@@ -646,7 +646,7 @@ func (a *api) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	out := map[string]any{"ok": err == nil, "item": item}
 	if err != nil {
-		out["detail"] = connstatus.Redact(err.Error())
+		out["detail"] = connstatus.Friendly(err)
 	} else {
 		out["detail"] = detail
 	}
