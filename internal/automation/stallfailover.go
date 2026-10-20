@@ -684,12 +684,26 @@ func (c *Coordinator) musicStallTarget(ctx context.Context, al music.Album, g gr
 		event: func(ctx context.Context, detail string) { c.music.AddEvent(ctx, a.ID, "failed", detail) },
 		replace: func(ctx context.Context, exclude map[string]bool) (string, error) {
 			var out albumOutcome
-			if al.Complete() {
+			now, err := c.music.AlbumRecord(ctx, al.ID)
+			if err != nil {
+				now = al
+			}
+			switch {
+			case now.MissingTracks > 0:
+				// Some of its track files are gone from disk: they may only be renamed or on a
+				// disk that's away, so nothing is grabbed for it by itself (MUS-15). The
+				// stalled grab's own fail-over (block, remove) still runs.
+				c.log.Info("music: a stalled grab isn't replaced — the album has track files gone from disk; search for them from the album page",
+					"album", now.Title, "release", g.Title)
+				return "", nil
+			case c.grabMode(ctx, g) == decidedUpgrade || now.Complete():
 				// A stalled upgrade (or a person's grab of a complete album) is replaced only
-				// by another upgrade, never by a second copy of what the album has.
-				out = c.replaceUpgrade(ctx, a, al, exclude)
-			} else {
-				out = c.grabAlbumExcluding(ctx, a, al, exclude)
+				// by another upgrade, never by a second copy of what the album has. An
+				// upgrade's album reads incomplete when a file went missing, so the grab's own
+				// mode decides, not the album's state.
+				out = c.replaceUpgrade(ctx, a, now, exclude)
+			default:
+				out = c.grabAlbumExcluding(ctx, a, now, exclude)
 			}
 			switch out.Code {
 			case outcomeGrabbed:

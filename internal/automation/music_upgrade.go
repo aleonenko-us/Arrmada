@@ -281,6 +281,15 @@ func (c *Coordinator) musicGrabWasUpgrade(ctx context.Context, hash, name string
 	return byName
 }
 
+// grabMode is a grab's decided_mode ("" when it can't be read).
+func (c *Coordinator) grabMode(ctx context.Context, g grab) string {
+	var mode string
+	if err := c.db.QueryRowContext(ctx, `SELECT decided_mode FROM grabs WHERE id = ?`, g.ID).Scan(&mode); err != nil {
+		return ""
+	}
+	return mode
+}
+
 // completedUnderGrab reports whether grab g of an album that now reads complete is one the
 // stall check may close as no longer needed: any grab except an upgrade the sweep grabbed
 // or a person's own grab. Those were meant for a complete album, and closing one as

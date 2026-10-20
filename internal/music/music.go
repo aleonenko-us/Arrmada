@@ -163,8 +163,9 @@ type Album struct {
 	// HeldTier is the lowest tier among the tracks on disk ("" when none are, or one
 	// can't be told), filled by the album detail read.
 	HeldTier Quality `json:"held_tier,omitempty"`
-	// MissingTracks counts track files the verify pass found gone from disk (wanted
-	// again); ChangedTracks those it found changed outside Arrmada (MUS-15).
+	// MissingTracks counts track files the verify pass found gone from disk (flagged, never
+	// searched for by themselves: the album is left out of the sweep until a person asks);
+	// ChangedTracks those it found changed outside Arrmada (MUS-15).
 	MissingTracks int `json:"missing_tracks,omitempty"`
 	ChangedTracks int `json:"changed_tracks,omitempty"`
 

@@ -211,6 +211,11 @@ func (c *Coordinator) searchNewReleases(ctx context.Context, albums []music.Albu
 		if !albumReleased(al, today) {
 			continue
 		}
+		// An album with track files gone from disk is never searched by itself (MUS-15):
+		// the files may only be renamed, or on a disk that's away.
+		if now, err := c.music.AlbumRecord(ctx, al.ID); err != nil || now.MissingTracks > 0 {
+			continue
+		}
 		n++
 		out, err := c.SearchAlbumNow(sctx, al.ID)
 		switch {
