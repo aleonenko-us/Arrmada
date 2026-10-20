@@ -272,8 +272,9 @@ jobs:
           # shellcheck disable=SC2086
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --notes-file "$notes" --title "$TAG" $pre
 
-  # The Unraid all-in-one variant (the Dockerfile's aio target: Arrmada plus a qBittorrent
-  # and a FlareSolverr in one container, for the Community Apps template). It's built on
+  # The Unraid all-in-one variant (the Dockerfile's aio target: Arrmada plus a qBittorrent,
+  # a FlareSolverr and the optional SABnzbd and Prowlarr in one container, for the Community
+  # Apps template; all but FlareSolverr on arm64 too). It's built on
   # top of the plain image this release just pushed, by digest (the build context named
   # "arrmada" replaces that Dockerfile stage), so it carries exactly the same Arrmada, and
   # tagged x.y.z-aio, x.y-aio, sha-…-aio and stable-aio in the same repository.

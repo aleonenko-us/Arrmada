@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { indexerApi } from "../../lib/indexerApi";
-import { prowlarrLastSyncLine, prowlarrSyncMessage, prowlarrUILink } from "../../lib/indexerStatus";
+import { isBundledProwlarr, prowlarrLastSyncLine, prowlarrSyncMessage, prowlarrUILink } from "../../lib/indexerStatus";
 import { useQuery } from "../../lib/query";
 import { secretMoved } from "../../lib/sameEndpoint";
 
@@ -9,15 +9,6 @@ import { secretMoved } from "../../lib/sameEndpoint";
 // feeds (and from then on every hour). Re-syncing keeps what was set here; indexers
 // disabled or removed in Prowlarr are turned off. A blank key reuses the saved one, but only
 // at the saved address: a changed URL needs its key typed again.
-
-// isBundledProwlarr: the Prowlarr that ships with Arrmada, by its compose service name.
-function isBundledProwlarr(u: string): boolean {
-  try {
-    return new URL(u).hostname.toLowerCase() === "arrmada-prowlarr";
-  } catch {
-    return false;
-  }
-}
 
 const field = "w-full rounded-lg px-3 py-2 text-md";
 const fieldStyle = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" } as const;
@@ -31,11 +22,11 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [uiUrl, setUiUrl] = useState("");
   const [uiMsg, setUiMsg] = useState<{ ok: boolean; msg: string } | null>(null);
-  // The bundled Prowlarr is Arrmada's own and always gets Arrmada's FlareSolverr; any other
-  // Prowlarr is someone's own setup and is only changed when this box is ticked.
-  const bundled = isBundledProwlarr(url);
   // Re-read after a sync (clicked or the hourly one) so "Last synced" stays current.
   const info = useQuery("prowlarr-info", () => indexerApi.prowlarrInfo(), { staleMs: 60_000 });
+  // The bundled Prowlarr is Arrmada's own and always gets Arrmada's FlareSolverr; any other
+  // Prowlarr is someone's own setup and is only changed when this box is ticked.
+  const bundled = isBundledProwlarr(url, info.data?.bundled_url);
   // The saved key is only sent to the address it was saved for (the server refuses otherwise).
   const keyMoved = secretMoved({ saved: hasKey, typed: apiKey, url, savedUrl: info.data?.url ?? url });
 
@@ -108,7 +99,7 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
         </label>
       </div>
       <p className="mt-2.5 text-xs text-ink-faint">
-        The URL must be reachable from the Arrmada server. With the bundled Prowlarr (<code className="font-mono">docker compose --profile prowlarr up -d</code>) the default above works.
+        The URL must be reachable from the Arrmada server. With the bundled Prowlarr (<code className="font-mono">docker compose --profile prowlarr up -d</code>, or <span className="font-semibold">Built-in Prowlarr</span> switched on in the Unraid template) the default above works.
       </p>
 
       <div className="mt-3 flex flex-col gap-1.5 rounded-lg p-3 text-sm" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>

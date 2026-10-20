@@ -21,6 +21,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/apikeys"
 	"github.com/tristenlammi/arrmada/internal/jellyfin"
+	"github.com/tristenlammi/arrmada/internal/netsafe"
 	"github.com/tristenlammi/arrmada/internal/plexscan"
 )
 
@@ -231,6 +232,11 @@ type inputError string
 func (e inputError) Error() string        { return string(e) }
 func (e inputError) Is(target error) bool { return target == ErrInvalid }
 
+// ErrKeyForNewAddress is Save's refusal for a changed address with the key left blank
+// (it is ErrInvalid too, so the API answers 400 with it). The same words as Prowlarr's and
+// the indexers' refusal (httpapi errKeyForNewAddress), so every connection form reads alike.
+var ErrKeyForNewAddress error = inputError("Enter the API key again for the new address — the saved key is only sent to the address it was saved for.")
+
 // NormalizeURL checks an address is http(s)://host[:port][/path] and returns it without a
 // trailing slash, a query or a fragment.
 func NormalizeURL(raw string) (string, error) {
@@ -251,6 +257,12 @@ func NormalizeURL(raw string) (string, error) {
 // the server or the key forgets what the old one said and rebuilds the index; the new
 // identity is read straight away, best effort — a server that doesn't answer yet doesn't
 // stop the save.
+//
+// A blank key keeps the saved one, but only for the address it was saved for: a new
+// address with no key typed is ErrKeyForNewAddress, and nothing is saved or sent.
+// Otherwise anyone who could save could point the connection at their own server and
+// collect the key (the identity check sends it there at once). An install-time key with
+// no address saved belongs to no address yet, so the first one needs it typed too.
 func (s *Service) Save(ctx context.Context, rawURL, rawPublic, apiKey string) error {
 	base, err := NormalizeURL(rawURL)
 	if err != nil {
@@ -268,6 +280,9 @@ func (s *Service) Save(ctx context.Context, rawURL, rawPublic, apiKey string) er
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" && s.apiKey(ctx) == "" {
 		return inputError("Add the API key made in Jellyfin (Dashboard → API Keys).")
+	}
+	if apiKey == "" && !netsafe.SameEndpoint(base, s.URL(ctx)) {
+		return ErrKeyForNewAddress
 	}
 	changed := base != s.URL(ctx) || (apiKey != "" && apiKey != s.apiKey(ctx))
 	if apiKey != "" {
@@ -309,7 +324,7 @@ type keyClearer interface {
 // monitoring, path mappings) stays, so connecting it again picks up where it was; with no
 // address saved none of it does anything meanwhile. Linked accounts keep their Jellyfin
 // link too. An install-time ARRMADA_JELLYFIN_API_KEY still stands behind the cleared key,
-// which is harmless without an address.
+// which is harmless without an address: Save sends it to a new one only once it's typed.
 func (s *Service) Disconnect(ctx context.Context) error {
 	if kc, ok := s.keys.(keyClearer); ok {
 		if err := kc.Clear(ctx, apikeys.Jellyfin); err != nil {
@@ -351,7 +366,7 @@ func (s *Service) Test(ctx context.Context, rawURL, apiKey string) TestResult {
 		return TestResult{Detail: "Enter the Jellyfin server's address first."}
 	}
 	key := strings.TrimSpace(apiKey)
-	usingSaved := key == "" && base == saved
+	usingSaved := key == "" && netsafe.SameEndpoint(base, saved)
 	if usingSaved {
 		key = s.apiKey(ctx)
 	}

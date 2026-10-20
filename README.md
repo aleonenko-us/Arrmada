@@ -77,7 +77,8 @@ variables: [Using Portainer →](docs/install.md#using-portainer)
 ### On Unraid, from the Docker page
 
 Arrmada's Unraid template is one container with qBittorrent and FlareSolverr built in and
-already connected (switch either off to use your own), managed and updated from Unraid's
+already connected (switch either off to use your own), plus a SABnzbd (for Usenet) and a
+Prowlarr that stay off until you switch them on. It's managed and updated from Unraid's
 Docker tab like your other containers, with your media share at `/storage`.
 [Arrmada on Unraid →](docs/unraid.md)
 

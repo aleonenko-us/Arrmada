@@ -222,7 +222,7 @@ func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir stri
 			// no files yet reads its own folder as before.
 			return len(recorded) == 0 || recordedDirs[filepath.Dir(path)]
 		}
-		return j.titles[key] || FitRelease(rel, sr).OK
+		return fitsShow(rel, sr)
 	}
 }
 
@@ -267,38 +267,58 @@ func (s *Service) SeasonDirChooser(ctx context.Context, seriesID int64) func(sho
 	}
 }
 
-// NewShowFolderUnproven says why dir — a folder named for show sr, which has no files
-// recorded yet ("Title (Year)" or "Title") — can't be taken for its folder by a rescan ("" when
-// it can): it's named like a season or after a TV folder, another show in the library has
-// files in it, it holds another show's folder or a link, or — named without a year — another
-// show in the library has the same title, so whose it is can't be told.
-func (s *Service) NewShowFolderUnproven(ctx context.Context, sr Series, dir string) string {
-	j := s.dbJudge(ctx, sr.ID)
-	dir = filepath.Clean(dir)
-	if v := j.judge(dir); v.why != "" {
-		return v.why
+// ErrSeasonFolderAway is an episode import refused because the season's folder, where the
+// show's other episodes of that season are, isn't there.
+var ErrSeasonFolderAway = errors.New("the season's folder isn't there")
+
+// yearFolderHint is "Title (Year)" for show seriesID, for a message.
+func (s *Service) yearFolderHint(ctx context.Context, seriesID int64) string {
+	sr, err := s.repo.Get(ctx, seriesID)
+	if err != nil {
+		return "Title (Year)"
 	}
-	if why := j.foreignChildren(dir); why != "" {
-		return why
+	if sr.Year > 0 {
+		return fmt.Sprintf("%s (%d)", sr.Title, sr.Year)
 	}
-	if parser.Parse(filepath.Base(dir)).Year == 0 {
-		all, err := s.repo.List(ctx)
-		if err != nil {
-			return "the library's shows couldn't be read: " + err.Error()
-		}
-		key := parser.TitleKey(sr.Title)
-		for _, o := range all {
-			if o.ID != sr.ID && parser.TitleKey(o.Title) == key {
-				return fmt.Sprintf("%s has no year in its name, and %q (%d) is in the library too", dir, o.Title, o.Year)
-			}
+	return sr.Title
+}
+
+// FolderUnclear says why show seriesID's folder can't be used ("" when it can): exactly the
+// check an import makes (ShowFolderOf, then the folder's own verdict). Move to folder
+// refuses such a show, so a category holding other shows is never carried along.
+func (s *Service) FolderUnclear(ctx context.Context, seriesID int64) string {
+	info := s.ShowFolderOf(ctx, seriesID)
+	if info.Unknown {
+		return info.Why
+	}
+	if info.Path != "" {
+		if v := s.dbJudge(ctx, seriesID).judge(filepath.Clean(info.Path)); v.why != "" {
+			return v.why
 		}
 	}
 	return ""
 }
 
-// ErrSeasonFolderAway is an episode import refused because the season's folder, where the
-// show's other episodes of that season are, isn't there.
-var ErrSeasonFolderAway = errors.New("the season's folder isn't there")
+// fitsShow reports whether a file's parsed name is show sr's: FitRelease against its title
+// and aliases, or against its display title or title override — every one with the year
+// and country checks, so "The Office (2001)" or "The Office UK" is never the 2005 US show.
+func fitsShow(rel parser.Release, sr Series) bool {
+	if FitRelease(rel, sr).OK {
+		return true
+	}
+	key := parser.TitleKey(rel.Title)
+	for _, t := range []string{sr.DisplayTitle, sr.TitleOverride} {
+		if t == "" || parser.TitleKey(t) != key {
+			continue
+		}
+		alt := sr
+		alt.Title, alt.Aliases = t, nil
+		if FitRelease(rel, alt).OK {
+			return true
+		}
+	}
+	return false
+}
 
 // ShowFoldersOf answers, for each episode file of show seriesID, the folder of the show it
 // is in: the folder ShowFolderOf would count it towards, else where it is (ShowFolderFor).
@@ -352,6 +372,12 @@ type folderJudge struct {
 	// health check, which reads the database only.
 	disk  bool
 	cache map[string]folderVerdict
+	// show is the show judged for, and recorded its recorded files (read once, when
+	// foreignChildren first needs them): a video loose in its folder that's neither is
+	// another show's. nil for the health check.
+	show     *Series
+	recorded func() map[string]bool
+	rec      map[string]bool
 }
 
 // folderVerdict is a folder judged: why it can't be a show's own ("" when it can), the
@@ -402,7 +428,10 @@ func (j *folderJudge) verdict(dir string) folderVerdict {
 // dbJudge judges folders for one show against the database.
 func (s *Service) dbJudge(ctx context.Context, seriesID int64) *folderJudge {
 	titles := map[string]bool{}
+	var show *Series
 	if sr, err := s.repo.Get(ctx, seriesID); err == nil {
+		sr.Aliases = s.repo.Aliases(ctx, seriesID)
+		show = &sr
 		for _, t := range []string{sr.Title, sr.DisplayTitle, sr.TitleOverride} {
 			if k := parser.TitleKey(t); k != "" {
 				titles[k] = true
@@ -416,6 +445,16 @@ func (s *Service) dbJudge(ctx context.Context, seriesID int64) *folderJudge {
 		names:  func(ids []int64) string { return s.describeSeries(ctx, ids) },
 		titles: titles,
 		disk:   true,
+		show:   show,
+		recorded: func() map[string]bool {
+			out := map[string]bool{}
+			if paths, err := s.repo.EpisodeFilePaths(ctx, seriesID); err == nil {
+				for _, p := range paths {
+					out[filepath.Clean(p)] = true
+				}
+			}
+			return out
+		},
 	}
 }
 
@@ -474,7 +513,23 @@ func (j *folderJudge) foreignChildren(dir string) string {
 		if e.Type()&fs.ModeSymlink != 0 && library.LinkMayHoldVideo(filepath.Join(dir, n)) {
 			return fmt.Sprintf("%s holds %q, a link", dir, n)
 		}
-		if !e.IsDir() || strings.HasPrefix(n, ".") || library.SkipScanDir(n) {
+		if !e.IsDir() {
+			// A video loose in the folder that isn't one of the show's recorded files, nor
+			// named as its episode, is another show's ("Peppa Pig - S01E01.mkv" in Kids).
+			if library.IsVideoFile(n) && j.show != nil && !j.isRecorded(filepath.Join(dir, n)) && !fitsShow(parser.Parse(n), *j.show) {
+				return fmt.Sprintf("%s also holds %q, a video that isn't one of the show's", dir, n)
+			}
+			continue
+		}
+		if strings.HasPrefix(n, ".") || library.SkipScanDir(n) {
+			continue
+		}
+		if !j.svc.seasonLike(n) && library.LooksLikeSeasonFolder(n) && !reDiscFolder.MatchString(n) {
+			// An extras-like folder ("Other", "Bonus", "Extras") holds featurettes, loose: one
+			// with a folder of videos inside (Other, then TNG, then Season 1) holds another show.
+			if holdsVideoInSubfolder(filepath.Join(dir, n)) {
+				return fmt.Sprintf("%s also holds %q, an extras folder with another show's folder in it", dir, n)
+			}
 			continue
 		}
 		if j.svc.insideShow(n) || reDiscFolder.MatchString(n) || episodeRelease(n, j.titles) {
@@ -485,6 +540,31 @@ func (j *folderJudge) foreignChildren(dir string) string {
 		}
 	}
 	return ""
+}
+
+// isRecorded reports whether path is one of the show's recorded files.
+func (j *folderJudge) isRecorded(path string) bool {
+	if j.rec == nil {
+		j.rec = map[string]bool{}
+		if j.recorded != nil {
+			j.rec = j.recorded()
+		}
+	}
+	return j.rec[filepath.Clean(path)]
+}
+
+// holdsVideoInSubfolder reports whether a folder inside dir holds a video, at any depth.
+func holdsVideoInSubfolder(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() && holdsVideo(filepath.Join(dir, e.Name()), 16) {
+			return true
+		}
+	}
+	return false
 }
 
 // holdsVideo reports whether dir holds a video file within depth folders.
@@ -609,7 +689,7 @@ func (s *Service) ShowFolderOf(ctx context.Context, seriesID int64) ShowFolderIn
 		// Every file it had was in a folder no show should own and is gone now — moved back
 		// by hand, deleted, or on a share that's down. Where the show lives isn't known; it
 		// isn't a new show.
-		return ShowFolderInfo{Total: len(paths), Unknown: true, Why: "the files it had are no longer where they were recorded; rescan it once they're back in its folder"}
+		return ShowFolderInfo{Total: len(paths), Unknown: true, Why: "the files it had are no longer where they were recorded; put them in a folder named with the show's year, such as \"" + s.yearFolderHint(ctx, seriesID) + "\", and rescan it, or delete the show in Arrmada keeping its files and use Scan library"}
 	}
 	return s.showFolderFrom(kept, j)
 }
@@ -626,8 +706,9 @@ const followVisitLimit = 500_000
 // show has recorded counts, and only when exactly one has that name; hidden and system
 // folders (recycle bins, thumbnails) are never looked in, nor are links followed. Only a
 // file recorded where no show should be is looked for — one gone from the show's own
-// folder is deleted or on a share that's away — never in a folder named for another year's
-// show. Nothing is written unless, with every re-point, the show then has a sound folder
+// folder is deleted or on a share that's away — and only into a folder named with the
+// show's own year or already holding its files: a year-less "Show" may be a namesake's.
+// Nothing is written unless, with every re-point, the show then has a sound folder
 // of its own holding every followed file: a show that would still be refused keeps its
 // records as they were. It returns how many files it re-pointed. Refresh & rescan calls it
 // for a show it would refuse, then judges the show again.
@@ -640,14 +721,19 @@ func (s *Service) FollowMovedEpisodeFiles(ctx context.Context, seriesID int64) i
 	if err != nil {
 		return 0
 	}
-	titles := map[string]bool{}
-	for _, t := range []string{sr.Title, sr.DisplayTitle, sr.TitleOverride} {
-		if k := parser.TitleKey(t); k != "" {
-			titles[k] = true
-		}
-	}
 	roots := s.libRoots()
 	j := s.dbJudge(ctx, seriesID)
+	// The show folders this show's files still on disk are in: a followed file may go into
+	// one of them, or into a folder named with the show's own year — never anywhere else.
+	homes := map[string]bool{}
+	for _, p := range paths {
+		if _, err := os.Lstat(p); err != nil {
+			continue
+		}
+		if home, _, _ := j.homeOf(p); home != "" {
+			homes[home] = true
+		}
+	}
 	want := map[string][]string{} // file name -> gone recorded paths with it
 	walk := map[string]bool{}     // TV folders to look in
 	for _, p := range paths {
@@ -669,7 +755,7 @@ func (s *Service) FollowMovedEpisodeFiles(ctx context.Context, seriesID int64) i
 		// "Episode 1.mkv" could be anyone's.
 		rel := parser.Parse(filepath.Base(p))
 		key := parser.TitleKey(rel.Title)
-		if len(rel.Episodes) == 0 || key == "" || !(titles[key] || FitRelease(rel, sr).OK) {
+		if len(rel.Episodes) == 0 || key == "" || !fitsShow(rel, sr) {
 			continue
 		}
 		want[filepath.Base(p)] = append(want[filepath.Base(p)], p)
@@ -715,12 +801,15 @@ func (s *Service) FollowMovedEpisodeFiles(ctx context.Context, seriesID int64) i
 		if s.repo.FileRecorded(ctx, to) {
 			continue // another show's (or already this show's) file
 		}
-		// A folder named for a show of another year ("Show (2019)" when this show is from
-		// 2005) is another show's, whatever its files are called.
-		if pl := s.placeOf(roots, to, j.titles); pl.dir != "" && sr.Year > 0 {
-			if y := parser.Parse(filepath.Base(pl.dir)).Year; y > 0 && (y < sr.Year-1 || y > sr.Year+1) {
-				continue
-			}
+		// Only into a folder that's provably this show's: one its files already are in, or
+		// one named with its own year ("Show (2019)" for the 2019 show). A year-less "Show"
+		// may as well be a namesake's (the 2012 show of that title), and is never followed into.
+		pl := s.placeOf(roots, to, j.titles)
+		if pl.dir == "" || pl.unsure {
+			continue
+		}
+		if !homes[pl.dir] && (sr.Year <= 0 || parser.Parse(filepath.Base(pl.dir)).Year != sr.Year) {
+			continue
 		}
 		fi, err := os.Stat(to)
 		if err != nil {

@@ -50,6 +50,9 @@ type Service struct {
 	// stored caps and no categories of its own is searched in the media type's usual
 	// categories. nil = on, the setting's default.
 	defaultCats func(ctx context.Context) bool
+	// aioProwlarr is where the all-in-one image's optional Prowlarr answers while it runs
+	// (SetBundledProwlarr); "" elsewhere.
+	aioProwlarr string
 }
 
 // KeyDefaultCategories is the setting that turns the default search categories off

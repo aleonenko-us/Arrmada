@@ -43,12 +43,16 @@ func movieDeleteServer(t *testing.T, bin string) (*routeServer, *http.Cookie, in
 	return s, mgr, id, video
 }
 
-// The preview names each file with its size, counts the subtitles that go with them, and
-// says where they'd go — the bin's path, or that the bin is off.
+// The preview names each file with its size, counts the subtitles that go with them, lists
+// the artwork in the movie's own folder and that the folder goes, and says where they'd
+// go — the bin's path, or that the bin is off.
 func TestMovieDeletePreview(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "bin")
 	s, mgr, id, video := movieDeleteServer(t, bin)
 	if err := os.WriteFile(video[:len(video)-len(".mkv")]+".en.srt", []byte("subs"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(video), "poster.jpg"), []byte("art"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.st.DB().Exec(`INSERT INTO grabs (movie_id, title, media_type, info_hash) VALUES (?, 'Heat.1995.2160p', 'movie', '0123456789abcdef0123456789abcdef01234567')`, id); err != nil {
@@ -67,7 +71,16 @@ func TestMovieDeletePreview(t *testing.T) {
 		} `json:"versions"`
 		Sidecars int   `json:"sidecars"`
 		Bytes    int64 `json:"bytes"`
-		Recycle  struct {
+		Extras   []struct {
+			Folder    string `json:"folder"`
+			Name      string `json:"name"`
+			SizeBytes int64  `json:"size_bytes"`
+		} `json:"extras"`
+		Folders []struct {
+			Name    string `json:"name"`
+			Removed bool   `json:"removed"`
+		} `json:"folders"`
+		Recycle struct {
 			Enabled bool `json:"enabled"`
 		} `json:"recycle"`
 		Pending []struct {
@@ -81,8 +94,14 @@ func TestMovieDeletePreview(t *testing.T) {
 	if len(got.Versions) != 1 || got.Versions[0].FileName != "Heat (1995).mkv" || got.Versions[0].SizeBytes != 10 {
 		t.Errorf("versions = %+v", got.Versions)
 	}
-	if got.Sidecars != 1 || got.Bytes != 14 {
-		t.Errorf("sidecars = %d, bytes = %d; want 1 and 14", got.Sidecars, got.Bytes)
+	if got.Sidecars != 1 || got.Bytes != 17 {
+		t.Errorf("sidecars = %d, bytes = %d; want 1 and 17", got.Sidecars, got.Bytes)
+	}
+	if len(got.Extras) != 1 || got.Extras[0].Name != "poster.jpg" || got.Extras[0].Folder != "Heat (1995)" || got.Extras[0].SizeBytes != 3 {
+		t.Errorf("extras = %+v, want the poster", got.Extras)
+	}
+	if len(got.Folders) != 1 || got.Folders[0].Name != "Heat (1995)" || !got.Folders[0].Removed {
+		t.Errorf("folders = %+v, want Heat (1995) removed", got.Folders)
 	}
 	if !got.Recycle.Enabled {
 		t.Error("the route server's bin is on; the preview should say so")
@@ -92,6 +111,58 @@ func TestMovieDeletePreview(t *testing.T) {
 	}
 	if rec := s.do("GET", "/api/v1/movies/999/delete-preview", mgr); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown movie: HTTP %d, want 404", rec.Code)
+	}
+}
+
+// A delete moves only the leftovers sent back from the preview: without the list the
+// artwork stays (and so does the folder); with it, the listed artwork goes and the folder
+// with it, while a file that turned up after the preview stays.
+func TestDeleteMovieMovesOnlyConfirmedLeftovers(t *testing.T) {
+	for _, withList := range []bool{false, true} {
+		bin := filepath.Join(t.TempDir(), "bin")
+		s, mgr, id, video := movieDeleteServer(t, bin)
+		dir := filepath.Dir(video)
+		poster := filepath.Join(dir, "poster.jpg")
+		if err := os.WriteFile(poster, []byte("art"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		body := ""
+		if withList {
+			rec := s.do("GET", fmt.Sprintf("/api/v1/movies/%d/delete-preview", id), mgr)
+			var got struct {
+				Extras []struct {
+					Path string `json:"path"`
+				} `json:"extras"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || len(got.Extras) != 1 || got.Extras[0].Path != poster {
+				t.Fatalf("preview extras = %+v (%v)", got.Extras, err)
+			}
+			b, _ := json.Marshal(map[string]any{"leftovers": []string{got.Extras[0].Path}})
+			body = string(b)
+			// Turned up after the preview: never shown, so it stays.
+			if err := os.WriteFile(filepath.Join(dir, "fanart.jpg"), []byte("late"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		rec := s.doJSON("DELETE", fmt.Sprintf("/api/v1/movies/%d?delete_files=true", id), mgr, body)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("list=%v: HTTP %d: %s", withList, rec.Code, rec.Body)
+		}
+		if _, err := os.Stat(video); err == nil {
+			t.Errorf("list=%v: the video is still there", withList)
+		}
+		_, err := os.Stat(poster)
+		if withList && err == nil {
+			t.Error("the listed poster is still there")
+		}
+		if !withList && err != nil {
+			t.Error("without the preview's list the poster went")
+		}
+		if withList {
+			if _, err := os.Stat(filepath.Join(dir, "fanart.jpg")); err != nil {
+				t.Error("a file that turned up after the preview went")
+			}
+		}
 	}
 }
 

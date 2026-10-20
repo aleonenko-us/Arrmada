@@ -6,12 +6,16 @@ import (
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/movies"
 )
 
 // DeleteMovieOpts is what the user ticked in the delete dialog.
 type DeleteMovieOpts struct {
 	DeleteFiles     bool // move the movie's files to the recycle bin (or delete them with it off)
 	CancelDownloads bool // remove its in-flight downloads and their partial data
+	// Leftovers are the artwork and metadata paths the delete dialog listed; only those
+	// can go with the files (movies.DeleteOptions). The bulk delete sends none.
+	Leftovers []string
 }
 
 // PendingMovieDownload is an in-flight grab for a movie, for the delete dialog to name.
@@ -94,7 +98,7 @@ func (c *Coordinator) DeleteMovie(ctx context.Context, id int64, opts DeleteMovi
 	for _, g := range grabs {
 		c.setGrabStatus(ctx, g.id, grabStatusOrphaned)
 	}
-	if err := c.movies.Delete(ctx, id, opts.DeleteFiles); err != nil {
+	if err := c.movies.DeleteWith(ctx, id, movies.DeleteOptions{Files: opts.DeleteFiles, Leftovers: opts.Leftovers}); err != nil {
 		for _, g := range grabs {
 			c.setGrabStatus(ctx, g.id, grabStatusGrabbed)
 		}

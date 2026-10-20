@@ -36,6 +36,21 @@ var rePlexExtras = regexp.MustCompile(`(?i)^(?:extras|featurettes|behind the sce
 // IsExtrasFolder reports whether a folder name is a Plex local-extras folder.
 func IsExtrasFolder(name string) bool { return rePlexExtras.MatchString(strings.TrimSpace(name)) }
 
+// InExtrasFolder reports whether path sits in a Plex local-extras folder anywhere below
+// showDir (Extras, Featurettes, Season 1/Deleted Scenes…).
+func InExtrasFolder(showDir, path string) bool {
+	rel, err := filepath.Rel(showDir, filepath.Dir(path))
+	if err != nil || rel == "." {
+		return false
+	}
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		if IsExtrasFolder(part) {
+			return true
+		}
+	}
+	return false
+}
+
 // LinkMayHoldVideo reports whether the symlink at path leads to a folder or a video, or
 // can't be followed (so nothing tells what it is): a link that may bring another show's
 // files into a folder. A link to a poster or a subtitle doesn't.

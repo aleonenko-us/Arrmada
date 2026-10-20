@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -221,8 +222,8 @@ func TestSaveConfigAndIdentity(t *testing.T) {
 	if h.s.PublicURL(ctx) != "https://jf.example.com" || h.s.Config(ctx).PublicURL != "https://jf.example.com" || !h.s.Configured(ctx) {
 		t.Fatalf("public %q", h.s.PublicURL(ctx))
 	}
-	// Another server: the old identity is forgotten (and this one doesn't answer).
-	if err := h.s.Save(ctx, "http://127.0.0.1:1", "", ""); err != nil {
+	// Another server, its key typed: the old identity is forgotten (and this one doesn't answer).
+	if err := h.s.Save(ctx, "http://127.0.0.1:1", "", "jf-key-456"); err != nil {
 		t.Fatal(err)
 	}
 	if c := h.s.Config(ctx); c.ServerID != "" || c.ServerName != "" || c.Version != "" {
@@ -230,6 +231,60 @@ func TestSaveConfigAndIdentity(t *testing.T) {
 	}
 	if hh := h.s.Health(ctx); hh.Consecutive == 0 || hh.LastErr == "" {
 		t.Fatalf("an unreachable server isn't recorded: %+v", hh)
+	}
+}
+
+// Save never sends the saved key to a new address: changing the address with the key left
+// blank is refused before anything is saved or sent, whatever the spelling of the old
+// address; the same address (written differently) keeps the key, and a typed key moves.
+func TestSaveNeverSendsSavedKeyElsewhere(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.connect(t)
+	// The new address fails the test the moment anything carrying a key reaches it.
+	var leaked atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a := r.Header.Get("Authorization") + r.Header.Get("X-Emby-Token") + r.Header.Get("X-MediaBrowser-Token") + r.URL.Query().Get("api_key"); strings.Contains(a, "jf-key-123") {
+			leaked.Add(1)
+			t.Errorf("the saved key went to the new address: %s %s", r.Method, r.URL.Path)
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(other.Close)
+
+	before := h.s.Config(ctx)
+	for _, key := range []string{"", "   "} {
+		err := h.s.Save(ctx, other.URL, "", key)
+		if !errors.Is(err, ErrKeyForNewAddress) || !errors.Is(err, ErrInvalid) {
+			t.Fatalf("new address, key %q = %v, want ErrKeyForNewAddress", key, err)
+		}
+	}
+	if after := h.s.Config(ctx); after != before || h.set.m[KeyURL] != h.jf.URL || h.keys.Value(ctx, apikeys.Jellyfin) != "jf-key-123" {
+		t.Fatalf("a refused save changed the connection: %+v (was %+v)", after, before)
+	}
+	if leaked.Load() != 0 {
+		t.Fatal("the saved key left for the new address")
+	}
+
+	// The same address (with a trailing slash) keeps the saved key.
+	if err := h.s.Save(ctx, h.jf.URL+"/", "", ""); err != nil {
+		t.Fatalf("same address, blank key = %v", err)
+	}
+	// A key with nothing saved for any address (an install-time key, or after Disconnect)
+	// needs the first address typed with it too.
+	t.Setenv("ARRMADA_JELLYFIN_API_KEY", "jf-key-123")
+	if err := h.s.Disconnect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.s.Save(ctx, other.URL, "", ""); !errors.Is(err, ErrKeyForNewAddress) {
+		t.Fatalf("install-time key to a first address = %v", err)
+	}
+	if leaked.Load() != 0 || h.set.m[KeyURL] != "" {
+		t.Fatal("the install-time key left, or the address was saved")
+	}
+	// A typed key may go to the new address.
+	if err := h.s.Save(ctx, h.jf.URL, "", "jf-key-123"); err != nil || !h.s.Configured(ctx) {
+		t.Fatalf("new address with its key = %v", err)
 	}
 }
 

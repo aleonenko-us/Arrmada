@@ -8,7 +8,7 @@ changed in June 2026, so older forum guides (messaging a moderator, a form) no l
 
 | File | What it's for |
 |---|---|
-| [`templates/arrmada.xml`](../templates/arrmada.xml) | The template: one container, `ghcr.io/tristenlammi/arrmada:stable-aio` (Arrmada with qBittorrent and FlareSolverr inside). `templates/template_test.go` keeps it to the rules below |
+| [`templates/arrmada.xml`](../templates/arrmada.xml) | The template: one container, `ghcr.io/tristenlammi/arrmada:stable-aio` (Arrmada with qBittorrent and FlareSolverr inside, and an optional SABnzbd and Prowlarr, off by default). `templates/template_test.go` keeps it to the rules below |
 | [`ca_profile.xml`](../ca_profile.xml) | The maintainer profile Community Apps requires at the repository root (a non-empty `<Profile>`) |
 | [`LICENSE`](../LICENSE) | MIT, at the root. Community Apps requires an OSI-approved licence there |
 | [`web/public/icon-512.png`](../web/public/icon-512.png) | The icon, 512 × 512 PNG, linked by its raw GitHub address |
@@ -81,9 +81,10 @@ in a forum thread. Users look for one there.
    > Readarr, Overseerr and Tautulli in one container.
    >
    > **Template:** one container with **qBittorrent and FlareSolverr built in** and already
-   > connected; there's no download client to set up. Already run your own qBittorrent,
-   > SABnzbd or FlareSolverr? Switch the built-in ones off under Show more settings and add
-   > yours in the app.
+   > connected; there's no download client to set up. Already run your own qBittorrent or
+   > FlareSolverr? Switch the built-in one off under Show more settings and add yours in the
+   > app. A SABnzbd (for Usenet) and a Prowlarr are inside too, off until you switch them on
+   > there (Built-in SABnzbd, Built-in Prowlarr).
    > **Image:** `ghcr.io/tristenlammi/arrmada:stable-aio` (the latest release, x86-64)
    > **Guide:** https://github.com/tristenlammi/Arrmada/blob/main/docs/unraid.md
    > **Source and bug reports:** https://github.com/tristenlammi/Arrmada

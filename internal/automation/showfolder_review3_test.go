@@ -312,14 +312,16 @@ func TestRevCRescanWalksOnlyTheShowsOwnFolder(t *testing.T) {
 }
 
 // The way out for a show whose folder can't be told: move its files by hand into a folder
-// of its own, then Refresh & rescan — the moved files are followed, the show reads normally
-// again, and it imports into that folder.
+// named with the show's year, then Refresh & rescan — the moved files are followed, the show
+// reads normally again, and it imports into that folder. A year-less folder may as well be a
+// namesake's: nothing is followed into it.
 func TestRevCRescanFollowsFilesMovedOutOfAnUnclearFolder(t *testing.T) {
 	t.Run("all recorded in a season-named folder", func(t *testing.T) {
 		h, tv := rbSetup(t, []rbFile{
 			{rel: "S01/Season 1/Show - S01E01.mkv", tracked: [2]int{1, 1}},
 			{rel: "S01/Season 1/Show - S01E02.mkv", tracked: [2]int{1, 2}},
 		})
+		mustExec(t, h.c, `UPDATE series SET year = 2005 WHERE id = ?`, h.seriesID)
 		s, _ := h.c.series.Get(h.ctx, h.seriesID)
 		if _, _, err := h.c.seriesPlacement(h.ctx, s); !errors.Is(err, series.ErrNoShowFolder) {
 			t.Fatalf("placement = %v, want refused", err)
@@ -329,7 +331,24 @@ func TestRevCRescanFollowsFilesMovedOutOfAnUnclearFolder(t *testing.T) {
 		} else if !strings.Contains(err.Error(), "Refresh & rescan") {
 			t.Errorf("the refusal doesn't say the way out: %v", err)
 		}
-		own := filepath.Join(tv, "Real Folder", "S01")
+		// Into a year-less folder: never followed, the show stays refused, nothing changes.
+		bare := filepath.Join(tv, "Show", "S01")
+		if err := os.MkdirAll(bare, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(filepath.Join(tv, "S01", "Season 1", "Show - S01E01.mkv"), filepath.Join(bare, "Show - S01E01.mkv")); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.c.RescanSeries(h.ctx, h.seriesID); !errors.Is(err, series.ErrNoShowFolder) {
+			t.Fatalf("rescan after a move into a year-less folder = %v, want refused", err)
+		}
+		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1); cur.Path != filepath.Join(tv, "S01", "Season 1", "Show - S01E01.mkv") {
+			t.Fatalf("S01E01 = %q, want unchanged", cur.Path)
+		}
+		if err := os.Rename(filepath.Join(bare, "Show - S01E01.mkv"), filepath.Join(tv, "S01", "Season 1", "Show - S01E01.mkv")); err != nil {
+			t.Fatal(err)
+		}
+		own := filepath.Join(tv, "Real Folder (2005)", "S01")
 		for _, n := range []string{"Show - S01E01.mkv", "Show - S01E02.mkv"} {
 			if err := os.MkdirAll(own, 0o755); err != nil {
 				t.Fatal(err)
@@ -346,7 +365,7 @@ func TestRevCRescanFollowsFilesMovedOutOfAnUnclearFolder(t *testing.T) {
 				t.Errorf("S01E%02d = %q, want in %s", ep, cur.Path, own)
 			}
 		}
-		if p := h.c.series.FolderPath(h.ctx, h.seriesID); p != filepath.Join(tv, "Real Folder") {
+		if p := h.c.series.FolderPath(h.ctx, h.seriesID); p != filepath.Join(tv, "Real Folder (2005)") {
 			t.Errorf("FolderPath = %q", p)
 		}
 	})

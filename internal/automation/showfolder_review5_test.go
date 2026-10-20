@@ -228,51 +228,34 @@ func TestRevESeasonFolderJoinedWhateverItsName(t *testing.T) {
 	})
 }
 
-// A show with no files yet is rescanned from a folder named for it — "Show (2005)", or
-// "Show" in a library named without years — only when that folder is provably its own.
-func TestRevENewShowFolderBothSpellings(t *testing.T) {
-	run := func(t *testing.T, files []rbFile, setup func(h *lifecycleHarness)) (*lifecycleHarness, string) {
-		t.Helper()
-		h, tv := rbSetup(t, files)
-		mustExec(t, h.c, `UPDATE series SET year = 2005 WHERE id = ?`, h.seriesID)
-		mustExec(t, h.c, `UPDATE episodes SET has_file = 0, file_path = '' WHERE series_id = ?`, h.seriesID)
-		if setup != nil {
-			setup(h)
-		}
-		if err := h.c.RescanSeries(h.ctx, h.seriesID); err != nil {
-			t.Fatalf("rescan: %v", err)
-		}
-		return h, tv
-	}
-	t.Run("Title (Year)", func(t *testing.T) {
-		h, tv := run(t, []rbFile{{rel: "Show (2005)/Season 1/Show - S01E01.mkv"}}, nil)
-		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1); cur.Path != filepath.Join(tv, "Show (2005)", "Season 1", "Show - S01E01.mkv") {
-			t.Errorf("S01E01 = %q", cur.Path)
-		}
-	})
-	t.Run("Title, no year", func(t *testing.T) {
-		h, tv := run(t, []rbFile{{rel: "Show/Season 1/Show - S01E01.mkv"}}, nil)
-		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1); cur.Path != filepath.Join(tv, "Show", "Season 1", "Show - S01E01.mkv") {
-			t.Errorf("S01E01 = %q", cur.Path)
-		}
-	})
-	t.Run("Title, no year, another show of that title in the library", func(t *testing.T) {
-		h, _ := run(t, []rbFile{{rel: "Show/Season 1/Show - S01E01.mkv"}}, func(h *lifecycleHarness) {
-			mustExec(t, h.c, `INSERT INTO series (tmdb_id, title, year, monitored) VALUES (99, 'Show', 2019, 1)`)
+// A show with no files yet never reads a folder on a rescan or the duplicate check: one
+// merely named like it — "Show", "Show (2005)" — may as well be a namesake's (the UK "The
+// Office" beside the US one). Nothing is claimed, listed or recycled.
+func TestRevENoFilesReadsNothing(t *testing.T) {
+	for _, rel := range []string{
+		"Show (2005)/Season 1/Show - S01E01.mkv",
+		"Show/Season 1/Show - S01E01.mkv",
+		"Show/Season 1/Show (2001) - S01E01.mkv",
+	} {
+		t.Run(rel, func(t *testing.T) {
+			h, tv := rbSetup(t, []rbFile{{rel: rel}})
+			mustExec(t, h.c, `UPDATE series SET year = 2005 WHERE id = ?`, h.seriesID)
+			mustExec(t, h.c, `UPDATE episodes SET has_file = 0, file_path = '' WHERE series_id = ?`, h.seriesID)
+			if err := h.c.RescanSeries(h.ctx, h.seriesID); err != nil {
+				t.Fatalf("rescan: %v", err)
+			}
+			if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1); cur.Path != "" {
+				t.Errorf("claimed %q", cur.Path)
+			}
+			if dups := rcDupPaths(t, h); len(dups) != 0 {
+				t.Errorf("duplicates lists %v", dups)
+			}
+			if _, err := h.c.series.Delete(h.ctx, h.seriesID, true); err != nil {
+				t.Logf("delete: %v", err)
+			}
+			rbExists(t, tv, rel)
 		})
-		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1); cur.Path != "" {
-			t.Errorf("claimed %q from a folder that may be the 2019 show's", cur.Path)
-		}
-	})
-	t.Run("Title, holding another show", func(t *testing.T) {
-		h, _ := run(t, []rbFile{
-			{rel: "Show/Season 1/Show - S01E01.mkv"},
-			{rel: "Show/Show Spin-off/Season 1/Show Spin-off - S01E01.mkv"},
-		}, nil)
-		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1); cur.Path != "" {
-			t.Errorf("claimed %q from a folder holding another show", cur.Path)
-		}
-	})
+	}
 }
 
 // A show of 2,000 episodes in 20 season folders is judged, and its files filtered, in

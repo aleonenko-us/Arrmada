@@ -1455,48 +1455,11 @@ func (im *Importer) SeriesEpisodeVideos(seriesFolder, title string, year int) (d
 	found, _ := FindVideos(dir)
 	out := found[:0:0]
 	for _, v := range found {
-		rel, err := filepath.Rel(dir, filepath.Dir(v.Path))
-		extras := false
-		if err == nil && rel != "." {
-			for _, part := range strings.Split(rel, string(filepath.Separator)) {
-				if IsExtrasFolder(part) {
-					extras = true
-					break
-				}
-			}
-		}
-		if !extras {
+		if !InExtrasFolder(dir, v.Path) {
 			out = append(out, v)
 		}
 	}
 	return dir, out
-}
-
-// UnrecordedSeriesFolders is, for a show with no files recorded yet, the folders under
-// the TV root its name could be spelt as — "<Title> (<Year>)" first, then "<Title>" (a
-// library named without years) — that exist, as folder names. Whether one really is the
-// show's is the caller's to prove.
-func (im *Importer) UnrecordedSeriesFolders(title string, year int) []string {
-	t := clean(title)
-	if t == "" {
-		return nil
-	}
-	var names []string
-	if year > 0 {
-		names = append(names, fmt.Sprintf("%s (%d)", t, year))
-	}
-	names = append(names, t)
-	var out []string
-	for _, n := range names {
-		dir := filepath.Join(im.tvDir(), n)
-		if insideRoot(dir, im.tvDir()) != nil {
-			continue
-		}
-		if fi, err := os.Lstat(dir); err == nil && fi.IsDir() {
-			out = append(out, n)
-		}
-	}
-	return out
 }
 
 // seriesLibraryDir is the show's folder under the TV root: seriesFolder, or

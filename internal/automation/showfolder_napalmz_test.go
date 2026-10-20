@@ -227,7 +227,7 @@ func TestNapalmzLayoutEndToEnd(t *testing.T) {
 	// Move to folder: the whole show folder moves to the second TV folder.
 	m := &libfolders.Mover{
 		DB: h.c.db, Folders: f.folders, Bin: library.SingleBin(filepath.Join(t.TempDir(), "bin")),
-		ShowFolders: h.c.series.ShowFoldersOf, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ShowFolders: h.c.series.ShowFoldersOf, Unclear: h.c.series.FolderUnclear, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	if _, err := m.Move(ctx, libfolders.MediaSeries, f.id, f.tv2ID, nil); err != nil {
 		t.Fatalf("move: %v", err)

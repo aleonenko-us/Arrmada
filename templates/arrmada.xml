@@ -3,13 +3,20 @@
   Unraid Community Apps template for Arrmada's all-in-one image (the :stable-aio tag): the
   app plus a qBittorrent and a FlareSolverr inside the same container, set up and connected
   by Arrmada itself, like the Compose install's bundle. Either can be switched off with the
-  ARRMADA_BUNDLE_* variables to use your own instead. No keys or passwords belong here: TMDB,
-  Plex, indexers and the rest are entered in the app after it starts, and the qBittorrent
-  web UI login is generated on first start and shown to admins in Settings, Connections.
-  See docs/unraid.md.
+  ARRMADA_BUNDLE_* variables to use your own instead. A Prowlarr and a SABnzbd are inside
+  too, like the Compose install's optional ones, but off until ARRMADA_BUNDLE_PROWLARR or
+  ARRMADA_BUNDLE_SABNZBD is set to true. No keys or passwords belong here: TMDB, Plex,
+  indexers and the rest are entered in the app after it starts, and the qBittorrent and
+  SABnzbd web UI logins are generated on first start and shown to admins in Settings,
+  Connections. See docs/unraid.md.
 
-  Layout: the database and qBittorrent's own settings live in appdata (/data). Media and
-  downloads come in through /storage, never /data, so imports hardlink.
+  Layout: the database and the built-in apps' own settings live in appdata (/data). Media
+  and downloads come in through /storage, never /data, so imports hardlink.
+
+  The Prowlarr and SABnzbd ports are published even while those two are off (a template
+  can't make a port depend on a switch), so their defaults are numbers another app is
+  unlikely to have: 9697, next to Prowlarr's usual 9696, and 8085, SABnzbd's in the Compose
+  install. templates/template_test.go checks no two host ports are the same.
 
   The torrent port has to be the same number on both sides of both entries and in
   ARRMADA_QBIT_PORT: qBittorrent tells peers the port it listens on, and can't know a
@@ -38,6 +45,8 @@
 &#xD;
 This container includes qBittorrent and FlareSolverr, already connected: there's nothing to set up for them. To use your own instead, switch either off under Show more settings (ARRMADA_BUNDLE_QBITTORRENT, ARRMADA_BUNDLE_FLARESOLVERR) and add yours in Settings, Connections.&#xD;
 &#xD;
+For Usenet or for managing indexers in one place, a SABnzbd and a Prowlarr are included too, switched off. Switch them on under Show more settings (Built-in SABnzbd, Built-in Prowlarr). SABnzbd is connected for you; add your Usenet provider on its own page. Prowlarr needs your indexers added on its page, then its API key in Arrmada.&#xD;
+&#xD;
 Map the share that holds your media and downloads to /storage, so imports hardlink instead of copying. On first start, open the web UI, create the admin account, and follow the setup: your TMDB key, then each library folder and the Downloads folder under /storage. Never put media in /data: that's the database.</Overview>
   <Category>Downloaders: MediaApp:Video MediaApp:Books</Category>
   <WebUI>http://[IP]:[PORT:7878]/</WebUI>
@@ -56,14 +65,20 @@ Map the share that holds your media and downloads to /storage, so imports hardli
   <Config Name="Torrent port (UDP)" Target="56881" Default="56881" Mode="udp" Description="The same port for UDP (DHT and peers). Keep it the same as the TCP entry." Type="Port" Display="always" Required="false" Mask="false">56881</Config>
   <Config Name="Audiobook server port" Target="13378" Default="13379" Mode="tcp" Description="For listening apps such as Lissen. Off until you switch it on in the app; 13379 stays clear of an Audiobookshelf on 13378." Type="Port" Display="always" Required="false" Mask="false">13379</Config>
   <Config Name="qBittorrent web UI port" Target="8080" Default="8091" Mode="tcp" Description="Optional. The built-in qBittorrent's own page, if you want to look inside it. Arrmada doesn't need it. The login is in Arrmada, Settings, Connections (admins)." Type="Port" Display="advanced" Required="false" Mask="false">8091</Config>
-  <Config Name="App data" Target="/data" Default="/mnt/user/appdata/arrmada" Mode="rw" Description="The database, its backups and settings, and the built-in qBittorrent's settings and torrent list. Keep it in appdata. Never put media here." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/arrmada</Config>
+  <Config Name="SABnzbd web UI port" Target="8085" Default="8085" Mode="tcp" Description="Only used when Built-in SABnzbd is switched on: SABnzbd's own page, where you add your Usenet provider. Its login is in Arrmada, Settings, Connections (admins). If another app already uses 8085, pick another number here and in SABnzbd web UI host port." Type="Port" Display="advanced" Required="false" Mask="false">8085</Config>
+  <Config Name="Prowlarr web UI port" Target="9696" Default="9697" Mode="tcp" Description="Only used when Built-in Prowlarr is switched on: Prowlarr's own page, where you add your indexers. 9697 stays clear of a Prowlarr you may already have on 9696. If you change it, change Prowlarr web UI host port too." Type="Port" Display="advanced" Required="false" Mask="false">9697</Config>
+  <Config Name="App data" Target="/data" Default="/mnt/user/appdata/arrmada" Mode="rw" Description="The database, its backups and settings, and the built-in apps' settings (qBittorrent's torrent list, and SABnzbd's and Prowlarr's when they're switched on). Keep it in appdata. Never put media here." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/arrmada</Config>
   <Config Name="Media and downloads" Target="/storage" Default="" Mode="rw" Description="The share that holds your libraries and your downloads, for example /mnt/user/data with media and torrents inside. One share for both, so imports can hardlink. Each library folder is picked inside it in the app." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="Transcode folder" Target="/transcode" Default="" Mode="rw" Description="Optional. Scratch space for Convert on a fast pool, not the array (for example /mnt/cache/transcode)." Type="Path" Display="advanced" Required="false" Mask="false"/>
   <Config Name="Built-in qBittorrent" Target="ARRMADA_BUNDLE_QBITTORRENT" Default="true|false" Mode="" Description="true runs qBittorrent inside this container, connected and set up by Arrmada. false to use your own: add it in Settings, Connections. Switching it off keeps its settings and torrents in appdata for later." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="Built-in FlareSolverr" Target="ARRMADA_BUNDLE_FLARESOLVERR" Default="true|false" Mode="" Description="true runs FlareSolverr inside this container, for trackers behind Cloudflare. false to use your own (FlareSolverr URL below) or none." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Built-in SABnzbd" Target="ARRMADA_BUNDLE_SABNZBD" Default="false|true" Mode="" Description="Off unless you set it to true. true runs SABnzbd, a Usenet downloader, inside this container, connected to Arrmada for you; add your Usenet provider on its page (SABnzbd web UI port). Its settings stay in appdata if you switch it off again." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="Built-in Prowlarr" Target="ARRMADA_BUNDLE_PROWLARR" Default="false|true" Mode="" Description="Off unless you set it to true. true runs Prowlarr, which manages your indexers in one place, inside this container. Add your indexers on its page (Prowlarr web UI port), then put its API key in Arrmada, Settings, Connections, Prowlarr, and choose Sync now." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
   <Config Name="Torrent port setting" Target="ARRMADA_QBIT_PORT" Default="56881" Mode="" Description="The port the built-in qBittorrent listens on. Must be the same number as the torrent port entries above." Type="Variable" Display="advanced" Required="false" Mask="false">56881</Config>
   <Config Name="qBittorrent web UI host port" Target="ARRMADA_QBIT_WEBUI_HOST_PORT" Default="8091" Mode="" Description="The same number as the qBittorrent web UI port above, so Arrmada links the right page." Type="Variable" Display="advanced" Required="false" Mask="false">8091</Config>
-  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="The user Arrmada and the built-in qBittorrent run as. 99 is Unraid's nobody." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="SABnzbd web UI host port" Target="ARRMADA_SABNZBD_HOST_PORT" Default="8085" Mode="" Description="The same number as the SABnzbd web UI port above, so Arrmada links the right page." Type="Variable" Display="advanced" Required="false" Mask="false">8085</Config>
+  <Config Name="Prowlarr web UI host port" Target="ARRMADA_PROWLARR_HOST_PORT" Default="9697" Mode="" Description="The same number as the Prowlarr web UI port above, so Arrmada links the right page." Type="Variable" Display="advanced" Required="false" Mask="false">9697</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="The user Arrmada and the built-in qBittorrent, SABnzbd and Prowlarr run as. 99 is Unraid's nobody." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="The group they run as. 100 is Unraid's users." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
   <Config Name="Audiobook server host port" Target="ARRMADA_AUDIOBOOK_HOST_PORT" Default="13379" Mode="" Description="The same number as the audiobook server port above, so the app shows people the right address." Type="Variable" Display="advanced" Required="false" Mask="false">13379</Config>
   <Config Name="Starting library folder" Target="ARRMADA_LIBRARY_DIR" Default="/storage" Mode="" Description="Where a library you haven't picked a folder for goes (movies, tvshows, ebooks, audiobooks inside it). The folders you pick in the app win. Keep it under /storage." Type="Variable" Display="advanced" Required="false" Mask="false">/storage</Config>

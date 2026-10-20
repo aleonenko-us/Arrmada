@@ -2,6 +2,7 @@ import type { AudioLang, Episode, Job, MovieEvent, SearchAttempt, Season, Series
 import type { MisplacedItem, MisplacedPlan } from "../../src/lib/seriesApi";
 import type { MockRoute } from "./routes";
 import { NOW, day } from "./clock";
+import { person } from "./discover";
 
 // The series detail page (SER-14/15/16/20). Show 1 is the library's Harbour Lights: a
 // finished season, a season with gaps, a season still airing (one episode downloading, the
@@ -73,7 +74,7 @@ function show(id: number, over: Partial<Series>): Series {
     poster_url: "https://image.tmdb.org/t/p/w500/e2e-lib-1.jpg",
     monitored: true, monitor_new_seasons: true, quality_profile: "hd-1080p", series_type: "standard", numbering_source: "tmdb",
     last_refreshed_at: "2026-10-08T10:00:00Z", last_event_id: 7,
-    extra: { genres: ["Drama", "Mystery"], backdrop_url: "https://image.tmdb.org/t/p/w1280/e2e-backdrop-1.jpg", cast: [{ name: "Ada Fenwick", character: "Keeper" }] },
+    extra: { genres: ["Drama", "Mystery"], backdrop_url: "https://image.tmdb.org/t/p/w1280/e2e-backdrop-1.jpg", cast: [{ id: person.id, name: person.name, character: "Keeper" }, { name: "Ada Fenwick", character: "Harbourmaster" }] },
     seasons: harbourSeasons,
     stats: { episodes: 21, have_files: 17, size_bytes: 210_000_000_000, seasons: 3, missing: 3, unmonitored_missing: 1, next_air_date: day(11) },
     ...over,

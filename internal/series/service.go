@@ -31,6 +31,9 @@ type SceneMapper interface {
 
 // Service is the Series module's application logic.
 type Service struct {
+	// folderPaths caches FolderPath answers (folderPathEntry by series id).
+	folderPaths sync.Map
+
 	repo   *Repo
 	meta   metadata.SeriesProvider
 	root   string        // library root, for delete-with-files and library scan (see libRoot)
@@ -1763,8 +1766,32 @@ func (s *Service) ExistingFolderName(ctx context.Context, seriesID int64) string
 
 // FolderPath is the full path of the show's library folder (ShowFolderOf), "" when the
 // show has no files or none in a folder of its own.
+//
+// The media servers' links and the requests' ready check ask it for every show, often:
+// the answer is cached while the show's recorded files stay the same, for folderPathTTL,
+// so they don't keep a sleeping array awake.
 func (s *Service) FolderPath(ctx context.Context, seriesID int64) string {
-	return s.ShowFolderOf(ctx, seriesID).Path
+	paths, err := s.repo.EpisodeFilePaths(ctx, seriesID)
+	if err != nil || len(paths) == 0 {
+		return ""
+	}
+	key := strings.Join(paths, "\x00")
+	if v, ok := s.folderPaths.Load(seriesID); ok {
+		if e := v.(folderPathEntry); e.key == key && time.Since(e.at) < folderPathTTL {
+			return e.path
+		}
+	}
+	p := s.ShowFolderOf(ctx, seriesID).Path
+	s.folderPaths.Store(seriesID, folderPathEntry{key: key, path: p, at: time.Now()})
+	return p
+}
+
+// folderPathTTL is how long a FolderPath answer is reused while the show's files are unchanged.
+const folderPathTTL = 30 * time.Minute
+
+type folderPathEntry struct {
+	key, path string
+	at        time.Time
 }
 
 // Events returns a series' activity timeline, newest first.
@@ -1909,7 +1936,7 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 		// Once matched, the show is added and its episode files marked as one step, even if
 		// the scan is stopped meanwhile: a show added without its files would be skipped by
 		// every later scan (it's "already in the library") and never get them.
-		if err := s.importSeriesFolder(context.WithoutCancel(ctx), videos, match.TMDBID); err != nil {
+		if err := s.importSeriesFolder(context.WithoutCancel(ctx), folder, videos, match.TMDBID); err != nil {
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year})
 			continue
 		}
@@ -1937,7 +1964,10 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 
 // importSeriesFolder adds a series by TMDB id (unmonitored, unset profile — an
 // adopted library must not auto-upgrade) and marks its episode files present.
-func (s *Service) importSeriesFolder(ctx context.Context, videos []library.FoundVideo, tmdbID int) error {
+//
+// Only the files a rescan would read are marked (EpisodeFileFilter, without Plex extras
+// folders): never another show's folder inside dir, nor a file named as another show's.
+func (s *Service) importSeriesFolder(ctx context.Context, dir string, videos []library.FoundVideo, tmdbID int) error {
 	// The show belongs to the TV folder its files were found in, whatever the rules say.
 	var folderID *int64
 	if s.folders != nil && len(videos) > 0 {
@@ -1948,8 +1978,15 @@ func (s *Service) importSeriesFolder(ctx context.Context, videos []library.Found
 	if err != nil {
 		return err
 	}
+	keep := func(string) bool { return true }
+	if full, err := s.Get(ctx, added.ID); err == nil {
+		keep = s.EpisodeFileFilter(ctx, full, dir)
+	}
 	marked := 0
 	for _, v := range videos {
+		if !keep(v.Path) || library.InExtrasFolder(dir, v.Path) {
+			continue
+		}
 		p := parser.Parse(filepath.Base(v.Path))
 		// ResolveEpisodes handles multi-episode files, and — for anime — absolute
 		// numbering and the per-cour positional fallback.
@@ -1980,7 +2017,7 @@ func (s *Service) ImportFolderAs(ctx context.Context, rootOverride, folder strin
 	if len(videos) == 0 {
 		return fmt.Errorf("no episode files found in %q", folder)
 	}
-	if err := s.importSeriesFolder(ctx, videos, tmdbID); err != nil {
+	if err := s.importSeriesFolder(ctx, filepath.Join(root, folder), videos, tmdbID); err != nil {
 		return err
 	}
 	s.dropUnmatched(root, folder)
@@ -2354,7 +2391,7 @@ func extraFrom(d *metadata.SeriesDetails) *SeriesExtra {
 		ex.OriginalTitle = d.OriginalName
 	}
 	for _, c := range d.Cast {
-		ex.Cast = append(ex.Cast, CastMember{Name: c.Name, Character: c.Character, ProfileURL: c.ProfileURL})
+		ex.Cast = append(ex.Cast, CastMember{ID: c.ID, Name: c.Name, Character: c.Character, ProfileURL: c.ProfileURL})
 	}
 	return ex
 }

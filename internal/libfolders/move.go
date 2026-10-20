@@ -108,7 +108,10 @@ type Mover struct {
 	// ShowFolders answers, for a show, the show folder each of its episode files lives in
 	// (series.Service.ShowFoldersOf; "" for a file loose in a library folder).
 	ShowFolders func(ctx context.Context, seriesID int64) func(episodePath string) string
-	Log         *slog.Logger
+	// Unclear says why a show's folder can't be told ("" when it can) — the same check the
+	// import makes (series.Service.FolderUnclear). Such a show is never moved.
+	Unclear func(ctx context.Context, seriesID int64) string
+	Log     *slog.Logger
 
 	// mu runs moves one at a time, so a leftover staging copy is never a live one.
 	mu sync.Mutex
@@ -345,6 +348,13 @@ type movePlan struct {
 // before a single file moves.
 func (m *Mover) plan(ctx context.Context, t title, dest Folder) ([]movePlan, error) {
 	dirs := map[string]int{}
+	// A show whose folder can't be told — the import would refuse it — is never moved: its
+	// folder may be a category holding other shows.
+	if t.media == MediaSeries && m.Unclear != nil {
+		if why := m.Unclear(ctx, t.id); why != "" {
+			return nil, fmt.Errorf("%w: can't tell which folder %s lives in: %s", ErrBadPath, t.name, why)
+		}
+	}
 	var showFolder func(string) string
 	if t.media == MediaSeries && m.ShowFolders != nil {
 		showFolder = m.ShowFolders(ctx, t.id)

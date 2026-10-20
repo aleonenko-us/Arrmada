@@ -64,10 +64,16 @@ type Config struct {
 	// SABnzbdURL is where the optional bundled SABnzbd answers (docker-compose.yml's
 	// "sabnzbd" profile). Compose always passes it; the client is only registered once the
 	// bundled SABnzbd's config (with its API key) shows up at SABnzbdConfig, which happens
-	// when the profile is switched on.
+	// when the profile is switched on. The Unraid all-in-one image sets it only while its
+	// built-in SABnzbd is switched on, with its config in appdata.
 	SABnzbdURL string
-	// SABnzbdConfig is the bundled SABnzbd's sabnzbd.ini, mounted read-only.
+	// SABnzbdConfig is the bundled SABnzbd's sabnzbd.ini, mounted read-only (in the
+	// all-in-one image: the one in its appdata, set by the image).
 	SABnzbdConfig string
+	// AIOSABnzbdURL is AIOQbittorrentURL for the all-in-one image's optional SABnzbd: set
+	// only there, whether or not it's switched on. With it switched off SABnzbdURL is
+	// empty, and the bundled SABnzbd's client is switched off to match.
+	AIOSABnzbdURL string
 	// LibraryDir is the root of the organized media library (imports land here) and the
 	// default scan root for every module.
 	LibraryDir string
@@ -100,6 +106,10 @@ type Config struct {
 	// ProwlarrURL, when set, is the default address of an (optional) Prowlarr
 	// instance used by "Sync from Prowlarr". Must be reachable from the server.
 	ProwlarrURL string
+	// AIOProwlarrURL is where the all-in-one image's optional Prowlarr answers, set only
+	// while it's switched on: a Prowlarr there is Arrmada's own, like the Compose
+	// install's arrmada-prowlarr (it's given Arrmada's FlareSolverr).
+	AIOProwlarrURL string
 	// OpenSubtitles credentials for the Subtitles module (opensubtitles.com REST API).
 	// The API key enables search; a free username/password additionally enables download.
 	OpenSubtitlesAPIKey   string
@@ -147,6 +157,7 @@ func Load() (Config, error) {
 		QbittorrentLogin:      env("ARRMADA_QBITTORRENT_LOGIN", ""),
 		SABnzbdURL:            env("ARRMADA_SABNZBD_URL", ""),
 		SABnzbdConfig:         env("ARRMADA_SABNZBD_CONFIG", "/bundled/sabnzbd/sabnzbd.ini"),
+		AIOSABnzbdURL:         env("ARRMADA_AIO_SABNZBD_URL", ""),
 		LibraryDir:            env("ARRMADA_LIBRARY_DIR", "./library"),
 		DownloadCategory:      env("ARRMADA_DOWNLOAD_CATEGORY", "arrmada"),
 		DownloadsDir:          env("ARRMADA_DOWNLOADS_DIR", "./downloads"),
@@ -155,6 +166,7 @@ func Load() (Config, error) {
 		TMDBAPIKey:            env("ARRMADA_TMDB_API_KEY", ""),
 		OMDBAPIKey:            env("ARRMADA_OMDB_API_KEY", ""),
 		ProwlarrURL:           env("ARRMADA_PROWLARR_URL", ""),
+		AIOProwlarrURL:        env("ARRMADA_AIO_PROWLARR_URL", ""),
 		OpenSubtitlesAPIKey:   env("ARRMADA_OPENSUBTITLES_API_KEY", ""),
 		OpenSubtitlesUsername: env("ARRMADA_OPENSUBTITLES_USERNAME", ""),
 		OpenSubtitlesPassword: env("ARRMADA_OPENSUBTITLES_PASSWORD", ""),

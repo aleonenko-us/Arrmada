@@ -60,3 +60,28 @@ with a `replace` line in `go.mod`.
 - `github.com/go-flac/go-flac` and `github.com/go-flac/flacvorbis` — Apache License 2.0
 - `github.com/bogem/id3v2/v2` — MIT
 - `github.com/abema/go-mp4` — MIT
+
+## The Unraid all-in-one image (`stable-aio`)
+
+The all-in-one image (the Dockerfile's `aio` target, which the Unraid template runs) carries
+other programs beside Arrmada, each unmodified, as published by its authors or by Ubuntu.
+They are separate programs that Arrmada starts and talks to over HTTP; none is linked into
+Arrmada. The plain image and the Compose install contain none of them (the Compose install
+runs each in a container of its own).
+
+| Program | Licence | Where it comes from (exact version in the `Dockerfile`) |
+|---|---|---|
+| qBittorrent (`qbittorrent-nox`, static build) | GPL-2.0-or-later | https://github.com/userdocs/qbittorrent-nox-static (source: https://github.com/qbittorrent/qBittorrent) |
+| FlareSolverr | MIT | https://github.com/FlareSolverr/FlareSolverr, with Chromium (BSD-3-Clause and others) from chromium-browser-snapshots |
+| SABnzbd (optional) | GPL-2.0-or-later; its bundled parts under `/opt/sabnzbd/app/licenses/` | https://github.com/sabnzbd/sabnzbd (the source release itself is what's in the image, at `/opt/sabnzbd/app`) |
+| SABnzbd's Python packages | Their own (MIT, BSD, Apache-2.0, LGPL and others), in each package's `*.dist-info` under `/opt/sabnzbd/venv` | PyPI, pinned by hash in `docker/aio/sabnzbd-requirements.txt` |
+| par2cmdline-turbo (optional, for SABnzbd) | GPL-2.0-or-later | https://github.com/animetosho/par2cmdline-turbo |
+| Prowlarr (optional) | GPL-3.0; its licence at `/opt/prowlarr/bin/LICENSE` | https://github.com/Prowlarr/Prowlarr |
+| unrar (for SABnzbd) | **Non-free freeware**: may be redistributed freely, inside other packages too, but its code may not be used to re-create the RAR compression algorithm. Full text in `/usr/share/doc/unrar/copyright` | Ubuntu's `unrar` package (multiverse) |
+| 7-Zip (`7zip`, for SABnzbd) | LGPL-2.1-or-later, some parts BSD-3-Clause or public domain (Ubuntu's build leaves out the unRAR code); `/usr/share/doc/7zip/copyright` | Ubuntu's `7zip` package |
+
+**Source for the GPL programs.** Each is an unmodified upstream release: its source is at
+the tag of that release in the repository named above (qBittorrent's static build: the
+qBittorrent and libtorrent tags its release name gives). If you can't get it from there,
+ask through the Arrmada repository's issues and we'll send it to you, on the same terms as
+the TagLib offer above (at least three years from the release of the image you have).

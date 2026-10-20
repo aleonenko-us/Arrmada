@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hhmm, prowlarrLastSyncLine, prowlarrSyncMessage, prowlarrUILink, usenetIndexerLine } from "./indexerStatus";
+import { hhmm, isBundledProwlarr, prowlarrLastSyncLine, prowlarrSyncMessage, prowlarrUILink, usenetIndexerLine } from "./indexerStatus";
 
 const now = Date.parse("2026-10-09T12:00:00Z");
 const at = (minutes: number) => new Date(now + minutes * 60_000).toISOString();
@@ -44,6 +44,17 @@ describe("prowlarrLastSyncLine", () => {
     expect(line?.text).toBe(`Last sync failed at ${hhmm(at(0))}: prowlarr: invalid API key`);
     expect(line?.color).toBe("var(--reject-text)");
     expect(prowlarrLastSyncLine(undefined)).toBeNull();
+  });
+});
+
+describe("isBundledProwlarr", () => {
+  it("knows the Compose install's by name and the all-in-one image's by host and port", () => {
+    expect(isBundledProwlarr("http://arrmada-prowlarr:9696")).toBe(true);
+    expect(isBundledProwlarr("http://127.0.0.1:9696")).toBe(false);
+    expect(isBundledProwlarr("http://127.0.0.1:9696/", "http://127.0.0.1:9696")).toBe(true);
+    expect(isBundledProwlarr("http://127.0.0.1:9697", "http://127.0.0.1:9696")).toBe(false);
+    expect(isBundledProwlarr("http://192.168.1.10:9696", "http://127.0.0.1:9696")).toBe(false);
+    expect(isBundledProwlarr("not a url", "http://127.0.0.1:9696")).toBe(false);
   });
 });
 

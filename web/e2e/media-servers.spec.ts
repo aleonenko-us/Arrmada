@@ -103,9 +103,26 @@ test.describe("admin", () => {
     await expect.poll(() => api.callsTo("GET", "/api/v1/connections").length).toBeGreaterThan(listReads);
     expect(await page.content()).not.toContain("jf-key-123");
 
-    // A second save without typing a key leaves it out, which keeps the saved one.
+    // A new address asks for the key again: the saved key is only sent to the address it
+    // was saved for, so Save waits for it. Back at the saved address, nothing is asked.
+    const key = form.getByLabel("API key");
+    const save = form.getByRole("button", { name: "Save" });
     await form.getByLabel("Server URL").fill("http://jellyfin:8097");
-    await form.getByRole("button", { name: "Save" }).click();
+    await expect(key).toHaveAttribute("placeholder", "Enter the key for the new address");
+    await expect(form.getByText("New address: enter its API key. The saved key is only sent to the address it was saved for.")).toBeVisible();
+    await expect(save).toBeDisabled();
+    await key.fill("jf-key-456");
+    await expect(save).toBeEnabled();
+    await key.fill("");
+    await expect(save).toBeDisabled();
+    await form.getByLabel("Server URL").fill("http://JELLYFIN:8096/");
+    await expect(key).toHaveAttribute("placeholder", "Key set — leave blank to keep it");
+    await expect(save).toBeEnabled();
+
+    // A second save at the same address without typing a key leaves it out, which keeps
+    // the saved one.
+    await form.getByLabel("Public address for Watch links").fill("https://jf.example.com");
+    await save.click();
     await expect.poll(() => api.callsTo("PUT", "/api/v1/jellyfin").length).toBe(2);
     expect(api.callsTo("PUT", "/api/v1/jellyfin")[1].body).not.toHaveProperty("api_key");
   });
