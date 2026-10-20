@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, type DiscoverCard, type DiscoverPage, type Genre, type PersonResult, type WatchProvider } from "../lib/api";
 import { CardSkeleton, GRID, LoadError, MediaCard, useOpenOverlay, visibleCards, type RowCtx } from "../features/discover/shared";
+import { activeFilters, FILTER_KEYS, hideRequested, LANGUAGES, LOCAL_KEYS, RATINGS, runtimeIndex, RUNTIMES, SORTS, VOTES } from "../features/discover/browseFilters";
+import { discoverApi, type Certification } from "../features/discover/discoverApi";
 
 // The deeper Discover grids (REQ-19): a filterable browse grid behind every row's
 // "See all" (/discover/browse?list=popular&media=movie), and search results past the first
@@ -18,21 +20,6 @@ const LISTS: Record<string, { movie: string; series: string }> = {
   upcoming: { movie: "Upcoming — request ahead", series: "Airing soon" },
   hidden_gems: { movie: "Hidden gems", series: "Hidden gems" },
 };
-
-const SORTS: { value: string; label: string; movieOnly?: boolean }[] = [
-  { value: "popularity.desc", label: "Most popular" },
-  { value: "vote_average.desc", label: "Highest rated" },
-  { value: "primary_release_date.desc", label: "Newest" },
-  { value: "revenue.desc", label: "Highest grossing", movieOnly: true },
-];
-
-const RATINGS = ["", "5", "6", "7", "8"];
-// Runtime presets: [label, min, max] in minutes ("" = no bound).
-const RUNTIMES: [string, string, string][] = [["Any length", "", ""], ["Under 90 min", "", "89"], ["90 min – 2 h", "90", "120"], ["Over 2 h", "121", ""]];
-const LANGUAGES: [string, string][] = [["", "Any language"], ["en", "English"], ["ja", "Japanese"], ["ko", "Korean"], ["fr", "French"], ["es", "Spanish"], ["de", "German"], ["it", "Italian"], ["hi", "Hindi"], ["zh", "Chinese"]];
-
-// The address's filter keys, passed through to /api/v1/discover/browse as they are.
-const FILTER_KEYS = ["list", "media", "genre", "year_from", "year_to", "rating", "runtime_min", "runtime_max", "provider", "lang", "sort"];
 
 const cardKey = (c: DiscoverCard) => `${c.media_type}:${c.tmdb_id}`;
 
@@ -109,17 +96,19 @@ function scrollParent(el: HTMLElement): HTMLElement | null {
 
 // Grid is the infinite poster grid: skeletons first, the error line on a failure (with a
 // retry for a later page), and the sentinel that loads the next page.
-function Grid({ state, ctx, empty }: { state: ReturnType<typeof useInfinite>; ctx: RowCtx; empty: string }) {
+function Grid({ state, ctx, empty, skipRequested }: { state: ReturnType<typeof useInfinite>; ctx: RowCtx; empty: string; skipRequested?: boolean }) {
   const { items, loading, error, sentinel, retry, hasMore, stalled } = state;
-  const visible = items ? visibleCards(items, ctx) : null;
+  const shown = items ? visibleCards(items, ctx) : null;
+  const visible = shown && skipRequested ? hideRequested(shown, ctx.isRequested) : shown;
+  const thinned = ctx.hideInLibrary || skipRequested;
   if (items === null) {
     return <div className="grid gap-x-3 gap-y-5" style={GRID}>{Array.from({ length: 12 }).map((_, i) => <CardSkeleton key={i} full />)}</div>;
   }
   if (visible?.length === 0) {
     return error ? <LoadError message={error} /> : (
       <div className="rounded-xl p-8 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
-        {hasMore && ctx.hideInLibrary ? "No titles on this page are new to your library." : empty}
-        {hasMore && ctx.hideInLibrary && <div><button onClick={retry} className="mt-3 min-h-[32px] font-semibold" style={{ color: "var(--accent-text)" }}>Load more</button></div>}
+        {hasMore && thinned ? "Nothing on this page is left once those are hidden." : empty}
+        {hasMore && thinned && <div><button onClick={retry} className="mt-3 min-h-[32px] font-semibold" style={{ color: "var(--accent-text)" }}>Load more</button></div>}
       </div>
     );
   }
@@ -177,9 +166,11 @@ export function SearchResults({ query, ctx }: { query: string; ctx: RowCtx }) {
 
 const chip = (on: boolean) => ({ border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, background: on ? "var(--accent-soft)" : "var(--panel)", color: on ? "var(--accent-text)" : "var(--ink-faint)" });
 const field = { background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" };
+const selectCls = "min-h-[36px] w-full min-w-0 rounded-lg px-2 text-sm sm:w-auto";
 
-// DiscoverBrowse is /discover/browse: a filter bar over an infinite grid, all its state
-// in the address.
+// DiscoverBrowse is /discover/browse: a filter panel over an infinite grid, all its state
+// in the address. The filters in use show as chips that each take one off; on a phone the
+// panel folds away behind "Filters" so the grid starts near the top.
 export function DiscoverBrowse({ ctx }: { ctx: RowCtx }) {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -189,14 +180,18 @@ export function DiscoverBrowse({ ctx }: { ctx: RowCtx }) {
   const genres = (params.get("genre") ?? "").split(",").filter(Boolean).map(Number);
   const provider = Number(params.get("provider") ?? 0);
   const sort = params.get("sort") ?? "";
+  const skipRequested = params.get("hide_requested") === "1";
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const [genreList, setGenreList] = useState<Genre[]>([]);
   const [providers, setProviders] = useState<WatchProvider[]>([]);
+  const [certs, setCerts] = useState<Certification[]>([]);
   useEffect(() => {
-    if (media === "all") { setGenreList([]); setProviders([]); return; }
+    if (media === "all") { setGenreList([]); setProviders([]); setCerts([]); return; }
     let alive = true;
     api.discoverGenres(media).then((g) => { if (alive) setGenreList(g); }).catch(() => { if (alive) setGenreList([]); });
     api.discoverProviders(media).then((p) => { if (alive) setProviders(p); }).catch(() => { if (alive) setProviders([]); });
+    discoverApi.certifications(media).then((c) => { if (alive) setCerts(c.certifications ?? []); }).catch(() => { if (alive) setCerts([]); });
     return () => { alive = false; };
   }, [media]);
 
@@ -207,20 +202,23 @@ export function DiscoverBrowse({ ctx }: { ctx: RowCtx }) {
   const state = useInfinite(key, (page) => api.discoverBrowse(key, page));
 
   // Any filter turns a fixed list into a filtered browse of the same media. Replacing the
-  // entry keeps Back for leaving the grid, not undoing each filter.
+  // entry keeps Back for leaving the grid, not undoing each filter. "Hide requested" is
+  // the page's own: it narrows any list without leaving it.
   const set = (changes: Record<string, string | null>) => setParams((p) => {
     const next = new URLSearchParams(p);
-    next.delete("list");
+    if (Object.keys(changes).some((k) => !LOCAL_KEYS.includes(k))) next.delete("list");
     for (const [k, v] of Object.entries(changes)) { if (v) next.set(k, v); else next.delete(k); }
-    if (!next.get("media") || next.get("media") === "all") next.set("media", "movie");
+    if (!next.get("media") || (next.get("media") === "all" && !next.get("list"))) next.set("media", "movie");
     return next;
   }, { replace: true });
-  // Switching media keeps a fixed list (Popular movies → Popular series); genre ids differ
-  // between movies and series, so the genres are dropped, and series have no box office.
+  // Switching media keeps a fixed list (Popular movies → Popular series); genre ids and
+  // age ratings differ between movies and series, so those are dropped, and series have
+  // no box office.
   const setMedia = (m: "movie" | "series") => setParams((p) => {
     const next = new URLSearchParams(p);
     next.set("media", m);
     next.delete("genre");
+    next.delete("cert");
     if (m === "series" && next.get("sort") === "revenue.desc") next.delete("sort");
     return next;
   }, { replace: true });
@@ -228,13 +226,23 @@ export function DiscoverBrowse({ ctx }: { ctx: RowCtx }) {
     const next = genres.includes(id) ? genres.filter((g) => g !== id) : [...genres, id];
     set({ genre: next.join(",") || null });
   };
-  const runtime = RUNTIMES.findIndex(([, lo, hi]) => lo === (params.get("runtime_min") ?? "") && hi === (params.get("runtime_max") ?? ""));
-  const filtered = FILTER_KEYS.some((k) => k !== "list" && k !== "media" && params.get(k));
+  const runtime = runtimeIndex(params);
+  const chips = activeFilters(params, {
+    genre: (id) => genreList.find((g) => g.id === id)?.name,
+    provider: (id) => providers.find((p) => p.id === id)?.name,
+  });
+  const clearAll = () => setParams((p) => {
+    const next = new URLSearchParams();
+    next.set("media", media === "all" ? "movie" : media);
+    if (p.get("hide_in_library")) next.set("hide_in_library", "1");
+    return next;
+  }, { replace: true });
   const providerName = providers.find((p) => p.id === provider)?.name;
   const noun = media === "series" ? "series" : media === "all" ? "titles" : "movies";
   const title = list && LISTS[list] ? (media === "all" ? "Trending this week" : LISTS[list][media]) : providerName ? `${providerName} ${noun}` : `Browse ${noun}`;
   // Back leaves the grid for wherever it was opened from; a grid opened cold goes to Discover.
   const back = () => (location.key !== "default" ? navigate(-1) : navigate("/discover", { replace: true }));
+  const panelId = "discover-filters";
 
   return (
     <div>
@@ -243,47 +251,60 @@ export function DiscoverBrowse({ ctx }: { ctx: RowCtx }) {
         <h2 className="m-0 min-w-0 flex-1 text-xl font-bold">{title}</h2>
       </div>
 
-      <div className="mb-5 flex flex-col gap-2.5 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--line)" }} role="group" aria-label="Filters">
-        <div className="flex flex-wrap items-center gap-2">
-          {(["movie", "series"] as const).map((k) => (
-            <button key={k} onClick={() => setMedia(k)} aria-pressed={media === k} className="min-h-[32px] rounded-full px-3 text-sm font-semibold" style={chip(media === k)}>
-              {k === "movie" ? "Movies" : "Series"}
-            </button>
-          ))}
-          <select aria-label="Sort by" value={sort} onChange={(e) => set({ sort: e.target.value || null })} className="min-h-[32px] rounded-lg px-2 text-sm" style={field}>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {(["movie", "series"] as const).map((k) => (
+          <button key={k} onClick={() => setMedia(k)} aria-pressed={media === k} className="min-h-[36px] rounded-full px-3 text-sm font-semibold" style={chip(media === k)}>
+            {k === "movie" ? "Movies" : "Series"}
+          </button>
+        ))}
+        {/* On a phone the panel folds away; from sm up it's always open. */}
+        <button onClick={() => setPanelOpen((o) => !o)} aria-expanded={panelOpen} aria-controls={panelId} className="ml-auto inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3 text-sm font-semibold sm:hidden" style={chip(panelOpen)}>
+          Filters{chips.length > 0 ? ` (${chips.length})` : ""}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true" style={{ transform: panelOpen ? "rotate(180deg)" : undefined }}><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+      </div>
+
+      <div id={panelId} className={`mb-3 min-w-0 flex-col gap-2.5 rounded-xl p-3 sm:flex ${panelOpen ? "flex" : "hidden"}`} style={{ background: "var(--panel)", border: "1px solid var(--line)" }} role="group" aria-label="Filters">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <select aria-label="Sort by" value={sort} onChange={(e) => set({ sort: e.target.value || null })} className={selectCls} style={field}>
             <option value="">Sort: default</option>
             {SORTS.filter((s) => !s.movieOnly || media !== "series").map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
-          <select aria-label="Minimum rating" value={params.get("rating") ?? ""} onChange={(e) => set({ rating: e.target.value || null })} className="min-h-[32px] rounded-lg px-2 text-sm" style={field}>
+          <select aria-label="Minimum rating" value={params.get("rating") ?? ""} onChange={(e) => set({ rating: e.target.value || null })} className={selectCls} style={field}>
             {RATINGS.map((r) => <option key={r} value={r}>{r ? `★ ${r}+` : "Any rating"}</option>)}
           </select>
-          <select aria-label="Length" value={Math.max(0, runtime)} onChange={(e) => { const [, lo, hi] = RUNTIMES[Number(e.target.value)]; set({ runtime_min: lo || null, runtime_max: hi || null }); }} className="min-h-[32px] rounded-lg px-2 text-sm" style={field}>
+          <select aria-label="Minimum number of votes" value={params.get("votes") ?? ""} onChange={(e) => set({ votes: e.target.value || null })} className={selectCls} style={field}>
+            {VOTES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
+          <select aria-label="Length" value={Math.max(0, runtime)} onChange={(e) => { const [, lo, hi] = RUNTIMES[Number(e.target.value)]; set({ runtime_min: lo || null, runtime_max: hi || null }); }} className={selectCls} style={field}>
             {RUNTIMES.map(([label], i) => <option key={label} value={i}>{label}</option>)}
           </select>
-          <select aria-label="Original language" value={params.get("lang") ?? ""} onChange={(e) => set({ lang: e.target.value || null })} className="min-h-[32px] rounded-lg px-2 text-sm" style={field}>
+          <select aria-label="Original language" value={params.get("lang") ?? ""} onChange={(e) => set({ lang: e.target.value || null })} className={selectCls} style={field}>
             {LANGUAGES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
           </select>
-          <YearRange from={params.get("year_from") ?? ""} to={params.get("year_to") ?? ""} onChange={(from, to) => set({ year_from: from || null, year_to: to || null })} />
-          {filtered && (
-            <button onClick={() => setParams((p) => {
-              const next = new URLSearchParams();
-              next.set("media", media === "all" ? "movie" : media);
-              if (p.get("hide_in_library")) next.set("hide_in_library", "1");
-              return next;
-            }, { replace: true })} className="min-h-[32px] text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Clear filters</button>
+          {certs.length > 0 && (
+            <select aria-label="Age rating" value={params.get("cert") ?? ""} onChange={(e) => set({ cert: e.target.value || null })} className={selectCls} style={field}>
+              <option value="">Any age rating</option>
+              {certs.map((c) => <option key={c.code} value={c.code} title={c.meaning}>Up to {c.code}</option>)}
+            </select>
           )}
+          <YearRange from={params.get("year_from") ?? ""} to={params.get("year_to") ?? ""} onChange={(from, to) => set({ year_from: from || null, year_to: to || null })} />
+          <label className="col-span-2 flex min-h-[36px] items-center gap-2 text-sm font-medium text-ink-dim sm:col-span-1">
+            <input type="checkbox" checked={skipRequested} onChange={(e) => set({ hide_requested: e.target.checked ? "1" : null })} style={{ accentColor: "var(--accent)" }} />
+            Hide requested
+          </label>
         </div>
         {genreList.length > 0 && (
           <div className="thin-scroll -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="group" aria-label="Genres">
             {genreList.map((g) => (
-              <button key={g.id} onClick={() => toggleGenre(g.id)} aria-pressed={genres.includes(g.id)} className="min-h-[30px] flex-none rounded-full px-3 text-sm font-semibold" style={chip(genres.includes(g.id))}>{g.name}</button>
+              <button key={g.id} onClick={() => toggleGenre(g.id)} aria-pressed={genres.includes(g.id)} className="min-h-[32px] flex-none rounded-full px-3 text-sm font-semibold" style={chip(genres.includes(g.id))}>{g.name}</button>
             ))}
           </div>
         )}
         {providers.length > 0 && (
           <div className="thin-scroll -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="group" aria-label="Streaming services">
             {providers.map((p) => (
-              <button key={p.id} onClick={() => set({ provider: provider === p.id ? null : String(p.id) })} aria-pressed={provider === p.id} title={p.name} className="flex min-h-[30px] flex-none items-center gap-1.5 rounded-full py-0.5 pl-1 pr-2.5 text-sm font-semibold" style={chip(provider === p.id)}>
+              <button key={p.id} onClick={() => set({ provider: provider === p.id ? null : String(p.id) })} aria-pressed={provider === p.id} title={p.name} className="flex min-h-[32px] flex-none items-center gap-1.5 rounded-full py-0.5 pl-1 pr-2.5 text-sm font-semibold" style={chip(provider === p.id)}>
                 {p.logo_url ? <img src={p.logo_url} alt="" className="h-5 w-5 rounded-md" /> : null}
                 <span>{p.name}</span>
               </button>
@@ -292,7 +313,19 @@ export function DiscoverBrowse({ ctx }: { ctx: RowCtx }) {
         )}
       </div>
 
-      <Grid state={state} ctx={ctx} empty="Nothing matches these filters." />
+      {chips.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5" role="group" aria-label="Filters in use">
+          {chips.map((c) => (
+            <button key={c.id} onClick={() => set(c.clear)} aria-label={`Remove filter: ${c.label}`} className="inline-flex min-h-[32px] max-w-full items-center gap-1.5 rounded-full px-3 text-sm font-semibold" style={chip(true)}>
+              <span className="truncate">{c.label}</span>
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+            </button>
+          ))}
+          <button onClick={clearAll} className="min-h-[32px] px-1 text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Clear filters</button>
+        </div>
+      )}
+
+      <Grid state={state} ctx={ctx} skipRequested={skipRequested} empty="Nothing matches these filters." />
     </div>
   );
 }
@@ -318,12 +351,12 @@ function YearRange({ from, to, onChange }: { from: string; to: string; onChange:
       onChange={(e) => setV(e.target.value.replace(/\D/g, ""))}
       onBlur={apply}
       onKeyDown={(e) => { if (e.key === "Enter") apply(); }}
-      className="min-h-[32px] w-[64px] rounded-lg px-2 text-sm"
+      className="min-h-[36px] w-0 min-w-0 flex-1 rounded-lg px-2 text-sm sm:w-[64px] sm:flex-none"
       style={field}
     />
   );
   return (
-    <span className="flex items-center gap-1 text-sm text-ink-faint">
+    <span className="col-span-2 flex min-w-0 items-center gap-1 text-sm text-ink-faint sm:col-span-1">
       {box("From year", f, setF)}–{box("To year", t, setT)}
     </span>
   );
