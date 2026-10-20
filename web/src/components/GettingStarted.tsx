@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { fixLink } from "../lib/links";
 import { useQuery } from "../lib/query";
 import { usePoll } from "../lib/usePoll";
+import { connectionsApi, type ConnectionKind } from "../lib/connectionsApi";
 import { setupApi, type ChecklistItem, type SetupChecklist } from "../lib/setupApi";
 import { Button, useToast } from "../ui";
 
@@ -26,7 +27,7 @@ export function useSetupChecklist(enabled = true, { stopWhenDismissed = false } 
 
 // ChecklistRows is the list itself: ✓ or ○, each a link to where that step is done.
 // onOpen replaces plain navigation (the wizard finishes setup before leaving).
-export function ChecklistRows({ items, onOpen }: { items: ChecklistItem[]; onOpen?: (to: string) => void }) {
+export function ChecklistRows({ items, onOpen, onTested }: { items: ChecklistItem[]; onOpen?: (to: string) => void; onTested?: () => void }) {
   return (
     <ul className="m-0 flex list-none flex-col gap-1 p-0">
       {items.map((it) => {
@@ -53,10 +54,40 @@ export function ChecklistRows({ items, onOpen }: { items: ChecklistItem[]; onOpe
             ) : (
               <div className="flex items-center gap-2.5 px-2 py-1.5 text-base">{label}</div>
             )}
+            <ChecklistProbe item={it} onTested={onTested} />
           </li>
         );
       })}
     </ul>
+  );
+}
+
+// ChecklistProbe sits under a row whose connection is set up: the reason it isn't working (from
+// the server's last probe, or from the Test just run) and an inline Test. It renders nothing
+// for a step with nothing configured yet.
+function ChecklistProbe({ item, onTested }: { item: ChecklistItem; onTested?: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  if (!item.test_kind || !item.test_ref) return null;
+  const run = async () => {
+    setBusy(true);
+    try {
+      const r = await connectionsApi.test(item.test_kind as ConnectionKind, item.test_ref as string);
+      setResult({ ok: r.ok, detail: r.detail });
+      onTested?.();
+    } catch (e) {
+      setResult({ ok: false, detail: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reason = result ? (result.ok ? "" : result.detail) : item.reason ?? "";
+  return (
+    <div className="flex flex-wrap items-center gap-2 pb-1 pl-[2.125rem] pr-2 text-sm">
+      {reason && <span role="alert" className="min-w-0 flex-1" style={{ color: "var(--avoid-text)" }}>{reason}</span>}
+      {result?.ok && <span role="status" style={{ color: "var(--good-text)" }}>✓ {result.detail || "Connected"}</span>}
+      <Button variant="ghost" size="sm" onClick={run} busy={busy} aria-label={`Test ${item.label}`}>Test</Button>
+    </div>
   );
 }
 
@@ -93,7 +124,7 @@ export function GettingStarted() {
       </div>
       <div className="rounded-xl p-4" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
         <p className="m-0 mb-2 px-2 text-sm text-ink-dim">Each step ticks itself off once it's done.</p>
-        <ChecklistRows items={c.items} />
+        <ChecklistRows items={c.items} onTested={() => void q.refetch()} />
       </div>
     </section>
   );

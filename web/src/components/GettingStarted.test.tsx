@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { clearQueryCache } from "../lib/query";
+import { connectionsApi } from "../lib/connectionsApi";
 import { setupApi, type SetupChecklist } from "../lib/setupApi";
 import { ToastProvider } from "../ui";
 import { GettingStarted } from "./GettingStarted";
@@ -50,5 +51,22 @@ describe("Getting started card", () => {
     await act(async () => { await dismiss.mock.results[0]?.value; });
     expect(dismiss).toHaveBeenCalledOnce();
     expect(container.textContent).toBe("");
+  });
+
+  it("shows why a configured step is red and tests it inline", async () => {
+    const items = [
+      { key: "download_client", label: "Connect a download client", done: false, link: "/settings/connections#download-clients", reason: "The host (qb) is there but nothing is listening on that port.", test_kind: "download_client", test_ref: "3" },
+      { key: "indexer", label: "Add an indexer", done: false, link: "/settings/connections#search" },
+    ];
+    vi.spyOn(setupApi, "checklist").mockResolvedValue(list({ items }));
+    const test = vi.spyOn(connectionsApi, "test").mockResolvedValue({ ok: true, detail: "qBittorrent 5.0 answered", item: {} as never });
+    page();
+    expect(await screen.findByText(/nothing is listening on that port/)).toBeTruthy();
+    // Only the configured step has a Test.
+    expect(screen.getAllByRole("button", { name: /^Test / })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Test Connect a download client" }));
+    expect(await screen.findByText(/qBittorrent 5.0 answered/)).toBeTruthy();
+    expect(test).toHaveBeenCalledWith("download_client", "3");
+    expect(screen.queryByText(/nothing is listening/)).toBeNull();
   });
 });

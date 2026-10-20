@@ -11,6 +11,11 @@ export interface ChecklistItem {
   /** Where to do it: link_key names a LINKS entry (resolved first), link is the path. */
   link: string;
   link_key?: string;
+  /** Plain-words reason a configured step's connection isn't working. */
+  reason?: string;
+  /** The connection the row's inline Test checks; both are absent until something is configured. */
+  test_kind?: string;
+  test_ref?: string;
 }
 
 export interface SetupChecklist {
