@@ -1,0 +1,37 @@
+{
+  "CachePath": "/cache",
+  "CanLaunchWebBrowser": false,
+  "CanSelfRestart": true,
+  "CastReceiverApplications": [
+    {
+      "Id": "F007D354",
+      "Name": "Stable"
+    },
+    {
+      "Id": "6F511C87",
+      "Name": "Unstable"
+    }
+  ],
+  "CompletedInstallations": [],
+  "EncoderLocation": "System",
+  "HasPendingRestart": false,
+  "HasUpdateAvailable": false,
+  "Id": "5e7e75e7e75e7e75e7e75e7e75e7e75e",
+  "InternalMetadataPath": "/config/metadata",
+  "IsShuttingDown": false,
+  "ItemsByNamePath": "/config/metadata",
+  "LocalAddress": "http://172.21.0.2:8096",
+  "LogPath": "/config/log",
+  "OperatingSystem": "",
+  "OperatingSystemDisplayName": "",
+  "ProductName": "Emby Server",
+  "ProgramDataPath": "/config",
+  "ServerName": "arrmada-it",
+  "StartupWizardCompleted": true,
+  "SupportsLibraryMonitor": true,
+  "SystemArchitecture": "X64",
+  "TranscodingTempPath": "/cache/transcodes",
+  "Version": "4.9.0.43",
+  "WebPath": "/jellyfin/jellyfin-web",
+  "WebSocketPortNumber": 8096
+}

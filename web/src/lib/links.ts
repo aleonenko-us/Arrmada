@@ -17,12 +17,14 @@ export const LINKS = {
   // accounts — is Settings → Media servers, one group per server.
   plexConnection: "/settings/connections#plex",
   jellyfinConnection: "/settings/connections#jellyfin",
+  embyConnection: "/settings/connections#emby",
   // Both cards side by side, for "connect a media server" when either will do.
   mediaServerCards: "/settings/connections#media-servers",
   mediaServers: "/settings/media-servers",
   // Each server's group starts with its server card.
   plexServer: "/settings/media-servers#plex-server",
   jellyfinServer: "/settings/media-servers#jellyfin-server",
+  embyServer: "/settings/media-servers#emby-server",
   plexSignIn: "/settings/media-servers#plex-sign-in",
   jellyfinSignIn: "/settings/media-servers#jellyfin-sign-in",
   // The Activity page (lib/activity.ts): one tab each, sub-views in ?show=.

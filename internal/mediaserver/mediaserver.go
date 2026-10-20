@@ -17,6 +17,7 @@ type Kind string
 const (
 	Plex     Kind = "plex"
 	Jellyfin Kind = "jellyfin"
+	Emby     Kind = "emby"
 )
 
 // Label is the product name as people write it.
@@ -26,17 +27,21 @@ func (k Kind) Label() string {
 		return "Plex"
 	case Jellyfin:
 		return "Jellyfin"
+	case Emby:
+		return "Emby"
 	}
 	return string(k)
 }
 
-// order is where a kind sits in every list: Plex first, then Jellyfin.
+// order is where a kind sits in every list: Plex, Jellyfin, then Emby.
 func (k Kind) order() int {
 	switch k {
 	case Plex:
 		return 0
 	case Jellyfin:
 		return 1
+	case Emby:
+		return 2
 	}
 	return 2
 }
@@ -150,7 +155,7 @@ func LeadWith(links []WatchLink, home Kind) []WatchLink {
 	return out
 }
 
-// Registry is every media server Arrmada knows how to use, Plex first, then Jellyfin.
+// Registry is every media server Arrmada knows how to use, in stable product order.
 // A server that isn't set up is still in it; the methods skip it. The zero value and a
 // nil *Registry are empty.
 type Registry struct {
@@ -158,7 +163,7 @@ type Registry struct {
 }
 
 // NewRegistry builds a registry over the given servers (nil ones are skipped), ordered
-// Plex first, then Jellyfin, whatever order they're passed in.
+// Plex, Jellyfin, then Emby, whatever order they're passed in.
 func NewRegistry(servers ...Server) *Registry {
 	r := &Registry{}
 	for _, s := range servers {
@@ -166,7 +171,7 @@ func NewRegistry(servers ...Server) *Registry {
 			r.servers = append(r.servers, s)
 		}
 	}
-	// A stable insertion sort: there are two of them.
+	// A stable insertion sort keeps equal-rank servers in their original order.
 	for i := 1; i < len(r.servers); i++ {
 		for j := i; j > 0 && r.servers[j].Kind().order() < r.servers[j-1].Kind().order(); j-- {
 			r.servers[j], r.servers[j-1] = r.servers[j-1], r.servers[j]

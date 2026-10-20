@@ -153,6 +153,14 @@ func jellyfinCheck(state func(ctx context.Context) PlexState, probe func(ctx con
 	}, state, probe, now)
 }
 
+// EmbyCheck is the connection health check for Emby.
+func EmbyCheck(state func(ctx context.Context) PlexState, probe func(ctx context.Context) error) Check {
+	return mediaServerCheck(mediaServerSpec{
+		key: "emby.connection", name: "Emby connection", server: "Emby", fix: FixEmbyConnection,
+		refused: "Emby rejected Arrmada's API key — make a new one in Emby (Dashboard → Advanced → Security) and save it on the Emby card. Watch links and library updates stop until you do.",
+	}, state, probe, time.Now)
+}
+
 // mediaServerSpec is what differs between the Plex and Jellyfin checks.
 type mediaServerSpec struct {
 	key, name, server string

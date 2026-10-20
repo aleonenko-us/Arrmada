@@ -11,6 +11,7 @@ export type ConnectionKind =
   | "apikey"
   | "plex"
   | "jellyfin"
+  | "emby"
   | "notifications"
   | "audioserver";
 

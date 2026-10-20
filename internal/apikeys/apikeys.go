@@ -112,6 +112,8 @@ var Catalog = []Key{
 	// the server address (internal/jellyfinsvc). An install can set it from the
 	// environment, like the Plex token; it's never sent back to the browser.
 	{ID: Jellyfin, Label: "Jellyfin API key", Purpose: "Jellyfin: Watch links, library updates.", EnvVar: "ARRMADA_JELLYFIN_API_KEY", Secret: true, Hidden: true},
+	// The Emby server's API key, entered on its card in Settings → Connections.
+	{ID: Emby, Label: "Emby API key", Purpose: "Emby: Watch links, library updates.", EnvVar: "ARRMADA_EMBY_API_KEY", Secret: true, Hidden: true},
 }
 
 // The outgoing-email credentials' ids.
@@ -123,6 +125,9 @@ const (
 
 // Jellyfin is the Jellyfin API key's id.
 const Jellyfin = "jellyfin"
+
+// Emby is the Emby API key's id.
+const Emby = "emby"
 
 // Listed reports whether id is a credential the API keys list shows and its routes edit.
 func Listed(id string) bool {

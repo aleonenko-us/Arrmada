@@ -7,6 +7,7 @@ import { useAutoSave } from "../../lib/useAutoSave";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
 import { LINKS } from "../../lib/links";
 import { jellyfinApi } from "../../lib/jellyfinApi";
+import { embyApi } from "../../lib/embyApi";
 import { plexLibraryApi, type PlexPathMap, type PlexScanRoot, type PlexScanStatus, type PlexScanView } from "../../lib/plexLibraryApi";
 import { ago } from "../../lib/taskTime";
 import { Button } from "../../ui";
@@ -25,10 +26,10 @@ interface ScanApi {
   testScan: (kind: "movie" | "show", run: boolean, root?: string) => Promise<{ root: PlexScanRoot; last_scan: PlexScanStatus }>;
 }
 
-const SCAN_API: Record<MediaServerKind, ScanApi> = { plex: plexLibraryApi, jellyfin: jellyfinApi };
-const CONNECTION: Record<MediaServerKind, string> = { plex: LINKS.plexConnection, jellyfin: LINKS.jellyfinConnection };
+const SCAN_API: Record<MediaServerKind, ScanApi> = { plex: plexLibraryApi, jellyfin: jellyfinApi, emby: embyApi };
+const CONNECTION: Record<MediaServerKind, string> = { plex: LINKS.plexConnection, jellyfin: LINKS.jellyfinConnection, emby: LINKS.embyConnection };
 // Where the server keeps the same folder, for the mapping's placeholder.
-const SERVER_FOLDER: Record<MediaServerKind, string> = { plex: "/data/media/movies", jellyfin: "/media/movies" };
+const SERVER_FOLDER: Record<MediaServerKind, string> = { plex: "/data/media/movies", jellyfin: "/media/movies", emby: "/media/movies" };
 
 export const libraryUpdatesId = (server: MediaServerKind) => `${server}-library-updates`;
 

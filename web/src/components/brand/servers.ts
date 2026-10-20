@@ -2,20 +2,20 @@
 // brand fill and the ink that reads on that fill (index.css --plex / --jellyfin tokens,
 // contrast-checked in contrast.test.ts).
 
-export type MediaServerKind = "plex" | "jellyfin";
+export type MediaServerKind = "plex" | "jellyfin" | "emby";
 
-export const MEDIA_SERVERS: readonly MediaServerKind[] = ["plex", "jellyfin"];
+export const MEDIA_SERVERS: readonly MediaServerKind[] = ["plex", "jellyfin", "emby"];
 
-export const SERVER_LABEL: Record<MediaServerKind, string> = { plex: "Plex", jellyfin: "Jellyfin" };
+export const SERVER_LABEL: Record<MediaServerKind, string> = { plex: "Plex", jellyfin: "Jellyfin", emby: "Emby" };
 
 /** The brand fill: Plex's amber, Jellyfin's purple-to-blue. Use with `background`. */
-export const SERVER_FILL: Record<MediaServerKind, string> = { plex: "var(--plex)", jellyfin: "var(--jellyfin)" };
+export const SERVER_FILL: Record<MediaServerKind, string> = { plex: "var(--plex)", jellyfin: "var(--jellyfin)", emby: "var(--emby)" };
 
 /** The words and mark drawn on SERVER_FILL. */
-export const SERVER_INK: Record<MediaServerKind, string> = { plex: "var(--plex-ink)", jellyfin: "var(--jellyfin-ink)" };
+export const SERVER_INK: Record<MediaServerKind, string> = { plex: "var(--plex-ink)", jellyfin: "var(--jellyfin-ink)", emby: "var(--emby-ink)" };
 
 export function isMediaServer(s: string | undefined | null): s is MediaServerKind {
-  return s === "plex" || s === "jellyfin";
+  return s === "plex" || s === "jellyfin" || s === "emby";
 }
 
 /** One server's Watch link for a title (the API's watch_links rows). label names the

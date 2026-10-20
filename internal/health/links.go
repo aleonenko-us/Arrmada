@@ -26,6 +26,7 @@ var (
 	// The Jellyfin card on Settings → Connections (a link to it opens its editor while
 	// Jellyfin isn't connected).
 	FixJellyfinConnection = &Fix{Key: "jellyfinConnection", Path: "/settings/connections#jellyfin", Label: "Jellyfin connection"}
+	FixEmbyConnection     = &Fix{Key: "embyConnection", Path: "/settings/connections#emby", Label: "Emby connection"}
 	// Both media server cards on Connections (Plex and Jellyfin side by side), for "connect
 	// a media server" when either will do.
 	// (How Arrmada uses them is Settings → Media servers, /settings/media-servers: LINKS.mediaServers.)

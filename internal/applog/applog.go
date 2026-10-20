@@ -29,7 +29,7 @@ type Entry struct {
 // with the log.With("module", …) calls in cmd/arrmada.
 var Modules = []string{
 	"api", "audioserver", "automation", "books", "convert", "download", "import",
-	"indexer", "insights", "jellyfin", "movies", "music", "notify", "requests", "scheduler",
+	"indexer", "insights", "jellyfin", "emby", "movies", "music", "notify", "requests", "scheduler",
 	"series", "subtitles",
 }
 

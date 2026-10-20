@@ -83,7 +83,7 @@ func TestRegistryOrderAndLookups(t *testing.T) {
 	if !r.IndexBuiltAt(ctx).IsZero() {
 		t.Error("an unbuilt index must make the combined time zero")
 	}
-	if r.Get(Jellyfin) != jf || r.Get("emby") != nil {
+	if r.Get(Jellyfin) != jf || r.Get(Emby) != nil {
 		t.Error("Get")
 	}
 }
@@ -102,7 +102,7 @@ func TestNilRegistry(t *testing.T) {
 }
 
 func TestKindLabel(t *testing.T) {
-	for k, want := range map[Kind]string{Plex: "Plex", "": "Plex", Jellyfin: "Jellyfin", "emby": "emby"} {
+	for k, want := range map[Kind]string{Plex: "Plex", "": "Plex", Jellyfin: "Jellyfin", Emby: "Emby"} {
 		if got := k.Label(); got != want {
 			t.Errorf("%q.Label() = %q", k, got)
 		}

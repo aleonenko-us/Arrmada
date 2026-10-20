@@ -14,6 +14,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/auth"
 	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/embysvc"
 	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/jellyfinsvc"
@@ -33,6 +34,7 @@ const (
 	connKindAPIKey        = "apikey"
 	connKindPlex          = "plex"
 	connKindJellyfin      = "jellyfin"
+	connKindEmby          = "emby"
 	connKindNotifications = "notifications"
 	connKindAudioServer   = "audioserver"
 
@@ -405,6 +407,9 @@ func (a *api) otherConnections(ctx context.Context, now time.Time) []connectionI
 	if a.deps.Jellyfin != nil {
 		out = append(out, a.jellyfinItem(ctx))
 	}
+	if a.deps.Emby != nil {
+		out = append(out, a.embyItem(ctx))
+	}
 	if a.deps.Notify != nil {
 		out = append(out, a.notificationsItem(ctx))
 	}
@@ -507,6 +512,35 @@ func (a *api) jellyfinItem(ctx context.Context) connectionItem {
 		}
 		if h.Monitoring {
 			it.UsedFor = append(it.UsedFor, useInsights)
+		}
+	}
+	return it
+}
+
+// embyItem reports the Emby connection health and the features currently using it.
+func (a *api) embyItem(ctx context.Context) connectionItem {
+	h := a.deps.Emby.Health(ctx)
+	it := connectionItem{
+		Kind: connKindEmby, Ref: singletonRef, Card: "emby", Name: "Emby", Subtitle: displayURL(a.deps.Emby.URL(ctx)),
+		Configured: h.Configured, Enabled: h.Configured, Testable: h.Configured, FixPath: health.FixEmbyConnection.Path,
+		LastOKAt: timePtr(h.LastOKAt), State: connstatus.PhaseUnknown,
+	}
+	switch {
+	case !h.Configured:
+	case h.Consecutive > 0:
+		it.State, it.ConsecutiveFailures = connstatus.PhaseFailing, h.Consecutive
+		it.LastError, it.LastErrorAt, it.FailingSince = connstatus.Redact(h.LastErr), timePtr(h.LastErrAt), timePtr(h.FailingSince)
+		if h.Unauthorized {
+			it.Detail = "Emby rejected Arrmada's API key; paste a new one"
+		}
+	case !h.LastOKAt.IsZero():
+		it.State = connstatus.PhaseOK
+	}
+	it.CheckedAt = laterOf(it.LastOKAt, it.LastErrorAt)
+	if h.Configured {
+		it.UsedFor = []string{useWatch}
+		if a.deps.EmbyScan != nil && a.deps.EmbyScan.Enabled(ctx) {
+			it.UsedFor = append(it.UsedFor, useLibrary)
 		}
 	}
 	return it
@@ -728,6 +762,22 @@ func (a *api) testConnection(ctx context.Context, kind, ref string) (detail stri
 			return "Jellyfin (" + si.ServerName + ") is answering.", nil, true
 		}
 		return "Jellyfin is answering.", nil, true
+
+	case connKindEmby:
+		if ref != singletonRef || a.deps.Emby == nil {
+			return "", nil, false
+		}
+		if !a.deps.Emby.Configured(ctx) {
+			return "Emby isn't connected yet", errors.New("Emby isn't connected yet"), true
+		}
+		si, err := a.deps.Emby.RefreshIdentity(ctx)
+		if err != nil {
+			return "", errors.New(embysvc.Describe(err)), true
+		}
+		if si.ServerName != "" {
+			return "Emby (" + si.ServerName + ") is answering.", nil, true
+		}
+		return "Emby is answering.", nil, true
 
 	case connKindAudioServer:
 		if ref != singletonRef || a.deps.AudioManager == nil || a.deps.Settings == nil {
