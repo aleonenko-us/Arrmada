@@ -129,7 +129,8 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 - **Deleting a movie with its files now empties its own folder** (#59). Its artwork,
   `.nfo`, subtitles, theme music and similar files go to the recycle bin with the video, and
   the empty folder is removed. This only happens when the folder is clearly the movie's own:
-  inside a Movies folder, named with the movie's title and year, not a link, holding no other
+  inside a Movies folder, named with the movie's title and year, not a link and not linked to
+  from beside it, holding no other
   video, no file of a type Arrmada doesn't know and no file named for something else, and no
   other film in your library has a file recorded there (even a missing one). Otherwise only
   the movie's files and subtitles go, as before, and the delete dialog says why the folder

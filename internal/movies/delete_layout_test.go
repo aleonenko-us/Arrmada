@@ -59,6 +59,8 @@ type layoutOther struct {
 	title string
 	year  int
 	file  string
+	// asFolder records file with a trailing separator, as a folder (a bad record).
+	asFolder bool
 }
 
 func layoutCases() []layoutCase {
@@ -406,7 +408,7 @@ func layoutCases() []layoutCase {
 			title:   "Iron Man",
 			year:    2008,
 			tracked: []string{"Movies/Iron Man (2008)/Iron Man (2008).mkv"},
-			others:  []layoutOther{{"Iron Man 2", 2010, "Movies/Iron Man (2008)/Iron Man 2 (2010).mkv"}},
+			others:  []layoutOther{{title: "Iron Man 2", year: 2010, file: "Movies/Iron Man (2008)/Iron Man 2 (2010).mkv"}},
 			want:    []string{"Movies/Iron Man (2008)/Iron Man (2008).mkv"},
 		},
 		{
@@ -415,7 +417,7 @@ func layoutCases() []layoutCase {
 			title:   "Iron Man",
 			year:    2008,
 			tracked: []string{"Movies/Iron Man (2008)/Iron Man (2008).mkv"},
-			others:  []layoutOther{{"Iron Man 2", 2010, "Movies/Iron Man 2 (2010)/Iron Man 2 (2010).mkv"}},
+			others:  []layoutOther{{title: "Iron Man 2", year: 2010, file: "Movies/Iron Man 2 (2010)/Iron Man 2 (2010).mkv"}},
 			want:    []string{"Movies/Iron Man (2008)/Iron Man (2008).mkv"},
 		},
 		{
@@ -424,7 +426,7 @@ func layoutCases() []layoutCase {
 			title:   "Hamlet",
 			year:    1990,
 			tracked: []string{"Movies/Hamlet (1990)/Hamlet (1990).mkv"},
-			others:  []layoutOther{{"Hamlet", 1990, "Movies/Hamlet (1990)/Hamlet (1990) - Branagh.mkv"}},
+			others:  []layoutOther{{title: "Hamlet", year: 1990, file: "Movies/Hamlet (1990)/Hamlet (1990) - Branagh.mkv"}},
 			want:    []string{"Movies/Hamlet (1990)/Hamlet (1990).mkv"},
 		},
 		{
@@ -434,7 +436,7 @@ func layoutCases() []layoutCase {
 			year:     1954,
 			override: "Godzilla",
 			tracked:  []string{"Movies/Godzilla (1954)/Gojira (1954).mkv"},
-			others:   []layoutOther{{"Godzilla", 1954, "Movies/Godzilla (1954)/Godzilla (1954).mkv"}},
+			others:   []layoutOther{{title: "Godzilla", year: 1954, file: "Movies/Godzilla (1954)/Godzilla (1954).mkv"}},
 			want:     []string{"Movies/Godzilla (1954)/Gojira (1954).mkv"},
 		},
 		{
@@ -444,9 +446,47 @@ func layoutCases() []layoutCase {
 			title:   "Movie",
 			year:    2000,
 			tracked: []string{"Movies/Movie (2000)/Movie.mkv"},
-			others:  []layoutOther{{"Movie Directors Cut", 2000, "Movies/Movie (2000)/Movie.Directors.Cut.mkv"}},
+			others:  []layoutOther{{title: "Movie Directors Cut", year: 2000, file: "Movies/Movie (2000)/Movie.Directors.Cut.mkv"}},
 			// v0.3.2 also took Movie.Directors.Cut.en.srt: subtitle pairing only saw videos on disk.
 			want: []string{"Movies/Movie (2000)/Movie.mkv", "Movies/Movie (2000)/Movie.en.srt"},
+		},
+		{
+			name:    "another film recorded through a link to this folder deep in a category, its video missing",
+			files:   []string{heat + "/Heat (1995).mkv", heat + "/poster.jpg", heat + "/fanart.jpg", heat + "/movie.nfo"},
+			links:   [][2]string{{"Movies/Crime/HeatAlias", heat}},
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{heat + "/Heat (1995).mkv"},
+			others:  []layoutOther{{title: "Heat 2", year: 2026, file: "Movies/Crime/HeatAlias/Heat 2 (2026).mkv"}},
+			want:    []string{heat + "/Heat (1995).mkv"},
+		},
+		{
+			name:    "a link to this folder beside it, no record through it",
+			files:   []string{heat + "/Heat (1995).mkv", heat + "/poster.jpg", heat + "/movie.nfo"},
+			links:   [][2]string{{"Movies/HeatAlias", heat}},
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{heat + "/Heat (1995).mkv"},
+			want:    []string{heat + "/Heat (1995).mkv"},
+		},
+		{
+			name:    "another film's record is this folder itself (trailing slash)",
+			files:   []string{heat + "/Heat (1995).mkv", heat + "/poster.jpg"},
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{heat + "/Heat (1995).mkv"},
+			others:  []layoutOther{{title: "Heat 2", year: 2026, file: heat, asFolder: true}},
+			want:    []string{heat + "/Heat (1995).mkv"},
+		},
+		{
+			name: "leftovers named for a longer title with the same start and year (another film's cut)",
+			files: []string{heat + "/Heat (1995).mkv", heat + "/poster.jpg", heat + "/Heat (1995) - Directors Cut.nfo",
+				heat + "/Heat (1995) - Directors Cut-poster.jpg", "Movies/Heat - Directors Cut (1995)/Heat - Directors Cut (1995).mkv"},
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{heat + "/Heat (1995).mkv"},
+			others:  []layoutOther{{title: "Heat - Directors Cut", year: 1995, file: "Movies/Heat - Directors Cut (1995)/Heat - Directors Cut (1995).mkv"}},
+			want:    []string{heat + "/Heat (1995).mkv"},
 		},
 		{
 			name:    "an untracked nfo and poster named for another film",
@@ -618,7 +658,11 @@ func runLayoutCase(t *testing.T, c layoutCase) (removed, preview []string, delet
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := svc.repo.SetFile(ctx, om.ID, abs(o.file)); err != nil {
+		p := abs(o.file)
+		if o.asFolder {
+			p += string(filepath.Separator)
+		}
+		if err := svc.repo.SetFile(ctx, om.ID, p); err != nil {
 			t.Fatal(err)
 		}
 	}

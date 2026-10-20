@@ -13,6 +13,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
+	"github.com/tristenlammi/arrmada/internal/pathguard"
 )
 
 // This file decides what "delete the movie with its files" removes besides the tracked
@@ -205,13 +206,71 @@ func pairsWithOther(sub, video string, others []string) bool {
 	return false
 }
 
-// recordedUnder returns another film's recorded file in or under dir ("" when none),
-// comparing without case so a differently-spelled record still counts.
-func recordedUnder(dir string, others []string) string {
-	d := strings.ToLower(filepath.Clean(dir)) + string(filepath.Separator)
+// recordedInto returns another film's recorded file that is dir itself or lies in or
+// under it ("" when none). Paths are compared as written, ignoring case, and again with
+// every link resolved (pathguard.Resolve: the deepest part that exists, links followed,
+// the missing rest joined back), so a record made through an alias of the folder
+// ("movies/HeatAlias/…" where HeatAlias links to "movies/Heat (1995)") still counts, even
+// with its file missing. A record or folder that can't be resolved counts too: refuse
+// rather than guess.
+func recordedInto(dir string, others []string) string {
+	clean := filepath.Clean(dir)
+	inside := func(p, d string) bool {
+		p, d = strings.ToLower(filepath.Clean(p)), strings.ToLower(filepath.Clean(d))
+		return p == d || strings.HasPrefix(p, d+string(filepath.Separator))
+	}
+	realDir, derr := pathguard.Resolve(clean)
 	for _, o := range others {
-		if strings.HasPrefix(strings.ToLower(filepath.Clean(o)), d) {
+		if inside(o, clean) {
 			return o
+		}
+		if derr != nil {
+			return o
+		}
+		ro, err := pathguard.Resolve(o)
+		if err != nil || inside(ro, realDir) {
+			return o
+		}
+	}
+	return ""
+}
+
+// aliasInto returns a symlink that points at dir or into it ("" when none is found).
+// It looks where an alias of a movie folder would sit — directly in each Movies folder
+// and beside dir — without walking the whole library. A link that can't be resolved
+// counts: refuse rather than guess.
+func (s *Service) aliasInto(dir string) string {
+	realDir, err := pathguard.Resolve(dir)
+	if err != nil {
+		return dir
+	}
+	look := append(s.allRoots(), filepath.Dir(dir))
+	seen := map[string]bool{}
+	for _, d := range look {
+		if seen[d] {
+			continue
+		}
+		seen[d] = true
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.Type()&fs.ModeSymlink == 0 {
+				continue
+			}
+			link := filepath.Join(d, e.Name())
+			target, err := filepath.EvalSymlinks(link)
+			if err != nil {
+				if _, lerr := os.Readlink(link); lerr != nil {
+					return link
+				}
+				continue // dangling: it points at nothing that exists, so not into dir
+			}
+			t, r := strings.ToLower(target), strings.ToLower(realDir)
+			if t == r || strings.HasPrefix(t, r+string(filepath.Separator)) {
+				return link
+			}
 		}
 	}
 	return ""
@@ -251,12 +310,16 @@ func (s *Service) planFolder(pc purgeCtx, dir string) purgeFolder {
 		f.kept = "the library's other films couldn't be checked"
 		return f
 	}
-	if o := recordedUnder(dir, pc.others); o != "" {
+	if o := recordedInto(dir, pc.others); o != "" {
 		rel, err := filepath.Rel(dir, o)
 		if err != nil {
 			rel = filepath.Base(o)
 		}
 		f.kept = "another film in your library has a file recorded in it (" + filepath.ToSlash(rel) + ")"
+		return f
+	}
+	if link := s.aliasInto(dir); link != "" {
+		f.kept = "another folder links into it (" + filepath.Base(link) + ")"
 		return f
 	}
 	if reason := s.ownFolder(pc.m, dir); reason != "" {
@@ -291,8 +354,11 @@ func (s *Service) recheckFolder(ctx context.Context, pc purgeCtx, f purgeFolder)
 	if err != nil {
 		return "the library's other films couldn't be checked"
 	}
-	if o := recordedUnder(f.dir, others); o != "" {
+	if o := recordedInto(f.dir, others); o != "" {
 		return "another film has a file recorded in it now"
+	}
+	if link := s.aliasInto(f.dir); link != "" {
+		return "another folder links into it now"
 	}
 	if off, reason := s.binOff(); off {
 		return reason
@@ -588,16 +654,93 @@ func leftoverNamedFor(m Movie, bases []string) func(name string) bool {
 		if genericStems[strings.TrimRight(stem, "0123456789")] {
 			return true
 		}
+		sub := subtitleLeftover[filepath.Ext(lower)]
 		for _, b := range bases {
 			if b == "" || !strings.HasPrefix(stem, b) {
 				continue
 			}
-			if len(stem) == len(b) || strings.ContainsRune(" .-_[(", rune(stem[len(b)])) {
+			if len(stem) == len(b) || strings.ContainsRune(" .-_[(", rune(stem[len(b)])) && ownSuffix(nameWords(stem[len(b):]), sub) {
 				return true
 			}
 		}
-		return titleYearPrefix(m, stem)
+		return titleYearExactly(m, stem, sub)
 	}
+}
+
+// ownSuffix reports whether what follows a movie's own name in a leftover's name still
+// names the movie's own file: nothing, one artwork kind ("-poster", "-fanart"), or for a
+// subtitle only language and flag tags (".en", ".eng.forced"). Anything else ("- Directors
+// Cut") may name another film, so it isn't the movie's.
+func ownSuffix(words []string, subtitle bool) bool {
+	if len(words) == 0 {
+		return true
+	}
+	if len(words) == 1 && artSuffixes[words[0]] {
+		return true
+	}
+	if !subtitle {
+		return false
+	}
+	for _, w := range words {
+		if !subtitleTags[w] && !isLangCode(w) {
+			return false
+		}
+	}
+	return true
+}
+
+// titleYearExactly reports whether name is one of m's titles and its year and nothing
+// more but an own suffix (ownSuffix): "Heat (1995)", "Heat.1995-poster", "Heat (1995).en".
+func titleYearExactly(m Movie, name string, subtitle bool) bool {
+	if m.Year <= 0 {
+		return false
+	}
+	words := nameWords(name)
+	year := strconv.Itoa(m.Year)
+	for _, title := range []string{m.Title, m.DisplayTitle, m.TitleOverride} {
+		t := nameWords(title)
+		if len(t) == 0 || len(words) <= len(t) {
+			continue
+		}
+		match := true
+		for i := range t {
+			if words[i] != t[i] {
+				match = false
+				break
+			}
+		}
+		if match && words[len(t)] == year && ownSuffix(words[len(t)+1:], subtitle) {
+			return true
+		}
+	}
+	return false
+}
+
+// artSuffixes are the artwork and metadata kinds Kodi, Plex and Jellyfin put after a
+// movie's name ("Heat (1995)-poster.jpg").
+var artSuffixes = map[string]bool{
+	"poster": true, "fanart": true, "banner": true, "logo": true, "clearlogo": true,
+	"clearart": true, "disc": true, "discart": true, "landscape": true, "thumb": true,
+	"backdrop": true, "keyart": true, "cover": true,
+}
+
+// subtitleTags are the flags a subtitle's name carries after its language.
+var subtitleTags = map[string]bool{"forced": true, "sdh": true, "cc": true, "hi": true, "default": true}
+
+var subtitleLeftover = map[string]bool{".srt": true, ".ass": true, ".ssa": true, ".sub": true, ".idx": true, ".vtt": true, ".sup": true, ".smi": true}
+
+// isLangCode reports whether w reads as a language code: two or three letters
+// ("en", "eng", "pt") or a region-tagged one already split into words ("pt", "br").
+func isLangCode(w string) bool {
+	if len(w) < 2 || len(w) > 3 {
+		return false
+	}
+	for _, r := range w {
+		if r < 'a' || r > 'z' {
+			return false
+		}
+	}
+	return true
 }
 
 // titleYearPrefix reports whether name's words start with one of m's titles and then

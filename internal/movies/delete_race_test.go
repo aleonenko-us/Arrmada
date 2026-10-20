@@ -271,6 +271,53 @@ func TestLeftoverChangedRefusesLinkedFolder(t *testing.T) {
 	}
 }
 
+// The name rule: generic names, the movie's own file names and its title and year pass,
+// with nothing after them but an artwork kind, or language tags on a subtitle. A longer
+// name that starts the same way may be another film's.
+func TestLeftoverNamedFor(t *testing.T) {
+	ours := leftoverNamedFor(Movie{Title: "Heat", Year: 1995}, []string{"heat (1995)", "heat.1995.1080p.bluray-grp"})
+	for name, want := range map[string]bool{
+		"poster.jpg": true, "fanart2.jpg": true, "movie.nfo": true, "theme.mp3": true,
+		"Heat (1995).nfo": true, "Heat (1995)-poster.jpg": true, "Heat (1995).txt": true,
+		"Heat (1995).en.srt": true, "Heat (1995).eng.forced.srt": true, "Heat.1995.nfo": true,
+		"Heat.1995.1080p.BluRay-GRP.nfo": true, "heat 1995-fanart.jpg": true,
+		"Heat (1995) - Directors Cut.nfo": false, "Heat (1995) - Directors Cut-poster.jpg": false,
+		"Heat (1995) - Directors Cut.en.srt": false, "Heat (1995).Directors.Cut.nfo": false,
+		"Heat 2 (2026).nfo": false, "Ronin (1998).nfo": false, "new-poster.jpg": false,
+		"GRP.sfv": false, "Heat (1995) extended.jpg": false,
+	} {
+		if got := ours(name); got != want {
+			t.Errorf("%s: %v, want %v", name, got, want)
+		}
+	}
+}
+
+// A record that reaches this folder through a link, or names the folder itself, counts as
+// another film's file in it.
+func TestRecordedIntoResolvesLinksAndFolderRecords(t *testing.T) {
+	e := newRaceEnv(t, raceHeat+"/Heat (1995).mkv")
+	dir := e.abs(raceHeat)
+	if err := os.MkdirAll(e.abs("Movies/Crime"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(dir, e.abs("Movies/Crime/HeatAlias")); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+	for _, rec := range []string{
+		e.abs("Movies/Crime/HeatAlias/Heat 2 (2026).mkv"), // through the link, missing
+		dir + string(filepath.Separator),                  // the folder itself
+		dir,
+		e.abs(raceHeat + "/sub/Other.mkv"), // under it, missing
+	} {
+		if recordedInto(dir, []string{rec}) == "" {
+			t.Errorf("%s isn't seen as in %s", rec, dir)
+		}
+	}
+	if o := recordedInto(dir, []string{e.abs("Movies/Heat 2 (2026)/Heat 2 (2026).mkv"), e.abs("Movies/Heat (1995) 4K/x.mkv")}); o != "" {
+		t.Errorf("%s counted as in the folder", o)
+	}
+}
+
 // A movie file directly in a TV folder or a downloads folder never lets that folder be
 // removed once empty.
 func TestDeleteNeverRemovesOtherLibraryOrDownloadsFolder(t *testing.T) {
