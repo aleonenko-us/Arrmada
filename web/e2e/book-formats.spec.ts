@@ -64,6 +64,22 @@ test.describe("book formats", () => {
     expect(posted[0].body).toMatchObject({ media_type: "book", ol_key: ebookOnlyBook.key, formats: "audiobook" });
   });
 
+  test("Audiobooks discovery defaults requests and status to audiobook", async ({ page, api }) => {
+    await page.goto("/discover?tab=audiobooks");
+    await expect(page.getByRole("main")).toBeVisible();
+    await api.quiet();
+    await expect(page.getByText("Discover audiobooks", { exact: true })).toBeVisible();
+    await openSheet(page, requestableBook.title);
+
+    const group = page.getByRole("radiogroup", { name: "Format" });
+    await expect(group.getByRole("radio", { name: "Listen (audiobook)" })).toHaveAttribute("aria-checked", "true");
+    await group.locator("..").getByRole("button", { name: "＋ Request" }).tap();
+    await api.quiet();
+    const posted = api.callsTo("POST", "/api/v1/requests");
+    expect(posted).toHaveLength(1);
+    expect(posted[0].body).toMatchObject({ media_type: "book", ol_key: requestableBook.key, formats: "audiobook" });
+  });
+
   test("the book sheet is a named dialog: focus moves in, Escape and Close shut it", async ({ page, api }) => {
     await openBooks(page, api);
     await openSheet(page, requestableBook.title);

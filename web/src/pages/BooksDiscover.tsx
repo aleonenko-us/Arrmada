@@ -29,12 +29,13 @@ function fmtCount(n: number): string {
 
 // initialWork: a book's key from the address (?work=, a notification's link); its sheet
 // opens over the tab, and onWorkClosed takes the key back out of the address.
-export function BooksDiscover({ flash, canRequest, initialQuery, initialWork, onWorkClosed }: {
+export function BooksDiscover({ flash, canRequest, initialQuery, initialWork, onWorkClosed, preferredFormat }: {
   flash: (m: string) => void;
   canRequest: boolean;
   initialQuery?: string;
   initialWork?: string;
   onWorkClosed?: () => void;
+  preferredFormat?: BookFormats;
 }) {
   const [input, setInput] = useState(initialQuery ?? "");
   const [query, setQuery] = useState("");
@@ -66,9 +67,9 @@ export function BooksDiscover({ flash, canRequest, initialQuery, initialWork, on
         author: ("author" in b && b.author) ? b.author : (authorName || ""),
         year: b.year || 0, poster_url: b.cover_url,
         overview: "description" in b ? b.description : undefined,
-        formats, note: note?.trim() || undefined,
+        formats: formats ?? preferredFormat, note: note?.trim() || undefined,
       });
-      setRequested((s) => new Map(s).set(b.key, formats ?? ""));
+      setRequested((s) => new Map(s).set(b.key, formats ?? preferredFormat ?? ""));
       flash(res.subscribed ? "You’re on the list — we’ll notify you when it’s ready"
         : res.request.status === "approved" ? `Added “${b.title}” to your library` : `Requested “${b.title}”`);
       announceRequested();
@@ -77,12 +78,18 @@ export function BooksDiscover({ flash, canRequest, initialQuery, initialWork, on
       flash((e as Error).message);
       throw e;
     }
-  }, [flash]);
+  }, [flash, preferredFormat]);
 
-  const ctx: BookCtx = { request, isRequested: (k) => requested.has(k), requestedFormats: (k) => requested.get(k), canRequest };
+  const ctx: BookCtx = { request, isRequested: (k) => requested.has(k), requestedFormats: (k) => requested.get(k), canRequest, preferredFormat };
 
   return (
     <div>
+      {preferredFormat === "audiobook" && (
+        <div className="mb-4 rounded-xl px-4 py-3" style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-line, var(--line))" }}>
+          <div className="font-semibold">Discover audiobooks</div>
+          <p className="mb-0 mt-1 text-sm text-ink-dim">Browse the book catalog and request the audiobook edition. Requests from this tab default to “Listen”.</p>
+        </div>
+      )}
       {/* Books' own search bar — separate from the movie/TV one. */}
       <div className="mb-5 flex items-center gap-3">
         <div className="relative w-full sm:w-[320px]">
@@ -94,8 +101,8 @@ export function BooksDiscover({ flash, canRequest, initialQuery, initialWork, on
             onChange={(e) => { setInput(e.target.value); setAuthor(null); }}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder="Search books & authors…"
-            aria-label="Search books and authors"
+            placeholder={preferredFormat === "audiobook" ? "Search audiobooks & authors…" : "Search books & authors…"}
+            aria-label={preferredFormat === "audiobook" ? "Search audiobooks and authors" : "Search books and authors"}
             className="w-full rounded-lg py-1.5 pl-8 pr-7 text-base"
             style={{ background: "var(--panel-2)", border: `1px solid ${focused ? "var(--accent-line)" : "var(--line)"}`, color: "var(--ink)" }}
           />
@@ -128,6 +135,7 @@ interface BookCtx {
   // What this session's request for a key asked for ("" = the server default).
   requestedFormats: (key: string) => BookFormats | "" | undefined;
   canRequest: boolean;
+  preferredFormat?: BookFormats;
 }
 
 function BrowseView({ ctx }: { ctx: BookCtx }) {
@@ -136,11 +144,26 @@ function BrowseView({ ctx }: { ctx: BookCtx }) {
       <BookHero ctx={ctx} />
       <RecommendedRows ctx={ctx} />
       <BookRow title="Trending this week" load={() => api.bookDiscoverBrowse("trending")} ctx={ctx} />
+      {ctx.preferredFormat === "audiobook" && <AudiobookRows ctx={ctx} />}
       <BookRow title="New releases" load={() => api.bookDiscoverBrowse("new_releases")} ctx={ctx} hideOnError />
       <BookRow title="Top rated" load={() => api.bookDiscoverBrowse("top_rated")} ctx={ctx} hideOnError />
       <BookRow title="Popular all time" load={() => api.bookDiscoverBrowse("popular")} ctx={ctx} hideOnError />
       <GenreExplorer ctx={ctx} />
     </div>
+  );
+}
+
+// Open Library only supplies a trending list, while Hardcover supplies several catalog
+// lists. Give audiobook discovery a fuller set of horizontal shelves with either source;
+// these are book catalog results whose requests default to the audiobook edition.
+function AudiobookRows({ ctx }: { ctx: BookCtx }) {
+  return (
+    <>
+      <BookRow title="Popular fiction" load={() => api.bookDiscoverSubject("fiction")} ctx={ctx} hideOnError />
+      <BookRow title="Mystery & thrillers" load={() => api.bookDiscoverSubject("mystery")} ctx={ctx} hideOnError />
+      <BookRow title="Science fiction & fantasy" load={() => api.bookDiscoverSubject("science_fiction")} ctx={ctx} hideOnError />
+      <BookRow title="Nonfiction" load={() => api.bookDiscoverSubject("nonfiction")} ctx={ctx} hideOnError />
+    </>
   );
 }
 
@@ -553,7 +576,7 @@ function BookRequestModal({ b, ctx, authorName, onClose }: { b: BookDiscoverCard
   const declined = badge?.label === "Declined";
   // Read / Listen / Both: the viewer's last choice, else the owner's default once the
   // detail arrives with it. Nothing picked yet sends none, and the server uses the default.
-  const [choice, setChoice] = useState<BookFormats | null>(() => initialBookFormats());
+  const [choice, setChoice] = useState<BookFormats | null>(() => ctx.preferredFormat ?? initialBookFormats());
   const titleId = useId();
 
   const [similar, setSimilar] = useState<BookDiscoverCard[] | null>(null);

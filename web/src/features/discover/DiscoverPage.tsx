@@ -33,7 +33,7 @@ const PersonSheet = lazyPage(() => import("../../pages/DiscoverPerson"), "Person
 // A collection's page ("See all" on a "Complete the …" row, or a movie's sheet).
 const CollectionSheet = lazyPage(() => import("../../pages/DiscoverCollection"), "CollectionSheet");
 
-type Tab = "discover" | "movies" | "series" | "books";
+type Tab = "discover" | "movies" | "series" | "books" | "audiobooks";
 const BASE_TABS: { key: Tab; label: string }[] = [
   { key: "discover", label: "Discover" },
   { key: "movies", label: "Movies" },
@@ -43,7 +43,10 @@ const BASE_TABS: { key: Tab; label: string }[] = [
 export function Discover({ chrome = true }: { chrome?: boolean }) {
   const { user, booksEnabled, metadataReady } = useMe();
   // Books get their own tab at the end — a completely separate Open Library experience.
-  const TABS = booksEnabled ? [...BASE_TABS, { key: "books" as Tab, label: "Books" }] : BASE_TABS;
+  const TABS: { key: Tab; label: string }[] = [
+    ...BASE_TABS,
+    ...(booksEnabled ? [{ key: "books" as Tab, label: "Books" }, { key: "audiobooks" as Tab, label: "Audiobooks" }] : []),
+  ];
   // What this session asked for, by card key, with the status the server answered: an
   // auto-approved request is already approved and searching, not waiting.
   const [requested, setRequested] = useState<Map<string, ReqStatus>>(new Map());
@@ -60,10 +63,11 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
   const q = params.get("q") ?? "";
   // `search` is the committed query that swaps the page to the full results grid (only via
   // "See all" / Enter, not per keystroke); `searchInput` is what's typed in the omnibox.
-  const search = tab === "books" ? "" : q;
-  const bookSeed = tab === "books" ? q : "";
+  const isBookTab = tab === "books" || tab === "audiobooks";
+  const search = isBookTab ? "" : q;
+  const bookSeed = isBookTab ? q : "";
   // ?work=<key>: one book's sheet on the Books tab (a notification's link); closing it drops the key.
-  const work = tab === "books" ? params.get("work") ?? "" : "";
+  const work = isBookTab ? params.get("work") ?? "" : "";
   const closeWork = () => setParams((p) => { const next = new URLSearchParams(p); next.delete("work"); return next; }, { replace: true });
   const [searchInput, setSearchInput] = useState(search);
   // Back, Forward or a notification link changed the committed search: show it in the box.
@@ -129,7 +133,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
         <div className="mb-5 flex flex-col gap-2 border-b sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3" style={{ borderColor: "var(--line)" }}>
           {/* Books have their own search inside BooksDiscover — hide the movie/TV one there.
               The bell lives in the layout's top bar, on every page. */}
-          {tab !== "books" && (
+          {!isBookTab && (
             <div className="flex w-full items-center justify-end gap-2 sm:order-last sm:w-auto sm:justify-start">
               {metadataReady ? (
                 <>
@@ -160,9 +164,9 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
         </div>
 
         <TabPanel idPrefix="discover" value={tab}>
-          {tab === "books" ? (
+          {isBookTab ? (
             <Suspense fallback={<div className="py-10 text-center text-base text-ink-dim">Loading…</div>}>
-              <BooksDiscover flash={toast} canRequest={canRequest} initialQuery={bookSeed} initialWork={work || undefined} onWorkClosed={closeWork} />
+              <BooksDiscover flash={toast} canRequest={canRequest} initialQuery={bookSeed} initialWork={work || undefined} onWorkClosed={closeWork} preferredFormat={tab === "audiobooks" ? "audiobook" : undefined} />
             </Suspense>
           ) : !metadataReady ? (
             // No TMDB key: every movie/TV feed would fail on its own and repeat the same error
