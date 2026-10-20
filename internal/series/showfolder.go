@@ -96,6 +96,10 @@ type filePlace struct {
 	unsure bool
 }
 
+// reStdSeasonDir is a season folder as every release named and read it: "Season 1",
+// "Season.01", "Specials" — the ones whose show folder a delete removes once empty.
+var reStdSeasonDir = regexp.MustCompile(`(?i)^(season[ ._-]?\d+|specials)$`)
+
 // reDiscFolder is a disc folder inside a season folder ("Disc 1", "CD2").
 var reDiscFolder = regexp.MustCompile(`(?i)^(?:disc|disk|cd|dvd|bd)[ ._-]*\d{1,2}$`)
 

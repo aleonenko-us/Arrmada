@@ -252,5 +252,11 @@ func TestNapalmzLayoutEndToEnd(t *testing.T) {
 		t.Fatalf("delete: %v", err)
 	}
 	f.sibUntouched(t, "after the delete")
-	noDir(t, moved, "the show's emptied folder")
+	// Its season folders go once emptied; the show's folder above "S12" stays, as in v0.3.2.
+	for _, sn := range []string{"S11", "S12", "S13"} {
+		noDir(t, filepath.Join(moved, sn), "an emptied season folder")
+	}
+	if entries, err := os.ReadDir(moved); err == nil && len(entries) != 0 {
+		t.Errorf("the show's folder still holds %d entries", len(entries))
+	}
 }

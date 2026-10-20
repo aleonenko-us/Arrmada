@@ -1642,8 +1642,11 @@ func (s *Service) Delete(ctx context.Context, id int64, deleteFiles bool) (Delet
 		s.fileRemoved(video)
 		dirs[filepath.Dir(video)] = true // season folder
 		// The show's folder, never anything above it: the folder above a flat show's is
-		// its category (or the TV folder).
-		if show := s.ShowFolderFor(video); show != "" && (show == filepath.Dir(video) || show == filepath.Dir(filepath.Dir(video))) {
+		// its category (or the TV folder). Above a season folder only when that's named
+		// "Season N" or "Specials" — the show folders every release has removed; above an
+		// "S01" the folder stays, as in v0.3.2, even when it's empty.
+		if show := s.ShowFolderFor(video); show != "" && (show == filepath.Dir(video) ||
+			(show == filepath.Dir(filepath.Dir(video)) && reStdSeasonDir.MatchString(filepath.Base(filepath.Dir(video))))) {
 			dirs[show] = true // series folder
 		}
 		for _, sub := range subs {
