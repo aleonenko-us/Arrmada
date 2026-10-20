@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/apikeys"
@@ -192,7 +193,12 @@ type Deps struct {
 }
 
 type api struct {
-	deps          Deps
+	deps Deps
+	// onDiskMu guards the cached count of library folders on disk (setup_checklist.go).
+	onDiskMu      sync.Mutex
+	onDiskKey     string
+	onDiskN       int
+	onDiskAt      time.Time
 	start         time.Time
 	loginLimiter  *loginLimiter // throttles auth attempts (login/setup/plex-pin)
 	codeLimit     *codeLimiter  // two-factor code attempts per account (twofactor_limit.go)

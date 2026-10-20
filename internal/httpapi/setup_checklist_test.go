@@ -8,7 +8,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/apikeys"
 	"github.com/tristenlammi/arrmada/internal/auth"
@@ -240,5 +244,52 @@ func TestSetupChecklistDismiss(t *testing.T) {
 				t.Errorf("%s %s as %s: HTTP %d, want %d", m, target, role, rec.Code, want)
 			}
 		}
+	}
+}
+
+// "Import the library you already have" is on the list only while the library folders hold
+// media, and is ticked once Arrmada knows about at least half of what's there.
+func TestSetupChecklistImportLibrary(t *testing.T) {
+	a := checklistAPI(t)
+	ctx := context.Background()
+	find := func() (checklistItem, bool) {
+		for _, it := range getChecklist(t, a).Items {
+			if it.Key == "import_library" {
+				return it, true
+			}
+		}
+		return checklistItem{}, false
+	}
+	tv := t.TempDir()
+	if err := a.deps.Settings.Set(ctx, keyLibTV, tv); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.deps.Settings.Set(ctx, keyLibMovies, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := find(); ok {
+		t.Fatal("an empty library folder has nothing to import, but the step is listed")
+	}
+
+	// A library moved over from another setup: four shows on disk (a hidden folder isn't one).
+	a.onDiskAt = a.onDiskAt.Add(-time.Hour) // the folder count is cached for a minute
+	for _, name := range []string{"Show A", "Show B", "Show C", "Show D", ".recycle"} {
+		if err := os.MkdirAll(filepath.Join(tv, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	it, ok := find()
+	if !ok || it.Done || it.Action != "import_library" || !strings.Contains(it.Detail, "4 folders on disk, 0 titles") {
+		t.Fatalf("item = %+v (listed %v), want an open import step saying 4 folders and 0 titles", it, ok)
+	}
+
+	// Scanned in: two of the four are known to Arrmada, which is enough.
+	for i, id := range []int{1, 2} {
+		if _, err := a.deps.Store.DB().ExecContext(ctx, `INSERT INTO series (tmdb_id, title) VALUES (?, ?)`, id, fmt.Sprintf("Show %d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if it, ok := find(); !ok || !it.Done {
+		t.Errorf("item = %+v after two of four were imported, want it ticked", it)
 	}
 }

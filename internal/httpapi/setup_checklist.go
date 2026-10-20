@@ -2,10 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/health"
+	"github.com/tristenlammi/arrmada/internal/library"
 )
 
 // Getting started: the steps between a fresh install and the first imported download, each
@@ -27,6 +31,11 @@ type checklistItem struct {
 	Done    bool   `json:"done"`
 	Link    string `json:"link"`
 	LinkKey string `json:"link_key,omitempty"`
+	// Action, when set, is something the step does itself from the checklist rather than a
+	// page to open: "import_library" starts the library scans and shows their progress.
+	Action string `json:"action,omitempty"`
+	// Detail is a line under the step ("84 folders on disk, 3 titles in Arrmada").
+	Detail string `json:"detail,omitempty"`
 }
 
 type setupChecklist struct {
@@ -52,6 +61,16 @@ func (a *api) setupChecklist(ctx context.Context) setupChecklist {
 		{Key: "first_title", Label: "Add your first movie or show", Done: a.hasTitles(ctx), Link: "/discover"},
 		{Key: "first_import", Label: "Get your first download into the library", Done: a.anyImported(ctx), Link: "/activity/history", LinkKey: "history"},
 	}
+	// A library that's already on disk: scanning it in is the step that matters most to
+	// someone moving over from another setup, and it comes before adding titles by hand.
+	if it, ok := a.importLibraryItem(ctx); ok {
+		for i, x := range items {
+			if x.Key == "first_title" {
+				items = append(items[:i], append([]checklistItem{it}, items[i:]...)...)
+				break
+			}
+		}
+	}
 	// The bundled SABnzbd comes without a news server: its step follows the client's.
 	if it, ok := a.usenetProviderItem(ctx); ok {
 		items = append(items[:3], append([]checklistItem{it}, items[3:]...)...)
@@ -63,6 +82,80 @@ func (a *api) setupChecklist(ctx context.Context) setupChecklist {
 		}
 	}
 	return out
+}
+
+// importLibraryMinShare is how much of what's on disk must be in Arrmada for "import the
+// library you already have" to count as done: half the folders. A library of 400 shows with
+// three titles in Arrmada hasn't been imported; one with the odd folder the scan couldn't
+// match has.
+const importLibraryMinShare = 2
+
+// importLibraryItem is the step that scans the existing library in. It exists only while the
+// library folders hold media (folders with something in them) — a fresh, empty library has
+// nothing to import — and is ticked when Arrmada knows about at least half of them.
+func (a *api) importLibraryItem(ctx context.Context) (checklistItem, bool) {
+	if a.deps.Store == nil || a.deps.Settings == nil {
+		return checklistItem{}, false
+	}
+	onDisk := a.libraryFoldersOnDisk(ctx)
+	if onDisk == 0 {
+		return checklistItem{}, false
+	}
+	titles := a.titleCount(ctx)
+	done := titles*importLibraryMinShare >= onDisk
+	return checklistItem{
+		Key: "import_library", Label: "Import the library you already have", Done: done, Action: "import_library",
+		Detail: fmt.Sprintf("%s on disk, %s in Arrmada", countNoun(onDisk, "folder"), countNoun(titles, "title")),
+	}, true
+}
+
+func countNoun(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+// titleCount is the movies and shows Arrmada has.
+func (a *api) titleCount(ctx context.Context) int {
+	var n int
+	err := a.deps.Store.DB().QueryRowContext(ctx,
+		`SELECT (SELECT COUNT(*) FROM movies) + (SELECT COUNT(*) FROM series)`).Scan(&n)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// libraryFoldersOnDisk counts the top-level entries of the Movies and TV folders that look
+// like titles: a visible sub-folder, or a loose video file. It reads two directory listings,
+// so the answer is kept for a minute (the Dashboard asks every 30 seconds).
+func (a *api) libraryFoldersOnDisk(ctx context.Context) int {
+	roots := a.roots()
+	dirs := append(roots.MovieFolders(ctx), roots.TVFolders(ctx)...)
+	a.onDiskMu.Lock()
+	defer a.onDiskMu.Unlock()
+	key := strings.Join(dirs, "\x00")
+	if key == a.onDiskKey && time.Since(a.onDiskAt) < time.Minute {
+		return a.onDiskN
+	}
+	n := 0
+	for _, d := range dirs {
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if library.SkipScanDir(e.Name()) {
+				continue
+			}
+			if e.IsDir() || library.IsVideoFile(e.Name()) {
+				n++
+			}
+		}
+	}
+	a.onDiskKey, a.onDiskN, a.onDiskAt = key, n, time.Now()
+	return n
 }
 
 // downloadClientAnswers: at least one switched-on client answered its last queue read.
