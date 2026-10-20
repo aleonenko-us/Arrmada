@@ -7,6 +7,11 @@ export function titlePath(media: "movie" | "series", tmdbId: number): string {
   return `/discover/${media}/${tmdbId}`;
 }
 
+// personPath is a person's page by their TMDB person id: /discover/person/287.
+export function personPath(id: number): string {
+  return `/discover/person/${id}`;
+}
+
 // A book reference ends in what the notice was about, after the book's key: a decision
 // (":approved:<unix>", ":declined:<unix>") and/or the format that arrived (":audiobook").
 // The key itself can hold a ':' (Hardcover's "hc:123"), so these come off the end.

@@ -252,6 +252,11 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   vanished or changed outside Arrmada and shows them as gone from disk; it never deletes anything
   and never downloads them again by itself. Artists are found under their other names too
   ("Beyonce", "宇多田ヒカル").
+- **Actors on a library page open their Discover page** (#55). Click or tap someone in a
+  movie's or show's Cast row to see the other movies and shows they're in; Close or Back
+  returns to the library page. Titles added before this update link their actors after
+  their next metadata refresh (**Refresh & rescan** on the page; monitored shows also
+  refresh on their own schedule).
 
 ### Changed
 

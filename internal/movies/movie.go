@@ -229,8 +229,11 @@ type MovieExtra struct {
 	DisplayNames *displaytitle.Names `json:"display_names,omitempty"`
 }
 
-// CastMember is one billed actor.
+// CastMember is one billed actor. ID is their TMDB person id, which links the library's
+// Cast row to their Discover page; 0 in extras stored before ids were kept (the next
+// metadata refresh rewrites the cast with ids).
 type CastMember struct {
+	ID         int    `json:"id,omitempty"`
 	Name       string `json:"name"`
 	Character  string `json:"character,omitempty"`
 	ProfileURL string `json:"profile_url,omitempty"`

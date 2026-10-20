@@ -99,6 +99,46 @@ func TestRefreshKeepsOldTitleAsAlias(t *testing.T) {
 	}
 }
 
+// The library's Cast row links each actor to their Discover page, so the stored extra
+// keeps the TMDB person id (#55); a show stored before ids were kept gets them on its
+// next metadata refresh.
+func TestStoredCastKeepsPersonIDs(t *testing.T) {
+	d := standardDetails()
+	d.Seasons = listing(1)
+	d.Cast = []metadata.CastMember{{Name: "Bryan Cranston", Character: "Walter White"}} // as stored before ids
+	svc, fm, ctx := refreshTestService(t, d)
+	sr, err := svc.Add(ctx, d.TMDBID, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := svc.Get(ctx, sr.ID); got.Extra == nil || len(got.Extra.Cast) != 1 || got.Extra.Cast[0].ID != 0 {
+		t.Fatalf("old record: %+v", got.Extra)
+	}
+	fm.d.Cast = []metadata.CastMember{
+		{ID: 17419, Name: "Bryan Cranston", Character: "Walter White", ProfileURL: "/cranston.jpg"},
+		{ID: 84497, Name: "Aaron Paul", Character: "Jesse Pinkman"},
+	}
+	if _, _, err := svc.Refresh(ctx, sr.ID, RefreshOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.Get(ctx, sr.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []CastMember{
+		{ID: 17419, Name: "Bryan Cranston", Character: "Walter White", ProfileURL: "/cranston.jpg"},
+		{ID: 84497, Name: "Aaron Paul", Character: "Jesse Pinkman"},
+	}
+	if got.Extra == nil || len(got.Extra.Cast) != len(want) {
+		t.Fatalf("refreshed cast = %+v", got.Extra)
+	}
+	for i, c := range want {
+		if got.Extra.Cast[i] != c {
+			t.Errorf("cast[%d] = %+v, want %+v", i, got.Extra.Cast[i], c)
+		}
+	}
+}
+
 // A provider answering with half a record must not blank out what's stored.
 func TestRefreshDoesNotBlankOnEmptyFields(t *testing.T) {
 	d := standardDetails()

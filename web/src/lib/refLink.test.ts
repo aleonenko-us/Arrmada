@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { refToPath, titlePath } from "./refLink";
+import { discoverPlace } from "../features/discover/shared";
+import { personPath, refToPath, titlePath } from "./refLink";
 
 // The same vectors as TestRefPath in internal/requests/refpath_test.go: the
 // bell (here) and Web Push (there) must open the same place for the same notice.
@@ -40,5 +41,10 @@ describe("refToPath", () => {
 
   it("is the title's own address", () => {
     expect(titlePath("series", 1399)).toBe("/discover/series/1399");
+  });
+
+  it("is a person's page, which Discover reads as its person overlay", () => {
+    expect(personPath(287)).toBe("/discover/person/287");
+    expect(discoverPlace(personPath(287))).toEqual({ browse: false, overlay: { kind: "person", id: 287 } });
   });
 });
