@@ -33,6 +33,8 @@ export const REASON_LABELS: Record<string, string> = {
   missing_language: "not naming an audio language you require",
   min_format_score: "below your minimum format score",
   unwanted: "unwanted (disc images, 3D, extras…)",
+  // A WEB-DL or BluRay on offer before the film is out at home: a cam with a false label.
+  not_out_yet: "labelled WEB-DL or BluRay before the film is out at home",
 };
 
 export function reasonLabel(code: string): string {

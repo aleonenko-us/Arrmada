@@ -859,17 +859,35 @@ func tagRuntime(cands []quality.Candidate, runtimeMin int) []quality.Candidate {
 }
 
 // tagMovie attaches what the profile needs to know about the movie to each candidate: its
-// runtime (the bitrate window) and its original language (the Unwanted pack's foreign-only
-// check). Every movie decision — the sweep, RSS, upgrades, re-grabs and the interactive
+// runtime (the bitrate window), its original language (the Unwanted pack's foreign-only
+// check) and its release dates (a "WEB-DL" from before it's out at home is a relabelled
+// cam). Every movie decision — the sweep, RSS, upgrades, re-grabs and the interactive
 // list — tags through here, so a release is judged the same wherever it is looked at.
 func tagMovie(cands []quality.Candidate, m movies.Movie) []quality.Candidate {
 	cands = tagRuntime(cands, m.Runtime)
-	if lang := movieOrigLanguage(m); lang != "" {
-		for i := range cands {
+	lang := movieOrigLanguage(m)
+	w := MovieReleaseWindow(m)
+	for i := range cands {
+		if lang != "" {
 			cands[i] = cands[i].WithLanguage(lang)
 		}
+		cands[i] = cands[i].WithReleaseWindow(w)
 	}
 	return cands
+}
+
+// MovieReleaseWindow is the movie's release window as the quality profile reads it: the
+// zero window (no judgement) until its release dates have been read from TMDB.
+func MovieReleaseWindow(m movies.Movie) quality.ReleaseWindow {
+	if m.Extra == nil || !m.Extra.DatesRead {
+		return quality.ReleaseWindow{}
+	}
+	title := m.DisplayTitle
+	if title == "" {
+		title = m.Title
+	}
+	return quality.ReleaseWindow{Title: title,
+		Home: movies.ReleaseDay(m.Extra.HomeReleaseDate), Theatrical: movies.ReleaseDay(m.Extra.TheatricalDate)}
 }
 
 // movieOrigLanguage is TMDB's original language for the movie, "" when unknown.

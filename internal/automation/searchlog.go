@@ -776,6 +776,7 @@ var reasonLabels = map[string]string{
 	quality.RejectMinFormatScore:  "below your minimum format score",
 	quality.RejectUnwanted:        "unwanted (disc images, 3D, extras…)",
 	quality.RejectMissingLanguage: "not naming an audio language you require",
+	quality.RejectNotOutYet:       "labelled WEB-DL or BluRay before the film is out at home",
 }
 
 // Summary is an outcome as one line for a log or a history entry: "37 releases · 22 for

@@ -347,6 +347,9 @@ type Candidate struct {
 	// (Service.Explain): there's no title behind it, so no original language, and a
 	// refusal says so.
 	tested bool
+	// window is the movie's release window (WithReleaseWindow, notoutyet.go); the zero
+	// value judges nothing.
+	window ReleaseWindow
 }
 
 // alive reports whether the release can download at all: a usenet release always can, a
@@ -557,6 +560,7 @@ const (
 	RejectMissingRequired = "missing_required" // lacks a required format
 	RejectMinFormatScore  = "min_format_score" // below the minimum format score
 	RejectMissingLanguage = "missing_language" // lacks an audio language the profile requires
+	RejectNotOutYet       = "not_out_yet"      // says WEB-DL/BluRay before the film is out at home (notoutyet.go)
 	// RejectUnwanted ("unwanted", unwanted.go): an Unwanted item set to reject.
 )
 
@@ -564,7 +568,7 @@ const (
 var RejectCodes = []string{
 	RejectResolution, RejectSourceFloor, RejectPrerelease, RejectSourceCeiling, RejectBitrateCeiling,
 	RejectSeeders, RejectTerm, RejectMissingRequired, RejectMinFormatScore, RejectUnwanted,
-	RejectMissingLanguage,
+	RejectMissingLanguage, RejectNotOutYet,
 }
 
 // reject sets both halves of a rejection: the sentence and its code.
@@ -643,6 +647,14 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	if p.RejectPreRelease && r.Source == parser.SourceCAM {
 		ev.reject(RejectPrerelease, "A cam, telesync or screener copy — this profile never grabs those")
 		return ev
+	}
+	// The same profiles refuse a "WEB-DL" from before the film is out at home: a cam with a
+	// false label. Never a file already in the library — that's the file check's to flag.
+	if p.RejectPreRelease && !p.onDisk && !c.onDisk {
+		if why, ok := c.window.notOutYet(r.Source); ok {
+			ev.reject(RejectNotOutYet, why)
+			return ev
+		}
 	}
 	// The Unwanted pack: an item set to reject refuses the release by name, before any
 	// ceiling (a disc image is always "over the ceiling", which would hide why).

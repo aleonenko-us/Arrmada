@@ -3,6 +3,7 @@ package quality
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/parser"
 )
@@ -26,6 +27,9 @@ func TestRejectCodeSetForEveryRejectReason(t *testing.T) {
 			NewCandidate("Film.2020.1080p.x264-GRP", 4, 50), RejectSourceFloor, "Source isn't stated"},
 		{"prerelease", Profile{RejectPreRelease: true},
 			NewCandidate("Film.2020.1080p.CAM.x264-GRP", 2, 50), RejectPrerelease, "A cam"},
+		{"not out yet", Profile{RejectPreRelease: true},
+			NewCandidate("Film.2020.1080p.WEB-DL.x264-GRP", 4, 50).WithReleaseWindow(ReleaseWindow{
+				Title: "Film", Home: time.Now().Add(30 * 24 * time.Hour)}), RejectNotOutYet, "Says WEB-DL, but Film isn't out at home"},
 		{"source ceiling", Profile{MaxSource: parser.SourceWebDL},
 			NewCandidate("Film.2020.1080p.BluRay.REMUX.AVC-GRP", 30, 50), RejectSourceCeiling, "Above your"},
 		{"bitrate ceiling", Profile{BitrateCapMbps: 10},
