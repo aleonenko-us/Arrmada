@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Note } from "../../components/settings/ui";
 import { jellyfinApi, type JellyfinConfig, type JellyfinTestResult } from "../../lib/jellyfinApi";
 import { lanOnly } from "../../lib/lanAddress";
+import { secretMoved } from "../../lib/sameEndpoint";
 import { LINKS } from "../../lib/links";
 import { setQueryData, useQuery } from "../../lib/query";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
@@ -54,7 +55,10 @@ function JellyfinForm({ cfg, onChanged, testFirst, inWizard }: { cfg: JellyfinCo
   const savedPublic = cfg.public_url || cfg.url;
   const dirty = url.trim() !== cfg.url || key.trim() !== "" || publicUrl.trim() !== savedPublic;
   const markClean = useUnsavedGuard(dirty);
-  const needsKey = !cfg.key_set && !key.trim();
+  // The saved key is only sent to the address it was saved for (the server refuses a new
+  // address with the key left blank), so a changed address asks for it again.
+  const keyMoved = secretMoved({ saved: cfg.key_set, typed: key, url, savedUrl: cfg.url });
+  const needsKey = (!cfg.key_set || keyMoved) && !key.trim();
   const homeOnly = lanOnly(publicUrl);
 
   const save = async (e?: FormEvent) => {
@@ -115,12 +119,17 @@ function JellyfinForm({ cfg, onChanged, testFirst, inWizard }: { cfg: JellyfinCo
         <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://192.168.1.10:8096" autoComplete="off" spellCheck={false} />
       </Field>
 
-      <Field label="API key" hint="Make one in Jellyfin: Dashboard → API Keys → +. It's never shown again once saved.">
+      <Field
+        label="API key"
+        hint={keyMoved
+          ? <span style={{ color: "var(--accent-text)" }}>New address: enter its API key. The saved key is only sent to the address it was saved for.</span>
+          : "Make one in Jellyfin: Dashboard → API Keys → +. It's never shown again once saved."}
+      >
         <Input
           type="password"
           value={key}
           onChange={(e) => setKey(e.target.value)}
-          placeholder={cfg.key_set ? "Key set — leave blank to keep it" : "Paste the API key"}
+          placeholder={keyMoved ? "Enter the key for the new address" : cfg.key_set ? "Key set — leave blank to keep it" : "Paste the API key"}
           autoComplete="new-password"
         />
       </Field>
@@ -140,7 +149,7 @@ function JellyfinForm({ cfg, onChanged, testFirst, inWizard }: { cfg: JellyfinCo
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={runTest} busy={busy === "test"} busyLabel="Testing…" disabled={busy !== null || !url.trim()}>Test</Button>
         <Button type="submit" variant="primary" busy={busy === "save"} busyLabel="Saving…" disabled={busy !== null || !url.trim() || needsKey}>Save</Button>
-        {needsKey && url.trim() && <span className="text-xs text-ink-faint">Add an API key to save.</span>}
+        {needsKey && url.trim() && !keyMoved && <span className="text-xs text-ink-faint">Add an API key to save.</span>}
       </div>
 
       {test && (
