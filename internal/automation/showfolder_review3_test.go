@@ -274,6 +274,10 @@ func TestRevCAnotherShowsFileInASeasonFolder(t *testing.T) {
 		{rel: "Kids/S01/Show.S01E03.1080p.WEB-DL-GRP.mkv"},
 	})
 	rcEpisodes(t, h, [2]int{1, 3})
+	// Bluey is in the library: its name positively says whose the files are. (In a folder
+	// that's provably the show's own, an episode whose name merely doesn't fit — romaji, a
+	// short title — is the show's; see TestRevGProvenFolderReadsVariantNames.)
+	mustExec(t, h.c, `INSERT INTO series (tmdb_id, title, year, monitored) VALUES (82728, 'Bluey', 2018, 1)`)
 	if err := h.c.RescanSeries(h.ctx, h.seriesID); err != nil {
 		t.Fatalf("rescan: %v", err)
 	}

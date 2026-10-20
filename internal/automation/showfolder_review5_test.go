@@ -228,32 +228,116 @@ func TestRevESeasonFolderJoinedWhateverItsName(t *testing.T) {
 	})
 }
 
-// A show with no files yet never reads a folder on a rescan or the duplicate check: one
-// merely named like it — "Show", "Show (2005)" — may as well be a namesake's (the UK "The
-// Office" beside the US one). Nothing is claimed, listed or recycled.
-func TestRevENoFilesReadsNothing(t *testing.T) {
-	for _, rel := range []string{
-		"Show (2005)/Season 1/Show - S01E01.mkv",
-		"Show/Season 1/Show - S01E01.mkv",
-		"Show/Season 1/Show (2001) - S01E01.mkv",
+// A show with no files yet reads only its exact "Title (Year)" folder, right in the TV
+// folder, and only when that's provably its own; never a year-less "Title" (the UK "The
+// Office" beside the US one), and never when another library show has its title and year.
+func TestRevENoFilesReadsOnlyItsYearFolder(t *testing.T) {
+	for _, c := range []struct {
+		rel   string
+		read  bool
+		twins bool // another "Show" (2005) in the library
+	}{
+		{"Show (2005)/Season 1/Show - S01E01.mkv", true, false},
+		{"Show (2005)/Season 1/Show - S01E01.mkv", false, true},
+		{"Show/Season 1/Show - S01E01.mkv", false, false},
+		{"Show/Season 1/Show (2001) - S01E01.mkv", false, false},
+		{"Kids/Show (2005)/Season 1/Show - S01E01.mkv", false, false},
 	} {
-		t.Run(rel, func(t *testing.T) {
-			h, tv := rbSetup(t, []rbFile{{rel: rel}})
+		t.Run(fmt.Sprintf("%s twins=%v", strings.ReplaceAll(c.rel, "/", "|"), c.twins), func(t *testing.T) {
+			h, tv := rbSetup(t, []rbFile{{rel: c.rel}})
 			mustExec(t, h.c, `UPDATE series SET year = 2005 WHERE id = ?`, h.seriesID)
 			mustExec(t, h.c, `UPDATE episodes SET has_file = 0, file_path = '' WHERE series_id = ?`, h.seriesID)
+			if c.twins {
+				mustExec(t, h.c, `INSERT INTO series (tmdb_id, title, year, monitored) VALUES (99, 'Show', 2005, 1)`)
+			}
 			if err := h.c.RescanSeries(h.ctx, h.seriesID); err != nil {
 				t.Fatalf("rescan: %v", err)
 			}
-			if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1); cur.Path != "" {
+			cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1)
+			if c.read && cur.Path != filepath.Join(tv, filepath.FromSlash(c.rel)) {
+				t.Errorf("S01E01 = %q, want its own Title (Year) folder's file", cur.Path)
+			}
+			if !c.read && cur.Path != "" {
 				t.Errorf("claimed %q", cur.Path)
 			}
-			if dups := rcDupPaths(t, h); len(dups) != 0 {
-				t.Errorf("duplicates lists %v", dups)
+			if !c.read {
+				if _, err := h.c.series.Delete(h.ctx, h.seriesID, true); err != nil {
+					t.Logf("delete: %v", err)
+				}
+				rbExists(t, tv, c.rel)
 			}
-			if _, err := h.c.series.Delete(h.ctx, h.seriesID, true); err != nil {
-				t.Logf("delete: %v", err)
+		})
+	}
+}
+
+// In a folder that's provably the show's own, an episode whose name doesn't fit the show's
+// title — romaji, a short or tagged title — is the show's; one that names another library
+// show, or carries the year of another library show of the same title, never is.
+func TestRevGProvenFolderReadsVariantNames(t *testing.T) {
+	names := map[int]string{
+		2: "Shingeki no Kyojin - S01E02.mkv",
+		3: "[SubsPlease] Sousou no Frieren - S01E03 (1080p) [ABCD1234].mkv",
+		4: "Frieren - S01E04.mkv",
+		5: "Law & Order SVU - S01E05.mkv",
+		6: "House M.D. - S01E06.mkv",
+		7: "Top Gear 2023 S01E07.mkv",
+		8: "Show US - 1x08.mkv",
+	}
+	files := []rbFile{{rel: "Show (2005)/Season 1/Show - S01E01.mkv", tracked: [2]int{1, 1}}}
+	for _, n := range names {
+		files = append(files, rbFile{rel: "Show (2005)/Season 1/" + n})
+	}
+	files = append(files,
+		rbFile{rel: "Show (2005)/Season 1/Bluey - S01E09.mkv"},
+		rbFile{rel: "Show (2005)/Season 1/Show (2019) - S01E10.mkv"},
+	)
+	h, tv := rbSetup(t, files)
+	mustExec(t, h.c, `UPDATE series SET year = 2005 WHERE id = ?`, h.seriesID)
+	mustExec(t, h.c, `INSERT INTO series (tmdb_id, title, year, monitored) VALUES (82728, 'Bluey', 2018, 1)`)
+	mustExec(t, h.c, `INSERT INTO series (tmdb_id, title, year, monitored) VALUES (99, 'Show', 2019, 1)`)
+	for e := 2; e <= 10; e++ {
+		rcEpisodes(t, h, [2]int{1, e})
+	}
+	if err := h.c.RescanSeries(h.ctx, h.seriesID); err != nil {
+		t.Fatalf("rescan: %v", err)
+	}
+	for e, n := range names {
+		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, e); cur.Path != filepath.Join(tv, "Show (2005)", "Season 1", n) {
+			t.Errorf("%s: S01E%02d = %q, want it read", n, e, cur.Path)
+		}
+	}
+	for _, e := range []int{9, 10} {
+		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, e); cur.Path != "" {
+			t.Errorf("S01E%02d claimed %q, another library show's", e, cur.Path)
+		}
+	}
+}
+
+// A small loose video that isn't an episode — a theme, a sample, a trailer, a stub — never
+// keeps an ordinary show from its folder; another show's episode loose there does.
+func TestRevGLooseVideos(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		size    int64
+		refused bool
+	}{
+		{"theme.mp4", 4, false},
+		{"sample.mkv", 60 << 20, false},
+		{"Show - Trailer.mkv", 60 << 20, false},
+		{"Show (2005) - Trailer.mp4", 4, false},
+		{"Frieren - S01E05.mkv", 4, false},
+		{"Show - S01E05.mkv", 60 << 20, false},
+		{"Peppa Pig - S01E01.mkv", 60 << 20, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, tv := rbSetup(t, []rbFile{{rel: "Show (2005)/Season 1/Show - S01E01.mkv", tracked: [2]int{1, 1}}})
+			mustExec(t, h.c, `UPDATE series SET year = 2005 WHERE id = ?`, h.seriesID)
+			sparseFile(t, filepath.Join(tv, "Show (2005)", c.name), c.size)
+			s, _ := h.c.series.Get(h.ctx, h.seriesID)
+			_, _, err := h.c.seriesPlacement(h.ctx, s)
+			if refused := errors.Is(err, series.ErrNoShowFolder); refused != c.refused {
+				t.Errorf("placement = %v, want refused=%v", err, c.refused)
 			}
-			rbExists(t, tv, rel)
 		})
 	}
 }

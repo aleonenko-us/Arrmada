@@ -619,10 +619,20 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 // or offers for deletion a file in another show's folder inside it, or another show's file.
 func (c *Coordinator) showEpisodeVideos(ctx context.Context, s series.Series, imp *library.Importer, folder string) []library.FoundVideo {
 	if folder == "" {
-		// No files recorded yet: no folder is provably the show's — one merely named like it
-		// ("The Office", "The Office (2005)") may as well be another show's of that name.
-		// Nothing is read; the library scan or a hand import gives the show its files.
-		return nil
+		// No files recorded yet: only the exact "<Title> (<Year>)" folder right in the TV
+		// folder is read, and only when it's provably the show's own (series.
+		// NoFilesFolderUnproven). Never a year-less "<Title>": it may be a namesake's (the UK
+		// "The Office" beside the US one). Otherwise nothing is read; a hand import gives the
+		// show its files.
+		name := library.YearFolderName(s.Title, s.Year)
+		if name == "" {
+			return nil
+		}
+		if why := c.series.NoFilesFolderUnproven(ctx, s, filepath.Join(imp.TVRoot(), name)); why != "" {
+			c.log.Info("series rescan: the show's \"Title (Year)\" folder isn't provably its own — not read", "series", s.Title, "folder", name, "why", why)
+			return nil
+		}
+		folder = name
 	}
 	dir, vids := imp.SeriesEpisodeVideos(folder, s.Title, s.Year)
 	if dir == "" {

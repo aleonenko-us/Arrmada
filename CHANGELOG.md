@@ -28,6 +28,21 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Before you update
 
+- **What a show's rescan and duplicate check read is narrower** (#56). They no longer read a
+  folder inside the show's that holds another show (hidden, nested, or under Other or
+  Bonus), Plex extras folders, a file named as another show in your library, a video
+  loose in the folder of a show kept in season folders, or a file with no title in its name
+  outside the folders the show already has files in. A show with no files yet reads only
+  its own `Title (Year)` folder. If a rescan used to attach one of these, attach it with a
+  hand import instead.
+- **A show whose folder also holds another show's episode waits in Needs you** (#56). An
+  episode of another show loose in the show's folder (`Peppa Pig - S01E01.mkv` in
+  `Kids`), another show's folder, or a link inside it means the show's folder can't be
+  told: downloads wait in Needs you, and **Refresh & rescan**, **Rename**, the duplicate
+  check, **Move to folder** and **Map files…** are refused for it (Map files uses the same
+  check as the import). Move the other show out, then use **Refresh & rescan**.
+- **The way out for a show whose files were moved** now needs a folder named with the
+  show's year (`Show (2019)`) or one already holding its files; see Fixed below.
 - **Missing music files are flagged, not downloaded again.** When a track file is gone on two
   checks a day apart, the album says "N track files gone from disk" and isn't searched by
   itself, like movies. Use **Search for missing tracks** on the album page, or Music → Library
@@ -339,16 +354,20 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   files** (#56). They read exactly the same files: those right in the show's folder, in its
   season folders (and disc or download folders inside them), or in its own download
   folders. They never read a folder inside it that holds another show, whether hidden,
-  nested deep, or under a folder called Other or Bonus. A file whose name is another show's
-  (`Bluey - S01E02.mkv` in your show's `S01`, or `The Office (2001) - …` for the 2005 show)
-  is never claimed, nor offered as a duplicate to delete. A file whose name has no title
+  nested deep, or under a folder called Other or Bonus. In a folder that's provably the
+  show's own, an episode is the show's however it's named (`Shingeki no Kyojin`, `Frieren`,
+  `Top Gear 2023 S33E01`) unless its name says it's another show in your library
+  (`Bluey - S01E02.mkv`, or `The Office (2001) - …` beside the 2005 show) — that one is never
+  claimed, nor offered as a duplicate to delete. A file whose name has no title
   (`S01E01.mkv`, `01.mkv`) counts only in a folder where the show already has files. A
   video loose in the folder of a show kept in season folders isn't taken for an episode.
   Featurettes in Plex extras folders (Extras, Featurettes, Behind The Scenes, Deleted Scenes,
   Interviews, Scenes, Shorts, Trailers, Other) are never taken for episodes. Files the show
-  already has always count. A show with no files yet reads no folder at all: one merely
-  named like it may be a namesake's. Adding a show with **Scan library** marks only the
-  files a rescan would read.
+  already has always count. A show with no files yet reads only its own `Title (Year)`
+  folder right in a TV folder, and only when that's provably its own — never a year-less
+  `Title`, which may be a namesake's. Adding a show with **Scan library** marks only the
+  files a rescan would read. A theme song, trailer or sample loose in a show's folder is
+  ignored.
 - **A link inside a show's folder keeps it from being taken for the show's alone** (#56). A
   link to another folder or to a video means the download waits in Needs you, and Move to
   folder won't move the folder.

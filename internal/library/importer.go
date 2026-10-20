@@ -1084,6 +1084,10 @@ type FoundVideo struct {
 	Size int64
 }
 
+// MinEpisodeVideoSize is the smallest video FindVideos takes for an episode or film:
+// anything smaller is a sample, a theme or a stub.
+const MinEpisodeVideoSize = 50 << 20
+
 // FindVideos returns every video file at contentPath larger than 50 MB (skipping
 // samples/extras). Used to import a season/multi-season pack — many files at once.
 func FindVideos(contentPath string) ([]FoundVideo, error) {
@@ -1119,7 +1123,7 @@ func FindVideosCtx(ctx context.Context, contentPath string, maxResults, maxVisit
 			return nil
 		}
 		fi, e := d.Info()
-		if e != nil || fi.Size() < 50<<20 {
+		if e != nil || fi.Size() < MinEpisodeVideoSize {
 			return nil
 		}
 		if isSampleName(p) {
@@ -1460,6 +1464,16 @@ func (im *Importer) SeriesEpisodeVideos(seriesFolder, title string, year int) (d
 		}
 	}
 	return dir, out
+}
+
+// YearFolderName is "<Title> (<Year>)" as a show folder's name ("" without a title or year):
+// the one folder a show with no files yet may be read from.
+func YearFolderName(title string, year int) string {
+	t := clean(title)
+	if t == "" || year <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s (%d)", t, year)
 }
 
 // seriesLibraryDir is the show's folder under the TV root: seriesFolder, or

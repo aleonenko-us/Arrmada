@@ -191,9 +191,11 @@ func (s *Service) ShowFolderFor(path string) string {
 //     season folders (or a disc folder inside one), or in one of its own download folders —
 //     never inside another folder in it (another show's, tracked or not; hidden; however
 //     deep), and never in a folder that may as well be a season's (filePlace.unsure);
-//   - and when its name carries a title, that is the show's (its titles, aliases or
-//     FitRelease): another show's file dropped into one of its season folders is never
-//     claimed, nor offered as a duplicate to delete.
+//   - and when its name carries a title: in a folder provably the show's own (proven), an
+//     episode counts unless its name names another library show (conflicts); elsewhere the
+//     name must fit the show (fitsShow, with its year and country checks). Another library
+//     show's file dropped into one of its season folders is never claimed, nor offered as a
+//     duplicate to delete.
 func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir string) func(path string) bool {
 	j := s.dbJudge(ctx, sr.ID)
 	showDir = filepath.Clean(showDir)
@@ -204,6 +206,13 @@ func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir stri
 			recorded[filepath.Clean(p)] = true
 			recordedDirs[filepath.Dir(filepath.Clean(p))] = true
 		}
+	}
+	proven, provenKnown := false, false
+	provenDir := func() bool {
+		if !provenKnown {
+			proven, provenKnown = j.proven(showDir), true
+		}
+		return proven
 	}
 	return func(path string) bool {
 		path = filepath.Clean(path)
@@ -221,6 +230,13 @@ func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir stri
 			// such as a Season 1 folder of another show next to the show's S01. A show with
 			// no files yet reads its own folder as before.
 			return len(recorded) == 0 || recordedDirs[filepath.Dir(path)]
+		}
+		// Inside a folder that's provably the show's own, an episode is the show's unless its
+		// name positively says it's another library show's: romaji, short or tagged names
+		// ("Shingeki no Kyojin", "Frieren", "Top Gear 2023 S33E01") are the show's own files.
+		// Elsewhere the name must fit the show.
+		if len(rel.Episodes) > 0 && provenDir() {
+			return !j.conflicts(rel)
 		}
 		return fitsShow(rel, sr)
 	}
@@ -270,6 +286,35 @@ func (s *Service) SeasonDirChooser(ctx context.Context, seriesID int64) func(sho
 // ErrSeasonFolderAway is an episode import refused because the season's folder, where the
 // show's other episodes of that season are, isn't there.
 var ErrSeasonFolderAway = errors.New("the season's folder isn't there")
+
+// NoFilesFolderUnproven says why dir — "<Title> (<Year>)" for show sr, which has no files
+// recorded yet — can't be read for it ("" when it can): it isn't a real folder right inside
+// a TV folder, it's not provably a show's own (named like a season, another show's files in
+// it, another show's folder, episode or a link inside it), or another library show has the
+// same title and year.
+func (s *Service) NoFilesFolderUnproven(ctx context.Context, sr Series, dir string) string {
+	dir = filepath.Clean(dir)
+	fi, err := os.Lstat(dir)
+	if err != nil || !fi.IsDir() {
+		return fmt.Sprintf("%s isn't a folder", dir)
+	}
+	if root, ok := rootOf(s.libRoots(), dir); !ok || filepath.Dir(dir) != root {
+		return fmt.Sprintf("%s isn't right inside a TV folder", dir)
+	}
+	j := s.dbJudge(ctx, sr.ID)
+	if v := j.judge(dir); v.why != "" {
+		return v.why
+	}
+	if why := j.foreignChildren(dir); why != "" {
+		return why
+	}
+	for _, o := range j.otherShows() {
+		if parser.TitleKey(o.Title) == parser.TitleKey(sr.Title) && o.Year == sr.Year {
+			return fmt.Sprintf("%q (%d) is in the library twice", o.Title, o.Year)
+		}
+	}
+	return ""
+}
 
 // yearFolderHint is "Title (Year)" for show seriesID, for a message.
 func (s *Service) yearFolderHint(ctx context.Context, seriesID int64) string {
@@ -375,9 +420,10 @@ type folderJudge struct {
 	// show is the show judged for, and recorded its recorded files (read once, when
 	// foreignChildren first needs them): a video loose in its folder that's neither is
 	// another show's. nil for the health check.
-	show     *Series
-	recorded func() map[string]bool
-	rec      map[string]bool
+	show      *Series
+	recorded  func() map[string]bool
+	rec       map[string]bool
+	otherList []Series // otherShows, read once
 }
 
 // folderVerdict is a folder judged: why it can't be a show's own ("" when it can), the
@@ -514,10 +560,11 @@ func (j *folderJudge) foreignChildren(dir string) string {
 			return fmt.Sprintf("%s holds %q, a link", dir, n)
 		}
 		if !e.IsDir() {
-			// A video loose in the folder that isn't one of the show's recorded files, nor
-			// named as its episode, is another show's ("Peppa Pig - S01E01.mkv" in Kids).
-			if library.IsVideoFile(n) && j.show != nil && !j.isRecorded(filepath.Join(dir, n)) && !fitsShow(parser.Parse(n), *j.show) {
-				return fmt.Sprintf("%s also holds %q, a video that isn't one of the show's", dir, n)
+			// An episode loose in the folder that isn't one of the show's recorded files and
+			// is named as another show's is that show's ("Peppa Pig - S01E01.mkv" in Kids). A
+			// theme song, trailer, sample or anything else not shaped like an episode isn't.
+			if j.show != nil && j.looseForeignEpisode(filepath.Join(dir, n)) {
+				return fmt.Sprintf("%s also holds %q, another show's episode", dir, n)
 			}
 			continue
 		}
@@ -540,6 +587,74 @@ func (j *folderJudge) foreignChildren(dir string) string {
 		}
 	}
 	return ""
+}
+
+// rePlexExtraName is a video named as a Plex local extra ("Show - Trailer.mkv",
+// "theme.mp4", "Pilot-featurette.mkv"): never an episode.
+var rePlexExtraName = regexp.MustCompile(`(?i)(?:^|[ ._-])(?:trailer|theme|featurette|behind ?the ?scenes|deleted ?scenes?|interview|short|other)(?:[ ._-]?\d+)?\.[a-z0-9]+$`)
+
+// looseForeignEpisode reports whether the file at path, loose in a folder, is another
+// show's episode: a real video (by the library scan's own size and sample rules, not a
+// Plex extra) shaped like an episode (S01E05, 1x05), not recorded for the show, and either
+// not named as the show's or naming another show in the library.
+func (j *folderJudge) looseForeignEpisode(path string) bool {
+	n := filepath.Base(path)
+	if !library.IsVideoFile(n) || j.isRecorded(path) || rePlexExtraName.MatchString(n) ||
+		strings.Contains(strings.ToLower(n), "sample") {
+		return false
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Size() < library.MinEpisodeVideoSize {
+		return false
+	}
+	rel := parser.Parse(n)
+	if len(rel.Episodes) == 0 {
+		return false
+	}
+	return !fitsShow(rel, *j.show) || j.conflicts(rel)
+}
+
+// conflicts reports whether a file's parsed name positively says it's another library
+// show's: it names a show in the library this one isn't called, or — the two sharing a
+// title — carries a year or country tag that fits the other and not this one.
+func (j *folderJudge) conflicts(rel parser.Release) bool {
+	key := parser.TitleKey(rel.Title)
+	if key == "" || j.show == nil {
+		return false
+	}
+	for _, o := range j.otherShows() {
+		if parser.TitleKey(o.Title) != key {
+			continue
+		}
+		if !j.titles[key] {
+			return true // another show's title, not this one's
+		}
+		if FitRelease(rel, o).OK && !fitsShow(rel, *j.show) {
+			return true
+		}
+	}
+	return false
+}
+
+// otherShows is every other show in the library, read once.
+func (j *folderJudge) otherShows() []Series {
+	if j.otherList == nil {
+		j.otherList = []Series{}
+		if all, err := j.svc.repo.List(context.Background()); err == nil {
+			for _, o := range all {
+				if j.show == nil || o.ID != j.show.ID {
+					j.otherList = append(j.otherList, o)
+				}
+			}
+		}
+	}
+	return j.otherList
+}
+
+// proven reports whether dir is provably the show's own folder: a sound folder (not named
+// like a season or a TV folder, no other show's files in it) holding no other show's folder,
+// episode or link. Inside it, an episode's name only has to not conflict (see conflicts).
+func (j *folderJudge) proven(dir string) bool {
+	return j.judge(filepath.Clean(dir)).why == "" && j.foreignChildren(filepath.Clean(dir)) == ""
 }
 
 // isRecorded reports whether path is one of the show's recorded files.
