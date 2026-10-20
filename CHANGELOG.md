@@ -29,9 +29,12 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 - **Missing music files are flagged, not downloaded again.** When a track file is gone on two
   checks a day apart, the album says "N track files gone from disk" and isn't searched by
   itself, like movies. Use **Search for missing tracks** on the album page, or Music → Library
-  tools for all of them at once. If the music folder, or the folder above a missing file, looks
-  empty or unmounted, or too many files vanish at once, nothing is marked and a health warning
-  shows instead.
+  tools for all of them at once (each run takes 25 albums, the ones not searched yet first, and
+  asks first). Moved or retagged the files yourself? The check then starts a library scan, which
+  links them again at their new place instead of downloading. A folder that looks empty or
+  unmounted is skipped and named in a health note; if the music folder itself looks unmounted, or
+  too many files vanish at once, nothing is marked at all. An album on a share that's away is never
+  re-linked to another copy of it.
 
 - **A music library scan of an empty or unmounted music folder is refused** and changes nothing.
   Untagged folders matched only by their name are placed only as a whole album (or exactly the
@@ -244,7 +247,8 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 - **Music (Preview) scans big libraries fast and keeps an eye on your files.** The library scan
   reads tags (files with MusicBrainz IDs match straight away), runs in the background, and a
   rescan only opens folders that changed. It never moves, retags or deletes anything; folders it
-  can't place go to Reviews with **Match…**. A daily "Check music files" task notices files that
+  can't place go to Reviews with **Match…**. Albums moved or retagged outside Arrmada (Picard,
+  beets) are linked again at their new place. A daily "Check music files" task notices files that
   vanished or changed outside Arrmada and shows them as gone from disk; it never deletes anything
   and never downloads them again by itself. Artists are found under their other names too
   ("Beyonce", "宇多田ヒカル").
