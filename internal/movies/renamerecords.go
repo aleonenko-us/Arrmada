@@ -2,6 +2,7 @@ package movies
 
 import (
 	"context"
+	"io/fs"
 	"path/filepath"
 	"strings"
 )
@@ -27,6 +28,12 @@ type renameRecords struct {
 	failed  map[int64]string            // a record per movie that couldn't be resolved
 	probe   *linkProbe
 	built   bool // real and failed are built
+
+	// The Movies folders' links, found once per pass (aliasInto).
+	rootsListed bool
+	rootSet     []string
+	rootLinks   []string
+	rootErr     string // an entry that couldn't be looked at: every folder refuses
 }
 
 // newRenameRecords makes the records for one pass. Nothing is read until it's needed.
@@ -169,6 +176,76 @@ func (r *renameRecords) anyInto(dir string, paths []string) string {
 		}
 	}
 	return ""
+}
+
+// aliasInto is Service.aliasInto (the probe's) for one pass that asks it for many
+// folders: the links in the Movies folders are found once per pass — the same entries the
+// probe would look at each time, by the same rules (a listed link, or anything listed as
+// other than a plain file that Lstat calls a link; one that can't be looked at refuses
+// every folder) — and only the folder's own parent, when it isn't a Movies folder, is
+// left to the probe. It returns the same "" or not as Service.aliasInto.
+func (r *renameRecords) aliasInto(roots []string, dir string) string {
+	realDir, err := r.probe.resolvePath(dir)
+	if err != nil {
+		return dir
+	}
+	if !r.rootsListed {
+		r.rootsListed = true
+		seen := map[string]bool{}
+		for _, d := range roots {
+			if seen[d] {
+				continue
+			}
+			seen[d] = true
+			r.rootSet = append(r.rootSet, d)
+			l := r.probe.list(d)
+			if l.err != nil {
+				continue
+			}
+			for _, e := range l.entries {
+				link := filepath.Join(d, e.Name())
+				if typ := e.Type(); typ&fs.ModeSymlink == 0 {
+					if typ.IsRegular() {
+						continue
+					}
+					switch r.probe.kindOf(link) {
+					case kindLink:
+					case kindErr:
+						if r.rootErr == "" {
+							r.rootErr = link
+						}
+						continue
+					default:
+						continue
+					}
+				}
+				r.rootLinks = append(r.rootLinks, link)
+			}
+		}
+	}
+	if r.rootErr != "" {
+		return r.rootErr
+	}
+	rd := strings.ToLower(realDir)
+	for _, link := range r.rootLinks {
+		lt := r.probe.linkTarget(link)
+		if lt.err != nil {
+			if lt.readErr != nil {
+				return link
+			}
+			continue // dangling: it points at nothing that exists, so not into dir
+		}
+		t := strings.ToLower(lt.target)
+		if t == rd || strings.HasPrefix(t, rd+string(filepath.Separator)) {
+			return link
+		}
+	}
+	for _, d := range r.rootSet {
+		if d == filepath.Dir(dir) {
+			return "" // its parent is a Movies folder, looked at above
+		}
+	}
+	return r.probe.aliasInto(dir, nil)
 }
 
 func otherThan(m map[int64]string, id int64) string {

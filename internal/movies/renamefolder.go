@@ -241,7 +241,7 @@ func (s *Service) planLeave(m Movie, od string, moves []renameMove, staying []st
 	if o := recs.recordedInto(od, m.ID); o != "" {
 		return nil, "another film in your library has a file recorded in it (" + relName(od, o) + ")"
 	}
-	if link := s.aliasInto(recs.probe, od); link != "" {
+	if link := recs.aliasInto(s.allRoots(), od); link != "" {
 		return nil, "another folder links into it (" + filepath.Base(link) + ")"
 	}
 	var out []RenameExtra
@@ -308,7 +308,7 @@ func (s *Service) targetReason(m Movie, nd string, fresh bool, own map[string]bo
 	if hasVideo(clean, own) {
 		return "the new folder already holds another video"
 	}
-	if link := s.aliasInto(recs.probe, clean); link != "" {
+	if link := recs.aliasInto(s.allRoots(), clean); link != "" {
 		return "another folder links into the new folder (" + filepath.Base(link) + ")"
 	}
 	return ""

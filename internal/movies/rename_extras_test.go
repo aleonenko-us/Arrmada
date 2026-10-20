@@ -103,6 +103,47 @@ func TestRV2_P1_MissingTargetOfRecord(t *testing.T) {
 	}
 }
 
+// The pass's aliasInto (Movies folders' links found once) answers as the probe's does,
+// asked about every folder of a layout with links into, beside and below them.
+func TestRenameRecordsAliasIntoMatchesProbe(t *testing.T) {
+	f := newDeleteFixture(t, filepath.Join(t.TempDir(), "bin"))
+	clearFixtureFolder(t, f)
+	M := f.root
+	elsewhere := t.TempDir()
+	for _, p := range []string{"A (1995)/a.mkv", "B/b.mkv", "Cat/D/d.mkv", "Cat/E/e.mkv", "file.txt"} {
+		writeBody(t, filepath.Join(M, filepath.FromSlash(p)), "x")
+	}
+	writeBody(t, filepath.Join(elsewhere, "X", "x.mkv"), "x")
+	links := [][2]string{
+		{filepath.Join(M, "B"), filepath.Join(M, "Alias")},
+		{filepath.Join(elsewhere, "nope"), filepath.Join(M, "Dang")},
+		{filepath.Join(M, "Cat", "D"), filepath.Join(M, "Cat", "Link")},
+		{filepath.Join(elsewhere, "X"), filepath.Join(M, "Out")},
+		{filepath.Join(M, "A (1995)", "a.mkv"), filepath.Join(M, "FileLink")},
+	}
+	for _, l := range links {
+		if err := os.Symlink(l[0], l[1]); err != nil {
+			t.Skipf("symlinks unavailable here: %v", err)
+		}
+	}
+	recs := &renameRecords{load: func() ([]recordedPath, error) { return nil, nil }}
+	if err := recs.ensure(); err != nil {
+		t.Fatal(err)
+	}
+	dirs := []string{
+		filepath.Join(M, "A (1995)"), filepath.Join(M, "B"), filepath.Join(M, "Cat"), filepath.Join(M, "Cat", "D"),
+		filepath.Join(M, "Cat", "E"), filepath.Join(M, "Nope"), filepath.Join(M, "Alias"), filepath.Join(elsewhere, "X"),
+		filepath.Join(M, "Cat", "D", "Sub"), M,
+	}
+	for _, d := range dirs {
+		want := f.svc.aliasInto(newLinkProbe(nil), d)
+		got := recs.aliasInto(f.svc.allRoots(), d)
+		if (want == "") != (got == "") {
+			t.Errorf("%s: pass says %q, probe says %q", d, got, want)
+		}
+	}
+}
+
 // renameFixture is one movie (Heat, 1995) with a single file at rel under the Movies
 // folder, and the other films given as {title, year, rel}.
 func renameFixture(t *testing.T, rel string, files ...string) (*deleteFixture, string) {
