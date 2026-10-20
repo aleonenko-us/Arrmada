@@ -62,7 +62,7 @@ func TestExplainRowShowsAudioLanguages(t *testing.T) {
 	// plain words: the name doesn't say German.
 	multi := quality.NewDefaultEngine().Evaluate(p, quality.NewCandidate("Film.2021.MULTi.1080p.WEB-DL.x264-MUL", 6, 10).WithLanguage("en"))
 	row := explainRow(RankedRelease{Eligible: multi.Eligible, RejectReason: multi.RejectReason}, multi, false)
-	if row.Eligible || row.RejectReason != "Doesn't name German audio — your profile requires it, and a MULTi release only counts for the languages its name says" ||
+	if row.Eligible || row.RejectReason != "Doesn't name German audio — your profile requires it, and a MULTi release only counts for the title's original language and the ones its name says" ||
 		strings.Join(row.AudioLangs, ",") != "en" || row.AudioLangsNote != "and others it doesn't name" {
 		t.Errorf("MULTi row = %+v", row)
 	}

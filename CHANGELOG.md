@@ -32,10 +32,20 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   Audio, which always carry the original. A MULTi or Dual Audio release that doesn't name the
   language used to count as "might have it" and was grabbed; it's now skipped, and interactive
   search says why ("Doesn't name Italian audio…"). If your trackers label releases MULTi when
-  they carry your language (French trackers often do), turn on **MULTi releases count as
-  having a required language** under the profile's Audio language row. It's off on every
-  existing profile. Files already in your library are judged as before, so nothing is
-  downloaded again because of this.
+  they carry your language (French trackers often do), turn on **MULTi and Dual Audio
+  releases count as having a required language** under the profile's Audio language row.
+  It's off on every existing profile. A release that names no language, for a title whose
+  original language isn't known, is still not refused. This changes which releases are
+  grabbed only: files already in your library are judged by the same rules as before (the
+  newly read spellings below count for releases, not for library files).
+
+- **Hong Kong films get an original language.** TMDB codes Cantonese as `cn` (or `yue`),
+  which Arrmada didn't know, so those films had none and the Audio language rules skipped
+  them. They now read as Chinese: "Original language" rules apply to them, an untagged
+  release of one counts as Chinese (so a Must English refuses it, as for any foreign film),
+  and a profile that prefers the original can now upgrade such a film whose file has only
+  a dub, within the per-sweep upgrade limit. TMDB's `xx` (no spoken language) is treated as
+  no original language.
 
 - **Missing music files are flagged, not downloaded again.** When a track file is gone on two
   checks a day apart, the album says "N track files gone from disk" and isn't searched by
@@ -286,8 +296,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 ### Fixed
 
 - Audio languages: a profile with Italian as Must no longer grabs MULTi or Dual Audio releases
-  that don't name Italian (#58). Release names that write FRA, DEU, NLD, ESP, JAP or VFB are
-  read as French, German, Dutch, Spanish, Japanese and French.
+  that don't name Italian (#58). Release names that write FRA, DEU, NLD, ESP, JAP or VFB (in
+  capitals, outside an episode title) are read as French, German, Dutch, Spanish, Japanese
+  and French.
 - Library folders: a show, artist or album whose name is only dots can no longer reach
   outside its library folder. Names like "..." are still allowed.
 - Archive extraction: a refused archive no longer stops the rest of the download. Zips of RAR

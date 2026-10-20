@@ -600,6 +600,9 @@ func (s *Service) Explain(sp StoredProfile, name string, sizeGB float64, runtime
 	normalize(&sp)
 	p, e := s.profileOf(context.Background(), sp), sp.Engine()
 	c := NewCandidate(name, max(sizeGB, 0), max(p.MinSeeders, 1)).WithRuntime(max(runtimeMin, 0))
+	// No title, so no original language: an untagged name can't be judged on the language
+	// rules (nothing refused), and a MULTi that doesn't name a Must says why it's refused.
+	c.tested = true
 	out := Explanation{Release: c.Release, Evaluation: e.Evaluate(p, c)}
 	custom := map[string]bool{}
 	for _, f := range sp.CustomFormats {

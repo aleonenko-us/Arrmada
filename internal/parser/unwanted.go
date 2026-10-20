@@ -142,9 +142,13 @@ func (t tags) seq(words ...string) bool {
 // codec without an encoder tag and so are never inferred to be discs.
 func (r *Release) detectTraits(all []tagToken, fansub bool) {
 	t := newTags(all)
-	r.Languages, r.Multi, r.Dual = detectLanguages(t)
+	r.Languages, r.Multi, r.Dual = detectLanguages(t, true)
+	r.FileLanguages, r.FileMulti, _ = detectLanguages(t, false)
+	r.fileLangsRead = true
 	r.Streaming = detectStreaming(t)
-	r.FullDisc = detectFullDisc(t, r.Languages, fansub)
+	// The disc check keeps the reading it was tuned on: a "DEU" name isn't taken for a
+	// German remux, and a file's verdict doesn't move with the newer spellings.
+	r.FullDisc = detectFullDisc(t, r.FileLanguages, fansub)
 	r.ThreeD = t.any("3d", "sbs", "hsbs", "hou") || t.seq("h", "sbs") || t.seq("half", "sbs") ||
 		t.seq("half", "ou") || t.seq("h", "ou")
 	// "Regrade" is a colour pass, not an upscale, and isn't listed.
@@ -191,7 +195,7 @@ func detectFullDisc(t tags, languages []string, fansub bool) bool {
 // French dub variants, the Spanish regional words and the Polish dub tags. Mapped to codes
 // the language table knows; everything else is read through it.
 var sceneLanguages = map[string]string{
-	"truefrench": "fr", "vff": "fr", "vfq": "fr", "vf2": "fr", "vfi": "fr", "vfb": "fr",
+	"truefrench": "fr", "vff": "fr", "vfq": "fr", "vf2": "fr", "vfi": "fr",
 	"castellano": "es", "pldub": "pl", "dubpl": "pl",
 }
 
@@ -203,13 +207,16 @@ var languageCodes3 = map[string]bool{
 	"ita": true, "eng": true, "ger": true, "fre": true, "spa": true, "jpn": true, "kor": true, "rus": true,
 	"pol": true, "por": true, "dut": true, "cze": true, "hun": true, "tur": true, "ukr": true,
 	"chi": true, "hin": true, "swe": true, "heb": true,
-	// The ISO 639-2/T spellings some groups write instead ("FRA", "DEU", "NLD").
-	"fra": true, "deu": true, "nld": true,
 }
 
-// sceneCodes3 are three-letter audio tags that aren't ISO codes at all ("ESP" for Spanish,
-// "JAP" for Japanese). Capitals only, like languageCodes3.
-var sceneCodes3 = map[string]string{"esp": "es", "jap": "ja"}
+// laterCodes3 are three-letter audio tags read since issue #58, so a Must language can be
+// named the ways more groups write it: the ISO 639-2/T spellings ("FRA", "DEU", "NLD"),
+// and tags that aren't ISO codes at all ("ESP", "JAP", "VFB" — Belgian French). Capitals
+// only, and never where an episode title sits ("Show.S01E02.The.JAP.Problem"), so "VfB
+// Stuttgart" stays a football club. Release.FileLanguages leaves them out (see there).
+var laterCodes3 = map[string]string{
+	"fra": "fr", "deu": "de", "nld": "nl", "esp": "es", "jap": "ja", "vfb": "fr",
+}
 
 // subsWords after a language say it names the subtitles, not the audio ("German.Subbed",
 // "ENG.SUBS", "VOSTFR" is one word and never read).
@@ -221,7 +228,8 @@ var subsWords = map[string]bool{
 // detectLanguages reads the audio languages a name states, as ISO 639-1 codes in the order
 // written, and whether it says it carries several (MULTi, DUAL, or German "DL"/"ML" next
 // to a language). Language names are looked up in the one language table (internal/langs).
-func detectLanguages(t tags) (out []string, multi, dual bool) {
+// later reads laterCodes3 too; without it the name is read as it was before issue #58.
+func detectLanguages(t tags, later bool) (out []string, multi, dual bool) {
 	words := t.all
 	// The words where an episode title would sit, less the dub tags that can share it.
 	titleWords := 0
@@ -257,9 +265,9 @@ func detectLanguages(t tags) (out []string, multi, dual bool) {
 			if sceneCased(tok.raw) {
 				code = langs.ISO1(tok.lc)
 			}
-		case sceneCodes3[tok.lc] != "":
-			if sceneCased(tok.raw) {
-				code = sceneCodes3[tok.lc]
+		case laterCodes3[tok.lc] != "":
+			if later && sceneCased(tok.raw) && !tok.title {
+				code = laterCodes3[tok.lc]
 			}
 		case len(tok.lc) >= 4:
 			if l, ok := langs.Lookup(tok.lc); ok && langs.IsToken(tok.lc, true) {

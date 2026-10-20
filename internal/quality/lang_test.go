@@ -185,7 +185,7 @@ func TestDualAudioAndMultiUnderAMust(t *testing.T) {
 		}
 		de := Profile{Languages: map[string]string{"de": PrefMust}}
 		ev := engineIn(mode).Evaluate(de, NewCandidate("Film.2021.1080p.BluRay.x264.Dual-Audio-GRP", 8, 50).WithLanguage("en"))
-		if ev.Eligible || ev.RejectReason != "Doesn't name German audio — your profile requires it, and a Dual Audio release only counts for the languages its name says" {
+		if ev.Eligible || ev.RejectReason != "Doesn't name German audio — your profile requires it, and a Dual Audio release only counts for the title's original language and the ones its name says" {
 			t.Errorf("Dual Audio on an English film: eligible %v %q", ev.Eligible, ev.RejectReason)
 		}
 		// The row still says what it may carry.
@@ -241,14 +241,33 @@ func TestMustNamedTable(t *testing.T) {
 		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "ja", map[string]string{LangOriginal: PrefMust}, false, true, ""},
 		{"Film.2021.DUAL.1080p.BluRay.x264-GRP", "ja", map[string]string{LangOriginal: PrefMust}, false, true, ""},
 		{"Film.2021.ENGLISH.1080p.BluRay.x264-GRP", "ja", map[string]string{LangOriginal: PrefMust}, false, false, "Missing Japanese audio"},
-		// Unknown original language: a release naming none can't satisfy a Must, switch or
-		// not; one that names it can. "Original language" resolves to nothing, so no rule.
-		{"Film.2021.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, false, false, "Doesn't name Italian audio — your profile requires it, and this title's original language isn't known"},
-		{"Film.2021.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, true, false, "Doesn't name Italian audio"},
-		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, false, false, "Doesn't name Italian audio — your profile requires it, and a MULTi"},
+		// Unknown original language: a release naming none can't be judged, so it isn't
+		// refused (as before #58); a MULTi that doesn't name the Must is (the #58 rule), with
+		// the reason saying the original isn't known. "Original language" resolves to
+		// nothing, so no rule.
+		{"Film.2021.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, false, true, ""},
+		{"Film.2021.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, true, true, ""},
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, false, false, "Doesn't name Italian audio — your profile requires it, and a MULTi release only counts for the title's original language and the ones its name says (this title's original language isn't known)"},
+		{"Film.2021.DUAL.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, false, false, "Doesn't name Italian audio — your profile requires it, and a Dual Audio release"},
 		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, true, true, ""},
 		{"Film.2021.iTALiAN.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, false, true, ""},
 		{"Film.2021.1080p.BluRay.x264-GRP", "", map[string]string{LangOriginal: PrefMust}, false, true, ""},
+		// A code the table doesn't know reads as unknown too (TMDB's "sh").
+		{"Film.2021.1080p.BluRay.x264-GRP", "sh", map[string]string{"en": PrefMust}, false, true, ""},
+		// TMDB "xx", no spoken language: an untagged release isn't refused under a Must; a
+		// MULTi that doesn't name it is.
+		{"Film.2021.1080p.BluRay.x264-GRP", "xx", map[string]string{"en": PrefMust}, false, true, ""},
+		{"Film.2021.1080p.BluRay.x264-GRP", "xx", map[string]string{LangOriginal: PrefMust, "en": PrefWant}, false, true, ""},
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "xx", map[string]string{"en": PrefMust}, false, false, "Doesn't name English audio"},
+		// A Hong Kong film (TMDB "cn", Cantonese) has an original language now: Chinese. An
+		// untagged release is Chinese, like an untagged French film is French — so an English
+		// Must takes a release that says English, and refuses one that names nothing.
+		{"Film.2021.1080p.BluRay.x264-GRP", "cn", map[string]string{"en": PrefMust}, false, false, "Missing English audio"},
+		{"Film.2021.ENG.1080p.BluRay.x264-GRP", "cn", map[string]string{"en": PrefMust}, false, true, ""},
+		{"Film.2021.1080p.BluRay.x264.Dual-Audio-GRP", "cn", map[string]string{"en": PrefMust}, false, true, ""},
+		{"Film.2021.1080p.BluRay.x264-GRP", "cn", map[string]string{LangOriginal: PrefMust}, false, true, ""},
+		{"Film.2021.1080p.BluRay.x264-GRP", "yue", map[string]string{"zh": PrefMust}, false, true, ""},
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "cn", map[string]string{"zh": PrefMust}, false, true, ""},
 		// …and with no Must, nothing is refused for it.
 		{"Film.2021.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefWant, "en": PrefAvoid}, false, true, ""},
 		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefWant}, false, true, ""},
@@ -333,6 +352,69 @@ func TestMultiCountsSwitch(t *testing.T) {
 			t.Errorf("switch %v: MULTi eligible %v %q", on, ev.Eligible, ev.RejectReason)
 		}
 	}
+}
+
+// The builder's "Test a release name" has no title, so no original language: an untagged
+// name is judged as before (not refused under a Must), a name that says the language is
+// taken, and a MULTi that doesn't say it is refused with a reason that explains both the
+// MULTi rule and why the original can't count here.
+func TestExplainUnderAMust(t *testing.T) {
+	sp := StoredProfile{MediaType: MediaMovie, Name: "it", AllowedResolutions: []string{"1080p"},
+		Ideal: &IdealFile{Language: map[string]string{"it": PrefMust}}}
+	s := &Service{}
+	for _, name := range []string{"Film.2021.1080p.BluRay.x264-GRP", "Film.2021.MULTi.ITA.1080p.BluRay.x264-GRP"} {
+		if ev := s.Explain(sp, name, 0, 0).Evaluation; !ev.Eligible {
+			t.Errorf("%s: refused %q", name, ev.RejectReason)
+		}
+	}
+	ev := s.Explain(sp, "Film.2021.MULTi.1080p.BluRay.x264-GRP", 0, 0).Evaluation
+	want := "Doesn't name Italian audio — your profile requires it, and a MULTi release only counts for the title's original language and the ones its name says (a name tested here has no title, so no original language)"
+	if ev.Eligible || ev.RejectReason != want {
+		t.Errorf("MULTi: eligible %v %q", ev.Eligible, ev.RejectReason)
+	}
+	// With the switch on, the MULTi is taken (unknown, no credit).
+	sp.MultiCountsLanguage = true
+	if ev := s.Explain(sp, "Film.2021.MULTi.1080p.BluRay.x264-GRP", 0, 0).Evaluation; !ev.Eligible {
+		t.Errorf("MULTi with the switch on: refused %q", ev.RejectReason)
+	}
+}
+
+// The spellings read since issue #58 (FRA, DEU, NLD, ESP, JAP, VFB) count for releases on
+// offer only. A file already in the library is judged as it was before them, so updating
+// changes no file's verdict: a Must it would stop meeting, a Prefer that would make it an
+// upgrade candidate, or its badge.
+func TestNewSpellingsDontMoveFileVerdicts(t *testing.T) {
+	forEachRanking(t, func(t *testing.T, mode string) {
+		s, ctx := testService(t)
+		setRanking(t, s, mode)
+		// An unprobed English film named ESP: before #58 the name said nothing (unknown);
+		// now it would read as Spanish-only and lack English.
+		cur := onDisk("Film.2021.ESP.1080p.BluRay.x264-GRP", nil)
+		mustEN := langStored(map[string]string{"en": PrefMust}, TriggerAny)
+		normalize(&mustEN)
+		if v := mustEN.JudgeFile(cur); !v.Eligible || v.Current.langShort {
+			t.Errorf("Must English: file refused %q (short %v)", v.Current.RejectReason, v.Current.langShort)
+		}
+		if f := mustEN.LanguageFit(cur); f != nil {
+			t.Errorf("Must English: badge %+v, want none", f)
+		}
+		// The same name as a release on offer is read as Spanish, and refused.
+		if ev := mustEN.Engine().Evaluate(mustEN.ToProfile(), enCand(cur.Release, 8)); ev.Eligible {
+			t.Error("the release on offer wasn't read as Spanish")
+		}
+		// Prefer French: a file named FRA isn't credited (no change), and an untagged-name
+		// file isn't upgraded to a FRA release either way — no language was read on it.
+		ref := upgradeProfile(t, s, langStored(map[string]string{"fr": PrefWant}, TriggerAny))
+		fra := onDisk("Film.2021.FRA.1080p.BluRay.x264-GRP", nil)
+		if _, _, ok := s.UpgradePick(ctx, ref, fra, []Candidate{enCand("Film.2021.TRUEFRENCH.1080p.BluRay.x264-FR", 8)}); ok {
+			t.Error("a FRA file was upgraded to a French release for a language it may have")
+		}
+		// A probed file is read by its tracks whatever its name says.
+		probed := onDisk("Film.2021.ESP.1080p.BluRay.x264-GRP", englishOnly)
+		if v := mustEN.JudgeFile(probed); !v.Eligible {
+			t.Errorf("probed English file refused %q", v.Current.RejectReason)
+		}
+	})
 }
 
 // Foreign-only stands aside per release, only for one carrying a language the profile

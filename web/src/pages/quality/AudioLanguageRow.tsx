@@ -34,7 +34,7 @@ export function AudioLanguageRow({ value, onChange, picker, multiCounts, onMulti
   onChange: (next: Record<string, TargetPref>) => void;
   /** The target's Must / Prefer / — / Avoid control, so the row looks like the others. */
   picker: (value: TargetPref, onChange: (p: TargetPref) => void, label: string) => ReactNode;
-  /** The profile's "MULTi releases count" switch (multi_counts_language), shown beside a Must. */
+  /** The profile's "MULTi and Dual Audio releases count" switch (multi_counts_language), shown beside a Must. */
   multiCounts?: boolean;
   onMultiCounts?: (on: boolean) => void;
 }) {
@@ -154,10 +154,10 @@ function MultiCountsSwitch({ on, onChange }: { on: boolean; onChange: (on: boole
         {on && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12l5 5L20 6" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>}
       </span>
       <span className="min-w-0 flex-1">
-        <span id={`${id}-label`} className="text-base font-semibold" style={{ color: on ? "var(--accent-text)" : "var(--ink)" }}>MULTi releases count as having a required language</span>
+        <span id={`${id}-label`} className="text-base font-semibold" style={{ color: on ? "var(--accent-text)" : "var(--ink)" }}>MULTi and Dual Audio releases count as having a required language</span>
         <span id={helpId} className="block text-xs text-ink-faint">
-          Some trackers (French ones especially) label releases MULTi when they carry the local language. Off: a MULTi that
-          doesn't name the language is skipped, unless it's the title's original language.
+          Some trackers (French ones especially) label releases MULTi when they carry the local language. Off: a MULTi or
+          Dual Audio release that doesn't name the language is skipped, unless it's the title's original language.
         </span>
       </span>
     </button>

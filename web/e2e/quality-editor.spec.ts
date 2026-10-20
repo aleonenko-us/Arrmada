@@ -185,7 +185,7 @@ test.describe("Quality editor", () => {
     await mockEditor(page, api);
     await page.goto("/quality/movie/hd-1080p");
     const row = page.getByTestId("audio-language-row");
-    const multi = row.getByRole("checkbox", { name: "MULTi releases count as having a required language" });
+    const multi = row.getByRole("checkbox", { name: "MULTi and Dual Audio releases count as having a required language" });
     // No Must, no switch: it changes nothing else.
     await expect(multi).toHaveCount(0);
     await row.getByRole("combobox", { name: "Add an audio language" }).fill("fren");
@@ -212,7 +212,7 @@ test.describe("Quality editor", () => {
         ? route.fulfill({ json: { ...hd, multi_counts_language: true, ideal: { language: { fr: "must" } } } })
         : route.fallback());
     await page.goto("/quality/movie/hd-1080p");
-    const multi = page.getByTestId("audio-language-row").getByRole("checkbox", { name: "MULTi releases count as having a required language" });
+    const multi = page.getByTestId("audio-language-row").getByRole("checkbox", { name: "MULTi and Dual Audio releases count as having a required language" });
     await expect(multi).toHaveAttribute("aria-checked", "true");
     await multi.click();
     await expect(multi).toHaveAttribute("aria-checked", "false");

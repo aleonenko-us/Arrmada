@@ -343,6 +343,10 @@ type Candidate struct {
 	// its probed facts (nil without an analysis).
 	onDisk bool
 	heard  *FileFacts
+	// tested marks a name typed into the profile builder's "Test a release name"
+	// (Service.Explain): there's no title behind it, so no original language, and a
+	// refusal says so.
+	tested bool
 }
 
 // alive reports whether the release can download at all: a usenet release always can, a
@@ -601,6 +605,11 @@ func NewDefaultEngine() *Engine { return NewEngine(DefaultFormats()) }
 
 // Evaluate scores one candidate against a profile.
 func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
+	if p.onDisk || c.onDisk {
+		// A file in the library (or the release it was converted from) keeps the language
+		// reading it had before issue #58's new spellings, so no verdict on it moves.
+		c.Release = c.Release.ForFile()
+	}
 	r := c.Release
 	ev := Evaluation{Candidate: c}
 	// The audio languages it carries, for the language rules and for the release row. Book
@@ -688,7 +697,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 			return ev
 		}
 		if len(lv.unnamed) > 0 {
-			ev.reject(RejectMissingLanguage, unnamedReason(lv.unnamed, audio, r))
+			ev.reject(RejectMissingLanguage, unnamedReason(lv.unnamed, r, baseLang(c.titleLang()) != "", c.tested))
 			return ev
 		}
 	}
