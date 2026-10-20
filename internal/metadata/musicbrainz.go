@@ -188,6 +188,53 @@ type ArtistResult struct {
 	Country        string   `json:"country,omitempty"`
 	Type           string   `json:"type,omitempty"` // Person | Group | …
 	Genres         []string `json:"genres,omitempty"`
+	// Aliases are the other names MusicBrainz knows the artist by (MUS-38): other
+	// scripts ("Utada Hikaru" for 宇多田ヒカル), legal and old names, search hints.
+	Aliases []ArtistAlias `json:"aliases,omitempty"`
+	// AKA is the alias a search matched when the artist's own name doesn't contain what
+	// was typed ("also known as"), set by the music service's lookup.
+	AKA string `json:"aka,omitempty"`
+}
+
+// ArtistAlias is one of an artist's other names on MusicBrainz.
+type ArtistAlias struct {
+	Name     string `json:"name"`
+	SortName string `json:"sort_name,omitempty"`
+	// Locale is the language (and script) the alias is for ("ja", "en"); "" when it isn't
+	// tied to one.
+	Locale string `json:"locale,omitempty"`
+	// Type is MusicBrainz's alias type: "Artist name", "Legal name", "Search hint".
+	Type string `json:"type,omitempty"`
+	// Primary marks the alias MusicBrainz treats as the name in its locale.
+	Primary bool `json:"primary,omitempty"`
+}
+
+// mbAlias is an alias as MusicBrainz sends it (locale, type and primary may be null).
+type mbAlias struct {
+	Name     string `json:"name"`
+	SortName string `json:"sort-name"`
+	Locale   string `json:"locale"`
+	Type     string `json:"type"`
+	Primary  bool   `json:"primary"`
+}
+
+// aliasesOf turns MusicBrainz's alias list into ArtistAliases, dropping blanks and
+// repeats of one name.
+func aliasesOf(in []mbAlias) []ArtistAlias {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ArtistAlias, 0, len(in))
+	seen := map[string]bool{}
+	for _, a := range in {
+		name := strings.TrimSpace(a.Name)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, ArtistAlias{Name: name, SortName: strings.TrimSpace(a.SortName), Locale: a.Locale, Type: a.Type, Primary: a.Primary})
+	}
+	return out
 }
 
 // ArtistDetails is a full artist record.
@@ -261,12 +308,13 @@ func (m *MusicBrainz) SearchArtists(ctx context.Context, query string) ([]Artist
 	}
 	var body struct {
 		Artists []struct {
-			ID             string `json:"id"`
-			Name           string `json:"name"`
-			SortName       string `json:"sort-name"`
-			Disambiguation string `json:"disambiguation"`
-			Country        string `json:"country"`
-			Type           string `json:"type"`
+			ID             string    `json:"id"`
+			Name           string    `json:"name"`
+			SortName       string    `json:"sort-name"`
+			Disambiguation string    `json:"disambiguation"`
+			Country        string    `json:"country"`
+			Type           string    `json:"type"`
+			Aliases        []mbAlias `json:"aliases"`
 		} `json:"artists"`
 	}
 	if err := m.lookup(ctx, mbKindSearch, "/artist", url.Values{"query": {strings.ToLower(strings.Join(strings.Fields(q), " "))}, "limit": {"15"}}, &body); err != nil {
@@ -277,12 +325,18 @@ func (m *MusicBrainz) SearchArtists(ctx context.Context, query string) ([]Artist
 		out = append(out, ArtistResult{
 			MBID: a.ID, Name: a.Name, SortName: a.SortName,
 			Disambiguation: a.Disambiguation, Country: a.Country, Type: a.Type,
+			Aliases: aliasesOf(a.Aliases),
 		})
 	}
 	return out, nil
 }
 
-// GetArtist fetches one artist, including genres.
+// mbArtistInc is what an artist lookup includes. Changing it changes every artist's cache
+// key, so a migration has to move the cached answers along (0344 did, for aliases).
+const mbArtistInc = "aliases genres"
+
+// GetArtist fetches one artist, including genres and its aliases (MUS-38). The aliases
+// come in the same call, so knowing an artist's other names costs nothing extra.
 func (m *MusicBrainz) GetArtist(ctx context.Context, mbid string) (*ArtistDetails, error) {
 	if strings.TrimSpace(mbid) == "" {
 		return nil, fmt.Errorf("musicbrainz: empty artist id")
@@ -298,8 +352,9 @@ func (m *MusicBrainz) GetArtist(ctx context.Context, mbid string) (*ArtistDetail
 			Name  string `json:"name"`
 			Count int    `json:"count"`
 		} `json:"genres"`
+		Aliases []mbAlias `json:"aliases"`
 	}
-	if err := m.lookup(ctx, mbKindArtist, "/artist/"+url.PathEscape(mbid), url.Values{"inc": {"genres"}}, &body); err != nil {
+	if err := m.lookup(ctx, mbKindArtist, "/artist/"+url.PathEscape(mbid), url.Values{"inc": {mbArtistInc}}, &body); err != nil {
 		return nil, err
 	}
 	// Genres come back unordered with a vote count; the most-voted few are the useful ones.
@@ -314,6 +369,7 @@ func (m *MusicBrainz) GetArtist(ctx context.Context, mbid string) (*ArtistDetail
 	return &ArtistDetails{ArtistResult: ArtistResult{
 		MBID: body.ID, Name: body.Name, SortName: body.SortName,
 		Disambiguation: body.Disambiguation, Country: body.Country, Type: body.Type, Genres: genres,
+		Aliases: aliasesOf(body.Aliases),
 	}}, nil
 }
 

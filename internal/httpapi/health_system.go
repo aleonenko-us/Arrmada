@@ -186,6 +186,10 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 	if a.deps.Movies != nil {
 		reg.Register(health.MovieFilesCheck(a.deps.Movies.MissingSweepWarning))
 	}
+	// The music file check's verdict (MUS-15), likewise from memory.
+	if a.deps.Automation != nil {
+		reg.Register(health.MusicFilesCheck(a.deps.Automation.MusicFilesWarning))
+	}
 
 	if a.deps.Recycle != nil {
 		reg.Register(health.RecycleDriveCheck(func() []health.RecycleBinProblem {

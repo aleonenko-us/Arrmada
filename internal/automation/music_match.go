@@ -12,6 +12,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/audiotag"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/extract"
+	"github.com/tristenlammi/arrmada/internal/mediainfo"
 	"github.com/tristenlammi/arrmada/internal/music"
 )
 
@@ -55,16 +56,28 @@ func (c *Coordinator) readMatchFile(path string) (tags music.FileTags, ms int, e
 	if c.musicTagsFn != nil {
 		return c.musicTagsFn(path)
 	}
+	tags, props, err := readAudioFacts(path)
+	if props != nil {
+		ms = int(props.DurationSec * 1000)
+	}
+	return tags, ms, err
+}
+
+// readAudioFacts reads one audio file's tags and what its headers say about the audio
+// (length, codec, sample rate, bit depth, channels, average bitrate), in-process: no
+// ffprobe, so the library scan can afford it for every new file. props is nil when the
+// headers couldn't be read.
+func readAudioFacts(path string) (tags music.FileTags, props *mediainfo.AudioInfo, err error) {
 	// A tag library meeting a file broken in a way nobody planned for must cost that
 	// file its tags, not the import loop.
 	defer func() {
 		if p := recover(); p != nil {
-			tags, ms, err = music.FileTags{}, 0, fmt.Errorf("reading tags: %v", p)
+			tags, props, err = music.FileTags{}, nil, fmt.Errorf("reading tags: %v", p)
 		}
 	}()
 	t, rerr := audiotag.Read(path)
 	if rerr != nil {
-		return music.FileTags{}, 0, rerr
+		return music.FileTags{}, nil, rerr
 	}
 	f := audiotag.FieldsOf(t)
 	tags = music.FileTags{
@@ -75,13 +88,19 @@ func (c *Coordinator) readMatchFile(path string) (tags music.FileTags, ms int, e
 		ISRC: f.ISRC, Barcode: f.Barcode, Label: f.Label, CatalogNumber: f.CatalogNumber,
 		Country: f.ReleaseCountry, Media: f.Media, Compilation: f.Compilation,
 	}
+	if len(f.MusicBrainzAlbumArtistIDs) > 0 {
+		tags.AlbumArtistMBID = f.MusicBrainzAlbumArtistIDs[0]
+	}
 	if f.Date == "" {
 		tags.Date = f.OriginalDate
 	}
 	if p, perr := audiotag.Properties(path); perr == nil {
-		ms = int(p.Duration.Milliseconds())
+		props = &mediainfo.AudioInfo{
+			Codec: p.Codec, BitrateKbps: p.Bitrate, BitsPerSample: p.BitDepth, SampleRateHz: p.SampleRate,
+			Channels: p.Channels, DurationSec: p.Duration.Seconds(),
+		}
 	}
-	return tags, ms, nil
+	return tags, props, nil
 }
 
 // readMatchFiles reads every file for the matcher. A cue sheet's virtual track (MUS-35)

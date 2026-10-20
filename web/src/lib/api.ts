@@ -3725,6 +3725,8 @@ export interface ArtistLookup {
   disambiguation?: string;
   country?: string;
   type?: string;
+  /** The alias the search matched when the name itself doesn't show it ("also known as"). */
+  aka?: string;
 }
 export interface ArtistStats {
   albums: number;
@@ -3754,6 +3756,10 @@ export interface MusicTrack {
   has_file: boolean;
   /** A file is recorded but has gone missing from disk. */
   missing?: boolean;
+  /** The last file check couldn't find the file (not missing until the next one agrees). */
+  not_found_since?: string;
+  /** The file check found it changed outside Arrmada (measured again since). */
+  changed_at?: string;
   file_path?: string;
   /** The measured tier ("FLAC-24", "MP3-320"), or an extension tag ("MP3") when unmeasured. */
   format?: string;
@@ -3820,6 +3826,9 @@ export interface MusicAlbum {
   edition_tracks?: number;
   /** The lowest tier among the tracks on disk (album detail only). */
   held_tier?: string;
+  /** Track files the file check found gone from disk, and changed outside Arrmada (MUS-15). */
+  missing_tracks?: number;
+  changed_tracks?: number;
   primary_type?: string;
   secondary_types?: string;
   /** The album's credit as it reads ("Daft Punk feat. Pharrell Williams"). */
@@ -4201,6 +4210,9 @@ export interface ImportReview {
   import_job?: Job;
   /** The music matcher's explanation of why it held the download (MUS-31). */
   match?: MusicMatchReport;
+  /** "library_scan": a folder already in the music library that the scan couldn't place
+   *  (MUS-37). It is matched where it is and can never be rejected. */
+  source?: "library_scan";
 }
 
 /** One field's part of a music match distance. */

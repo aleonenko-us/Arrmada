@@ -158,7 +158,7 @@ func (c *Coordinator) musicUpgradesDue(ctx context.Context) ([]upgradeDue, error
 		if !ok || len(music.UpgradeTiers(held, sp.FormatScores)) == 0 {
 			continue // at its cutoff, or a file's tier isn't known yet (measured later)
 		}
-		if len(active[al.ID]) > 0 || c.albumDownloading(queue, a, al) {
+		if len(active[al.ID]) > 0 || c.albumDownloading(ctx, queue, a, al) {
 			continue
 		}
 		st := states[al.ID]

@@ -145,7 +145,7 @@ export const artists: { artists: Artist[] } = { artists: [] };
 // Settings → Naming & metadata → Music matching (MUS-30/31): the shipped defaults.
 const matchingDefaults: MusicMatching = {
   strong: 0.04, expected: 0.15, review: 0.4, track_max: 0.3, gap: 0.03, partial_min: 0.5,
-  edition_policy: "original", edition_countries: [], edition_media: ["Digital Media", "CD"],
+  edition_policy: "original", edition_countries: [], edition_media: ["Digital Media", "CD"], scan_workers: 4,
 };
 export const musicMatching = { settings: matchingDefaults, defaults: matchingDefaults };
 

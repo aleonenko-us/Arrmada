@@ -32,6 +32,9 @@ type FileTags struct {
 	ISRC, Barcode, Label               string
 	CatalogNumber, Country, Media      string
 	Compilation                        bool
+	// AlbumArtistMBID is the first album-artist MBID the file carries: the library scan
+	// finds (or adds) the artist by it without a name search.
+	AlbumArtistMBID string
 }
 
 // tagged reports whether the tags say anything that identifies the file.
@@ -157,6 +160,10 @@ type MatchCandidate struct {
 	// compilation).
 	Credit         string
 	VariousArtists bool
+	// ArtistAliases are the album artist's other names (MUS-38): tags or a folder naming
+	// the artist by one fit as well as by the credit. Only the album's own artist's
+	// aliases are here, so they can only bring this album closer, never another.
+	ArtistAliases []string
 	// Target marks the album's target edition; Pinned that the album's edition is pinned.
 	Target, Pinned bool
 	// TrackCredits are the credits of tracks credited differently from the edition
@@ -180,6 +187,9 @@ type candTrack struct {
 	Credit                string
 	ISRCs                 []string
 	aliases               []string
+	// creditAliases are the album artist's aliases when the track carries the album's
+	// own credit (none for a track credited differently).
+	creditAliases []string
 }
 
 func (t *candTrack) hasAlias(mbid string) bool { return containsFold(t.aliases, mbid) }
@@ -211,13 +221,15 @@ func (c *MatchCandidate) trackList() []candTrack {
 		for _, rt := range m.Tracks {
 			idx++
 			credit := c.TrackCredits[rt.ID]
+			var creditAliases []string
 			if credit == "" {
-				credit = c.Credit
+				credit, creditAliases = c.Credit, c.ArtistAliases
 			}
 			out = append(out, candTrack{
 				ID: rt.ID, RecordingID: rt.RecordingID, MBID: rt.MBID, RecordingMBID: rt.RecordingMBID,
 				Disc: m.Position, Position: rt.Position, Index: idx, Title: rt.Title, LengthMs: rt.LengthMs,
 				Credit: credit, ISRCs: c.ISRCs[rt.RecordingID], aliases: aliases[strings.ToLower(rt.RecordingMBID)],
+				creditAliases: creditAliases,
 			})
 		}
 	}
@@ -310,6 +322,10 @@ type MatchInput struct {
 	Candidates []MatchCandidate
 	// GrabbedAlbumID is the album the download was grabbed for (0: nobody grabbed it).
 	GrabbedAlbumID int64
+	// ExpectedFromNames says GrabbedAlbumID comes from a library folder's names (the
+	// library scan), not a grab: with untagged files that is the only evidence, so only a
+	// whole album, or exactly the tracks still wanted, is placed.
+	ExpectedFromNames bool
 	// Forced: a person chose the album (Reviews' "import anyway", the library scan): the
 	// best fit is placed, file by file, and nothing goes to Reviews.
 	Forced bool
@@ -508,7 +524,10 @@ func Match(in MatchInput) MatchResult {
 		res.Decision = MatchImport
 	case res.wantedExactly(in.Wanted, best):
 		res.Decision = MatchPartial
-	case float64(len(res.Assignments)) >= s.PartialMin*float64(tracks) && best.Distance <= s.Review:
+	case !(nameOnly && in.ExpectedFromNames) && float64(len(res.Assignments)) >= s.PartialMin*float64(tracks) && best.Distance <= s.Review:
+		// With nothing but file and folder names to go on (no tags, and the album chosen by
+		// a folder's name rather than a grab), only a whole album or exactly the tracks
+		// still wanted is placed: part of an album by names alone is a guess.
 		res.Decision = MatchPartial
 	default:
 		res.Assignments = nil
@@ -872,7 +891,7 @@ func scoreCandidate(c *MatchCandidate, files []*MatchFile, cons consensus, pol E
 		d.addBool(CompAlbumID, !strings.EqualFold(cons.ReleaseMBID, ed.MBID))
 	}
 	if !c.VariousArtists && cons.Artist != "" && c.Credit != "" && !isVariousArtists(cons.Artist) {
-		d.add(CompArtist, stringDist(cons.Artist, c.Credit))
+		d.add(CompArtist, artistDist(cons.Artist, c.Credit, c.ArtistAliases))
 	}
 	if cons.Album != "" {
 		title := ed.Title

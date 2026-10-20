@@ -255,7 +255,7 @@ func TestMBRefreshBounded(t *testing.T) {
 	m, f, now := cachedMB(t)
 	ctx := context.Background()
 	for i := 0; i < 10; i++ {
-		_ = m.cache.put(ctx, mbKey(mbKindArtist, "/artist/a"+itoa(i), map[string][]string{"inc": {"genres"}}),
+		_ = m.cache.put(ctx, mbKey(mbKindArtist, "/artist/a"+itoa(i), map[string][]string{"inc": {mbArtistInc}}),
 			200, []byte(`{"id":"a","name":"A"}`), now.Add(-30*24*time.Hour))
 	}
 	f.set("hang") // every refresh sits until the client gives up
@@ -271,7 +271,7 @@ func TestMBRefreshBounded(t *testing.T) {
 
 	f.set("")
 	before := f.requests.Load()
-	held := mbKey(mbKindArtist, "/artist/a0", map[string][]string{"inc": {"genres"}})
+	held := mbKey(mbKindArtist, "/artist/a0", map[string][]string{"inc": {mbArtistInc}})
 	m.refreshing.Store(held, true)
 	if _, err := m.RefreshStale(ctx, 100); err != nil {
 		t.Fatal(err)

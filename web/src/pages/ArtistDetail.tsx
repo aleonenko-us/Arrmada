@@ -5,6 +5,7 @@ import { ArtistOptions } from "../components/music/ArtistOptions";
 import { AlbumSearchButton } from "../components/music/AlbumSearch";
 import { ArtistSearchButton } from "../components/music/ArtistSearch";
 import { foundWords } from "../components/music/releaseRules";
+import { albumFileMarks } from "../components/music/fileMarks";
 import { api, type Artist, type MusicAlbum, type MovieEvent } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { libraryStatus } from "../lib/status";
@@ -220,6 +221,9 @@ function AlbumRow({ al, onChange, credit }: { al: MusicAlbum; onChange: () => vo
           <div className="truncate text-xs text-ink-faint">
             {al.stale_since ? "No longer on MusicBrainz; kept with its files" : foundWords(al.found_as, al.monitored)}
           </div>
+        )}
+        {albumFileMarks(al) && (
+          <div className="truncate text-xs" style={{ color: "var(--avoid-text)" }}>{albumFileMarks(al)}</div>
         )}
       </Link>
       <span className="flex-none font-mono text-xs" style={{ color: tone }}>

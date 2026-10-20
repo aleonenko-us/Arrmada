@@ -59,10 +59,13 @@ type albumMode struct {
 // albumJudge holds what judging one album's releases needs.
 type albumJudge struct {
 	artist, album string
-	sp            quality.StoredProfile
-	nets          netPolicy
-	listing       music.SizeListing
-	mode          albumMode
+	// names are the artist's name and matchable aliases (MUS-38): a release named under an
+	// alias names the album too, when the artist's own name doesn't.
+	names   music.ArtistNames
+	sp      quality.StoredProfile
+	nets    netPolicy
+	listing music.SizeListing
+	mode    albumMode
 	// The release sets that keep a release out by its normalized title: read only when a
 	// release gets as far as needing them (readAlbumSets).
 	blocked, pending, exclude map[string]bool
@@ -72,6 +75,12 @@ type albumJudge struct {
 	imported importedReleases
 }
 
+// aliasNames reports whether a release names the album under one of the artist's aliases
+// (MUS-38), as the release's whole artist part.
+func (j *albumJudge) aliasNames(title string) bool {
+	return len(j.names.Aliases) > 0 && j.names.ReleaseIsForAlbum(title, j.album)
+}
+
 // early runs the checks that need nothing from the database (steps 1-3).
 func (j *albumJudge) early(rel indexer.Release) albumRelease {
 	r := albumRelease{rel: rel, tier: music.DetectQuality(rel.Title), code: classEligible}
@@ -79,7 +88,7 @@ func (j *albumJudge) early(rel indexer.Release) albumRelease {
 		r.stage, r.code, r.reason = stageNetwork, j.nets.dropCode(rel), why
 		return r
 	}
-	if why := music.WhyNotForAlbum(rel.Title, j.artist, j.album); why != "" {
+	if why := music.WhyNotForAlbum(rel.Title, j.artist, j.album); why != "" && !j.aliasNames(rel.Title) {
 		r.stage, r.code, r.reason = stageTitle, DropWrongTitle, why
 		return r
 	}
@@ -316,6 +325,9 @@ func (c *Coordinator) searchAlbumReleases(ctx context.Context, a music.Artist, a
 		c.log.Warn("music: search failed", "album", al.Title, "err", err)
 		return nil, sp, &albumOutcome{Code: outcomeIndexerError, Detail: err.Error()}
 	}
+	// Nothing named the album under the artist's own name: try its aliases (MUS-38).
+	names := c.music.ArtistNames(ctx, a)
+	res = c.searchAliases(ctx, res, names, al)
 	notes := notesFrom(ctx) // the album's search attempt, when it is recorded
 	notes.consider(res.Releases)
 	if len(res.Releases) == 0 {
@@ -329,7 +341,7 @@ func (c *Coordinator) searchAlbumReleases(ctx context.Context, a music.Artist, a
 		return nil, sp, &albumOutcome{Code: outcomeNoResults, Detail: "no releases"}
 	}
 	j := &albumJudge{
-		artist: a.Name, album: al.Title, sp: sp, nets: c.networks(ctx),
+		artist: a.Name, album: al.Title, names: names, sp: sp, nets: c.networks(ctx),
 		listing: music.ListingOf(tracks), mode: mode, exclude: exclude,
 	}
 	judged, err := c.judgeAlbum(ctx, al.ID, j, res.Releases)

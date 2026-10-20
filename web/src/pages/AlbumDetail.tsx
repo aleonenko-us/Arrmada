@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EditionPicker } from "../components/music/EditionPicker";
 import { AlbumSearch } from "../components/music/AlbumSearch";
+import { trackFileMark } from "../components/music/fileMarks";
+import { MissingFiles } from "../components/music/MissingFiles";
 import { api, type MusicAlbum, type MusicEdition, type MusicNote, type MusicTrack } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { MusicRenameModal } from "../components/music/MusicRenameModal";
@@ -197,6 +199,7 @@ export function AlbumDetail() {
         )}
 
         {al.notes && al.notes.length > 0 && <UpgradeNotes albumId={al.id} notes={al.notes} onResolved={load} />}
+        {(al.missing_tracks ?? 0) > 0 && <MissingFiles albumId={al.id} count={al.missing_tracks ?? 0} onDone={load} />}
         {picking && <EditionPicker albumId={al.id} onClose={() => setPicking(false)} onChanged={load} />}
 
         <h2 className="m-0 mb-3 mt-8 text-md font-bold">Tracks</h2>
@@ -329,6 +332,8 @@ function UpgradeNotes({ albumId, notes, onResolved }: { albumId: number; notes: 
 
 function TrackRow({ t }: { t: MusicTrack }) {
   const lossless = t.lossless ?? (t.format ? isLosslessTier(t.format) : false);
+  // The file check's marker (MUS-15): gone from disk, not found once, or changed elsewhere.
+  const mark = trackFileMark(t);
   return (
     <div
       className="flex items-center gap-3 border-b px-4 py-2 last:border-b-0 text-base"
@@ -342,6 +347,15 @@ function TrackRow({ t }: { t: MusicTrack }) {
         {/* The track's own artist, only when it isn't the album's ("feat." on one song). */}
         {t.artist_credit ? <span className="block truncate text-xs text-ink-faint">{t.artist_credit}</span> : null}
       </span>
+      {mark && (
+        <span
+          className="flex-none rounded px-1.5 py-0.5 font-mono text-2xs font-semibold uppercase"
+          title={mark[1]}
+          style={{ background: "var(--panel-2)", color: t.missing ? "var(--reject-text)" : "var(--avoid-text)" }}
+        >
+          {mark[0]}
+        </span>
+      )}
       {t.format ? (
         // Green only for lossless: the tier is measured from the file, so an MP3 in a
         // release labelled FLAC shows as the MP3 it is.
@@ -356,9 +370,9 @@ function TrackRow({ t }: { t: MusicTrack }) {
       <span className="w-[52px] flex-none text-right font-mono text-xs text-ink-faint">{fmtDuration(t.duration_sec)}</span>
       <span
         className="w-[74px] flex-none text-right font-mono text-2xs font-semibold uppercase"
-        style={{ color: t.has_file ? "var(--good-text)" : "var(--avoid-text)" }}
+        style={{ color: t.has_file ? "var(--good-text)" : t.missing ? "var(--reject-text)" : "var(--avoid-text)" }}
       >
-        {t.has_file ? "downloaded" : "wanted"}
+        {t.has_file ? "downloaded" : t.missing ? "file missing" : "wanted"}
       </span>
     </div>
   );

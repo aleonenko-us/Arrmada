@@ -25,12 +25,19 @@ type fakeMusicProvider struct {
 	albums  map[string][]metadata.AlbumResult // artist MBID → release groups
 	tracks  map[string][]metadata.TrackResult // release-group MBID → listing
 	listing int                               // AlbumTracks calls made
+	// search answers an artist search by its exact query (nil: nothing found); searches
+	// counts them.
+	search   map[string][]metadata.ArtistResult
+	searches int
 }
 
 func (f *fakeMusicProvider) Available() bool { return true }
 
-func (f *fakeMusicProvider) SearchArtists(context.Context, string) ([]metadata.ArtistResult, error) {
-	return nil, nil
+func (f *fakeMusicProvider) SearchArtists(_ context.Context, q string) ([]metadata.ArtistResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.searches++
+	return f.search[q], nil
 }
 
 func (f *fakeMusicProvider) GetArtist(_ context.Context, mbid string) (*metadata.ArtistDetails, error) {

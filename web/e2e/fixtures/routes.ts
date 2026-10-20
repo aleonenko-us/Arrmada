@@ -217,6 +217,10 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get(/^\/api\/v1\/music\/albums\/\d+\/search-state$/, { upgrade: { profile: "Lossless", state: "incomplete", cutoff: "FLAC" } }),
     get(/^\/api\/v1\/music\/albums\/\d+\/releases$/, { profile: "lossless", releases: [] }),
     { method: "POST", path: /^\/api\/v1\/music\/artists\/\d+\/search$/, status: 202, body: { status: "searching" } },
+    // MUS-15: albums with track files gone from disk (none in the fixtures), and the scan's
+    // last summary (none yet).
+    get("/api/v1/music/search-missing", { albums: 0 }),
+    get("/api/v1/music/scan", { last: null }),
     // Per media, as the server answers: ?media=series lists the series profiles.
     { method: "GET", path: "/api/v1/quality/profiles", respond: ({ url }) => (url.searchParams.get("media") === "series" ? media.seriesQualityProfiles : media.qualityProfiles) },
     // Settings → Downloads and → Book server (only the full Settings sweep visits them).

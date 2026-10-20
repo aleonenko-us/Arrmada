@@ -1312,7 +1312,7 @@ The owner sees a wall of wanted albums with no way to tell whether Arrmada searc
   - **Risk:** The synchronous search holds a request for up to 90 s, the same pattern as book releases. The background artist search is an untracked goroutine until BE's job runner exists; move it there when that lands.
   - **Resolves:** music-9
 <a id="mus-15"></a>
-- [ ] **MUS-15 · Tracks whose files vanish go back to Wanted, safely (disc folders move to the matcher)** — `P2` · `M` · Phase 15 · R3
+- [x] **MUS-15 · Tracks whose files vanish go back to Wanted, safely (disc folders move to the matcher)** — `P2` · `M` · Phase 15 · R3
   - **Rebuild note (2026-10-19):** Re-scoped onto the new model. Step 1 (CD1/CD2 folders as one album) moves into the matcher's grouping ([MUS-31](#mus-31)) and scan v2 ([MUS-37](#mus-37)). This task keeps step 2–4, the verify pass, over music_track_files: a vanished file sets missing_since on its row (kept, so a remount re-links it by path or file id), its album counts it as missing and is wanted again, with one event per album. The guards stay: a missing or unreadable music root, or more than 20% of files gone at once, changes nothing and raises a health warning (the Phase 10 movie missing-file pattern).
   - **Problem:** findAlbumFolders reads Artist/Album/CD1 as artist 'Album', album 'CD1' (internal/automation/music_scan.go:220-228). Multi-disc albums never catalogue, and scanResolveArtist may even create an unrelated artist on an exact name hit (:111-129).
 
@@ -1428,7 +1428,7 @@ ClearTrackFile (internal/music/service.go:197-200) has no callers and the scan o
   - **Risk:** Unusually long or hi-res albums could fall outside the window, so the bounds are generous and the reason is visible in interactive search.
   - **Resolves:** music-15
 <a id="mus-37"></a>
-- [ ] **MUS-37 · Library scan v2: parallel, incremental and throttled; reads tags and MBIDs; unmatched folders go to Reviews** — `P2` · `L` · Phase 15 · R3
+- [x] **MUS-37 · Library scan v2: parallel, incremental and throttled; reads tags and MBIDs; unmatched folders go to Reviews** — `P2` · `L` · Phase 15 · R3
   - **Problem:** ScanMusicLibrary walks the folder, guesses `Artist/Album` from folder names, creates an artist only on an exact name match, reports nothing back, and re-reads everything every time. Lidarr's scans of large libraries take hours and gigabytes of RAM. Owners importing an existing collection need a scan that is fast, uses the tags and MBIDs their files already carry, and shows what it couldn't place. Supersedes [MUS-20](#mus-20).
   - **Approach:** 1. **Incremental:** compare each file's size, mtime and file id with music_track_files; unchanged files aren't opened. A moved file (same file id, new path) updates its row instead of looking deleted.
     2. **Parallel and throttled:** a bounded worker pool (default 4, a setting) for tag reads and probes, through toolrun at idle priority; a per-run cap so a first scan of a huge library proceeds in chunks; progress through the job runner.
@@ -1450,7 +1450,7 @@ ClearTrackFile (internal/music/service.go:197-200) has no callers and the scan o
   - **Risk:** First scans of big libraries still take a long time because of MusicBrainz's 1/s (the cache helps on every later run); progress and chunking make that visible.
   - **Resolves:** music-14
 <a id="mus-38"></a>
-- [ ] **MUS-38 · Find artists by any of their names: aliases, other scripts and old names** — `P2` · `S` · Phase 15 · R3
+- [x] **MUS-38 · Find artists by any of their names: aliases, other scripts and old names** — `P2` · `S` · Phase 15 · R3
   - **Problem:** Search, release matching and the scan use only an artist's primary name. Releases named by an alias, a transliteration or an old name never match (Lidarr issues with 30 and 39 reactions), and non-Latin artists are hard to add.
   - **Approach:** 1. Fetch aliases (`inc=aliases`) with the artist, cached; store them as music_external_ids `alias` rows (with locale and type), and keep the primary-locale Latin alias when the name isn't Latin.
     2. Add-artist search shows a matching alias under the result ("also known as …").

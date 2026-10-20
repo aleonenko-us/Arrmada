@@ -9,6 +9,8 @@ import { isWanted, libraryStatus } from "../lib/status";
 import { Button, ErrorState, FilterBar, IconButton, LibraryToolbar, Modal, Skeleton, StatusChip, TONE_HUE, useConfirm, useToast } from "../ui";
 import { LibraryEmpty } from "../features/library/LibraryEmpty";
 import { NewReleasesModal } from "../components/music/NewReleases";
+import { ScanResultsModal } from "../components/music/ScanResults";
+import { musicApi } from "../lib/musicApi";
 import { Page } from "../ui/Page";
 
 const FILTERS = [
@@ -71,10 +73,18 @@ export function Music() {
   const confirm = useConfirm();
   // err shows the toast in the error colour: a scan that failed says so plainly.
   const say = (m: string, err = false) => toast(m, { tone: err ? "error" : "info", ms: 3500 });
-  // The scan runs as a job; when it ends the toast says what it found.
+  // The scan runs as a job; when it ends the toast says what it found, and the results
+  // drawer opens with the details (MUS-37).
   const [scanJob, setScanJob] = useState<number | null>(null);
+  const [showScan, setShowScan] = useState(false);
   const scan = useJob(scanJob, {
-    onDone: (j) => { setScanJob(null); load(); say(jobToast(j, "Scan finished."), jobFailed(j)); },
+    giveUpMs: 12 * 60 * 60 * 1000, // a first scan of a big collection runs for a long time
+    onDone: (j) => {
+      setScanJob(null);
+      load();
+      say(jobToast(j, "Scan finished."), jobFailed(j));
+      if (j.status === "succeeded") setShowScan(true);
+    },
   });
   // A failed first load is an error with Retry, never "No artists yet"; a failed refresh
   // keeps the last good list under the error banner.
@@ -83,9 +93,10 @@ export function Music() {
       .artists()
       .then((a) => { setArtists(a); setError(null); })
       .catch((e: Error) => setError(e.message));
-  const scanLibrary = async () => {
+  const scanLibrary = async (full = false) => {
+    setShowScan(false);
     try {
-      const r = await api.scanMusic();
+      const r = full ? await musicApi.scanLibrary(true) : await api.scanMusic();
       if (r.job_id) setScanJob(r.job_id);
       // The scan runs in the background — one MusicBrainz lookup per unknown
       // artist at a request per second — so say so rather than implying it's done.
@@ -94,8 +105,32 @@ export function Music() {
       say((e as Error).message, true); // a toast: `error` is the list's own load state
     }
   };
+  // Albums with track files gone from disk (MUS-15): never searched by themselves, so the
+  // tools menu offers the search, after asking.
+  const [missingAlbums, setMissingAlbums] = useState(0);
+  const loadMissing = () => musicApi.missingAlbums().then((r) => setMissingAlbums(r.albums)).catch(() => {});
+  const [missingJob, setMissingJob] = useState<number | null>(null);
+  const missingSearch = useJob(missingJob, {
+    giveUpMs: 6 * 60 * 60 * 1000,
+    onDone: (j) => { setMissingJob(null); load(); void loadMissing(); say(jobToast(j, "Search finished."), jobFailed(j)); },
+  });
+  const searchAllMissing = async () => {
+    const ok = await confirm({
+      title: `Search for the missing tracks of ${missingAlbums} album${missingAlbums === 1 ? "" : "s"}?`,
+      body: "Their track files are gone from disk. Arrmada doesn't download them again by itself, because they may only be renamed or on a disk that's away. Search only if they're really gone.",
+      confirmLabel: "Search",
+    });
+    if (!ok) return;
+    try {
+      const r = await musicApi.searchAllMissing();
+      if (r.job_id) setMissingJob(r.job_id);
+    } catch (e) {
+      say((e as Error).message, true);
+    }
+  };
   useEffect(() => {
     load();
+    void loadMissing();
     qualityApi.qualityProfiles("music")
       .then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name, isDefault: p.is_default }))))
       .catch(() => {});
@@ -150,8 +185,21 @@ export function Music() {
             label: "Scan library",
             busyLabel: "Scanning…",
             busy: scan.running,
-            title: "Find artists already in your music folder and catalog them",
-            onClick: scanLibrary,
+            progress: scan.running && scan.message ? scan.message : undefined,
+            title: "Find music already in your music folder and catalog it where it is",
+            onClick: () => void scanLibrary(),
+          }, {
+            label: "Last scan results",
+            title: "What the last library scan found, and the folders waiting to be matched",
+            onClick: () => setShowScan(true),
+          }, {
+            label: `Search for missing tracks (${missingAlbums})`,
+            busyLabel: "Searching for missing tracks…",
+            busy: missingSearch.running,
+            progress: missingSearch.running && missingSearch.message ? missingSearch.message : undefined,
+            title: "Search for the albums whose track files are gone from disk",
+            hidden: missingAlbums === 0,
+            onClick: () => void searchAllMissing(),
           }]}
           actions={[{
             label: "New releases",
@@ -257,7 +305,7 @@ export function Music() {
         {artists === null ? (
           error ? <ErrorState what="your artists" message={error} onRetry={load} /> : <Skeleton variant="list" />
         ) : artists.length === 0 ? (
-          <LibraryEmpty noun="artists" folder="music folder" addLabel="Add artist" onScan={scanLibrary} scanning={scan.running} />
+          <LibraryEmpty noun="artists" folder="music folder" addLabel="Add artist" onScan={() => void scanLibrary()} scanning={scan.running} />
         ) : shown.length === 0 ? (
           <div className="rounded-xl p-10 text-center text-base text-ink-dim" style={{ border: "1px solid var(--line)" }}>
             No artists match this filter.
@@ -288,6 +336,7 @@ export function Music() {
         />
       )}
       {showNew && <NewReleasesModal onClose={() => { setShowNew(false); load(); }} />}
+      {showScan && <ScanResultsModal onClose={() => setShowScan(false)} onRescan={(full) => void scanLibrary(full)} />}
     </>
   );
 }
@@ -499,6 +548,7 @@ function AddArtistModal({ profiles, onClose, onAdded }: { profiles: { key: strin
                       {r.name}
                       {r.disambiguation && <span className="ml-2 text-sm text-ink-faint">({r.disambiguation})</span>}
                     </div>
+                    {r.aka && <div className="truncate text-sm text-ink-dim">also known as {r.aka}</div>}
                     <div className="truncate font-mono text-xs text-ink-faint">
                       {[r.type, r.country].filter(Boolean).join(" · ") || r.mbid}
                     </div>

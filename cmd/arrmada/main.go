@@ -906,6 +906,15 @@ func main() {
 		coordinator.UpgradeMusic(ctx)
 		return nil
 	}, scheduler.Label("Look for better album releases"), scheduler.Description("Grabs a better copy of a complete album when its quality profile allows upgrades and the files are below the profile's top tier. Searches at most 10 albums a run and grabs no more than the per-sweep limit (Settings → Downloads); replaced files go to the recycle bin."))
+	// Check recorded music files against the disk (MUS-15). Daily: it stats every recorded
+	// file, which can wake array disks. It only marks; it never deletes or forgets a file.
+	sched.Register("verify-music-files", 24*time.Hour, false, func(ctx context.Context) error {
+		_, err := coordinator.VerifyMusicFiles(ctx)
+		if errors.Is(err, automation.ErrModuleOff) {
+			return nil
+		}
+		return err
+	}, scheduler.Label("Check music files"), scheduler.Description("Notices music files that vanished from disk or changed outside Arrmada. A file not found twice, a day apart, is marked as gone from disk; it is never downloaded again by itself (Search for missing tracks on the album page). A changed one is measured again. Never deletes anything; if the music folder or a share in it looks unmounted it marks nothing and raises a health warning."))
 	// Bring stale MusicBrainz answers up to date, slowly, on the background lane: cached
 	// answers are never removed, and a page open never waits on this.
 	sched.Register("refresh-music-cache", 6*time.Hour, false, func(ctx context.Context) error {

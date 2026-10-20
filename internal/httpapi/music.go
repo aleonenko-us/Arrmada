@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -280,31 +281,36 @@ func (a *api) musicErr(w http.ResponseWriter, err error, msg string) {
 // collection means one MusicBrainz lookup per unknown artist at one request per second,
 // far longer than any sensible request timeout.
 func (a *api) handleScanMusicLibrary(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		// Full looks at every folder again, ignoring what earlier scans remembered.
+		Full bool `json:"full"`
+	}
+	if r.ContentLength > 0 && !a.decodeJSON(w, r, &req) { // body optional
+		return
+	}
+	full := req.Full
 	// One scan at a time (single-flight): two overlapping runs would double every
 	// MusicBrainz lookup and race each other's writes. Its own class, so an hours-long music
 	// scan doesn't hold up the other libraries' scans.
 	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "music.scan", Target: "all", Class: "music.scan", Timeout: libraryScanTimeout,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
-			res, err := a.deps.Automation.ScanMusicLibrary(ctx, func(done, total int) {
+			p.SetMessage("Walking the music folder…")
+			res, err := a.deps.Automation.ScanMusicLibraryWith(ctx, automation.MusicScanOptions{Full: full}, func(done, total int) {
 				if total > 0 {
-					p.Set(float64(done)/float64(total), fmt.Sprintf("Scanning %s / %s album folders", thousands(done), thousands(total)))
+					p.Set(float64(done)/float64(total), fmt.Sprintf("Reading %s / %s album folders", thousands(done), thousands(total)))
 				}
 			})
 			if err != nil {
 				return nil, err
 			}
 			a.deps.Log.Info("music scan complete", "artists", res.Artists, "albums", res.Albums,
-				"tracks", res.Tracks, "unmatched", len(res.Unmatched))
+				"tracks", res.Tracks, "reviews", res.Reviews)
 			a.deps.Bus.Publish("library.scanned", map[string]any{
 				"media": "music", "artists": res.Artists, "albums": res.Albums,
-				"tracks": res.Tracks, "unmatched": len(res.Unmatched),
+				"tracks": res.Tracks, "unmatched": res.Reviews,
 			})
-			msg := fmt.Sprintf("Found %s, %s and %s", countOf(res.Artists, "artist"), countOf(res.Albums, "album"), countOf(res.Tracks, "track"))
-			if n := len(res.Unmatched); n > 0 {
-				msg += "; " + countOf(n, "folder") + " not recognised"
-			}
-			p.SetMessage(msg)
-			return map[string]int{"artists": res.Artists, "albums": res.Albums, "tracks": res.Tracks, "unmatched": len(res.Unmatched)}, nil
+			p.SetMessage(musicScanMessage(res))
+			return res, nil
 		}})
 	if !ok {
 		return
@@ -314,6 +320,37 @@ func (a *api) handleScanMusicLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.accepted(w, jobID, false, map[string]any{"status": "scanning"})
+}
+
+// musicScanMessage is a finished scan's one line: what it found, and what's left to do.
+func musicScanMessage(res automation.MusicScanResult) string {
+	msg := fmt.Sprintf("Found %s, %s and %s", countOf(res.Artists, "new artist"), countOf(res.Albums, "album"), countOf(res.Tracks, "track"))
+	if res.Moved > 0 {
+		msg += "; followed " + countOf(res.Moved, "moved file")
+	}
+	if res.Reviews > 0 {
+		msg += "; " + countOf(res.Reviews, "folder") + " to match in Reviews"
+	}
+	if n := res.Remaining + res.Failed + res.Waiting; n > 0 {
+		msg += "; " + countOf(n, "folder") + " left for the next scan"
+	}
+	return msg + "."
+}
+
+// handleMusicScanStatus answers the last library scan's summary (counts and timings), for
+// the scan results drawer.
+func (a *api) handleMusicScanStatus(w http.ResponseWriter, r *http.Request) {
+	summary, started, finished, ok, err := a.deps.Music.LastScanRun(r.Context())
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not read the last scan")
+		return
+	}
+	out := map[string]any{"last": nil}
+	if ok && json.Valid([]byte(summary)) {
+		out["last"] = json.RawMessage(summary)
+		out["started_at"], out["finished_at"] = started, finished
+	}
+	a.writeJSON(w, http.StatusOK, out)
 }
 
 // handleGrabDiscography grabs a whole-catalogue pack for an artist.

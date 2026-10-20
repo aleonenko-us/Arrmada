@@ -52,8 +52,10 @@ func (c *Coordinator) RankAlbumReleases(ctx context.Context, albumID int64) (Rel
 		}
 		return ReleaseList{}, err
 	}
+	names := c.music.ArtistNames(ctx, a)
+	res = c.searchAliases(ctx, res, names, al)
 	nets := c.networks(ctx)
-	j := &albumJudge{artist: a.Name, album: al.Title, sp: sp, nets: nets, listing: listing, mode: mode}
+	j := &albumJudge{artist: a.Name, album: al.Title, names: names, sp: sp, nets: nets, listing: listing, mode: mode}
 	judged, err := c.judgeAlbum(ctx, al.ID, j, res.Releases)
 	if err != nil {
 		return ReleaseList{}, fmt.Errorf("couldn't read the album's blocklist or pending grabs: %w", err)

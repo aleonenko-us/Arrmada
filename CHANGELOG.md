@@ -26,6 +26,17 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Before you update
 
+- **Missing music files are flagged, not downloaded again.** When a track file is gone on two
+  checks a day apart, the album says "N track files gone from disk" and isn't searched by
+  itself, like movies. Use **Search for missing tracks** on the album page, or Music → Library
+  tools for all of them at once. If the music folder, or the folder above a missing file, looks
+  empty or unmounted, or too many files vanish at once, nothing is marked and a health warning
+  shows instead.
+
+- **A music library scan of an empty or unmounted music folder is refused** and changes nothing.
+  Untagged folders matched only by their name are placed only as a whole album (or exactly the
+  tracks still wanted); anything else goes to Reviews.
+
 - **Music upgrades are off until you turn them on.** The update switches automatic upgrades off
   on every music profile, and new profiles and presets start with them off. Turn them on per
   profile (Quality → Music → Automatically upgrade).
@@ -230,6 +241,13 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   still downloading). Video and implausibly sized releases are dropped. With upgrades turned on
   for a profile, a paced sweep replaces albums with strictly better quality, never a downgrade,
   old files to the recycle bin.
+- **Music (Preview) scans big libraries fast and keeps an eye on your files.** The library scan
+  reads tags (files with MusicBrainz IDs match straight away), runs in the background, and a
+  rescan only opens folders that changed. It never moves, retags or deletes anything; folders it
+  can't place go to Reviews with **Match…**. A daily "Check music files" task notices files that
+  vanished or changed outside Arrmada and shows them as gone from disk; it never deletes anything
+  and never downloads them again by itself. Artists are found under their other names too
+  ("Beyonce", "宇多田ヒカル").
 
 ### Changed
 

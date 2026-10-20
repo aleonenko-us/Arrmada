@@ -67,6 +67,7 @@ var ignoredPathColumns = map[string]string{
 	"tracks.file_path":                     "music has one folder",
 	"music_track_files.path":               "music has one folder",
 	"music_migration_notes.path":           "music has one folder (and the notes are an audit trail)",
+	"music_scan_dirs.path":                 "music has one folder (and it's only the library scan's cache)",
 	"imports.source_path":                  "the download, not the library file",
 	"import_reviews.content_path":          "the download, not the library file",
 	"convert_history.hold_path":            "the original stays in its folder's hold until the undo window ends",

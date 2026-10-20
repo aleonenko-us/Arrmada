@@ -237,6 +237,8 @@ GET /api/v1/music/naming/preview staff -
 GET /api/v1/music/new-releases staff -
 GET /api/v1/music/organize staff -
 GET /api/v1/music/release-defaults staff -
+GET /api/v1/music/scan staff -
+GET /api/v1/music/search-missing staff -
 GET /api/v1/notifications staff -
 GET /api/v1/notifications/catalog staff -
 GET /api/v1/notifications/presets staff -
@@ -447,6 +449,7 @@ POST /api/v1/music/albums/{id}/grab staff -
 POST /api/v1/music/albums/{id}/notes/{note}/resolve staff -
 POST /api/v1/music/albums/{id}/rename staff -
 POST /api/v1/music/albums/{id}/retag staff -
+POST /api/v1/music/albums/{id}/search-missing staff -
 POST /api/v1/music/artists staff -
 POST /api/v1/music/artists/{id}/discography staff -
 POST /api/v1/music/artists/{id}/options/apply staff -
@@ -454,6 +457,7 @@ POST /api/v1/music/artists/{id}/refresh staff -
 POST /api/v1/music/artists/{id}/search staff -
 POST /api/v1/music/organize staff -
 POST /api/v1/music/scan staff -
+POST /api/v1/music/search-missing staff -
 POST /api/v1/notifications admin -
 POST /api/v1/notifications/test admin -
 POST /api/v1/notifications/{id}/test admin -

@@ -57,6 +57,37 @@ test.describe("manager", () => {
   });
 });
 
+// MUS-37: a folder the library scan couldn't place is matched where it is, and can't be
+// rejected (that would delete library files).
+const scannedFolder: ImportReview = {
+  id: 9, hash: "music-scan:0123456789abcdef01234567", name: "Unsorted/rip-0042",
+  content_path: "/media/music/Unsorted/rip-0042", media_type: "music",
+  expected_id: 0, expected_title: "", parsed_title: "rip-0042",
+  reason: "No artist called \"Unsorted\" is in your library or on MusicBrainz.",
+  reason_code: "unmatched", size_bytes: 6e8, indexer: "", created_at: "2026-10-20 07:00:00", source: "library_scan",
+};
+
+test.describe("manager, library scan", () => {
+  test.use({ persona: "manager" });
+
+  test("a scanned folder is matched in place, never rejected", async ({ page, api }) => {
+    await page.route((u) => u.pathname === "/api/v1/reviews", (route) => json(route, { reviews: [scannedFolder] }));
+    await page.route((u) => u.pathname === "/api/v1/reviews/9/targets", (route) =>
+      json(route, { targets: [{ id: 51, kind: "music", title: "Low Tide", year: 2019, subtitle: "The Quiet Harbours" }] }));
+    await page.goto("/activity/needs-you");
+    const card = page.getByTestId("review-card").filter({ hasText: "rip-0042" });
+    await expect(card.getByText("Library scan", { exact: true })).toBeVisible();
+    await expect(card.getByRole("button", { name: /Reject/ })).toHaveCount(0);
+    await expect(card.getByRole("button", { name: "Remove download" })).toHaveCount(0);
+    await card.getByRole("button", { name: "Match…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Match this folder to an album…" });
+    await dialog.getByRole("button", { name: /Low Tide/ }).click();
+    await expect.poll(() => api.callsTo("POST", "/api/v1/reviews/9/import").map((c) => c.body)).toEqual([
+      { target_id: 51, target_kind: "music" },
+    ]);
+  });
+});
+
 test.describe("admin", () => {
   test.use({ persona: "admin" });
 

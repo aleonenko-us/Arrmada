@@ -140,6 +140,8 @@ type Coordinator struct {
 	// musicPlace is music placement's wiring: house tags, covers, extras, album locks
 	// (music_placement.go).
 	musicPlace musicPlacement
+	// musicVerify is the music verify pass's last outcome (music_verify.go).
+	musicVerify musicVerifyState
 
 	// The stall clock — when each pending grab's download last moved forward — and when a
 	// stalled one last found no replacement are kept on its grab row (acquisitions.go), so

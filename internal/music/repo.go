@@ -312,8 +312,14 @@ const albumHead = `SELECT al.id, al.artist_id, al.mbid, al.title, al.year, al.al
 	COALESCE((SELECT c.display FROM music_artist_credits c WHERE c.id = al.artist_credit_id), ''),
 	COALESCE(al.target_release_id, 0), al.edition_pinned, al.found_at, al.found_as, al.stale_since, al.source, al.departure_checked_at,`
 
+// albumMarks are an album row's verify-pass markers (MUS-15): its track files gone from
+// disk, and those changed outside Arrmada. Indexed by album, like the counts.
+const albumMarks = `,
+	(SELECT COUNT(*) FROM music_track_files f WHERE f.album_id = al.id AND f.release_track_id IS NOT NULL AND f.missing_since IS NOT NULL),
+	(SELECT COUNT(*) FROM music_track_files f WHERE f.album_id = al.id AND f.changed_at IS NOT NULL AND f.missing_since IS NULL)`
+
 // albumSelect reads album rows with their counts.
-const albumSelect = albumHead + albumCounts + ` FROM albums al`
+const albumSelect = albumHead + albumCounts + albumMarks + ` FROM albums al`
 
 func scanAlbum(row interface{ Scan(...any) error }) (Album, error) {
 	var (
@@ -324,7 +330,7 @@ func scanAlbum(row interface{ Scan(...any) error }) (Album, error) {
 	if err := row.Scan(&al.ID, &al.ArtistID, &al.MBID, &al.Title, &al.Year, &al.AlbumType, &al.CoverURL,
 		&al.ReleaseDate, &mon, &al.AddedAt, &last, &al.SearchMisses, &al.PrimaryType, &al.SecondaryTypes,
 		&al.CreditID, &al.ArtistCredit, &al.TargetEditionID, &pinned, &found, &al.FoundAs, &stale, &al.Source, &departed,
-		&al.TrackCount, &al.HaveTracks, &al.SizeBytes, &al.EditionTracks); err != nil {
+		&al.TrackCount, &al.HaveTracks, &al.SizeBytes, &al.EditionTracks, &al.MissingTracks, &al.ChangedTracks); err != nil {
 		return Album{}, err
 	}
 	al.Monitored, al.EditionPinned = mon != 0, pinned != 0
@@ -469,11 +475,29 @@ func (r *Repo) UpsertAlbum(ctx context.Context, al Album) (int64, error) {
 //
 // An album MusicBrainz no longer lists (stale_since) is left out too: it is kept with its
 // files, and a person can still search for it by hand, but nothing searches it by itself.
+//
+// So is an album with a track file the file check found gone from disk (MUS-15): the file
+// may only be renamed, or on a disk that's away, and downloading it again by itself could
+// fill the library with copies of music the owner still has. The album page says the
+// files are gone and offers "Search for missing tracks"; that, or the file coming back,
+// is the way out. As movies do (movies/missing.go): flag, never re-want.
 func (r *Repo) WantedAlbums(ctx context.Context) ([]Album, error) {
 	return r.albums(ctx, `
 		JOIN artists ar ON ar.id = al.artist_id
 		WHERE al.monitored = 1 AND ar.monitored = 1 AND al.stale_since IS NULL
 		  AND NOT EXISTS (SELECT 1 FROM music_migration_notes n WHERE n.album_id = al.id AND `+openNote+`)
+		  AND NOT EXISTS (SELECT 1 FROM music_track_files f WHERE f.album_id = al.id AND f.missing_since IS NOT NULL
+		                  AND f.release_track_id IS NOT NULL)
+		ORDER BY al.id`)
+}
+
+// AlbumsWithMissingFiles lists the albums with a track file the file check found gone
+// from disk, for the "Search for missing tracks" bulk action. Monitoring doesn't matter:
+// the person asked.
+func (r *Repo) AlbumsWithMissingFiles(ctx context.Context) ([]Album, error) {
+	return r.albums(ctx, `
+		WHERE EXISTS (SELECT 1 FROM music_track_files f WHERE f.album_id = al.id AND f.missing_since IS NOT NULL
+		              AND f.release_track_id IS NOT NULL)
 		ORDER BY al.id`)
 }
 
@@ -590,7 +614,8 @@ func (r *Repo) TracksFor(ctx context.Context, albumID int64) ([]Track, error) {
 		       COALESCE(f.id, 0), COALESCE(f.path, ''), COALESCE(f.quality, ''), COALESCE(f.bitrate_kbps, 0),
 		       COALESCE(f.size_bytes, 0), COALESCE(f.source_release, ''), COALESCE(f.codec, ''),
 		       COALESCE(f.lossless, 0), COALESCE(f.sample_rate_hz, 0), COALESCE(f.bit_depth, 0),
-		       COALESCE(f.channels, 0), COALESCE(f.tag_state, ''), f.missing_since IS NOT NULL
+		       COALESCE(f.channels, 0), COALESCE(f.tag_state, ''), f.missing_since IS NOT NULL,
+		       COALESCE(f.missing_seen_at, ''), COALESCE(f.changed_at, '')
 		  FROM albums al
 		  JOIN music_releases r ON r.id = al.target_release_id
 		  JOIN music_media m ON m.release_id = r.id
@@ -613,7 +638,8 @@ func (r *Repo) TracksFor(ctx context.Context, albumID int64) ([]Track, error) {
 		if err := rows.Scan(&t.ID, &t.AlbumID, &t.MBID, &t.DiscNumber, &t.TrackNumber, &t.Number, &t.Title,
 			&lengthMs, &mon, &t.ArtistCredit, &t.RecordingID, &t.RecordingMBID,
 			&t.FileID, &t.FilePath, &t.Format, &t.BitrateKbps, &t.SizeBytes, &t.SourceRelease, &t.Codec,
-			&lossless, &t.SampleRateHz, &t.BitDepth, &t.Channels, &t.TagState, &missing); err != nil {
+			&lossless, &t.SampleRateHz, &t.BitDepth, &t.Channels, &t.TagState, &missing,
+			&t.NotFoundSince, &t.ChangedAt); err != nil {
 			return nil, err
 		}
 		t.DurationSec = lengthMs / 1000
@@ -706,6 +732,13 @@ type FileRecord struct {
 	// Probe is what ffprobe measured, nil when it couldn't: the scan's measuring pass
 	// picks the file up later (probed_at stays NULL).
 	Probe *mediainfo.AudioInfo
+	// Props are the facts the tag reader found in the file's headers (the library scan,
+	// which runs no ffprobe): recorded like a probe's, but probed_at stays NULL so the
+	// measuring pass still checks the file with ffprobe later. Ignored when Probe is set.
+	Props *mediainfo.AudioInfo
+	// FileID is the file's device and inode (FileIdentity), so a later scan sees a rename
+	// as a move rather than a delete; "" when it isn't known.
+	FileID string
 	// TagState is TagStateHouse for a file written in the house style (MUS-33); "" is
 	// TagStateAsFound. TagsFound is the tags it arrived with, as JSON: the audit trail,
 	// and what a retag replaced.
@@ -724,71 +757,79 @@ func (r *Repo) RecordTrackFile(ctx context.Context, trackID int64, rec FileRecor
 	if strings.TrimSpace(rec.Path) == "" {
 		return errors.New("music: a track file needs a path")
 	}
-	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error {
-		var albumID int64
-		if err := tx.QueryRowContext(ctx, `
-			SELECT r.album_id FROM music_release_tracks rt
-			  JOIN music_media m ON m.id = rt.medium_id
-			  JOIN music_releases r ON r.id = m.release_id
-			 WHERE rt.id = ?`, trackID).Scan(&albumID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return ErrNotFound
-			}
-			return err
+	return store.WithTx(ctx, r.db, func(tx *sql.Tx) error { return recordTrackFileTx(ctx, tx, trackID, rec) })
+}
+
+// recordTrackFileTx is RecordTrackFile inside a transaction (the scan records an album's
+// files in one).
+func recordTrackFileTx(ctx context.Context, tx *sql.Tx, trackID int64, rec FileRecord) error {
+	var albumID int64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT r.album_id FROM music_release_tracks rt
+		  JOIN music_media m ON m.id = rt.medium_id
+		  JOIN music_releases r ON r.id = m.release_id
+		 WHERE rt.id = ?`, trackID).Scan(&albumID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
 		}
-		var byTrack, byPath, pathTrack sql.NullInt64
-		if err := tx.QueryRowContext(ctx, `SELECT id FROM music_track_files WHERE release_track_id = ?`, trackID).Scan(&byTrack); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if err := tx.QueryRowContext(ctx, `SELECT id, release_track_id FROM music_track_files WHERE path = ?`, rec.Path).Scan(&byPath, &pathTrack); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if byPath.Valid && pathTrack.Valid && pathTrack.Int64 != trackID {
-			return ErrPathTaken
-		}
-		rowID := byTrack
-		if byTrack.Valid && byPath.Valid && byPath.Int64 != byTrack.Int64 {
-			// The new path was an extra of this album: it is this track's file now, so
-			// its row folds into the track's (rows only; the file stays where it is).
-			if _, err := tx.ExecContext(ctx, `DELETE FROM music_track_files WHERE id = ?`, byPath.Int64); err != nil {
-				return err
-			}
-		} else if !byTrack.Valid {
-			rowID = byPath
-		}
-		if !rowID.Valid {
-			if err := tx.QueryRowContext(ctx,
-				`INSERT INTO music_track_files (album_id, release_track_id, path) VALUES (?, ?, ?) RETURNING id`,
-				albumID, trackID, rec.Path).Scan(&rowID); err != nil {
-				return err
-			}
-		}
-		q := HeldTier(string(rec.Quality), rec.BitrateKbps)
-		lossless := IsLosslessQuality(q)
-		var p mediainfo.AudioInfo
-		probed := rec.Probe != nil
-		if probed {
-			p = *rec.Probe
-		}
-		_, err := tx.ExecContext(ctx, `
-			UPDATE music_track_files SET
-			  album_id = ?, release_track_id = ?, path = ?, size_bytes = ?, mtime_unix = ?, container = ?,
-			  lossless = ?, quality = ?, bitrate_kbps = ?, codec = ?, sample_rate_hz = ?, bit_depth = ?,
-			  channels = ?, duration_ms = ?,
-			  probed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END,
-			  source_release = CASE WHEN ? != '' THEN ? ELSE source_release END,
-			  download_hash = CASE WHEN ? != '' THEN ? ELSE download_hash END,
-			  tags_json = ?, tag_state = ?,
-			  tagged_at = CASE WHEN ? = 'house' THEN CURRENT_TIMESTAMP ELSE NULL END, missing_since = NULL,
-			  added_at = CURRENT_TIMESTAMP
-			 WHERE id = ?`,
-			albumID, trackID, rec.Path, rec.SizeBytes, rec.MtimeUnix, containerOf(rec.Path),
-			b2i(lossless), string(rec.Quality), rec.BitrateKbps, p.Codec, p.SampleRateHz, p.BitsPerSample,
-			p.Channels, int(p.DurationSec*1000), b2i(probed),
-			rec.SourceRelease, rec.SourceRelease, rec.DownloadHash, rec.DownloadHash,
-			rec.TagsFound, tagState(rec.TagState), tagState(rec.TagState), rowID.Int64)
 		return err
-	})
+	}
+	var byTrack, byPath, pathTrack sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM music_track_files WHERE release_track_id = ?`, trackID).Scan(&byTrack); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT id, release_track_id FROM music_track_files WHERE path = ?`, rec.Path).Scan(&byPath, &pathTrack); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if byPath.Valid && pathTrack.Valid && pathTrack.Int64 != trackID {
+		return ErrPathTaken
+	}
+	rowID := byTrack
+	if byTrack.Valid && byPath.Valid && byPath.Int64 != byTrack.Int64 {
+		// The new path was an extra of this album: it is this track's file now, so
+		// its row folds into the track's (rows only; the file stays where it is).
+		if _, err := tx.ExecContext(ctx, `DELETE FROM music_track_files WHERE id = ?`, byPath.Int64); err != nil {
+			return err
+		}
+	} else if !byTrack.Valid {
+		rowID = byPath
+	}
+	if !rowID.Valid {
+		if err := tx.QueryRowContext(ctx,
+			`INSERT INTO music_track_files (album_id, release_track_id, path) VALUES (?, ?, ?) RETURNING id`,
+			albumID, trackID, rec.Path).Scan(&rowID); err != nil {
+			return err
+		}
+	}
+	q := HeldTier(string(rec.Quality), rec.BitrateKbps)
+	lossless := IsLosslessQuality(q)
+	var p mediainfo.AudioInfo
+	probed := rec.Probe != nil
+	switch {
+	case probed:
+		p = *rec.Probe
+	case rec.Props != nil:
+		p = *rec.Props
+	}
+	_, err := tx.ExecContext(ctx, `
+		UPDATE music_track_files SET
+		  album_id = ?, release_track_id = ?, path = ?, size_bytes = ?, mtime_unix = ?, file_id = ?, container = ?,
+		  lossless = ?, quality = ?, bitrate_kbps = ?, codec = ?, sample_rate_hz = ?, bit_depth = ?,
+		  channels = ?, duration_ms = ?,
+		  probed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END,
+		  source_release = CASE WHEN ? != '' THEN ? ELSE source_release END,
+		  download_hash = CASE WHEN ? != '' THEN ? ELSE download_hash END,
+		  tags_json = ?, tag_state = ?,
+		  tagged_at = CASE WHEN ? = 'house' THEN CURRENT_TIMESTAMP ELSE NULL END, missing_since = NULL,
+		  missing_seen_at = NULL, changed_at = NULL,
+		  added_at = CURRENT_TIMESTAMP
+		 WHERE id = ?`,
+		albumID, trackID, rec.Path, rec.SizeBytes, rec.MtimeUnix, rec.FileID, containerOf(rec.Path),
+		b2i(lossless), string(rec.Quality), rec.BitrateKbps, p.Codec, p.SampleRateHz, p.BitsPerSample,
+		p.Channels, int(p.DurationSec*1000), b2i(probed),
+		rec.SourceRelease, rec.SourceRelease, rec.DownloadHash, rec.DownloadHash,
+		rec.TagsFound, tagState(rec.TagState), tagState(rec.TagState), rowID.Int64)
+	return err
 }
 
 // containerOf is a file's container, from its extension ("flac", "mp3").

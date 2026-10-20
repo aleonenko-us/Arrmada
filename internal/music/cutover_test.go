@@ -115,8 +115,8 @@ func TestCompletenessFromTheTargetEdition(t *testing.T) {
 	}
 
 	wanted, _ := r.WantedAlbums(ctx)
-	if len(wanted) != 5 {
-		t.Errorf("wanted albums = %d, want every monitored album (completeness is the sweep's call)", len(wanted))
+	if len(wanted) != 4 {
+		t.Errorf("wanted albums = %d, want every monitored album but the one with a file gone from disk (completeness is the sweep's call; a missing file is never searched by itself)", len(wanted))
 	}
 }
 

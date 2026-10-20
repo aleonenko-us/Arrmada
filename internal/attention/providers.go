@@ -106,6 +106,14 @@ func (p requestsProvider) Collect(ctx context.Context, _ *Frame) ([]Item, error)
 
 // --- reviews -------------------------------------------------------------------------
 
+// scanFoldersTitle is the Needs-you line for the library scan's held folders.
+func scanFoldersTitle(n int) string {
+	if n == 1 {
+		return "1 music folder from the library scan needs matching"
+	}
+	return fmt.Sprintf("%d music folders from the library scan need matching", n)
+}
+
 // HeldReviews is the Review source.
 type HeldReviews interface {
 	ListReviews(ctx context.Context) ([]automation.Review, error)
@@ -127,7 +135,31 @@ func (p reviewsProvider) Collect(ctx context.Context, _ *Frame) ([]Item, error) 
 		return nil, err
 	}
 	out := make([]Item, 0, len(list))
+	// Folders the music library scan couldn't place are one item, however many: a first
+	// scan of a big collection can hold hundreds, and each is the same decision (MUS-37).
+	scanned, since := 0, int64(0)
 	for _, rv := range list {
+		if automation.IsLibraryScanReview(rv) {
+			scanned++
+			if t := sqliteMillis(rv.CreatedAt); since == 0 || (t > 0 && t < since) {
+				since = t
+			}
+		}
+	}
+	if scanned > 0 {
+		it := Item{
+			Key: KindReview + ":music-scan", Kind: KindReview, Level: LevelWarning, Name: "Music library scan",
+			Title:  scanFoldersTitle(scanned),
+			Detail: "The scan couldn't tell which album they are. Match each to an album in Reviews; nothing on disk changes.",
+			Since:  since,
+		}
+		linkTo(&it, health.FixReview)
+		out = append(out, it)
+	}
+	for _, rv := range list {
+		if automation.IsLibraryScanReview(rv) {
+			continue
+		}
 		name := rv.ExpectedTitle
 		if name == "" {
 			name = rv.Name
