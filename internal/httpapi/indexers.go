@@ -326,7 +326,7 @@ func (a *api) handleTestIndexer(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		// A failed connection test is a valid result, not a server error.
-		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": connstatus.Friendly(err)})
 		return
 	}
 	out := map[string]any{"ok": true}
@@ -406,7 +406,7 @@ func (a *api) handleTestIndexerSettings(w http.ResponseWriter, r *http.Request) 
 	}
 	summary, err := a.deps.Indexers.TestSettings(r.Context(), idx)
 	if err != nil {
-		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": connstatus.Friendly(err)})
 		return
 	}
 	out := map[string]any{"ok": true}

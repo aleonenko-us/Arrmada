@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/eventbus"
 	"github.com/tristenlammi/arrmada/internal/geoip"
 	"github.com/tristenlammi/arrmada/internal/mediaserver"
@@ -291,7 +292,7 @@ func (s *Service) Test(ctx context.Context, url, token string) (TestResult, erro
 	c := plex.New(url, token)
 	id, err := c.Identity(ctx)
 	if err != nil {
-		return TestResult{OK: false, Error: err.Error()}, nil
+		return TestResult{OK: false, Error: connstatus.Friendly(err)}, nil
 	}
 	name, _ := c.ServerName(ctx)
 	if url == savedURL && token == savedToken {

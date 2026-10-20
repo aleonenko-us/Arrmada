@@ -390,7 +390,7 @@ func (a *api) handleTestDownloadClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": connstatus.Friendly(err)})
 		return
 	}
 	out := map[string]any{"ok": true}

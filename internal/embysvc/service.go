@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/apikeys"
+	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/emby"
 	"github.com/tristenlammi/arrmada/internal/plexscan"
 )
@@ -396,7 +397,7 @@ func Describe(err error) string {
 	case errors.Is(err, emby.ErrForbidden):
 		return "Emby refused: the key isn't an administrator's API key."
 	}
-	return err.Error()
+	return connstatus.Friendly(err)
 }
 
 // RefreshIdentity asks the saved server who it is (System/Info, which also proves the key)
