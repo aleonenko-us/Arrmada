@@ -46,8 +46,8 @@ func TestUnraidTemplate(t *testing.T) {
 	}
 	paths := map[string]string{}
 	vars := map[string]string{}
-	values := map[string]string{}  // a variable's value as the template fills it in
-	ports := map[string]string{}   // "8080/tcp" → host port
+	values := map[string]string{}    // a variable's value as the template fills it in
+	ports := map[string]string{}     // "8080/tcp" → host port
 	hostPorts := map[string]string{} // "8085/tcp" (host side) → the entry's name
 	for _, cfg := range c.Configs {
 		up := strings.ToUpper(cfg.Target + " " + cfg.Name)
