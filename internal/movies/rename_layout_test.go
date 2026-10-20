@@ -112,7 +112,7 @@ func renameCases() []renameCase {
 		},
 		{
 			name:    "another film recorded in the folder with its file missing",
-			files:   []string{vid, old + "/Ronin (1998).en.srt", old + "/poster.jpg", old + "/movie.nfo"},
+			files:   []string{vid, old + "/poster.jpg", old + "/movie.nfo"},
 			title:   "Heat",
 			year:    1995,
 			tracked: []string{vid},

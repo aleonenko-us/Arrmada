@@ -249,20 +249,13 @@ func (s *Service) planLeave(m Movie, od string, moves []renameMove, staying, oth
 	if insideFold(nd, od) || insideFold(od, nd) {
 		return nil, "the new folder is inside it, or it is inside the new folder"
 	}
-	if oerr != nil {
-		return nil, "the library's other films couldn't be checked"
-	}
-	if o := recordedInto(od, others); o != "" {
-		return nil, "another film in your library has a file recorded in it (" + relName(od, o) + ")"
+	// The cheap checks first: most folders that aren't the movie's fail on their name or
+	// on what they hold, before every other film's record is looked at.
+	if reason := s.ownFolder(m, od); reason != "" {
+		return nil, reason
 	}
 	if o := recordedInto(od, staying); o != "" {
 		return nil, "another of this movie's files stays in it (" + relName(od, o) + ")"
-	}
-	if link := s.aliasInto(od); link != "" {
-		return nil, "another folder links into it (" + filepath.Base(link) + ")"
-	}
-	if reason := s.ownFolder(m, od); reason != "" {
-		return nil, reason
 	}
 	tracked := map[string]bool{}
 	var renames []baseRename
@@ -276,6 +269,15 @@ func (s *Service) planLeave(m Movie, od string, moves []renameMove, staying, oth
 	files, _, reason := leftoverSidecars(od, tracked, planned, leftoverNamedFor(m, bases))
 	if reason != "" {
 		return nil, reason
+	}
+	if oerr != nil {
+		return nil, "the library's other films couldn't be checked"
+	}
+	if o := recordedInto(od, others); o != "" {
+		return nil, "another film in your library has a file recorded in it (" + relName(od, o) + ")"
+	}
+	if link := s.aliasInto(od); link != "" {
+		return nil, "another folder links into it (" + filepath.Base(link) + ")"
 	}
 	var out []RenameExtra
 	for _, x := range files {
