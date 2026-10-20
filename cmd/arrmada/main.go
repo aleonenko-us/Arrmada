@@ -1504,7 +1504,7 @@ func main() {
 	// download on its way in would land in the old folder half-way, so a title with one
 	// in flight waits (fail closed: an unreadable check refuses too).
 	folderMover := &libfolders.Mover{
-		DB: st.DB(), Folders: libFolders, Bin: bins, Scan: media.Request, ShowFolders: seriesSvc.ShowFoldersOf, Unclear: seriesSvc.FolderUnclear,
+		DB: st.DB(), Folders: libFolders, Bin: bins, Scan: media.Request, ShowFolders: seriesSvc.ShowFoldersOf, Unclear: seriesSvc.MoveBlocked,
 		Hold: coordinator.HoldSearches, // no search grabs into the old folder half-way
 		Log:  modLog(log, "import"),
 		Busy: func(ctx context.Context, lib string, id int64) string {

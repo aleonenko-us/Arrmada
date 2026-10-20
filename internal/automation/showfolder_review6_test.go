@@ -305,7 +305,7 @@ func TestRevFMoveRefusesACategory(t *testing.T) {
 				t.Error("placement accepted Kids as the show's folder")
 			}
 			m := &libfolders.Mover{DB: h.c.db, Folders: folders, Bin: library.SingleBin(filepath.Join(t.TempDir(), "bin")),
-				ShowFolders: svc.ShowFoldersOf, Unclear: svc.FolderUnclear, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+				ShowFolders: svc.ShowFoldersOf, Unclear: svc.MoveBlocked, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 			if _, err := m.Move(h.ctx, libfolders.MediaSeries, s.ID, second.ID, nil); err == nil {
 				t.Error("Move to folder carried the category")
 			}

@@ -325,6 +325,57 @@ func (s *Service) NoFilesFolderUnproven(ctx context.Context, sr Series, dir stri
 	return ""
 }
 
+// MoveBlocked says why Move to folder must not move show seriesID's folder ("" when it may):
+// its folder can't be told (FolderUnclear), or the folder holds — at any depth — an episode
+// it hasn't recorded whose name doesn't say it's this show's (strictly: fitsShow, no benefit
+// of the doubt), or that names another library show. Moving the folder would carry that
+// file along. Themes, backdrops, samples, trailers and other non-episode videos don't count.
+func (s *Service) MoveBlocked(ctx context.Context, seriesID int64) string {
+	if why := s.FolderUnclear(ctx, seriesID); why != "" {
+		return why
+	}
+	info := s.ShowFolderOf(ctx, seriesID)
+	if info.Path == "" {
+		return ""
+	}
+	j := s.dbJudge(ctx, seriesID)
+	if j.show == nil {
+		return ""
+	}
+	why := ""
+	_ = filepath.WalkDir(info.Path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			why = fmt.Sprintf("%s can't be read: %v", p, err)
+			return filepath.SkipAll
+		}
+		if d.IsDir() || d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+		n := d.Name()
+		if !library.IsVideoFile(n) || j.isRecorded(p) || rePlexExtraName.MatchString(n) ||
+			strings.Contains(strings.ToLower(n), "sample") {
+			return nil
+		}
+		if fi, err := d.Info(); err != nil || fi.Size() < library.MinEpisodeVideoSize {
+			return nil
+		}
+		rel := parser.Parse(n)
+		if len(rel.Episodes) == 0 {
+			return nil
+		}
+		switch {
+		case j.conflicts(rel):
+			why = fmt.Sprintf("%s holds %s, an episode of another show in your library", info.Path, p)
+		case !fitsShow(rel, *j.show):
+			why = fmt.Sprintf("%s holds %s, an episode Arrmada hasn't recorded for %s whose name doesn't say it's this show's; move it out (or import it) first", info.Path, p, j.show.Title)
+		default:
+			return nil
+		}
+		return filepath.SkipAll
+	})
+	return why
+}
+
 // yearFolderHint is "Title (Year)" for show seriesID, for a message.
 func (s *Service) yearFolderHint(ctx context.Context, seriesID int64) string {
 	sr, err := s.repo.Get(ctx, seriesID)

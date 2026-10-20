@@ -41,6 +41,12 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   told: downloads wait in Needs you, and **Refresh & rescan**, **Rename**, the duplicate
   check, **Move to folder** and **Map files…** are refused for it (Map files uses the same
   check as the import). Move the other show out, then use **Refresh & rescan**.
+- **Move to folder refuses a show folder holding an episode the show doesn't have** (#56).
+  If anywhere in the show's folder there's an episode Arrmada hasn't recorded for it whose
+  name doesn't say it's this show's (`Other Show - S01E03.mkv` in its `S01` or `Season 1`),
+  or one naming another show in your library, the move is refused and the message names the
+  file: moving the folder would carry it along. Import it, or move it out, then move the
+  show. Themes, backdrops, samples and trailers don't count.
 - **The way out for a show whose files were moved** now needs a folder named with the
   show's year (`Show (2019)`) or one already holding its files; see Fixed below.
 - **Missing music files are flagged, not downloaded again.** When a track file is gone on two
