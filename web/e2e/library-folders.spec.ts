@@ -42,6 +42,10 @@ test.describe("admin", () => {
   test("with several folders a film shows its folder and moves, following the job", async ({ page, api }) => {
     await override(page, api, [
       multi,
+      { method: "POST", path: "/api/v1/movies/1/move/preview", body: { folder: "Kids", moves: [{
+        from: "/media/movies/The Cartographer (2021)", to: "/media/kids/The Cartographer (2021)", bytes: 4_000_000_000,
+        files: ["/media/movies/The Cartographer (2021)/The Cartographer (2021).mkv", "/media/movies/The Cartographer (2021)/poster.jpg"],
+      }] } },
       { method: "POST", path: "/api/v1/movies/1/move", status: 202, body: { status: "moving", job_id: 901, folder: "Kids" } },
       { method: "GET", path: "/api/v1/jobs/901", body: {
         id: 901, kind: "library.move", target: "movie:1", trigger: "user:1", status: "succeeded", progress: 1,
@@ -54,12 +58,33 @@ test.describe("admin", () => {
     await page.getByRole("menuitem", { name: "Move to folder…" }).click();
     const dialog = page.getByRole("dialog", { name: "Move to another folder" });
     await expect(dialog.getByRole("combobox")).toHaveValue("3");
-    await expect(dialog.getByText("/media/kids")).toBeVisible();
+    await expect(dialog.getByText("/media/kids", { exact: true })).toBeVisible();
+    // The preview lists every file that moves; the move is sent with that list.
+    const what = dialog.getByRole("region", { name: "What moves" });
+    await expect(what.getByText("2 files")).toBeVisible();
+    await expect(what.getByText("/media/movies/The Cartographer (2021)/poster.jpg")).toBeVisible();
     await dialog.getByRole("button", { name: "Move", exact: true }).click();
     await expect(dialog.getByText("The Cartographer moved to Kids")).toBeVisible();
     const calls = api.callsTo("POST", "/api/v1/movies/1/move");
     expect(calls).toHaveLength(1);
-    expect(calls[0].body).toEqual({ folder_id: 3 });
+    expect(calls[0].body).toEqual({ folder_id: 3, files: [
+      "/media/movies/The Cartographer (2021)/The Cartographer (2021).mkv", "/media/movies/The Cartographer (2021)/poster.jpg",
+    ] });
+  });
+
+  test("a film whose folder isn't provably its own says why, and Move stays off", async ({ page, api }) => {
+    await override(page, api, [
+      multi,
+      { method: "POST", path: "/api/v1/movies/1/move/preview", body: { folder: "Kids", moves: [],
+        refused: "The Cartographer stays where it is — its folder Maps isn't provably its own (another video is inside it (Atlas.mkv))" } },
+    ]);
+    await page.goto("/movies/1");
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Move to folder…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Move to another folder" });
+    await expect(dialog.getByText(/Nothing will move: .*another video is inside it \(Atlas\.mkv\)/)).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Move", exact: true })).toBeDisabled();
+    expect(api.callsTo("POST", "/api/v1/movies/1/move")).toHaveLength(0);
   });
 
   test("the add dialog preselects the folder the rules pick and adds there", async ({ page, api }) => {

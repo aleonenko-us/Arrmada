@@ -47,7 +47,7 @@ func TestMoveLeavesASeedingDownloadInPlace(t *testing.T) {
 			}
 			m, _ := f.mover(t, filepath.Join(f.base, "bin"))
 			if cross {
-				m.rename = func(oldpath, newpath string) error {
+				m.Rename = func(oldpath, newpath string) error {
 					if oldpath == dir {
 						return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: syscall.EXDEV}
 					}

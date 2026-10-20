@@ -621,6 +621,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/movies/bulk-add", a.requireRole(auth.RoleManager, a.handleBulkAddMovies))
 	mux.HandleFunc("POST /api/v1/movies/{id}/search", a.requireRole(auth.RoleManager, a.handleSearchMovie))
 	mux.HandleFunc("POST /api/v1/movies/{id}/move", a.requireRole(auth.RoleManager, a.handleMoveMovieFolder))
+	mux.HandleFunc("POST /api/v1/movies/{id}/move/preview", a.requireRole(auth.RoleManager, a.handlePreviewMovieMove))
 	mux.HandleFunc("GET /api/v1/movies/{id}/releases", a.requireRole(auth.RoleManager, a.handleMovieReleases))
 	mux.HandleFunc("GET /api/v1/movies/{id}/history", a.requireRole(auth.RoleManager, a.handleMovieHistory))
 	mux.HandleFunc("GET /api/v1/movies/{id}/collection", a.requireRole(auth.RoleManager, a.handleMovieCollection))
