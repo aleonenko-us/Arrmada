@@ -37,11 +37,21 @@ type arrImportRequest struct {
 	Folders       map[string]int64    `json:"folders"`
 	PathMaps      []arrimport.PathMap `json:"path_maps"`
 	ImportMissing bool                `json:"import_missing"`
+	// ImportSetup also brings the app's indexers and download clients over; SkipTitles
+	// leaves the library out (setup only).
+	ImportSetup bool `json:"import_setup"`
+	SkipTitles  bool `json:"skip_titles"`
 }
 
 // arrImporter is the import wired to the library.
 func (a *api) arrImporter() *arrimport.Importer {
 	imp := &arrimport.Importer{Log: a.deps.Log, TMDBForTVDB: a.deps.SeriesByTVDB}
+	if a.deps.Indexers != nil {
+		imp.Indexers = a.deps.Indexers
+	}
+	if a.deps.Downloads != nil {
+		imp.Clients = a.deps.Downloads
+	}
 	if a.deps.Movies != nil {
 		imp.Movies = a.deps.Movies
 	}
@@ -114,7 +124,7 @@ func (a *api) arrOptions(ctx context.Context, media string, in arrImportRequest,
 		return arrimport.Options{}, err
 	}
 	opts := arrimport.Options{Profiles: map[int]string{}, Folders: map[string]int64{}, PathMaps: maps,
-		ImportMissing: in.ImportMissing, DefaultProfile: def}
+		ImportMissing: in.ImportMissing, DefaultProfile: def, ImportSetup: in.ImportSetup, SkipTitles: in.SkipTitles}
 	for id, ref := range in.Profiles {
 		ref = strings.TrimSpace(ref)
 		if ref == "" {
@@ -174,7 +184,9 @@ func (a *api) handleArrPreview(w http.ResponseWriter, r *http.Request) {
 	}
 	notReady := a.arrReady(media)
 	imp := a.arrImporter()
-	if (media == "series" && imp.Series == nil) || (media == "movie" && imp.Movies == nil) {
+	if opts.SkipTitles {
+		notReady = ""
+	} else if (media == "series" && imp.Series == nil) || (media == "movie" && imp.Movies == nil) {
 		a.writeError(w, http.StatusServiceUnavailable, notReady)
 		return
 	}
@@ -209,8 +221,12 @@ func (a *api) handleArrImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	media := c.Media()
-	if msg := a.arrReady(media); msg != "" {
+	if msg := a.arrReady(media); msg != "" && !in.SkipTitles {
 		a.writeError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if in.SkipTitles && !in.ImportSetup {
+		a.writeError(w, http.StatusBadRequest, "nothing to import: choose the library, the indexers and download clients, or both")
 		return
 	}
 	ctx := r.Context()
@@ -279,6 +295,13 @@ func arrSummary(res arrimport.Result) string {
 		}
 		return fmt.Sprintf("%d %s", n, many)
 	}
+	var setup []string
+	if res.Setup != nil {
+		setup = setupParts(*res.Setup)
+	}
+	if res.Total == 0 && len(setup) > 0 {
+		return strings.Join(setup, " · ")
+	}
 	parts := []string{"Imported " + count(res.Imported, "film", "films")}
 	files := count(res.FilesAttached, "file", "files")
 	if res.Media == "series" {
@@ -308,5 +331,18 @@ func arrSummary(res arrimport.Result) string {
 			parts = append(parts, fmt.Sprintf("%s added unmonitored (as they were in %s) — monitor them from the Movies list", count(res.Unmonitored, "film", "films"), from))
 		}
 	}
-	return strings.Join(parts, " · ")
+	return strings.Join(append(parts, setup...), " · ")
+}
+
+// setupParts is the indexer and download client part of the closing line.
+func setupParts(s arrimport.SetupResult) []string {
+	out := []string{}
+	add := func(label string, items []arrimport.SetupItem) {
+		a, e, k, f := arrimport.Count(items, arrimport.ActionAdded), arrimport.Count(items, arrimport.ActionExists),
+			arrimport.Count(items, arrimport.ActionSkip), arrimport.Count(items, arrimport.ActionFailed)
+		out = append(out, fmt.Sprintf("%d %s added (%d already here, %d not brought over, %d failed)", a, label, e, k, f))
+	}
+	add("indexers", s.Indexers)
+	add("download clients", s.Clients)
+	return out
 }
