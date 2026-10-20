@@ -31,6 +31,7 @@ beforeEach(() => {
   vi.spyOn(setupApi, "stateWithProwlarr").mockResolvedValue({ ...state, indexers_enabled: 0, prowlarr_available: false });
 });
 afterEach(() => {
+  sessionStorage.clear(); // the step a refresh returns to
   cleanup();
   vi.restoreAllMocks();
   clearQueryCache();
@@ -146,6 +147,14 @@ describe("SetupWizard on a fresh install", () => {
     await toAccount();
     await click("Back");
     expect(await screen.findByText("Where releases come from")).toBeTruthy();
+  });
+
+  it("comes back to the step it was on after a refresh", async () => {
+    page();
+    await toAccount();
+    cleanup(); // the refresh
+    page();
+    expect(await screen.findByText("Create your account")).toBeTruthy();
   });
 
   it("starts the session again once when it ended mid-wizard (401), then carries on", async () => {

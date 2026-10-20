@@ -28,6 +28,7 @@ beforeEach(() => {
   vi.spyOn(setupApi, "stateWithProwlarr").mockResolvedValue({ ...state, indexers_enabled: 0, prowlarr_available: false });
 });
 afterEach(() => {
+  sessionStorage.clear(); // the step a refresh returns to
   cleanup();
   vi.restoreAllMocks();
   clearQueryCache();

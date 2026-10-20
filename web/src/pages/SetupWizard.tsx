@@ -193,7 +193,15 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
   const prv = (s: Step): Step | undefined => order[order.findIndex((x) => x.id === s) - 1]?.id;
   // Back from plex.tv after a Plex sign-in by redirect (a phone, or popups blocked): the
   // address carries ?plexpin=, and the Media server step picks the sign-in up again.
-  const [step, setStep] = useState<Step>(() => (firstRun || hasPlexPin() ? "media" : "keys"));
+  // A refresh comes back to the step it left (this tab only); what was saved is reloaded
+  // from the server, so only half-typed fields are lost.
+  const [step, setStep] = useState<Step>(() => {
+    if (hasPlexPin()) return "media";
+    const kept = readStep(firstRun);
+    if (kept && order.some((x) => x.id === kept)) return kept;
+    return firstRun ? "media" : "keys";
+  });
+  useEffect(() => { keepStep(firstRun, step); }, [firstRun, step]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [keys, setKeys] = useState<Record<string, string>>({});
@@ -247,7 +255,7 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
   };
 
   const go = (s: Step) => { setError(null); setStep(s); };
-  const finish = (to?: string) => run(async () => { await api.completeSetup(); onDone(to); });
+  const finish = (to?: string) => run(async () => { await api.completeSetup(); keepStep(firstRun, null); onDone(to); });
 
   const confirm = useConfirm();
   const toast = useToast();
@@ -793,6 +801,19 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
 
     </Frame>
   );
+}
+
+// The step a refresh returns to, per tab: sessionStorage, which may be blocked (then a
+// refresh starts over, as before).
+const stepKey = (firstRun?: boolean) => `arrmada.setup.step${firstRun ? ".first" : ""}`;
+function readStep(firstRun?: boolean): Step | null {
+  try { return sessionStorage.getItem(stepKey(firstRun)) as Step | null; } catch { return null; }
+}
+function keepStep(firstRun: boolean | undefined, step: Step | null) {
+  try {
+    if (step) sessionStorage.setItem(stepKey(firstRun), step);
+    else sessionStorage.removeItem(stepKey(firstRun));
+  } catch { /* private mode: nothing kept */ }
 }
 
 function hasPlexPin(): boolean {
