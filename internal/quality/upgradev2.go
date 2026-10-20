@@ -148,7 +148,8 @@ func (e *Engine) describe(p Profile, c Candidate) Evaluation {
 	// Evaluate lists a required format the release has only while the profile requires
 	// it; put those back, so the preferences key counts the Musts the file does carry.
 	for _, name := range p.Required {
-		if f, ok := e.formats[name]; ok && e.match(f, c.Name, c.Release) && !containsStr(ev.Matched, name) {
+		// ev.Candidate.Release: as Evaluate read it (a file's, ForFile).
+		if f, ok := e.formats[name]; ok && e.match(f, c.Name, ev.Candidate.Release) && !containsStr(ev.Matched, name) {
 			ev.Matched = append(ev.Matched, name)
 		}
 	}

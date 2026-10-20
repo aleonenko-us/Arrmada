@@ -28,6 +28,16 @@ func TestNewAudioLangNormalises(t *testing.T) {
 			t.Errorf("AudioBase(%q) = %q", tag, AudioBase(tag))
 		}
 	}
+	// TMDB's Cantonese codes ("cn" for most Hong Kong films, "yue") are spoken Chinese;
+	// "xx" is TMDB's "No Language": nothing.
+	for _, tag := range []string{"cn", "CN", "yue"} {
+		if AudioBase(tag) != "zh" || NewAudioLang(tag, false).Name != "Chinese" {
+			t.Errorf("AudioBase(%q) = %q", tag, AudioBase(tag))
+		}
+	}
+	if AudioBase(NoLanguage) != "" {
+		t.Errorf("AudioBase(xx) = %q, want none", AudioBase(NoLanguage))
+	}
 	if got := NewAudioLang("ger", false); got.Name != "German" {
 		t.Errorf("name = %q, want German", got.Name)
 	}

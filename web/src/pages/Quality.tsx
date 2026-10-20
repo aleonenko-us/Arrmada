@@ -745,7 +745,7 @@ function VideoBuilder({ formats, unwanted, initial, onCancel, onSaved }: { forma
           <input id="qp-name" value={sp.name} onChange={(e) => patch({ name: e.target.value })} placeholder="My 4K collection" className="w-full rounded-lg px-3 py-2 text-md" style={fieldStyle} />
 
           <SectionLabel>1 · The file you want</SectionLabel>
-          <TargetEditor sp={sp} ideal={ideal} conflicts={conflicts} onIdeal={updateIdeal} onResolutions={(r) => patch({ allowed_resolutions: r })} />
+          <TargetEditor sp={sp} ideal={ideal} conflicts={conflicts} onIdeal={updateIdeal} onResolutions={(r) => patch({ allowed_resolutions: r })} onMultiCounts={(on) => patch({ multi_counts_language: on })} />
 
           <div className="mt-6 flex flex-col gap-2.5">
             <Collapsible n={2} title="Sources" summary={sourceSummary(sp)}>
@@ -926,7 +926,7 @@ function advancedSummary(sp: StoredProfile, other: FormatInfo[]): string {
 
 // TargetEditor sets the file the profile aims for: its resolutions, a state for each codec,
 // HDR and audio option, and a bitrate window per resolution.
-function TargetEditor({ sp, ideal, conflicts, onIdeal, onResolutions }: { sp: StoredProfile; ideal: IdealFile; conflicts: ProfileConflict[]; onIdeal: (fn: (i: IdealFile) => IdealFile) => void; onResolutions: (r: string[]) => void }) {
+function TargetEditor({ sp, ideal, conflicts, onIdeal, onResolutions, onMultiCounts }: { sp: StoredProfile; ideal: IdealFile; conflicts: ProfileConflict[]; onIdeal: (fn: (i: IdealFile) => IdealFile) => void; onResolutions: (r: string[]) => void; onMultiCounts: (on: boolean) => void }) {
   const allowed = sp.allowed_resolutions;
   const best = allowed.reduce((b, r) => (RES_RANK[r] > (RES_RANK[b] ?? 0) ? r : b), "");
   const toggleRes = (v: string) => onResolutions(allowed.includes(v) ? allowed.filter((r) => r !== v) : [...allowed, v]);
@@ -983,6 +983,8 @@ function TargetEditor({ sp, ideal, conflicts, onIdeal, onResolutions }: { sp: St
         value={ideal.language}
         onChange={(language) => onIdeal((cur) => ({ ...cur, language }))}
         picker={(value, onChange, label) => <PrefPicker value={value} onChange={onChange} label={label} />}
+        multiCounts={!!sp.multi_counts_language}
+        onMultiCounts={onMultiCounts}
       />
 
       <div className="text-sm font-semibold">Bitrate window</div>

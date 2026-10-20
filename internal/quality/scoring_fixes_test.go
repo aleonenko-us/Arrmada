@@ -219,6 +219,7 @@ func testService(t *testing.T) (*Service, context.Context) {
 		upgrade_trigger TEXT NOT NULL DEFAULT 'any',
 		unwanted TEXT NOT NULL DEFAULT '',
 		group_tiers TEXT NOT NULL DEFAULT '',
+		multi_counts_language INTEGER NOT NULL DEFAULT 0,
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)`); err != nil {
 		t.Fatal(err)
 	}

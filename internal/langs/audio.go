@@ -30,9 +30,28 @@ type AudioFit struct {
 // all three (nb/nob, nn/nno, no/nor) for the same dub.
 var audioFold = map[string]string{"nb": "no", "nn": "no"}
 
+// audioAlias are codes outside the table that name a language it knows. TMDB codes
+// Cantonese — most Hong Kong films — as "cn" (its own code) or "yue" (ISO 639-3), and
+// tracks are sometimes tagged "yue": spoken Chinese, which release names call CHINESE or
+// CHI, so all of them are "zh".
+var audioAlias = map[string]string{"cn": "zh", "yue": "zh"}
+
+// NoLanguage is TMDB's original_language for a title with no spoken language (silent
+// films, music, nature footage). AudioBase gives "" for it: no original language to read
+// an untagged release as, so the audio rules can't judge one and refuse nothing.
+const NoLanguage = "xx"
+
 // AudioBase is the base code an audio track or release language is compared and badged
-// by: ISO1, with Norwegian's written forms folded to "no". "" when the tag isn't known.
+// by: ISO1, with Norwegian's written forms folded to "no" and TMDB's Cantonese codes to
+// "zh" (audioAlias). "" when the tag isn't known, and for NoLanguage.
 func AudioBase(tag string) string {
+	n := norm(tag)
+	if n == NoLanguage {
+		return ""
+	}
+	if a, ok := audioAlias[n]; ok {
+		return a
+	}
 	c := ISO1(tag)
 	if f, ok := audioFold[c]; ok {
 		return f

@@ -415,7 +415,10 @@ func (a *api) handleMoveSeriesFolder(w http.ResponseWriter, r *http.Request) {
 	a.moveToFolder(w, r, libfolders.MediaSeries)
 }
 
-func (a *api) moveToFolder(w http.ResponseWriter, r *http.Request, media string) {
+// handlePreviewMovieMove says what moving a film to another Movies folder would do,
+// moving nothing: POST /api/v1/movies/{id}/move/preview {folder_id} → libfolders.MovePreview
+// (every folder that would move with every file in it, or why it won't move).
+func (a *api) handlePreviewMovieMove(w http.ResponseWriter, r *http.Request) {
 	if a.deps.FolderMover == nil || a.deps.Folders == nil {
 		a.writeError(w, http.StatusServiceUnavailable, "moving between folders isn't available")
 		return
@@ -433,6 +436,44 @@ func (a *api) moveToFolder(w http.ResponseWriter, r *http.Request, media string)
 	if in.FolderID == nil {
 		a.writeError(w, http.StatusBadRequest, "folder_id is required")
 		return
+	}
+	pv, err := a.deps.FolderMover.Preview(r.Context(), libfolders.MediaMovie, id, *in.FolderID)
+	switch {
+	case err == nil:
+		a.writeJSON(w, http.StatusOK, pv)
+	case errors.Is(err, libfolders.ErrNotFound):
+		a.writeError(w, http.StatusNotFound, "that film or folder doesn't exist — reload and pick again")
+	default:
+		a.deps.Log.Warn("library folders: couldn't preview a move", "movie", id, "err", err)
+		a.writeError(w, http.StatusInternalServerError, "couldn't work out what would move")
+	}
+}
+
+func (a *api) moveToFolder(w http.ResponseWriter, r *http.Request, media string) {
+	if a.deps.FolderMover == nil || a.deps.Folders == nil {
+		a.writeError(w, http.StatusServiceUnavailable, "moving between folders isn't available")
+		return
+	}
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		FolderID *int64 `json:"folder_id"`
+		// Files is every file the move preview listed (films): the move keeps to it.
+		// Absent = no preview to keep to.
+		Files []string `json:"files"`
+	}
+	if !a.decodeJSON(w, r, &in) {
+		return
+	}
+	if in.FolderID == nil {
+		a.writeError(w, http.StatusBadRequest, "folder_id is required")
+		return
+	}
+	var shown []string
+	if in.Files != nil && media == libfolders.MediaMovie {
+		shown = append([]string{}, in.Files...)
 	}
 	ctx := r.Context()
 	dest, ok := a.deps.Folders.Get(ctx, media, *in.FolderID)
@@ -472,7 +513,7 @@ func (a *api) moveToFolder(w http.ResponseWriter, r *http.Request, media string)
 		// hours, and stopping half-way leaves the originals in place anyway.
 		Timeout: 12 * time.Hour,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
-			res, err := mover.Move(ctx, media, id, to, p)
+			res, err := mover.MoveShown(ctx, media, id, to, shown, p)
 			if err != nil {
 				return res, err
 			}

@@ -561,6 +561,9 @@ export interface StoredProfile {
   // server reads a missing one as "any".
   upgrade_trigger?: UpgradeTrigger;
   allow_prerelease?: boolean; // grab cams/telesyncs/screeners (movie & series; off = refused)
+  // A MULTi/Dual release naming no language counts as maybe having a Must audio language.
+  // Off (the default): a Must has to be named in the release, or be the original language.
+  multi_counts_language?: boolean;
   ideal?: IdealFile; // the target file: drives grabbing, ranking and the library fit check
   unwanted?: UnwantedSettings; // the Unwanted pack's choices (movie & series)
   group_tiers?: GroupTiers; // release-group tiers (movie & series); missing = the built-in suggestions

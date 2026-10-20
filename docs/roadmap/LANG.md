@@ -22,10 +22,14 @@ The target (`IdealFile.Language`) maps a base code, or `original` (the title's T
 - no language named → the original language (assumed, and the release row says so);
 - MULTi / German DL or ML → the original plus the languages it names;
 - DUAL / Dual Audio naming nothing, on a foreign title → the original plus English (how anime and foreign-film groups use it); on an English title → English plus an unnamed other;
-- MULTi naming nothing → the original plus others it doesn't name: a Must or Prefer it doesn't name is **unknown** — never refused, never credited;
+- MULTi naming nothing → the original plus others it doesn't name: a Prefer it doesn't name is **unknown** — never credited, never counted against it;
 - a tagged name (GERMAN, TRUEFRENCH/VFF, iTALiAN, ITA.ENG…) → exactly those.
 
-A title whose original language isn't known, with a release that names none, can't be judged: no rule applies to it, and an `original` entry is dropped for that title.
+**A Must has to be named (issue #58).** A release on offer passes a Must only when its name names the language, or the language is the title's original and the release is untagged or MULTi/DL/Dual. A MULTi or Dual naming nothing, on a title whose original is a different language, is refused ("Doesn't name Italian audio…"), unless the profile's `multi_counts_language` switch is on (off by default and on every profile saved before it; migration 0347): then an unnamed Must is unknown, as it was before. Files on disk are never refused on what a name leaves out, so the rule changes grabbing only.
+
+A title whose original language isn't known, with a release that names none, can't be judged: no rule applies to it (a Must doesn't refuse it), and an `original` entry is dropped for that title. TMDB's `xx` (no spoken language) counts as unknown; its `cn` and `yue` (Cantonese, most Hong Kong films) read as Chinese (`langs.AudioBase`). A MULTi or Dual naming nothing is still refused under a Must when the original isn't known.
+
+The spellings added with #58 (FRA, DEU, NLD, ESP, JAP, VFB — capitals, never where an episode title sits) count for releases on offer only: a library file is read without them (`parser.Release.ForFile`), so the update moves no file's verdict.
 
 **A file on disk** (`fileLangs`) is never judged on an assumption:
 

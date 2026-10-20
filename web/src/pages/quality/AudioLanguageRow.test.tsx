@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ORIGINAL, languageKeys, setLanguage } from "./AudioLanguageRow";
+import { ORIGINAL, hasMust, languageKeys, setLanguage } from "./AudioLanguageRow";
 import { languageRulesDecide } from "./UnwantedRules";
 
 const names: Record<string, string> = { de: "German", fr: "French", ja: "Japanese" };
@@ -16,6 +16,13 @@ describe("Audio language row", () => {
     expect(row).toEqual({ de: "must" });
     expect(setLanguage(row, ORIGINAL, "want")).toEqual({ de: "must", original: "want" });
     expect(setLanguage(row, "de", "")).toEqual({});
+  });
+
+  it("offers the MULTi switch only beside a Must, the one thing it changes", () => {
+    expect(hasMust(undefined)).toBe(false);
+    expect(hasMust({ it: "want", [ORIGINAL]: "avoid" })).toBe(false);
+    expect(hasMust({ it: "must", [ORIGINAL]: "avoid" })).toBe(true);
+    expect(hasMust({ [ORIGINAL]: "must" })).toBe(true);
   });
 
   it("knows when the foreign-only item defers to the language rules", () => {
