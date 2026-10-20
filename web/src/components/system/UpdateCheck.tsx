@@ -3,8 +3,9 @@ import type { SystemStatus, UpdateStatus } from "../../lib/api";
 import { setQueryData } from "../../lib/query";
 import { systemApi } from "../../lib/systemApi";
 import { ago } from "../../lib/taskTime";
-import { noteBlocks, updateHeadline, updateHint } from "../../lib/updateStatus";
+import { canUpdateNow, noteBlocks, offerUpdaterSetup, UPDATER_SETUP_LINE, UPDATER_SETUP_TEXT, updateHeadline, updateHint } from "../../lib/updateStatus";
 import { useAutoSave } from "../../lib/useAutoSave";
+import { phaseText, useUpdateRun } from "../../lib/useUpdateRun";
 import { Button } from "../../ui";
 import { AutoToggle } from "../settings/auto";
 
@@ -24,6 +25,12 @@ export function UpdateCheck({ update }: { update: UpdateStatus }) {
     // Switched on: ask straight away rather than leave it at "Not checked yet".
     if (v) u = await systemApi.checkForUpdate().catch(() => u);
     store(u);
+  });
+  // Update now and the automatic-updates switch: both need the updater container.
+  const run = useUpdateRun(update.current);
+  const [confirming, setConfirming] = useState(false);
+  const auto = useAutoSave(update.auto_update ?? false, async (v: boolean) => {
+    store(await systemApi.setAutoUpdate(v));
   });
   const checkNow = async () => {
     setChecking(true); setErr(null);
@@ -51,6 +58,45 @@ export function UpdateCheck({ update }: { update: UpdateStatus }) {
             {hint.command && <code className="block overflow-x-auto whitespace-nowrap rounded-md px-2 py-1 font-mono text-xs" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>{hint.command}</code>}
           </div>
         )}
+        {canUpdateNow(update) && update.latest && (
+          <div className="flex flex-col gap-2 rounded-lg px-3 py-2" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+            {run.phase === "idle" && !confirming && (
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="primary" size="sm" onClick={() => setConfirming(true)}>Update to {update.latest.tag}</Button>
+                <span className="text-sm text-ink-dim">Backs up the database, installs it and restarts Arrmada.</span>
+              </div>
+            )}
+            {run.phase === "idle" && confirming && (
+              <>
+                <p className="m-0 text-sm text-ink-dim">
+                  Arrmada will back up its database, install {update.latest.tag} and restart. It's unavailable for a minute or two; downloads in progress carry on and imports resume afterwards. If the new version doesn't start, it goes back to this one by itself.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="primary" size="sm" onClick={() => { setConfirming(false); void run.start(); }}>Update now</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>Cancel</Button>
+                </div>
+              </>
+            )}
+            {run.phase !== "idle" && (
+              <div role="status" aria-live="polite" className="flex flex-col gap-1">
+                <span className="text-sm font-semibold" style={{ color: run.phase === "failed" ? "var(--reject-text, var(--reject))" : "var(--ink)" }}>
+                  {phaseText(run.phase, update.current)}
+                </span>
+                {run.error && <span className="text-sm text-ink-dim">{run.error}</span>}
+                {run.log && (
+                  <pre className="m-0 max-h-48 overflow-auto whitespace-pre-wrap rounded-md px-2 py-1 font-mono text-xs" style={{ background: "var(--panel)", border: "1px solid var(--line)" }}>{run.log}</pre>
+                )}
+                {(run.phase === "failed" || run.phase === "unchanged") && <div><Button size="sm" onClick={() => void run.start()}>Try again</Button></div>}
+              </div>
+            )}
+          </div>
+        )}
+        {offerUpdaterSetup(update) && (
+          <div className="flex flex-col gap-1">
+            <p className="m-0 text-sm text-ink-dim">{UPDATER_SETUP_TEXT}</p>
+            <code className="block overflow-x-auto whitespace-nowrap rounded-md px-2 py-1 font-mono text-xs" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>{UPDATER_SETUP_LINE}</code>
+          </div>
+        )}
         {latest && <ReleaseNotes release={latest} open={update.available} label={update.available ? "What changed" : `Newest release: ${latest.tag}`} />}
         {err && <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject-text, var(--reject))" }}>{err}</p>}
         <div className="flex flex-wrap items-center gap-3">
@@ -61,6 +107,16 @@ export function UpdateCheck({ update }: { update: UpdateStatus }) {
           hint="Reads GitHub's public list of Arrmada releases every 12 hours. Only Arrmada's version is sent, nothing about this server."
           save={enabled}
         />
+        {update.enabled && update.apply && (
+          <AutoToggle
+            label="Install updates automatically"
+            hint={update.apply === "ready"
+              ? "Installs a new release between 2 and 6 am, a day after it's published, with the same database backup and automatic go-back as Update now. Off unless you turn it on."
+              : "Needs the updater (see above). Off unless you turn it on."}
+            save={auto}
+            disabled={update.apply !== "ready" || run.busy}
+          />
+        )}
       </div>
     </section>
   );

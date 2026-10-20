@@ -99,6 +99,11 @@ services:
       # The host port Prowlarr's web UI is published on (below), so the "Open Prowlarr"
       # link points at this install's Prowlarr and not an older one on 9696.
       ARRMADA_PROWLARR_HOST_PORT: "${ARRMADA_PROWLARR_PORT:-9696}"
+      # Optional one-click updates (started only with `--profile updater`). Both stay empty
+      # until `install.sh --with-updater` writes them to .env, and an empty URL means the
+      # Update now button isn't offered. The token is what the app proves itself with.
+      ARRMADA_UPDATER_URL: "${ARRMADA_UPDATER_URL:-}"
+      ARRMADA_UPDATER_TOKEN: "${ARRMADA_UPDATER_TOKEN:-}"
       # Optional bundled SABnzbd (started only with `--profile sabnzbd`). Arrmada registers
       # it once its config (mounted below) exists, which is only when the profile is on.
       ARRMADA_SABNZBD_URL: "http://arrmada-sabnzbd:8080"
@@ -276,6 +281,35 @@ services:
       - arrmada-prowlarr-config:/config
     ports:
       - "${ARRMADA_PROWLARR_PORT:-9696}:9696"
+    restart: unless-stopped
+
+  # OPTIONAL one-click updates (Settings → Status → Update now, and the optional automatic
+  # updates). NOT started by default — opt in with:
+  #     ./install.sh --with-updater        (or: docker compose --profile updater up -d)
+  # This is the only container that gets Docker's socket, which is root on this server, so
+  # it is opt-in and the app itself never has it. It publishes no port: the app asks it, over
+  # this private network and with the token in .env, to run update.sh, which backs up the
+  # database, brings the new version and goes back by itself if that doesn't start. The
+  # install folder is mounted at the same path it has on the host (ARRMADA_HOST_DIR, which
+  # update.sh and install.sh write to .env) so update.sh's relative paths mean the same
+  # thing to Docker as they do here.
+  arrmada-updater:
+    # Docker's own CLI image (it carries `docker compose`); pinned like the companions.
+    image: docker:27-cli
+    container_name: Arrmada-updater
+    profiles: ["updater"]
+    entrypoint:
+      - sh
+      - -c
+      - 'apk add --no-cache git curl tar >/dev/null 2>&1; exec httpd -f -p 8080 -h /www'
+    working_dir: "${ARRMADA_HOST_DIR:-/arrmada-host-dir-not-set}"
+    environment:
+      ARRMADA_UPDATER_TOKEN: "${ARRMADA_UPDATER_TOKEN:-}"
+      ARRMADA_HOST_DIR: "${ARRMADA_HOST_DIR:-}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "${ARRMADA_HOST_DIR:-/arrmada-host-dir-not-set}:${ARRMADA_HOST_DIR:-/arrmada-host-dir-not-set}"
+      - ./docker/updater/updater.cgi:/www/cgi-bin/updater:ro
     restart: unless-stopped
 
   # OPTIONAL Usenet downloader (SABnzbd). NOT started by default — opt in with:
