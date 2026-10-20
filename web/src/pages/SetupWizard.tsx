@@ -674,6 +674,12 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
             ) : (
               <p className="m-0 px-2 py-1.5 text-sm text-ink-faint">{checklist.error ? "Couldn't read the checklist — the Dashboard shows it too." : "Checking…"}</p>
             )}
+            <p className="m-0 mt-1 px-2 py-1.5 text-sm text-ink-dim">
+              Moving from Radarr or Sonarr?{" "}
+              {restartFirst ? "After the restart, Settings → Import & migrate brings your library, indexers and download clients over." : (
+                <a href="/settings/import#arr-import" onClick={(e) => { e.preventDefault(); finish("/settings/import#arr-import"); }} style={{ color: "var(--accent-text)" }}>Import them now</a>
+              )}
+            </p>
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
             <Button variant="ghost" onClick={() => go(STEPS[stepIndex - 1].id)} disabled={busy}>Back</Button>

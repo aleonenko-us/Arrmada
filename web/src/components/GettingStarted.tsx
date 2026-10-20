@@ -94,6 +94,9 @@ export function GettingStarted() {
       <div className="rounded-xl p-4" style={{ background: "var(--panel)", border: "1px solid var(--accent-line)" }}>
         <p className="m-0 mb-2 px-2 text-sm text-ink-dim">Each step ticks itself off once it's done.</p>
         <ChecklistRows items={c.items} />
+        <p className="m-0 mt-2 px-2 text-sm text-ink-dim">
+          Moving from Radarr or Sonarr? <Link to="/settings/import#arr-import" style={{ color: "var(--accent-text)" }}>Import your library, indexers and download clients</Link> — nothing in them changes.
+        </p>
       </div>
     </section>
   );

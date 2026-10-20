@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ArrCounts, ArrResult } from "../../lib/importApi";
-import { arrCountsLine, arrResultLine, notesByOutcome } from "./arrImportText";
+import { arrCountsLine, arrResultLine, notesByOutcome, setupLine } from "./arrImportText";
 
 const counts = (over: Partial<ArrCounts> = {}): ArrCounts => ({
   titles: 4, existing: 1, new: 3, unmatchable: 0, with_files: 2, files_found: 2, not_found: 0, attachable: 0, wanted: 1,
@@ -45,5 +45,17 @@ describe("notesByOutcome", () => {
       { title: "C", outcome: "skipped", reason: "no TMDB id" },
     ]);
     expect(groups.map((g) => [g.label, g.notes.length])).toEqual([["Failed", 1], ["Skipped", 2]]);
+  });
+});
+
+describe("setupLine", () => {
+  const item = (action: "add" | "added" | "exists" | "skip" | "failed", enabled = true) => ({ name: "x", kind: "torznab", source: "Torznab", action, enabled });
+  it("counts what would come over, switched off and left out", () => {
+    expect(setupLine([item("add"), item("add", false), item("exists"), item("skip")], false)).toBe(
+      "2 to add (1 switched off until you add what the app keeps secret), 1 already in Arrmada, 1 can't be brought over.",
+    );
+  });
+  it("says added once it is done", () => {
+    expect(setupLine([item("added"), item("failed")], true)).toBe("1 added, 1 failed.");
   });
 });
