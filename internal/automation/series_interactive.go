@@ -528,7 +528,7 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 	// of this show's episode numbers would be claimed as its own.
 	imp, folder, ferr := c.seriesPlacement(ctx, s) // folder "" → importer derives the name
 	if ferr != nil {
-		return &RescanRefusedError{Reason: ferr.Error()}
+		return &RescanRefusedError{Reason: ferr.Error(), Cause: ferr}
 	}
 
 	// Group by resolved episode first, rather than marking as we walk. Several files on
@@ -607,7 +607,15 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 
 // RescanRefusedError is a series rescan that changed nothing because the folders its
 // files live in didn't look mounted. Reason is written for the person who started it.
-type RescanRefusedError struct{ Reason string }
+type RescanRefusedError struct {
+	Reason string
+	// Cause is why, when it was something other than a folder looking unmounted (a
+	// series.ShowFolderError: the show's folder can't be told).
+	Cause error
+}
+
+// Unwrap is the refusal's cause, if any.
+func (e *RescanRefusedError) Unwrap() error { return e.Cause }
 
 func (e *RescanRefusedError) Error() string { return e.Reason }
 

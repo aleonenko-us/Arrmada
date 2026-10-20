@@ -477,7 +477,14 @@ func (s *Service) ShowFolderOf(ctx context.Context, seriesID int64) ShowFolderIn
 		return ShowFolderInfo{Unknown: true, Why: "the show's files couldn't be read: " + err.Error()}
 	}
 	j := s.dbJudge(ctx, seriesID)
-	return s.showFolderFrom(s.dropGoneMisplaced(paths, j), j)
+	kept := s.dropGoneMisplaced(paths, j)
+	if len(paths) > 0 && len(kept) == 0 {
+		// Every file it had was in a folder no show should own and is gone now — moved back
+		// by hand, deleted, or on a share that's down. Where the show lives isn't known; it
+		// isn't a new show.
+		return ShowFolderInfo{Total: len(paths), Unknown: true, Why: "the files it had are no longer where they were recorded; rescan it once they're back in its folder"}
+	}
+	return s.showFolderFrom(kept, j)
 }
 
 // dropGoneMisplaced leaves out files recorded in a folder no show should own that are no

@@ -953,13 +953,16 @@ func (a *api) handleRefreshAllSeries(w http.ResponseWriter, r *http.Request) {
 	// double every metadata pull and race each other's episode writes for no benefit.
 	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "series.refresh-all", Target: "all", Class: "series.refresh-all", Timeout: 2 * time.Hour,
 		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
-			refreshed, failed, unscanned := a.refreshSeriesSweep(ctx, ids, p)
+			refreshed, failed, unscanned, unclear := a.refreshSeriesSweep(ctx, ids, p)
 			msg := fmt.Sprintf("Refreshed %d of %d series", refreshed, len(ids))
 			if unscanned > 0 {
 				msg += fmt.Sprintf(" — %d not rescanned because their folders didn't look mounted (nothing on them changed)", unscanned)
 			}
+			if unclear > 0 {
+				msg += fmt.Sprintf(" — %d not rescanned because it isn't clear which folder they live in (see each show's page; nothing on them changed)", unclear)
+			}
 			p.SetMessage(msg)
-			return map[string]int{"refreshed": refreshed, "failed": failed, "not_rescanned": unscanned}, nil
+			return map[string]int{"refreshed": refreshed, "failed": failed, "not_rescanned": unscanned + unclear, "folder_unclear": unclear}, nil
 		}})
 	if !ok {
 		return
@@ -973,8 +976,9 @@ func (a *api) handleRefreshAllSeries(w http.ResponseWriter, r *http.Request) {
 
 // refreshSeriesSweep walks every series, refreshing metadata and rescanning the disk.
 // Detached from the request: ctx is the job's, the run context with a two-hour budget.
-// unscanned counts shows whose rescan refused because their folders looked unmounted.
-func (a *api) refreshSeriesSweep(ctx context.Context, ids []int64, p *jobs.Progress) (refreshed, failed, unscanned int) {
+// unscanned counts shows whose rescan refused because their folders looked unmounted;
+// unclear, those whose folder can't be told (series.ErrNoShowFolder).
+func (a *api) refreshSeriesSweep(ctx context.Context, ids []int64, p *jobs.Progress) (refreshed, failed, unscanned, unclear int) {
 	a.deps.Log.Info("series: refreshing all", "count", len(ids))
 	for i, id := range ids {
 		p.Set(float64(i)/float64(len(ids)), fmt.Sprintf("Refreshing %d of %d", i+1, len(ids)))
@@ -995,9 +999,12 @@ func (a *api) refreshSeriesSweep(ctx context.Context, ids []int64, p *jobs.Progr
 		if err := a.deps.Automation.RescanSeries(each, id); err != nil {
 			// The metadata refresh still counts; the rescan changed nothing for this show
 			// (RescanSeries logs a refusal itself).
-			if errors.As(err, new(*automation.RescanRefusedError)) {
+			switch {
+			case errors.Is(err, series.ErrNoShowFolder):
+				unclear++
+			case errors.As(err, new(*automation.RescanRefusedError)):
 				unscanned++
-			} else {
+			default:
 				a.deps.Log.Warn("series: rescan failed", "series_id", id, "err", err)
 			}
 		}
@@ -1007,8 +1014,8 @@ func (a *api) refreshSeriesSweep(ctx context.Context, ids []int64, p *jobs.Progr
 			break
 		}
 	}
-	a.deps.Log.Info("series: refreshed all", "refreshed", refreshed, "failed", failed, "not_rescanned", unscanned)
-	return refreshed, failed, unscanned
+	a.deps.Log.Info("series: refreshed all", "refreshed", refreshed, "failed", failed, "not_rescanned", unscanned, "folder_unclear", unclear)
+	return refreshed, failed, unscanned, unclear
 }
 
 // handleSeriesManualImportList lists importable video files under the downloads dir

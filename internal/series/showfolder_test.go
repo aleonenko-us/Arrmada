@@ -142,7 +142,7 @@ func TestShowFolderOfIgnoresMisplacedFiles(t *testing.T) {
 	// Once the misplaced files have been moved away by hand they no longer count against
 	// the show; files in its own folder are never checked on disk.
 	f.svc.fileGone = func(p string) bool { return strings.Contains(p, filepath.FromSlash("/tv/S")) }
-	if info := f.svc.ShowFolderOf(ctx, lost); info.Unknown || info.Path != "" {
+	if info := f.svc.ShowFolderOf(ctx, lost); !info.Unknown || info.Path != "" {
 		t.Errorf("misplaced files gone: ShowFolderOf = %+v", info)
 	}
 	if info := f.svc.ShowFolderOf(ctx, id); info.Path != filepath.FromSlash("/tv/Pechino Express") || info.Total != 2 {

@@ -229,8 +229,8 @@ func TestImportFollowsTheShowsFolderPastMisplacedFiles(t *testing.T) {
 		t.Fatalf("placed %v failed %d", placed, failed)
 	}
 	cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 2)
-	if filepath.Dir(cur.Path) != filepath.Join(own, "Stagione 1") {
-		t.Errorf("S01E02 at %s, want in %s", cur.Path, filepath.Join(own, "Stagione 1"))
+	if filepath.Dir(cur.Path) != filepath.Join(own, "Season 1") {
+		t.Errorf("S01E02 at %s, want in %s", cur.Path, filepath.Join(own, "Season 1")) // an import joins only Season N / SNN / Season.NN folders
 	}
 	noDir(t, filepath.Join(tv, "S02", "Season 1"), "the import followed the misplaced files")
 	noDir(t, filepath.Join(tv, "Stagione 1"), "the season folder was taken for the show")
