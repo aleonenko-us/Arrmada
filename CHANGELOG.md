@@ -71,10 +71,11 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 - **Only an admin can connect Plex now.** Changing the Plex server or signing in with Plex
   for the connection is admin-only, like Jellyfin. Managers keep watch monitoring and Test,
   and see read-only Plex and Jellyfin cards.
-- **Changing a connection's address needs its key typed again.** For Plex, Prowlarr,
+- **Changing a connection's address needs its key typed again.** For Plex, Jellyfin, Prowlarr,
   indexers and download clients, a saved key, token or password is only sent back to the
   address it was saved for. Change the address and the form asks for the secret again.
-  Switching an indexer to another kind also asks for it.
+  Switching an indexer to another kind also asks for it. If you set `ARRMADA_JELLYFIN_API_KEY`
+  in `.env` and haven't connected Jellyfin yet, type the key with the address the first time.
 - **Scripts that use a session cookie must send `Content-Type: application/json`.** Writes
   (POST, PUT, PATCH, DELETE) made with a browser session are refused if they come from
   another site, and a request body must be JSON. Personal API keys (`X-Api-Key` or
@@ -252,6 +253,11 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   vanished or changed outside Arrmada and shows them as gone from disk; it never deletes anything
   and never downloads them again by itself. Artists are found under their other names too
   ("Beyonce", "宇多田ヒカル").
+- **Actors on a library page open their Discover page** (#55). Click or tap someone in a
+  movie's or show's Cast row to see the other movies and shows they're in; Close or Back
+  returns to the library page. Titles added before this update link their actors after
+  their next metadata refresh (**Refresh & rescan** on the page; monitored shows also
+  refresh on their own schedule).
 
 ### Changed
 
@@ -298,6 +304,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   image cache fetches only public addresses and real raster images (no SVG), and serves
   them sandboxed. Before, a book request's cover could carry a script or reach into your
   network.
+- Jellyfin: saving a new server address with the API key left blank sent the saved key to
+  the new address. It's refused now, and the form asks for the key again, as the other
+  connections do.
 - Keys and tokens sent in headers never follow a redirect to another server.
 - The Plex token only goes to servers that say they belong to the account, and a manager can
   no longer repoint Plex sign-in at their own server.

@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
+import { CastRow } from "../components/CastRow";
 import { shownOverview, shownTitle } from "../lib/displayTitle";
 import { AudioLangChips } from "../components/AudioLangChips";
 import { ReleaseSearchModal } from "../components/ReleaseSearchModal";
@@ -1439,26 +1440,6 @@ function FileBody({ movieId, versionId, file, audio, onAdopted }: { movieId: num
         />
       )}
     </>
-  );
-}
-
-function CastRow({ cast }: { cast?: { name: string; character?: string; profile_url?: string }[] }) {
-  if (!cast || cast.length === 0) return null;
-  return (
-    <div className="mt-8">
-      <h2 className="m-0 mb-3 text-md font-bold">Cast</h2>
-      <div className="thin-scroll flex gap-3 overflow-x-auto pb-2">
-        {cast.map((c) => (
-          <div key={c.name} className="w-[92px] flex-none text-center">
-            <div className="mb-1.5 overflow-hidden rounded-lg" style={{ aspectRatio: "2/3", background: "var(--panel-2)" }}>
-              {c.profile_url ? <img src={c.profile_url} alt={c.name} className="h-full w-full object-cover" loading="lazy" /> : null}
-            </div>
-            <div className="truncate text-xs font-semibold" title={c.name}>{c.name}</div>
-            {c.character && <div className="truncate text-xs text-ink-faint" title={c.character}>{c.character}</div>}
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 

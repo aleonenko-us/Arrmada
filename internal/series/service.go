@@ -2360,7 +2360,7 @@ func extraFrom(d *metadata.SeriesDetails) *SeriesExtra {
 		ex.OriginalTitle = d.OriginalName
 	}
 	for _, c := range d.Cast {
-		ex.Cast = append(ex.Cast, CastMember{Name: c.Name, Character: c.Character, ProfileURL: c.ProfileURL})
+		ex.Cast = append(ex.Cast, CastMember{ID: c.ID, Name: c.Name, Character: c.Character, ProfileURL: c.ProfileURL})
 	}
 	return ex
 }

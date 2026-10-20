@@ -6,6 +6,7 @@ import type { ConnectionSectionData } from "../../src/lib/connectionsApi";
 import type { JellyfinConfig, JellyfinSave, JellyfinTestResult } from "../../src/lib/jellyfinApi";
 import type { LibraryHit } from "../../src/lib/palette";
 import { NOW, day } from "./clock";
+import { person } from "./discover";
 
 const poster = (n: number) => `https://image.tmdb.org/t/p/w500/e2e-lib-${n}.jpg`;
 
@@ -131,6 +132,9 @@ export function movieDetail(id: number): Movie | null {
     id: m.id, tmdb_id: 9000 + m.id, title: m.title, year: m.year, poster_url: m.poster_url, monitored: m.monitored,
     quality_profile: m.quality_profile, min_availability: m.min_availability, has_file: m.has_file, added_at: m.added_at,
     overview: "A fixture film.", download: m.download, file, movie_file_path: file?.path,
+    // The Cartographer's cast (#55): Ada has a person page; Theo's record predates ids, so
+    // his tile stays a tile until the film's next metadata refresh.
+    extra: m.id === 1 ? { cast: [{ id: person.id, name: person.name, character: "Cartographer" }, { name: "Theo Keel", character: "Deckhand" }] } : undefined,
     versions: [{ id: 0, is_default: true, label: "Default", quality_profile: m.quality_profile, monitored: m.monitored, has_file: m.has_file, file, file_path: file?.path, ...audio }],
     acquisition: { monitored: m.monitored, profile_known: true, upgrades_allowed: m.has_file, scanned_in: false, available: true, downloading: !!m.download, file_missing: false },
   };

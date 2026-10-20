@@ -101,6 +101,22 @@ func TestJellyfinConnectionRoutes(t *testing.T) {
 	if rec := s.doJSON("PUT", "/api/v1/jellyfin", admin, `{"url":"`+jf.URL+`","public_url":""}`); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"key_set":true`) {
 		t.Errorf("save keeping the key: HTTP %d %s", rec.Code, rec.Body)
 	}
+	// A new address with the key left blank is refused like Prowlarr's and the indexers',
+	// with the same words, and the key never reaches it.
+	thief := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Authorization"), secretJellyfinKey) {
+			t.Errorf("the saved key went to the new address: %s", r.URL.Path)
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(thief.Close)
+	rec = s.doJSON("PUT", "/api/v1/jellyfin", admin, `{"url":"`+thief.URL+`","public_url":""}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), errKeyForNewAddress) || jellyfinsvc.ErrKeyForNewAddress.Error() != errKeyForNewAddress {
+		t.Errorf("new address, no key: HTTP %d %s", rec.Code, rec.Body)
+	}
+	if rec := s.do("GET", "/api/v1/jellyfin", mgr); !strings.Contains(rec.Body.String(), `"url":"`+jf.URL+`"`) {
+		t.Errorf("a refused save moved the connection: %s", rec.Body)
+	}
 
 	// Test: typed values, the saved ones, a wrong key; never the key in an answer.
 	var answers []string
