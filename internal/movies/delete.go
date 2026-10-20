@@ -40,14 +40,30 @@ func (e *FilesNotRemovedError) Unwrap() []error { return []error{ErrFilesNotRemo
 // to the recycle bin first, or is deleted when the bin is deliberately off. If the bin
 // refuses a file, Delete stops before touching the movie's rows and returns a
 // FilesNotRemovedError; files it had already moved read as missing so the library tells
-// the truth. It never falls back to a permanent delete.
+// the truth. It never falls back to a permanent delete. It moves no leftover artwork or
+// metadata: that takes DeleteWith and the list the preview showed.
 func (s *Service) Delete(ctx context.Context, id int64, deleteFiles bool) error {
+	return s.DeleteWith(ctx, id, DeleteOptions{Files: deleteFiles})
+}
+
+// DeleteOptions says what a movie delete removes from disk.
+type DeleteOptions struct {
+	// Files moves every version's file and its subtitles to the recycle bin.
+	Files bool
+	// Leftovers are the artwork and metadata paths the delete dialog listed (the
+	// preview's extras). Only those go, and only while a fresh plan still allows each
+	// one; a file that turned up since the preview stays. Empty: none go.
+	Leftovers []string
+}
+
+// DeleteWith is Delete with the files the preview listed (DeleteOptions).
+func (s *Service) DeleteWith(ctx context.Context, id int64, opts DeleteOptions) error {
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return err
 	}
-	if deleteFiles {
-		if err := s.removeAllFiles(ctx, m); err != nil {
+	if opts.Files {
+		if err := s.removeAllFiles(ctx, m, opts.Leftovers); err != nil {
 			return err
 		}
 	}
@@ -114,8 +130,10 @@ func trackedFiles(m Movie, extras []Version) ([]movieFile, map[int64]string) {
 // its subtitles go to the bin, then — only where the folder is provably the movie's own
 // — its leftover artwork and metadata, then each folder the plan empties. A tracked file
 // the bin refuses stops the delete (FilesNotRemovedError); a leftover it refuses is
-// logged and left, with its folder.
-func (s *Service) removeAllFiles(ctx context.Context, m Movie) error {
+// logged and left, with its folder. Only leftovers in confirmed (the ones the preview
+// listed) go: the plan is made again here, and a leftover it no longer allows, or one the
+// preview didn't show, stays.
+func (s *Service) removeAllFiles(ctx context.Context, m Movie, confirmed []string) error {
 	// Read the extras directly: Versions degrades to default-only on a read error, and
 	// here that would delete the movie while leaving its other files untracked on disk.
 	extras, err := s.repo.ListVersions(ctx, m.ID)
@@ -131,7 +149,8 @@ func (s *Service) removeAllFiles(ctx context.Context, m Movie) error {
 		_ = s.repo.AddEvent(ctx, m.ID, "delete.failed", "Couldn't use the recycle bin, so nothing was deleted: "+err.Error())
 		return &FilesNotRemovedError{Moved: []string{}, Failed: []string{filepath.Base(files[0].path)}, Err: err}
 	}
-	plan := s.purgePlanFor(m, files, labels)
+	plan := s.purgePlanFor(ctx, m, files, labels)
+	plan.keepOnly(confirmed)
 	var moved []movieFile
 	for _, v := range plan.videos {
 		dst, err := library.RemoveToBin(s.bin, v.path)
@@ -167,7 +186,7 @@ func (s *Service) removeAllFiles(ctx context.Context, m Movie) error {
 			s.fileRemoved(sub)
 		}
 	}
-	s.clearFolders(m, plan)
+	s.clearFolders(ctx, m, plan)
 	return nil
 }
 
@@ -175,28 +194,36 @@ func (s *Service) removeAllFiles(ctx context.Context, m Movie) error {
 // the plan empties. A leftover the bin refuses stays, with its folder: a warning, never a
 // failure, since the movie's own files are already gone. Leftovers are never deleted for
 // good: if the bin is off by now, they stay.
-func (s *Service) clearFolders(m Movie, plan purgePlan) {
+func (s *Service) clearFolders(ctx context.Context, m Movie, plan purgePlan) {
 	for _, f := range plan.folders {
 		left := 0
-		if off, _ := s.binOff(); off && len(f.extras) > 0 {
-			left = len(f.extras)
-		} else {
-			for _, p := range f.extras {
-				// Only the plain file the plan saw: never a link put in its place since.
-				if fi, err := os.Lstat(p); err != nil || !fi.Mode().IsRegular() {
-					left++
-					continue
+		if len(f.extras) > 0 {
+			if reason := s.recheckFolder(ctx, plan.pc, f); reason != "" {
+				// Something changed since the plan (an import, a new file, another film's
+				// record): every leftover stays.
+				left = len(f.extras)
+				s.log.Warn("movie delete: the folder changed during the delete, so its other files stay",
+					"movie", m.Title, "folder", f.dir, "why", reason)
+			} else {
+				for _, p := range f.extras {
+					// The very file the plan saw, reached through real folders only: a link
+					// swapped in since, or a file rewritten since, stays.
+					if why := s.leftoverChanged(f, p); why != "" {
+						left++
+						s.log.Warn("movie: leftover left in the folder", "movie", m.Title, "path", p, "why", why)
+						continue
+					}
+					dst, err := library.RemoveToBin(s.bin, p)
+					if err != nil {
+						left++
+						s.log.Warn("movie: leftover left in the folder", "movie", m.Title, "path", p, "err", err)
+						continue
+					}
+					if dst != "" {
+						s.log.Info("moved to recycle bin", "from", p, "to", dst)
+					}
+					s.fileRemoved(p)
 				}
-				dst, err := library.RemoveToBin(s.bin, p)
-				if err != nil {
-					left++
-					s.log.Warn("movie: leftover left in the folder", "movie", m.Title, "path", p, "err", err)
-					continue
-				}
-				if dst != "" {
-					s.log.Info("moved to recycle bin", "from", p, "to", dst)
-				}
-				s.fileRemoved(p)
 			}
 		}
 		for _, d := range f.subdirs {
@@ -386,7 +413,20 @@ func (s *Service) removeFile(path string, keep []string) error {
 	// with the new video too.
 	var subs []string
 	if !library.SharesBase(path) {
-		subs = sidecarsOf(path, keep)
+		// Every other recorded file in the folder keeps its subtitles too — another
+		// film's, and one that's missing from disk (whose subtitles pairing can't see).
+		recorded, err := s.repo.OtherRecordedPaths(context.Background(), 0)
+		if err != nil {
+			s.log.Warn("movie: couldn't read the library's other files, so the subtitles stay", "path", path, "err", err)
+		} else {
+			keep = append([]string(nil), keep...)
+			for _, r := range recorded {
+				if r != path && strings.EqualFold(filepath.Dir(filepath.Clean(r)), filepath.Dir(filepath.Clean(path))) {
+					keep = append(keep, r)
+				}
+			}
+			subs = sidecarsOf(path, keep)
+		}
 	}
 	dst, err := library.RemoveToBin(s.bin, path)
 	if err != nil {
@@ -477,6 +517,7 @@ type PlanFile struct {
 type PlanExtra struct {
 	Folder    string `json:"folder"` // the movie folder's name
 	Name      string `json:"name"`   // relative to that folder ("poster.jpg", "extrafanart/1.jpg")
+	Path      string `json:"path"`   // the full path, which the delete is sent back to confirm it
 	SizeBytes int64  `json:"size_bytes"`
 }
 
@@ -512,7 +553,7 @@ func (s *Service) DeletePlan(ctx context.Context, id int64) (DeletePlan, error) 
 		return plan, err
 	}
 	files, labels := trackedFiles(m, extras)
-	p := s.purgePlanFor(m, files, labels)
+	p := s.purgePlanFor(ctx, m, files, labels)
 	size := func(path string) int64 {
 		if fi, err := os.Stat(path); err == nil {
 			return fi.Size()
@@ -534,7 +575,7 @@ func (s *Service) DeletePlan(ctx context.Context, id int64) (DeletePlan, error) 
 				rel = filepath.Base(x)
 			}
 			n := size(x)
-			plan.Extras = append(plan.Extras, PlanExtra{Folder: filepath.Base(f.dir), Name: filepath.ToSlash(rel), SizeBytes: n})
+			plan.Extras = append(plan.Extras, PlanExtra{Folder: filepath.Base(f.dir), Name: filepath.ToSlash(rel), Path: x, SizeBytes: n})
 			plan.Bytes += n
 		}
 		plan.Folders = append(plan.Folders, PlanFolder{Name: filepath.Base(f.dir), Path: f.dir, Removed: f.remove, Kept: f.kept})

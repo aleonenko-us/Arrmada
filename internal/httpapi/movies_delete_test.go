@@ -114,6 +114,58 @@ func TestMovieDeletePreview(t *testing.T) {
 	}
 }
 
+// A delete moves only the leftovers sent back from the preview: without the list the
+// artwork stays (and so does the folder); with it, the listed artwork goes and the folder
+// with it, while a file that turned up after the preview stays.
+func TestDeleteMovieMovesOnlyConfirmedLeftovers(t *testing.T) {
+	for _, withList := range []bool{false, true} {
+		bin := filepath.Join(t.TempDir(), "bin")
+		s, mgr, id, video := movieDeleteServer(t, bin)
+		dir := filepath.Dir(video)
+		poster := filepath.Join(dir, "poster.jpg")
+		if err := os.WriteFile(poster, []byte("art"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		body := ""
+		if withList {
+			rec := s.do("GET", fmt.Sprintf("/api/v1/movies/%d/delete-preview", id), mgr)
+			var got struct {
+				Extras []struct {
+					Path string `json:"path"`
+				} `json:"extras"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || len(got.Extras) != 1 || got.Extras[0].Path != poster {
+				t.Fatalf("preview extras = %+v (%v)", got.Extras, err)
+			}
+			b, _ := json.Marshal(map[string]any{"leftovers": []string{got.Extras[0].Path}})
+			body = string(b)
+			// Turned up after the preview: never shown, so it stays.
+			if err := os.WriteFile(filepath.Join(dir, "fanart.jpg"), []byte("late"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		rec := s.doJSON("DELETE", fmt.Sprintf("/api/v1/movies/%d?delete_files=true", id), mgr, body)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("list=%v: HTTP %d: %s", withList, rec.Code, rec.Body)
+		}
+		if _, err := os.Stat(video); err == nil {
+			t.Errorf("list=%v: the video is still there", withList)
+		}
+		_, err := os.Stat(poster)
+		if withList && err == nil {
+			t.Error("the listed poster is still there")
+		}
+		if !withList && err != nil {
+			t.Error("without the preview's list the poster went")
+		}
+		if withList {
+			if _, err := os.Stat(filepath.Join(dir, "fanart.jpg")); err != nil {
+				t.Error("a file that turned up after the preview went")
+			}
+		}
+	}
+}
+
 // A movie delete the recycle bin refuses answers 409 with a message saying why, and the
 // movie and its file are still there.
 func TestDeleteMovieReturns409OnRecycleFailure(t *testing.T) {

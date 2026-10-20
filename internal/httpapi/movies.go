@@ -1,9 +1,12 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1159,19 +1162,35 @@ func (a *api) handleDeleteMovie(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// The body, when there is one, sends back the leftovers the delete preview listed:
+	// only those artwork and metadata files can go with the movie's files.
+	var body struct {
+		Leftovers []string `json:"leftovers"`
+	}
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		a.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(bytes.TrimSpace(raw)) > 0 {
+		if err := json.Unmarshal(raw, &body); err != nil {
+			a.writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+	}
 	opts := automation.DeleteMovieOpts{
 		DeleteFiles:     r.URL.Query().Get("delete_files") == "true",
 		CancelDownloads: r.URL.Query().Get("cancel_downloads") == "true",
+		Leftovers:       body.Leftovers,
 	}
 	// Detached from the request: moving files to a bin on another disk is a copy, and a
 	// browser giving up part-way must not leave the files binned while the movie stays.
 	ctx := context.WithoutCancel(r.Context())
-	var err error
 	if a.deps.Automation != nil {
 		// Settles the movie's downloads too, so a finished one can't re-import it.
 		err = a.deps.Automation.DeleteMovie(ctx, id, opts)
 	} else {
-		err = a.deps.Movies.Delete(ctx, id, opts.DeleteFiles)
+		err = a.deps.Movies.DeleteWith(ctx, id, movies.DeleteOptions{Files: opts.DeleteFiles, Leftovers: opts.Leftovers})
 	}
 	if err != nil {
 		if errors.Is(err, movies.ErrNotFound) {

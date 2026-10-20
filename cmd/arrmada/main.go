@@ -471,6 +471,18 @@ func main() {
 	movieSvc.SetBin(bins)                 // deletes and replaced files go to the bins
 	seriesSvc.SetBin(bins)                // per-episode file deletes go to the recycle bin, like movies
 	seriesSvc.SetBus(bus)                 // deletes announce file.removed so imports forget them
+	// A movie delete never removes or empties another library's folder or a downloads folder.
+	movieSvc.SetProtectedDirs(func() []string {
+		ctx := context.Background()
+		out := []string{cfg.LibraryDir, roots.Downloads(ctx)}
+		for _, r := range roots.Libraries(ctx) {
+			out = append(out, r.Path)
+		}
+		for _, d := range roots.PerFolderDownloads(ctx) {
+			out = append(out, d.Path)
+		}
+		return out
+	})
 	prefs := libPrefs{s: settingsSvc}
 	movieSvc.SetNaming(prefs)
 	movieSvc.SetPrefs(prefs)

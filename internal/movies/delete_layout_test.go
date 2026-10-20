@@ -44,6 +44,21 @@ type layoutCase struct {
 	// remove more than v0.3.2 did.
 	want []string
 	own  string
+	// override is the movie's display-title pick; others are other films in the library
+	// with a recorded file (created only when it's also in files: a missing file).
+	override string
+	others   []layoutOther
+	// late files appear after the preview, before the delete. noList deletes without the
+	// preview's list of leftovers (the API without one, the bulk delete).
+	late   []string
+	noList bool
+}
+
+// layoutOther is another film in the library and the file recorded for it.
+type layoutOther struct {
+	title string
+	year  int
+	file  string
 }
 
 func layoutCases() []layoutCase {
@@ -371,9 +386,121 @@ func layoutCases() []layoutCase {
 			title:   "Heat",
 			year:    1995,
 			tracked: []string{"Movies/Heat.1995.1080p.BluRay-GRP/Heat.1995.1080p.BluRay-GRP.mkv"},
+			// GRP.sfv is named for the release group, not the movie: everything stays.
+			want: []string{"Movies/Heat.1995.1080p.BluRay-GRP/Heat.1995.1080p.BluRay-GRP.mkv"},
+		},
+		{
+			name:    "release-named folder with only the movie's own leftovers",
+			files:   []string{"Movies/Heat.1995.1080p.BluRay-GRP/Heat.1995.1080p.BluRay-GRP.mkv", "Movies/Heat.1995.1080p.BluRay-GRP/Heat.1995.1080p.BluRay-GRP.nfo", "Movies/Heat.1995.1080p.BluRay-GRP/Heat.1995.1080p.BluRay-GRP.sfv"},
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{"Movies/Heat.1995.1080p.BluRay-GRP/Heat.1995.1080p.BluRay-GRP.mkv"},
 			want: []string{"Movies/Heat.1995.1080p.BluRay-GRP/Heat.1995.1080p.BluRay-GRP.mkv", "Movies/Heat.1995.1080p.BluRay-GRP/Heat.1995.1080p.BluRay-GRP.nfo",
-				"Movies/Heat.1995.1080p.BluRay-GRP/GRP.sfv", "Movies/Heat.1995.1080p.BluRay-GRP"},
+				"Movies/Heat.1995.1080p.BluRay-GRP/Heat.1995.1080p.BluRay-GRP.sfv", "Movies/Heat.1995.1080p.BluRay-GRP"},
 			own: "Movies/Heat.1995.1080p.BluRay-GRP",
+		},
+		{
+			name: "collection sequel's record in this folder, its video missing",
+			files: []string{"Movies/Iron Man (2008)/Iron Man (2008).mkv", "Movies/Iron Man (2008)/poster.jpg",
+				"Movies/Iron Man (2008)/Iron Man 2 (2010).nfo", "Movies/Iron Man (2008)/Iron Man 2 (2010)-poster.jpg", "Movies/Iron Man (2008)/Iron Man 2 (2010).en.srt"},
+			title:   "Iron Man",
+			year:    2008,
+			tracked: []string{"Movies/Iron Man (2008)/Iron Man (2008).mkv"},
+			others:  []layoutOther{{"Iron Man 2", 2010, "Movies/Iron Man (2008)/Iron Man 2 (2010).mkv"}},
+			want:    []string{"Movies/Iron Man (2008)/Iron Man (2008).mkv"},
+		},
+		{
+			name:    "collection sequel's subtitle and nfo, the sequel tracked in its own folder",
+			files:   []string{"Movies/Iron Man (2008)/Iron Man (2008).mkv", "Movies/Iron Man (2008)/Iron Man 2 (2010).en.srt", "Movies/Iron Man (2008)/Iron Man 2 (2010).nfo", "Movies/Iron Man 2 (2010)/Iron Man 2 (2010).mkv"},
+			title:   "Iron Man",
+			year:    2008,
+			tracked: []string{"Movies/Iron Man (2008)/Iron Man (2008).mkv"},
+			others:  []layoutOther{{"Iron Man 2", 2010, "Movies/Iron Man 2 (2010)/Iron Man 2 (2010).mkv"}},
+			want:    []string{"Movies/Iron Man (2008)/Iron Man (2008).mkv"},
+		},
+		{
+			name:    "two records with the same title and year in one folder, the other's video missing",
+			files:   []string{"Movies/Hamlet (1990)/Hamlet (1990).mkv", "Movies/Hamlet (1990)/Hamlet (1990) - Branagh.en.srt", "Movies/Hamlet (1990)/poster.jpg"},
+			title:   "Hamlet",
+			year:    1990,
+			tracked: []string{"Movies/Hamlet (1990)/Hamlet (1990).mkv"},
+			others:  []layoutOther{{"Hamlet", 1990, "Movies/Hamlet (1990)/Hamlet (1990) - Branagh.mkv"}},
+			want:    []string{"Movies/Hamlet (1990)/Hamlet (1990).mkv"},
+		},
+		{
+			name:     "a display title that is another film's folder, that film's video missing",
+			files:    []string{"Movies/Godzilla (1954)/Gojira (1954).mkv", "Movies/Godzilla (1954)/Godzilla (1954).nfo", "Movies/Godzilla (1954)/Godzilla (1954)-poster.jpg"},
+			title:    "Gojira",
+			year:     1954,
+			override: "Godzilla",
+			tracked:  []string{"Movies/Godzilla (1954)/Gojira (1954).mkv"},
+			others:   []layoutOther{{"Godzilla", 1954, "Movies/Godzilla (1954)/Godzilla (1954).mkv"}},
+			want:     []string{"Movies/Godzilla (1954)/Gojira (1954).mkv"},
+		},
+		{
+			name: "another film named longer in the same folder, its video missing",
+			files: []string{"Movies/Movie (2000)/Movie.mkv", "Movies/Movie (2000)/Movie.en.srt",
+				"Movies/Movie (2000)/Movie.Directors.Cut.en.srt", "Movies/Movie (2000)/Movie.Directors.Cut.nfo"},
+			title:   "Movie",
+			year:    2000,
+			tracked: []string{"Movies/Movie (2000)/Movie.mkv"},
+			others:  []layoutOther{{"Movie Directors Cut", 2000, "Movies/Movie (2000)/Movie.Directors.Cut.mkv"}},
+			// v0.3.2 also took Movie.Directors.Cut.en.srt: subtitle pairing only saw videos on disk.
+			want: []string{"Movies/Movie (2000)/Movie.mkv", "Movies/Movie (2000)/Movie.en.srt"},
+		},
+		{
+			name:    "an untracked nfo and poster named for another film",
+			files:   []string{heat + "/Heat (1995).mkv", heat + "/poster.jpg", heat + "/Ronin (1998).nfo", heat + "/Ronin (1998)-poster.jpg"},
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{heat + "/Heat (1995).mkv"},
+			want:    []string{heat + "/Heat (1995).mkv"},
+		},
+		{
+			name:    "a poster that appears after the preview",
+			files:   join([]string{heat + "/Heat (1995).mkv", heat + "/Heat (1995).en.srt"}, plainArt),
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{heat + "/Heat (1995).mkv"},
+			late:    []string{heat + "/new-poster.jpg"}, // named for nothing known: all stay
+			want:    []string{heat + "/Heat (1995).mkv", heat + "/Heat (1995).en.srt"},
+		},
+		{
+			name:    "a generic banner that appears after the preview",
+			files:   join([]string{heat + "/Heat (1995).mkv", heat + "/Heat (1995).en.srt"}, plainArt),
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{heat + "/Heat (1995).mkv"},
+			late:    []string{heat + "/banner.jpg"}, // allowed by name, but never shown: it stays, and the folder
+			want:    join([]string{heat + "/Heat (1995).mkv", heat + "/Heat (1995).en.srt", heat + "/extrafanart"}, plainArt),
+			own:     heat,
+		},
+		{
+			name:    "another film's nfo that appears after the preview",
+			files:   join([]string{heat + "/Heat (1995).mkv", heat + "/Heat (1995).en.srt"}, plainArt),
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{heat + "/Heat (1995).mkv"},
+			late:    []string{heat + "/Ronin (1998).nfo"},
+			want:    []string{heat + "/Heat (1995).mkv", heat + "/Heat (1995).en.srt"},
+		},
+		{
+			name:    "a video that appears after the preview",
+			files:   join([]string{heat + "/Heat (1995).mkv", heat + "/Heat (1995).en.srt"}, plainArt),
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{heat + "/Heat (1995).mkv"},
+			late:    []string{heat + "/Heat (1995) sample.mkv"},
+			want:    []string{heat + "/Heat (1995).mkv", heat + "/Heat (1995).en.srt"},
+		},
+		{
+			name:    "delete without the preview's list (API, bulk)",
+			files:   join([]string{heat + "/Heat (1995).mkv", heat + "/Heat (1995).en.srt"}, plainArt),
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{heat + "/Heat (1995).mkv"},
+			noList:  true,
+			want:    []string{heat + "/Heat (1995).mkv", heat + "/Heat (1995).en.srt"},
 		},
 		{
 			name:    "tracked file missing from disk",
@@ -400,6 +527,7 @@ func (b refusingBin) For(path string) (string, error) {
 // #59): what the delete dialog lists for the movie, and the case's assertions.
 var (
 	layoutPreview func(t *testing.T, s *Service, id int64) []string
+	layoutDelete  func(s *Service, id int64) error // delete the movie with what the preview listed
 	layoutCheck   func(t *testing.T, c layoutCase, removed, preview []string, deleteErr error)
 	layoutReport  func(t *testing.T, cases []layoutCase, removed map[string][]string)
 )
@@ -485,6 +613,20 @@ func runLayoutCase(t *testing.T, c layoutCase) (removed, preview []string, delet
 		}
 		lastVersion = v.ID
 	}
+	for i, o := range c.others {
+		om, err := svc.repo.Create(ctx, Movie{TMDBID: 5000 + i, Title: o.title, Year: o.year, Monitored: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := svc.repo.SetFile(ctx, om.ID, abs(o.file)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.override != "" {
+		if _, err := st.DB().Exec(`UPDATE movies SET title_override = ?, display_title = ? WHERE id = ?`, c.override, c.override, m.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if layoutPreview != nil && c.action == "" {
 		// The plan names paths as the library spells them; the snapshot sees where they
 		// really are. Resolve every link above the last element, as Lstat does.
@@ -504,6 +646,9 @@ func runLayoutCase(t *testing.T, c layoutCase) (removed, preview []string, delet
 		}
 		sort.Strings(preview)
 	}
+	for _, f := range c.late {
+		writeFixture(t, abs(f))
+	}
 	before := snapshotTree(t, top)
 	switch c.action {
 	case "version":
@@ -511,7 +656,11 @@ func runLayoutCase(t *testing.T, c layoutCase) (removed, preview []string, delet
 	case "file":
 		deleteErr = svc.DeleteFile(ctx, m.ID)
 	default:
-		deleteErr = svc.Delete(ctx, m.ID, true)
+		if layoutDelete != nil && !c.noList {
+			deleteErr = layoutDelete(svc, m.ID)
+		} else {
+			deleteErr = svc.Delete(ctx, m.ID, true)
+		}
 	}
 	after := snapshotTree(t, top)
 	for p := range before {

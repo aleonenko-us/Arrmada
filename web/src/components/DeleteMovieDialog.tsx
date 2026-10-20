@@ -9,7 +9,9 @@ const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? o
 // extrasLine names every leftover file the delete moves from the movie's own folder.
 function extrasLine(p: MovieDeletePreview): string {
   const extras = p.extras ?? [];
-  return extras.length ? ` Also its artwork and metadata: ${extras.map((x) => x.name).join(", ")}.` : "";
+  // Versions in separate folders: name each file with its folder, so two posters read apart.
+  const several = new Set(extras.map((x) => x.folder)).size > 1;
+  return extras.length ? ` Also its artwork and metadata: ${extras.map((x) => several ? `${x.folder}/${x.name}` : x.name).join(", ")}.` : "";
 }
 
 // foldersLine says which folders go, and why one whose other files stay is kept.
@@ -48,7 +50,8 @@ export function DeleteMovieDialog({ movie, onClose, onDeleted }: {
   const confirm = async () => {
     setBusy(true); setErr(null);
     try {
-      await api.deleteMovie(movie.id, deleteFiles, cancelDownloads && pending.length > 0);
+      // The leftovers this dialog listed go back with the delete: only those can go.
+      await api.deleteMovie(movie.id, deleteFiles, cancelDownloads && pending.length > 0, (preview?.extras ?? []).map((x) => x.path));
       onDeleted();
     } catch (e) {
       let msg = (e as Error).message;
@@ -160,7 +163,7 @@ export function DeleteMoviesDialog({ movies, onClose, onDone }: {
     ? "Their files stay on disk."
     : mode && !mode.enabled
       ? "Permanently deletes their files and subtitles — the recycle bin is switched off. Artwork and metadata stay."
-      : "Moves their files and subtitles to the recycle bin, with the artwork, metadata and folder of each film that has a folder of its own.";
+      : "Moves their files and subtitles to the recycle bin. Artwork and metadata stay: delete a film on its own to see and clear its folder.";
   const box = (on: boolean) => ({ border: `1px solid ${on ? "var(--reject)" : "var(--line)"}`, background: on ? "var(--reject-soft)" : "var(--panel-2)", cursor: "pointer" });
 
   return (

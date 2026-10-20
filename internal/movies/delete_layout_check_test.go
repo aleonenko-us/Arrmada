@@ -17,7 +17,13 @@ import (
 // with ARRMADA_LAYOUT_BASELINE naming v0.3.2's dump — nothing goes that v0.3.2 kept unless
 // it's inside the movie's own folder. ARRMADA_LAYOUT_TABLE=<file> writes the comparison.
 
+// lastLeftovers are the leftovers the last preview listed, which the delete sends back.
+var lastLeftovers []string
+
 func init() {
+	layoutDelete = func(s *Service, id int64) error {
+		return s.DeleteWith(context.Background(), id, DeleteOptions{Files: true, Leftovers: lastLeftovers})
+	}
 	layoutPreview = func(t *testing.T, s *Service, id int64) []string {
 		t.Helper()
 		plan, err := s.DeletePlan(context.Background(), id)
@@ -47,6 +53,10 @@ func init() {
 				t.Errorf("preview names %s, which the plan doesn't move", x.Name)
 			}
 		}
+		lastLeftovers = nil
+		for _, x := range plan.Extras {
+			lastLeftovers = append(lastLeftovers, x.Path)
+		}
 		return plan.paths
 	}
 	layoutCheck = func(t *testing.T, c layoutCase, removed, preview []string, deleteErr error) {
@@ -65,7 +75,7 @@ func init() {
 		if c.action != "" {
 			return // only "delete the movie" has a preview
 		}
-		if strings.HasPrefix(c.bin, "refuse:") {
+		if strings.HasPrefix(c.bin, "refuse:") || len(c.late) > 0 || c.noList {
 			// A refused leftover stays: the delete did the preview minus it, never more.
 			for _, p := range removed {
 				if !layoutHas(preview, p) {

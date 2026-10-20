@@ -1,12 +1,14 @@
 package movies
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/tristenlammi/arrmada/internal/libfolders"
@@ -19,11 +21,17 @@ import (
 // same plan feeds the delete dialog and the delete, so the dialog states exactly what
 // will go.
 //
-// Leftovers go only when the folder is provably this movie's own (ownFolder) and every
-// one of them is a known sidecar type (sidecarKind). Anything else — a folder that isn't
-// the movie's, an unknown file, a link, another video anywhere inside, the recycle bin
-// switched off — leaves every leftover where it is, and the folder with them: only the
-// tracked files and their subtitles go, as they always did.
+// Leftovers go only when the folder is provably this movie's own (ownFolder), no other
+// film in the library has a file recorded in it (present or not), and every leftover is
+// a known sidecar type (sidecarKind) named generically or for this movie
+// (leftoverNamedFor). Anything else — a folder that isn't the movie's, an unknown file or
+// a file named for something else, a link, another video anywhere inside, the recycle
+// bin switched off — leaves every leftover where it is, and the folder with them: only
+// the tracked files and their subtitles go, as they always did.
+//
+// The preview is binding: the delete only moves the leftovers the caller confirms it was
+// shown (DeleteOptions.Leftovers), and only those a fresh plan still allows. A delete
+// without that list (the API without it, the bulk delete) moves no leftovers.
 
 // purgeVideo is one tracked file a movie delete moves, with the subtitles that go with it.
 type purgeVideo struct {
@@ -41,6 +49,14 @@ type purgeFolder struct {
 	subdirs []string // extras subfolders removed once emptied (full paths)
 	remove  bool     // the folder is empty once everything above has gone, so it goes
 	kept    string   // why its leftovers stay ("" when they go or there are none)
+	root    string   // the Movies folder it is in (set when it has leftovers)
+	stamps  map[string]fileStamp
+}
+
+// fileStamp is what a leftover looked like when the plan was made.
+type fileStamp struct {
+	size  int64
+	mtime time.Time
 }
 
 // purgePlan is everything a movie delete with files moves or removes. DeletePlan reads
@@ -48,6 +64,7 @@ type purgeFolder struct {
 type purgePlan struct {
 	videos  []purgeVideo // only tracked files that are on disk (Lstat, like the delete)
 	folders []purgeFolder
+	pc      purgeCtx // what the plan was made from, for the delete's re-checks
 }
 
 // paths is every path the plan removes, in the order the delete removes them: videos
@@ -77,15 +94,45 @@ func (p purgePlan) paths() []string {
 	return out
 }
 
+// keepOnly drops every leftover that isn't in confirmed (the paths the preview listed).
+// The folder itself is still removed only if it ends up empty.
+func (p *purgePlan) keepOnly(confirmed []string) {
+	ok := map[string]bool{}
+	for _, c := range confirmed {
+		ok[filepath.Clean(c)] = true
+	}
+	for i := range p.folders {
+		var kept []string
+		for _, x := range p.folders[i].extras {
+			if ok[filepath.Clean(x)] {
+				kept = append(kept, x)
+			}
+		}
+		p.folders[i].extras = kept
+	}
+}
+
+// purgeCtx is what the plan knows while it looks at the movie's folders.
+type purgeCtx struct {
+	m         Movie
+	tracked   map[string]bool // the movie's recorded files (clean paths)
+	planned   map[string]bool // every file the plan already moves (clean paths)
+	others    []string        // every file recorded for other films, on disk or not
+	othersErr error           // they couldn't be read: no leftover goes
+	bases     []string        // the movie's recorded files' names without extension, lower case
+}
+
 // purgePlanFor works out what deleting movie m with its files removes. files are its
 // tracked files (default first), deduplicated.
-func (s *Service) purgePlanFor(m Movie, files []movieFile, labels map[int64]string) purgePlan {
+func (s *Service) purgePlanFor(ctx context.Context, m Movie, files []movieFile, labels map[int64]string) purgePlan {
 	var plan purgePlan
-	tracked := map[string]bool{}
+	pc := purgeCtx{m: m, tracked: map[string]bool{}, planned: map[string]bool{}}
+	pc.others, pc.othersErr = s.repo.OtherRecordedPaths(ctx, m.ID)
 	for _, f := range files {
-		tracked[filepath.Clean(f.path)] = true
+		pc.tracked[filepath.Clean(f.path)] = true
+		name := filepath.Base(f.path)
+		pc.bases = append(pc.bases, strings.ToLower(strings.TrimSuffix(name, filepath.Ext(name))))
 	}
-	planned := map[string]bool{} // every file the plan already moves
 	dirs := map[string]bool{}
 	for _, f := range files {
 		fi, err := os.Lstat(f.path)
@@ -100,15 +147,20 @@ func (s *Service) purgePlanFor(m Movie, files []movieFile, labels map[int64]stri
 		}
 		// A same-name video in another container that stays (X.mp4 beside X.mkv) keeps
 		// the subtitles: they pair with it too. One that goes as well doesn't.
-		if !sharesBaseWithUntracked(f.path, tracked) {
+		if !sharesBaseWithUntracked(f.path, pc.tracked) {
 			for _, sub := range library.Sidecars(f.path) {
-				if !planned[filepath.Clean(sub)] {
-					planned[filepath.Clean(sub)] = true
+				// Another film's recorded file pairs with it as well (or better): even
+				// when that file is missing from disk, the subtitle may be its.
+				if pc.othersErr != nil || pairsWithOther(sub, f.path, pc.others) {
+					continue
+				}
+				if !pc.planned[filepath.Clean(sub)] {
+					pc.planned[filepath.Clean(sub)] = true
 					v.subs = append(v.subs, sub)
 				}
 			}
 		}
-		planned[filepath.Clean(f.path)] = true
+		pc.planned[filepath.Clean(f.path)] = true
 		plan.videos = append(plan.videos, v)
 		dirs[filepath.Dir(f.path)] = true
 	}
@@ -124,14 +176,50 @@ func (s *Service) purgePlanFor(m Movie, files []movieFile, labels map[int64]stri
 		return ordered[i] < ordered[j]
 	})
 	for _, d := range ordered {
-		plan.folders = append(plan.folders, s.planFolder(m, d, tracked, planned))
+		plan.folders = append(plan.folders, s.planFolder(pc, d))
 	}
+	plan.pc = pc
 	return plan
+}
+
+// pairsWithOther reports whether subtitle sub pairs with another film's recorded file in
+// its folder whose name is at least as long as video's: "Movie.Directors.Cut.en.srt"
+// belongs to a recorded "Movie.Directors.Cut.mkv" rather than to "Movie.mkv", and one
+// both name exactly is never taken. Case is ignored; the other file may be missing.
+func pairsWithOther(sub, video string, others []string) bool {
+	dir := filepath.Dir(sub)
+	stem := strings.ToLower(strings.TrimSuffix(filepath.Base(sub), filepath.Ext(sub)))
+	vb := strings.TrimSuffix(filepath.Base(video), filepath.Ext(video))
+	for _, o := range others {
+		if !strings.EqualFold(filepath.Dir(filepath.Clean(o)), dir) {
+			continue
+		}
+		ob := strings.ToLower(strings.TrimSuffix(filepath.Base(o), filepath.Ext(o)))
+		if len(ob) < len(vb) {
+			continue
+		}
+		if stem == ob || strings.HasPrefix(stem, ob+".") {
+			return true
+		}
+	}
+	return false
+}
+
+// recordedUnder returns another film's recorded file in or under dir ("" when none),
+// comparing without case so a differently-spelled record still counts.
+func recordedUnder(dir string, others []string) string {
+	d := strings.ToLower(filepath.Clean(dir)) + string(filepath.Separator)
+	for _, o := range others {
+		if strings.HasPrefix(strings.ToLower(filepath.Clean(o)), d) {
+			return o
+		}
+	}
+	return ""
 }
 
 // planFolder decides what happens to dir, a folder holding some of the movie's tracked
 // files, once they and their subtitles (planned) have gone.
-func (s *Service) planFolder(m Movie, dir string, tracked, planned map[string]bool) purgeFolder {
+func (s *Service) planFolder(pc purgeCtx, dir string) purgeFolder {
 	f := purgeFolder{dir: dir}
 	if !s.prunable(dir) {
 		if fi, err := os.Lstat(dir); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
@@ -150,7 +238,7 @@ func (s *Service) planFolder(m Movie, dir string, tracked, planned map[string]bo
 	}
 	leftovers := false
 	for _, e := range entries {
-		if !planned[filepath.Clean(filepath.Join(dir, e.Name()))] {
+		if !pc.planned[filepath.Clean(filepath.Join(dir, e.Name()))] {
 			leftovers = true
 			break
 		}
@@ -159,7 +247,19 @@ func (s *Service) planFolder(m Movie, dir string, tracked, planned map[string]bo
 		f.remove = true // only the movie's own files and subtitles were in it
 		return f
 	}
-	if reason := s.ownFolder(m, dir); reason != "" {
+	if pc.othersErr != nil {
+		f.kept = "the library's other films couldn't be checked"
+		return f
+	}
+	if o := recordedUnder(dir, pc.others); o != "" {
+		rel, err := filepath.Rel(dir, o)
+		if err != nil {
+			rel = filepath.Base(o)
+		}
+		f.kept = "another film in your library has a file recorded in it (" + filepath.ToSlash(rel) + ")"
+		return f
+	}
+	if reason := s.ownFolder(pc.m, dir); reason != "" {
 		f.kept = reason
 		return f
 	}
@@ -167,13 +267,81 @@ func (s *Service) planFolder(m Movie, dir string, tracked, planned map[string]bo
 		f.kept = reason
 		return f
 	}
-	extras, subdirs, reason := leftoverSidecars(dir, tracked, planned)
+	extras, subdirs, reason := leftoverSidecars(dir, pc.tracked, pc.planned, leftoverNamedFor(pc.m, pc.bases))
 	if reason != "" {
 		f.kept = reason
 		return f
 	}
 	f.extras, f.subdirs, f.remove = extras, subdirs, true
+	f.root = s.movieRootOf(dir)
+	f.stamps = map[string]fileStamp{}
+	for _, x := range extras {
+		if fi, err := os.Lstat(x); err == nil {
+			f.stamps[x] = fileStamp{fi.Size(), fi.ModTime()}
+		}
+	}
 	return f
+}
+
+// recheckFolder looks at a folder again right before its leftovers move, after the
+// movie's own files went: another film's record that turned up, or a new video or
+// unknown file (an import landing mid-delete), keeps every leftover. "" means go on.
+func (s *Service) recheckFolder(ctx context.Context, pc purgeCtx, f purgeFolder) string {
+	others, err := s.repo.OtherRecordedPaths(ctx, pc.m.ID)
+	if err != nil {
+		return "the library's other films couldn't be checked"
+	}
+	if o := recordedUnder(f.dir, others); o != "" {
+		return "another film has a file recorded in it now"
+	}
+	if off, reason := s.binOff(); off {
+		return reason
+	}
+	if _, _, reason := leftoverSidecars(f.dir, pc.tracked, pc.planned, leftoverNamedFor(pc.m, pc.bases)); reason != "" {
+		return reason
+	}
+	return ""
+}
+
+// leftoverChanged returns why leftover p mustn't move now ("" when it may): every folder
+// from the Movies folder down to it must still be a real folder (no link swapped in), and
+// p must be the plain file the plan saw, at the same size and modification time.
+func (s *Service) leftoverChanged(f purgeFolder, p string) string {
+	if f.root == "" {
+		return "its Movies folder is unknown"
+	}
+	rel, err := filepath.Rel(f.root, filepath.Dir(p))
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return "it isn't inside its Movies folder"
+	}
+	cur := f.root
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		cur = filepath.Join(cur, part)
+		fi, err := os.Lstat(cur)
+		if err != nil || fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir() {
+			return "a folder on its way is gone or a link now"
+		}
+	}
+	fi, err := os.Lstat(p)
+	if err != nil || !fi.Mode().IsRegular() {
+		return "it's gone or no longer a plain file"
+	}
+	st, ok := f.stamps[p]
+	if !ok || st.size != fi.Size() || !st.mtime.Equal(fi.ModTime()) {
+		return "it changed since the preview"
+	}
+	return ""
+}
+
+// movieRootOf is the deepest Movies folder dir lies strictly inside ("" when none).
+func (s *Service) movieRootOf(dir string) string {
+	root := ""
+	for _, r := range s.allRoots() {
+		if libfolders.StrictlyUnder(dir, r) && len(r) > len(root) {
+			root = r
+		}
+	}
+	return root
 }
 
 // binOff reports whether a file would be deleted for good rather than moved
@@ -194,12 +362,27 @@ func (s *Service) prunable(dir string) bool {
 	if err != nil || fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir() {
 		return false
 	}
-	for _, r := range s.allRoots() {
+	for _, r := range s.protectedDirs() {
 		if strings.EqualFold(filepath.Clean(r), filepath.Clean(dir)) {
 			return false
 		}
 	}
 	return true
+}
+
+// protectedDirs is every folder a delete never removes or empties: the Movies folders
+// and, when the app has set them (SetProtectedDirs), every other library folder and
+// every downloads folder.
+func (s *Service) protectedDirs() []string {
+	out := s.allRoots()
+	if s.protected != nil {
+		for _, p := range s.protected() {
+			if p = strings.TrimSpace(p); p != "" {
+				out = append(out, filepath.Clean(p))
+			}
+		}
+	}
+	return out
 }
 
 // allRoots is every Movies folder the service knows of: the configured ones, the live
@@ -231,18 +414,15 @@ func (s *Service) allRoots() []string {
 // What dir holds is checked separately (leftoverSidecars).
 func (s *Service) ownFolder(m Movie, dir string) string {
 	dir = filepath.Clean(dir)
-	root := ""
-	for _, r := range s.allRoots() {
+	for _, r := range s.protectedDirs() {
 		if strings.EqualFold(r, dir) {
-			return "it's a library folder"
+			return "it's a library or downloads folder"
 		}
-		if libfolders.StrictlyUnder(r, dir) || strings.HasPrefix(strings.ToLower(r), strings.ToLower(dir)+string(filepath.Separator)) {
-			return "a library folder is inside it"
-		}
-		if libfolders.StrictlyUnder(dir, r) && len(r) > len(root) {
-			root = r
+		if strings.HasPrefix(strings.ToLower(r), strings.ToLower(dir)+string(filepath.Separator)) {
+			return "a library or downloads folder is inside it"
 		}
 	}
+	root := s.movieRootOf(dir)
 	if root == "" {
 		return "it isn't inside a Movies folder"
 	}
@@ -266,30 +446,7 @@ func (s *Service) ownFolder(m Movie, dir string) string {
 
 // folderNamedFor reports whether a folder called name is movie m's by name: one of its
 // titles, then its year.
-func (s *Service) folderNamedFor(m Movie, name string) bool {
-	if m.Year <= 0 {
-		return false // the year is half of the check: without it, refuse
-	}
-	words := nameWords(name)
-	year := strconv.Itoa(m.Year)
-	for _, title := range []string{m.Title, m.DisplayTitle, m.TitleOverride} {
-		t := nameWords(title)
-		if len(t) == 0 || len(words) <= len(t) {
-			continue
-		}
-		match := true
-		for i := range t {
-			if words[i] != t[i] {
-				match = false
-				break
-			}
-		}
-		if match && words[len(t)] == year {
-			return true
-		}
-	}
-	return false
-}
+func (s *Service) folderNamedFor(m Movie, name string) bool { return titleYearPrefix(m, name) }
 
 // nameWords splits a title or folder name into lower-case words of letters and digits.
 // Apostrophes join ("Ocean's" = "oceans"); everything else separates.
@@ -325,11 +482,12 @@ func sharesBaseWithUntracked(video string, tracked map[string]bool) bool {
 const maxLeftovers = 500
 
 // leftoverSidecars lists what in dir isn't already planned (the tracked files and their
-// subtitles) and returns it when every piece is a known sidecar: files of a known type
-// directly in dir, and extras-style subfolders holding only such files. reason says why
-// not otherwise; then nothing is returned. Links are never followed: a symlink anywhere
-// is a reason. A video anywhere that isn't one of the movie's tracked files is a reason.
-func leftoverSidecars(dir string, tracked, planned map[string]bool) (extras, subdirs []string, reason string) {
+// subtitles) and returns it when every piece is a known sidecar named for this movie or
+// generically (ours): such files directly in dir, artwork in extrafanart/extrathumbs,
+// and such files in other extras-style subfolders. reason says why not otherwise; then
+// nothing is returned. Links are never followed: a symlink anywhere is a reason. A video
+// anywhere that isn't one of the movie's tracked files is a reason.
+func leftoverSidecars(dir string, tracked, planned map[string]bool, ours func(name string) bool) (extras, subdirs []string, reason string) {
 	seen := 0
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -377,6 +535,11 @@ func leftoverSidecars(dir string, tracked, planned map[string]bool) (extras, sub
 		case !sidecarKind(d.Name()):
 			reason = "it holds a file Arrmada doesn't recognise (" + rel + ")"
 			return fs.SkipAll
+		case depth == 1 && artDirs[strings.ToLower(filepath.Base(filepath.Dir(p)))] && imageExts[strings.ToLower(filepath.Ext(d.Name()))]:
+			// extrafanart/1.jpg: artwork in a folder kept for this one movie's art
+		case !ours(d.Name()):
+			reason = "it holds a file named for something else (" + rel + ")"
+			return fs.SkipAll
 		}
 		extras = append(extras, p)
 		return nil
@@ -409,6 +572,73 @@ func hasVideo(dir string, tracked map[string]bool) bool {
 	})
 	return found
 }
+
+// leftoverNamedFor returns whether a leftover file's name is generic ("poster.jpg",
+// "movie.nfo", "theme.mp3") or names this movie: it starts with one of its recorded
+// files' names ("Heat (1995)-poster.jpg", "Heat (1995).en.srt"), or with its title then
+// its year ("Heat.1995.nfo"). A file named for anything else ("Ronin (1998).nfo",
+// "Iron Man 2 (2010).en.srt" in Iron Man's folder) is not this movie's to recycle.
+func leftoverNamedFor(m Movie, bases []string) func(name string) bool {
+	return func(name string) bool {
+		lower := strings.ToLower(name)
+		if sidecarNames[lower] {
+			return true
+		}
+		stem := strings.TrimSuffix(lower, filepath.Ext(lower))
+		if genericStems[strings.TrimRight(stem, "0123456789")] {
+			return true
+		}
+		for _, b := range bases {
+			if b == "" || !strings.HasPrefix(stem, b) {
+				continue
+			}
+			if len(stem) == len(b) || strings.ContainsRune(" .-_[(", rune(stem[len(b)])) {
+				return true
+			}
+		}
+		return titleYearPrefix(m, stem)
+	}
+}
+
+// titleYearPrefix reports whether name's words start with one of m's titles and then
+// its year.
+func titleYearPrefix(m Movie, name string) bool {
+	if m.Year <= 0 {
+		return false
+	}
+	words := nameWords(name)
+	year := strconv.Itoa(m.Year)
+	for _, title := range []string{m.Title, m.DisplayTitle, m.TitleOverride} {
+		t := nameWords(title)
+		if len(t) == 0 || len(words) <= len(t) {
+			continue
+		}
+		match := true
+		for i := range t {
+			if words[i] != t[i] {
+				match = false
+				break
+			}
+		}
+		if match && words[len(t)] == year {
+			return true
+		}
+	}
+	return false
+}
+
+// genericStems are artwork and metadata names that belong to whatever folder they're in
+// (Kodi, Plex, Jellyfin, Emby), with any number after them ("fanart1").
+var genericStems = map[string]bool{
+	"poster": true, "folder": true, "fanart": true, "banner": true, "logo": true,
+	"clearlogo": true, "clearart": true, "disc": true, "discart": true, "landscape": true,
+	"backdrop": true, "thumb": true, "cover": true, "keyart": true, "movie": true,
+}
+
+// artDirs hold only artwork for the one movie whose folder they're in.
+var artDirs = map[string]bool{"extrafanart": true, "extrathumbs": true}
+
+var imageExts = map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".tbn": true}
 
 // extrasDirs are the subfolder names media servers and scrapers keep a movie's extra
 // artwork and clips in. One goes only when everything in it is a known sidecar file.

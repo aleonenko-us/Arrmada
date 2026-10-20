@@ -35,9 +35,9 @@ test.describe("manager deleting a movie with its files", () => {
   test("its own folder: the artwork, the metadata and the folder are listed", async ({ page, api }) => {
     await answerPreview(page, preview({
       extras: [
-        { folder: "Anchor Point (2019)", name: "movie.nfo", size_bytes: 2_000 },
-        { folder: "Anchor Point (2019)", name: "poster.jpg", size_bytes: 300_000 },
-        { folder: "Anchor Point (2019)", name: "extrafanart/fanart1.jpg", size_bytes: 500_000 },
+        { folder: "Anchor Point (2019)", name: "movie.nfo", path: "/media/movies/Anchor Point (2019)/movie.nfo", size_bytes: 2_000 },
+        { folder: "Anchor Point (2019)", name: "poster.jpg", path: "/media/movies/Anchor Point (2019)/poster.jpg", size_bytes: 300_000 },
+        { folder: "Anchor Point (2019)", name: "extrafanart/fanart1.jpg", path: "/media/movies/Anchor Point (2019)/extrafanart/fanart1.jpg", size_bytes: 500_000 },
       ],
       folders: [{ name: "Anchor Point (2019)", path: "/media/movies/Anchor Point (2019)", removed: true }],
     }));
@@ -50,10 +50,32 @@ test.describe("manager deleting a movie with its files", () => {
     expect(w.doc, "document width").toBeLessThanOrEqual(w.viewport);
     await dialog.getByRole("button", { name: "Remove + delete files" }).click();
     await expect.poll(() => api.callsTo("DELETE", "/api/v1/movies/2").length).toBe(1);
-    expect(api.callsTo("DELETE", "/api/v1/movies/2")[0].path).toContain("delete_files=true");
+    const call = api.callsTo("DELETE", "/api/v1/movies/2")[0];
+    expect(call.path).toContain("delete_files=true");
+    // Exactly the leftovers it listed go back with the delete: nothing else can go.
+    expect(call.body).toEqual({ leftovers: [
+      "/media/movies/Anchor Point (2019)/movie.nfo",
+      "/media/movies/Anchor Point (2019)/poster.jpg",
+      "/media/movies/Anchor Point (2019)/extrafanart/fanart1.jpg",
+    ] });
   });
 
-  test("a shared folder: nothing but the movie's files, and the dialog says why the folder stays", async ({ page }) => {
+  test("versions in two folders: each leftover is named with its folder", async ({ page }) => {
+    await answerPreview(page, preview({
+      extras: [
+        { folder: "Anchor Point (2019)", name: "poster.jpg", path: "/media/movies/Anchor Point (2019)/poster.jpg", size_bytes: 1 },
+        { folder: "Anchor Point (2019) 4K", name: "poster.jpg", path: "/media/movies/Anchor Point (2019) 4K/poster.jpg", size_bytes: 1 },
+      ],
+      folders: [
+        { name: "Anchor Point (2019)", path: "/media/movies/Anchor Point (2019)", removed: true },
+        { name: "Anchor Point (2019) 4K", path: "/media/movies/Anchor Point (2019) 4K", removed: true },
+      ],
+    }));
+    const dialog = await openDelete(page);
+    await expect(dialog).toContainText("Also its artwork and metadata: Anchor Point (2019)/poster.jpg, Anchor Point (2019) 4K/poster.jpg.");
+  });
+
+  test("a shared folder: nothing but the movie's files, and the dialog says why the folder stays", async ({ page, api }) => {
     await answerPreview(page, preview({
       extras: [],
       folders: [{ name: "Marvel", path: "/media/movies/Marvel", removed: false, kept: "another video is inside it (Iron Man 2 (2010)/Iron Man 2 (2010).mkv)" }],
@@ -62,5 +84,8 @@ test.describe("manager deleting a movie with its files", () => {
     await expect(dialog).toContainText("Anchor Point (2019).mkv and 1 subtitle.");
     await expect(dialog).not.toContainText("artwork and metadata:");
     await expect(dialog).toContainText("The folder “Marvel” stays: another video is inside it");
+    await dialog.getByRole("button", { name: "Remove + delete files" }).click();
+    await expect.poll(() => api.callsTo("DELETE", "/api/v1/movies/2").length).toBe(1);
+    expect(api.callsTo("DELETE", "/api/v1/movies/2")[0].body ?? null).toBeNull(); // no leftovers to send
   });
 });
