@@ -27,6 +27,9 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
   const [test, setTest] = useState<PlexTestResult | null>(null);
+  // The URL and token fields stay folded away until asked for (or Sign in with Plex
+  // couldn't find a server that answers).
+  const [manual, setManual] = useState(false);
   const [, setParams] = useSearchParams();
 
   const load = useCallback(() => insightsApi.insightsConfig().then(setCfg).catch(() => toast("Could not load Plex settings", { tone: "error" })), [toast]);
@@ -54,7 +57,7 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
       onChanged?.();
       if (r.server_name) toast(`Signed in with Plex — connected to ${r.server_name}`, { tone: "good" });
       else if (r.choices?.length) toast("Signed in with Plex — pick your server below", { tone: "good" });
-      else toast("Signed in with Plex, but none of your servers answered — enter its URL below.", { tone: "error" });
+      else { setManual(true); toast("Signed in with Plex, but none of your servers answered — enter its URL below.", { tone: "error" }); }
     },
     onError: (m) => (onError ? onError(m) : toast(m, { tone: "error" })),
     resumeParam: "plexpin",
@@ -102,39 +105,47 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
           </div>
         )}
       </div>
-      <div className="flex items-center gap-2 text-xs text-ink-faint">
-        <span className="h-px flex-1" style={{ background: "var(--line)" }} /> or enter manually <span className="h-px flex-1" style={{ background: "var(--line)" }} />
-      </div>
+      {!manual ? (
+        <button onClick={() => setManual(true)} className="self-center text-sm text-ink-faint underline">
+          Enter the server address and token instead
+        </button>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 text-xs text-ink-faint">
+            <span className="h-px flex-1" style={{ background: "var(--line)" }} /> or enter manually <span className="h-px flex-1" style={{ background: "var(--line)" }} />
+          </div>
 
-      <label className="block">
-        <span className="mb-1 block text-sm font-semibold">Server URL</span>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://192.168.1.10:32400" className="w-full rounded-lg px-3 py-2 text-md" style={inputStyle} />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-sm font-semibold">X-Plex-Token</span>
-        <input value={token} onChange={(e) => setToken(e.target.value)} type="password" autoComplete="off" placeholder={tokenMoved ? "enter the token for the new address" : cfg?.token_set ? "•••••••••• (saved — leave blank to keep)" : "paste your token"} className="w-full rounded-lg px-3 py-2 text-md" style={inputStyle} />
-        {tokenMoved && <span className="mt-1 block text-xs" style={{ color: "var(--accent-text)" }}>New address: paste the token again, or sign in with Plex. The saved token is only sent to the address it was saved for.</span>}
-        <span className="mt-1 block text-xs text-ink-faint">In Plex web: play an item → ⋯ → Get Info → View XML — the URL ends with <code>X-Plex-Token=…</code></span>
-      </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-semibold">Server URL</span>
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://192.168.1.10:32400" className="w-full rounded-lg px-3 py-2 text-md" style={inputStyle} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-semibold">X-Plex-Token</span>
+            <input value={token} onChange={(e) => setToken(e.target.value)} type="password" autoComplete="off" placeholder={tokenMoved ? "enter the token for the new address" : cfg?.token_set ? "•••••••••• (saved — leave blank to keep)" : "paste your token"} className="w-full rounded-lg px-3 py-2 text-md" style={inputStyle} />
+            {tokenMoved && <span className="mt-1 block text-xs" style={{ color: "var(--accent-text)" }}>New address: paste the token again, or sign in with Plex. The saved token is only sent to the address it was saved for.</span>}
+            <span className="mt-1 block text-xs text-ink-faint">In Plex web: play an item → ⋯ → Get Info → View XML — the URL ends with <code>X-Plex-Token=…</code></span>
+          </label>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button onClick={runTest} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{busy === "test" ? "Testing…" : "Test connection"}</button>
-        <button onClick={() => void save()} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{busy === "save" ? "Saving…" : "Save"}</button>
-      </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={runTest} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}>{busy === "test" ? "Testing…" : "Test connection"}</button>
+            <button onClick={() => void save()} disabled={busy !== null || !url.trim()} className="rounded-lg px-3.5 py-2 text-base font-semibold disabled:opacity-50" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>{busy === "save" ? "Saving…" : "Save"}</button>
+          </div>
 
-      {test && (
-        <div className="rounded-lg p-3 text-sm" style={{ border: `1px solid ${test.ok ? "var(--good)" : "var(--reject)"}`, background: test.ok ? "var(--good-soft)" : "var(--reject-soft)", color: test.ok ? "var(--good-text)" : "var(--reject-text)" }}>
-          {test.ok ? (
-            <div>
-              <div className="font-semibold">✓ Connected{test.server_name ? ` to ${test.server_name}` : ""}{test.version ? ` · Plex ${test.version}` : ""}</div>
-              {test.libraries && test.libraries.length > 0 && (
-                <div className="mt-1 text-ink-dim">Libraries: {test.libraries.map((l) => l.title).join(", ")}</div>
+          {test && (
+            <div className="rounded-lg p-3 text-sm" style={{ border: `1px solid ${test.ok ? "var(--good)" : "var(--reject)"}`, background: test.ok ? "var(--good-soft)" : "var(--reject-soft)", color: test.ok ? "var(--good-text)" : "var(--reject-text)" }}>
+              {test.ok ? (
+                <div>
+                  <div className="font-semibold">✓ Connected{test.server_name ? ` to ${test.server_name}` : ""}{test.version ? ` · Plex ${test.version}` : ""}</div>
+                  {test.libraries && test.libraries.length > 0 && (
+                    <div className="mt-1 text-ink-dim">Libraries: {test.libraries.map((l) => l.title).join(", ")}</div>
+                  )}
+                </div>
+              ) : (
+                <div className="break-words font-semibold">✕ {test.error || "Connection failed"}</div>
               )}
             </div>
-          ) : (
-            <div className="break-words font-semibold">✕ {test.error || "Connection failed"}</div>
           )}
-        </div>
+        </>
       )}
       <p className="m-0 text-xs text-ink-faint">
         Watch monitoring, library updates, who may sign in with Plex and the accounts linked to it: <Link to={LINKS.plexServer} className="font-semibold" style={{ color: "var(--accent-text)" }}>Settings → Media servers →</Link>
