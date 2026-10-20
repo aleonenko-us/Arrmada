@@ -21,22 +21,25 @@ func NewRepo(db *sql.DB) *Repo { return &Repo{db: db} }
 
 const profileCols = `id, media_type, name, base, allowed_resolutions, min_source, bitrate_cap_mbps,
 	small_bias, min_format_score, format_scores, custom_formats, keywords, rejected, min_seeders, stall_minutes, max_source,
-	upgrades_enabled, upgrade_min_percent, required_formats, ideal, allow_prerelease, upgrade_trigger, unwanted, group_tiers`
+	upgrades_enabled, upgrade_min_percent, required_formats, ideal, allow_prerelease, upgrade_trigger, unwanted, group_tiers,
+	multi_counts_language`
 
 func (r *Repo) scan(row interface{ Scan(...any) error }) (StoredProfile, error) {
 	var (
 		sp                                                    StoredProfile
 		allowedJSON, scoresJSON, cfJSON, kwJSON, rejectedJSON string
 		requiredJSON, idealJSON, unwantedJSON, tiersJSON      string
-		upgradesEnabled, allowPreRelease                      int
+		upgradesEnabled, allowPreRelease, multiCounts         int
 	)
 	err := row.Scan(&sp.ID, &sp.MediaType, &sp.Name, &sp.Base, &allowedJSON, &sp.MinSource,
 		&sp.BitrateCapMbps, &sp.SmallBias, &sp.MinFormatScore, &scoresJSON, &cfJSON,
 		&kwJSON, &rejectedJSON, &sp.MinSeeders, &sp.StallMinutes, &sp.MaxSource,
-		&upgradesEnabled, &sp.UpgradeMinPercent, &requiredJSON, &idealJSON, &allowPreRelease, &sp.UpgradeTrigger, &unwantedJSON, &tiersJSON)
+		&upgradesEnabled, &sp.UpgradeMinPercent, &requiredJSON, &idealJSON, &allowPreRelease, &sp.UpgradeTrigger, &unwantedJSON, &tiersJSON,
+		&multiCounts)
 	if err != nil {
 		return StoredProfile{}, err
 	}
+	sp.MultiCountsLanguage = multiCounts != 0
 	sp.UpgradeTrigger = NormalizeTrigger(sp.UpgradeTrigger)
 	sp.UpgradesEnabled = upgradesEnabled != 0
 	sp.AllowPreRelease = allowPreRelease != 0
@@ -111,12 +114,14 @@ func (r *Repo) Create(ctx context.Context, sp StoredProfile) (StoredProfile, err
 		`INSERT INTO quality_profiles (media_type, name, base, allowed_resolutions, min_source,
 			bitrate_cap_mbps, small_bias, min_format_score, format_scores, custom_formats,
 			keywords, rejected, min_seeders, stall_minutes, max_source, upgrades_enabled, upgrade_min_percent,
-			required_formats, ideal, allow_prerelease, upgrade_trigger, unwanted, group_tiers)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			required_formats, ideal, allow_prerelease, upgrade_trigger, unwanted, group_tiers,
+			multi_counts_language)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sp.MediaType, sp.Name, sp.Base, allowed, sp.MinSource, sp.BitrateCapMbps, sp.SmallBias,
 		sp.MinFormatScore, scores, cf, kw, rej, sp.MinSeeders, sp.StallMinutes, sp.MaxSource,
 		boolToInt(sp.UpgradesEnabled), sp.UpgradeMinPercent, required, ideal, boolToInt(sp.AllowPreRelease),
-		NormalizeTrigger(sp.UpgradeTrigger), marshalUnwanted(sp), marshalTiers(sp))
+		NormalizeTrigger(sp.UpgradeTrigger), marshalUnwanted(sp), marshalTiers(sp),
+		boolToInt(sp.MultiCountsLanguage))
 	if err != nil {
 		return StoredProfile{}, err
 	}
@@ -133,12 +138,13 @@ func (r *Repo) Update(ctx context.Context, id int64, sp StoredProfile) error {
 			bitrate_cap_mbps = ?, small_bias = ?, min_format_score = ?, format_scores = ?, custom_formats = ?,
 			keywords = ?, rejected = ?, min_seeders = ?, stall_minutes = ?, max_source = ?,
 			upgrades_enabled = ?, upgrade_min_percent = ?, required_formats = ?, ideal = ?, allow_prerelease = ?,
-			upgrade_trigger = ?, unwanted = ?, group_tiers = ?
+			upgrade_trigger = ?, unwanted = ?, group_tiers = ?, multi_counts_language = ?
 		 WHERE id = ?`,
 		sp.Name, sp.Base, allowed, sp.MinSource, sp.BitrateCapMbps, sp.SmallBias, sp.MinFormatScore,
 		scores, cf, kw, rej, sp.MinSeeders, sp.StallMinutes, sp.MaxSource,
 		boolToInt(sp.UpgradesEnabled), sp.UpgradeMinPercent, required, ideal, boolToInt(sp.AllowPreRelease),
-		NormalizeTrigger(sp.UpgradeTrigger), marshalUnwanted(sp), marshalTiers(sp), id)
+		NormalizeTrigger(sp.UpgradeTrigger), marshalUnwanted(sp), marshalTiers(sp),
+		boolToInt(sp.MultiCountsLanguage), id)
 	if err != nil {
 		return err
 	}

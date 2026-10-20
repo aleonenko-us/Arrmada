@@ -135,6 +135,14 @@ type Release struct {
 	// Dual says it was a DUAL / Dual-Audio tag (one of the Multi forms): two languages,
 	// which on a foreign film is almost always the original plus English.
 	Dual bool `json:"dual,omitempty"`
+	// FileLanguages and FileMulti are Languages and Multi as the name was read before issue
+	// #58 added spellings (FRA, DEU, NLD, ESP, JAP, VFB). A file already in the library is
+	// judged by these (ForFile), so the update never changes a library file's verdict — a
+	// Must it stops meeting, or a Prefer that turns it into an upgrade candidate. Releases
+	// on offer use Languages.
+	FileLanguages []string `json:"-"`
+	FileMulti     bool     `json:"-"`
+	fileLangsRead bool     // Parse set the two above
 	// Streaming is the streaming service a WEB release was captured from, as the tag is
 	// written: AMZN, NF, ATVP, DSNP, HMAX, MAX, PCOK, PMTP, HULU, iT, CRAV, STAN or MA.
 	Streaming string `json:"streaming,omitempty"`
@@ -192,6 +200,16 @@ func (r Release) CoversSeason(season int) bool {
 
 // HasHDR reports whether any dynamic-range tag was detected.
 func (r Release) HasHDR() bool { return len(r.HDR) > 0 }
+
+// ForFile is the release as a file already in the library is judged: its languages as
+// they were read before issue #58 (FileLanguages). A Release Parse didn't make is
+// returned as it is.
+func (r Release) ForFile() Release {
+	if r.fileLangsRead {
+		r.Languages, r.Multi = r.FileLanguages, r.FileMulti
+	}
+	return r
+}
 
 // HasAudio reports whether the release carries the given audio tag.
 func (r Release) HasAudio(tag string) bool {

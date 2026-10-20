@@ -179,6 +179,50 @@ test.describe("Quality editor", () => {
     expect(body.ideal?.language).toEqual({ de: "must", original: "want" });
   });
 
+  // Issue #58: a Must language has to be named in a release; the profile's switch lets MULTi
+  // releases that name no language count, for trackers that label the local dub MULTi.
+  test("the MULTi switch sits beside a Must audio language, off by default, and saves with the profile", async ({ page, api }) => {
+    await mockEditor(page, api);
+    await page.goto("/quality/movie/hd-1080p");
+    const row = page.getByTestId("audio-language-row");
+    const multi = row.getByRole("checkbox", { name: "MULTi and Dual Audio releases count as having a required language" });
+    // No Must, no switch: it changes nothing else.
+    await expect(multi).toHaveCount(0);
+    await row.getByRole("combobox", { name: "Add an audio language" }).fill("fren");
+    await page.getByRole("option", { name: /French/ }).click();
+    await expect(multi).toHaveCount(0);
+    await row.getByRole("radiogroup", { name: "French audio" }).getByRole("radio", { name: /^Must/ }).click();
+    await expect(multi).toBeVisible();
+    await expect(multi).toHaveAttribute("aria-checked", "false");
+    await expect(multi).toHaveAccessibleDescription(/French ones especially/);
+    await multi.click();
+    await expect(multi).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("button", { name: "Save profile" }).click();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/quality/profiles/7").length).toBe(1);
+    const body = api.callsTo("PUT", "/api/v1/quality/profiles/7")[0].body as StoredProfile;
+    expect(body.multi_counts_language).toBe(true);
+    expect(body.ideal?.language).toEqual({ fr: "must" });
+  });
+
+  test("a profile saved with the MULTi switch on opens with it on, and turns it off", async ({ page, api }) => {
+    await mockEditor(page, api);
+    // Registered after mockEditor, so this answer wins for the profile itself.
+    await page.route((u) => u.pathname === "/api/v1/quality/profiles/hd-1080p", (route) =>
+      route.request().method() === "GET"
+        ? route.fulfill({ json: { ...hd, multi_counts_language: true, ideal: { language: { fr: "must" } } } })
+        : route.fallback());
+    await page.goto("/quality/movie/hd-1080p");
+    const multi = page.getByTestId("audio-language-row").getByRole("checkbox", { name: "MULTi and Dual Audio releases count as having a required language" });
+    await expect(multi).toHaveAttribute("aria-checked", "true");
+    await multi.click();
+    await expect(multi).toHaveAttribute("aria-checked", "false");
+    await page.getByRole("button", { name: "Save profile" }).click();
+    await expect.poll(() => api.callsTo("PUT", "/api/v1/quality/profiles/7").length).toBe(1);
+    const body = api.callsTo("PUT", "/api/v1/quality/profiles/7")[0].body as StoredProfile;
+    expect(body.multi_counts_language).toBe(false);
+    expect(body.ideal?.language).toEqual({ fr: "must" });
+  });
+
   test("Duplicate opens a copy; a failed one says so in a toast", async ({ page, api }) => {
     await mockEditor(page, api);
     await page.goto("/quality");

@@ -28,6 +28,29 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Before you update
 
+- **A Must audio language now has to be in the release name** (#58). A release is grabbed for
+  a Must language only when its name says it (ITA, iTALiAN, VFF, TRUEFRENCH…), or when the
+  language is the title's original and the release names no language or is MULTi/DL/Dual
+  Audio, which always carry the original. A MULTi or Dual Audio release that doesn't name the
+  language used to count as "might have it" and was grabbed; it's now skipped, and interactive
+  search says why ("Doesn't name Italian audio…"). If your trackers label releases MULTi when
+  they carry your language (French trackers often do), turn on **MULTi and Dual Audio
+  releases count as having a required language** under the profile's Audio language row.
+  It's off on every existing profile. A release that names no language, for a title whose
+  original language isn't known, is still not refused. This changes which releases are
+  grabbed only: files already in your library are judged by the same rules as before (the
+  newly read spellings below count for releases, not for library files).
+
+- **Hong Kong films get an original language.** TMDB codes Cantonese as `cn` (or `yue`),
+  which Arrmada didn't know, so those films had none and the Audio language rules skipped
+  them. They now read as Chinese: "Original language" rules apply to them, an untagged
+  release of one counts as Chinese (so a Must English refuses it, as for any foreign film),
+  a profile that requires the original marks such a film whose file has only a dub as not
+  fitting, and one that prefers it can upgrade that file, within the per-sweep upgrade
+  limit. A file whose audio is tagged or heard as Cantonese now reads as Chinese too, so an
+  English Must or Prefer can upgrade it (within the same limit). TMDB's `xx` (no spoken
+  language) is treated as no original language.
+
 - **Missing music files are flagged, not downloaded again.** When a track file is gone on two
   checks a day apart, the album says "N track files gone from disk" and isn't searched by
   itself, like movies. Use **Search for missing tracks** on the album page, or Music → Library
@@ -317,6 +340,10 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   pointed to.
 - Movies: deleting a movie no longer takes a subtitle named for another film in the same
   folder whose video is missing ("Movie.Directors.Cut.en.srt" beside "Movie.mkv").
+- Audio languages: a profile with Italian as Must no longer grabs MULTi or Dual Audio releases
+  that don't name Italian (#58). Release names that write FRA, DEU, NLD, ESP, JAP or VFB (in
+  capitals, outside an episode title) are read as French, German, Dutch, Spanish, Japanese
+  and French.
 - Library folders: a show, artist or album whose name is only dots can no longer reach
   outside its library folder. Names like "..." are still allowed.
 - Archive extraction: a refused archive no longer stops the rest of the download. Zips of RAR

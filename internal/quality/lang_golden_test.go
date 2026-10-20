@@ -36,21 +36,27 @@ func languageReleases() []Candidate {
 }
 
 func languageFixtures() []rankFixture {
+	// A Must has to be named (issue #58): the MULTi release that names no language is refused
+	// under must-german, and taken again (unknown, no German credit) with the profile's
+	// "MULTi releases count" switch on.
 	profiles := []struct {
-		name string
-		row  map[string]string
+		name  string
+		row   map[string]string
+		multi bool
 	}{
-		{"must-german", map[string]string{"de": PrefMust}},
-		{"prefer-german", map[string]string{"de": PrefWant}},
-		{"original-plus-german", map[string]string{LangOriginal: PrefWant, "de": PrefWant}},
-		{"must-original-prefer-german", map[string]string{LangOriginal: PrefMust, "de": PrefWant}},
-		{"avoid-french", map[string]string{"fr": PrefAvoid}},
-		{"german-must-avoid-italian", map[string]string{"de": PrefMust, "it": PrefAvoid}},
+		{"must-german", map[string]string{"de": PrefMust}, false},
+		{"must-german-multi-counts", map[string]string{"de": PrefMust}, true},
+		{"prefer-german", map[string]string{"de": PrefWant}, false},
+		{"original-plus-german", map[string]string{LangOriginal: PrefWant, "de": PrefWant}, false},
+		{"must-original-prefer-german", map[string]string{LangOriginal: PrefMust, "de": PrefWant}, false},
+		{"avoid-french", map[string]string{"fr": PrefAvoid}, false},
+		{"german-must-avoid-italian", map[string]string{"de": PrefMust, "it": PrefAvoid}, false},
 	}
 	var out []rankFixture
 	for _, pr := range profiles {
 		p, e := storedFixture(StoredProfile{Name: pr.name, AllowedResolutions: []string{"2160p", "1080p", "720p"},
-			Ideal: &IdealFile{Codec: map[string]string{"hevc": PrefWant}, Language: pr.row}})
+			MultiCountsLanguage: pr.multi,
+			Ideal:               &IdealFile{Codec: map[string]string{"hevc": PrefWant}, Language: pr.row}})
 		out = append(out, rankFixture{name: pr.name, p: p, e: e, cands: languageReleases()})
 	}
 	return out

@@ -120,6 +120,26 @@ func TestLanguages(t *testing.T) {
 		{"Movie.2020.HUN.ENG.1080p.WEB-DL.x264-GRP", []string{"hu", "en"}, false},
 		{"Movie.2020.SPANiSH.ENG.1080p.WEB-DL.x264-GRP", []string{"es", "en"}, false},
 		{"Movie.2020.ITA.1080p.WEB-DL.x264-GRP", []string{"it"}, false},
+		// The spellings a Must audio language is read from (issue #58): a name must say it.
+		{"Movie.2020.MULTi.ITA.1080p.BluRay.x264-GRP", []string{"it"}, true},
+		{"Movie.2020.iTA.ENG.1080p.BluRay.x264-GRP", []string{"it", "en"}, false},
+		{"Movie.2020.ITA-ENG.1080p.BluRay.x264-GRP", []string{"it", "en"}, false},
+		{"Movie.2020.Italian.1080p.WEB-DL.x264-GRP", []string{"it"}, false},
+		{"Movie.2020.VFB.1080p.WEB-DL.x264-GRP", []string{"fr"}, false},
+		{"Movie.2020.MULTi.VF2.1080p.WEB-DL.x264-GRP", []string{"fr"}, true},
+		{"Movie.2020.FRA.ENG.1080p.WEB-DL.x264-GRP", []string{"fr", "en"}, false},
+		{"Movie.2020.DEU.1080p.WEB-DL.x264-GRP", []string{"de"}, false},
+		{"Movie.2020.NLD.1080p.WEB-DL.x264-GRP", []string{"nl"}, false},
+		{"Movie.2020.ESP.ENG.1080p.WEB-DL.x264-GRP", []string{"es", "en"}, false},
+		{"Anime.2020.JAP.ENG.1080p.BluRay.x264-GRP", []string{"ja", "en"}, false},
+		// Lower case, they stay words ("esp" and "fra" are in plenty of titles), and so does
+		// mixed case: VfB Stuttgart is a football club, not Belgian French.
+		{"Movie.2020.1080p.WEB-DL.esp-GRP", nil, false},
+		{"VfB.Stuttgart.vs.Bayern.2024.1080p.WEB.h264-GRP", nil, false},
+		{"Bundesliga.2024.VfB.Stuttgart.vs.Bayern.1080p.WEB.h264-GRP", nil, false},
+		// Where an episode title sits, the newer codes stay words even in capitals.
+		{"Show.S01E02.The.JAP.Problem.1080p.WEB.h264-GRP", nil, false},
+		{"Show.S01E02.ESP.vs.FRA.1080p.WEB.h264-GRP", nil, false},
 		// German TV dubs where an episode title would sit: alone before the technical tokens,
 		// or with a dub tag after it.
 		{"Show.S01E01.German.720p.WEB.h264-GRP", []string{"de"}, false},
@@ -154,6 +174,34 @@ func TestLanguages(t *testing.T) {
 		if !reflect.DeepEqual(r.Languages, tc.langs) || r.Multi != tc.multi {
 			t.Errorf("Parse(%q): languages=%v multi=%v, want %v %v", tc.name, r.Languages, r.Multi, tc.langs, tc.multi)
 		}
+	}
+}
+
+// FileLanguages (ForFile) is the name read without the spellings added for issue #58, so a
+// library file's verdict doesn't move; a name without them reads the same both ways.
+func TestFileLanguagesLeaveOutNewSpellings(t *testing.T) {
+	cases := []struct {
+		name      string
+		file      []string
+		fileMulti bool
+	}{
+		{"Movie.2020.ESP.ENG.1080p.WEB-DL.x264-GRP", []string{"en"}, false},
+		{"Movie.2020.FRA.1080p.WEB-DL.x264-GRP", nil, false},
+		{"Movie.2020.DEU.DL.1080p.BluRay.x264-GRP", nil, false}, // DL needs a language beside it
+		{"Movie.2020.MULTi.VFB.1080p.WEB-DL.x264-GRP", nil, true},
+		{"Movie.2020.ITA.ENG.1080p.BluRay.x264-GRP", []string{"it", "en"}, false},
+		{"Movie.2020.German.DL.1080p.BluRay.x264-GRP", []string{"de"}, true},
+	}
+	for _, tc := range cases {
+		r := Parse(tc.name)
+		f := r.ForFile()
+		if !reflect.DeepEqual(f.Languages, tc.file) || f.Multi != tc.fileMulti {
+			t.Errorf("%s: for a file %v multi %v, want %v %v (release reads %v %v)", tc.name, f.Languages, f.Multi, tc.file, tc.fileMulti, r.Languages, r.Multi)
+		}
+	}
+	// A Release Parse didn't make keeps what it was given.
+	if got := (Release{Languages: []string{"fr"}}).ForFile(); !reflect.DeepEqual(got.Languages, []string{"fr"}) {
+		t.Errorf("hand-made release lost its languages: %v", got.Languages)
 	}
 }
 
