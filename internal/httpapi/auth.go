@@ -226,11 +226,13 @@ func (a *api) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := a.deps.Auth.CreateUser(r.Context(), body.Username, body.Password, auth.RoleAdmin, true)
+	// Conditional on "no admin exists" in SQL: the count above is only a fast no.
+	u, err := a.deps.Auth.CreateFirstAdmin(r.Context(), body.Username, body.Password)
 	if err != nil {
 		a.writeAuthError(w, err)
 		return
 	}
+	a.clearSetupCookie(w, r)
 	a.startSession(w, r, u, http.StatusCreated)
 }
 
@@ -434,7 +436,7 @@ func (a *api) writeAuthError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		a.writeError(w, http.StatusUnauthorized, err.Error())
-	case errors.Is(err, auth.ErrUserExists):
+	case errors.Is(err, auth.ErrUserExists), errors.Is(err, auth.ErrSetupClosed):
 		a.writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, auth.ErrWeakPassword), errors.Is(err, auth.ErrUsernameRequired):
 		a.writeError(w, http.StatusBadRequest, err.Error())

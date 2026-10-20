@@ -203,7 +203,20 @@ func (a *api) handleSetupState(w http.ResponseWriter, r *http.Request) {
 	}
 	var keys any = []any{}
 	if a.deps.APIKeys != nil {
-		keys = a.deps.APIKeys.Status(ctx)
+		st := a.deps.APIKeys.Status(ctx)
+		if viaSetupSession(r) {
+			// Nobody is signed in: only the wizard's own keys, and no hint of any value
+			// (the last characters of a key, or a whole username).
+			shown := st[:0:0]
+			for _, k := range st {
+				if wizardKeyIDs[k.ID] {
+					k.Hint, k.EnvHint = "", ""
+					shown = append(shown, k)
+				}
+			}
+			st = shown
+		}
+		keys = st
 	}
 	plexServer := ""
 	if a.deps.Insights != nil {
@@ -229,6 +242,7 @@ func (a *api) handleSetupState(w http.ResponseWriter, r *http.Request) {
 		"jellyfin_connected": a.jellyfinConfigured(ctx),
 		"jellyfin_server":    jellyfinServer,
 		"jellyfin_family":    a.jellyfinFamilyChoices(ctx),
+		"emby_connected":     a.embyConfigured(ctx),
 		// The Indexers step: how many searches can use, and whether Prowlarr answers
 		// (null when not asked).
 		"indexers_enabled":   a.enabledIndexers(ctx),

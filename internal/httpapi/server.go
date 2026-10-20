@@ -282,11 +282,11 @@ func (a *api) registerRoutes(mux *router) {
 	// only an admin sees or changes them. Managers keep the settings they need day to
 	// day; handleUpdateSettings refuses them the admin-only fields.
 	mux.HandleFunc("GET /api/v1/apikeys", a.requireRole(auth.RoleAdmin, a.handleGetAPIKeys))
-	mux.HandleFunc("PUT /api/v1/apikeys/{id}", a.requireRole(auth.RoleAdmin, a.handleSetAPIKey))
+	mux.HandleFunc("PUT /api/v1/apikeys/{id}", a.requireRole(auth.RoleAdmin, a.wizardKeyID(a.handleSetAPIKey, true)).viaSetup())
 	mux.HandleFunc("DELETE /api/v1/apikeys/{id}", a.requireRole(auth.RoleAdmin, a.handleClearAPIKey))
-	mux.HandleFunc("POST /api/v1/apikeys/{id}/test", a.requireRole(auth.RoleAdmin, a.handleTestAPIKey))
+	mux.HandleFunc("POST /api/v1/apikeys/{id}/test", a.requireRole(auth.RoleAdmin, a.wizardKeyID(a.handleTestAPIKey, false)).viaSetup())
 	mux.HandleFunc("GET /api/v1/settings", a.requireRole(auth.RoleManager, a.handleGetSettings))
-	mux.HandleFunc("PUT /api/v1/settings", a.requireRole(auth.RoleManager, a.handleUpdateSettings))
+	mux.HandleFunc("PUT /api/v1/settings", a.requireRole(auth.RoleManager, a.wizardSettings(a.handleUpdateSettings)).viaSetup())
 	// Outgoing email (Send to Kindle): a mail login, so admin-only like the API keys.
 	mux.HandleFunc("GET /api/v1/settings/smtp", a.requireRole(auth.RoleAdmin, a.handleGetSMTP))
 	mux.HandleFunc("PUT /api/v1/settings/smtp", a.requireRole(auth.RoleAdmin, a.handleSetSMTP))
@@ -301,8 +301,8 @@ func (a *api) registerRoutes(mux *router) {
 	// folders (Settings → Library shows them, and they scan from there) but only an admin
 	// may move a library or walk the host's filesystem.
 	mux.HandleFunc("GET /api/v1/system/library", a.requireRole(auth.RoleManager, a.handleGetLibraryPaths))
-	mux.HandleFunc("PUT /api/v1/system/library", a.requireRole(auth.RoleAdmin, a.handleSetLibraryPaths))
-	mux.HandleFunc("GET /api/v1/system/library/check", a.requireRole(auth.RoleAdmin, a.handleCheckLibraryFolder))
+	mux.HandleFunc("PUT /api/v1/system/library", a.requireRole(auth.RoleAdmin, a.wizardPaths(a.handleSetLibraryPaths)).viaSetup())
+	mux.HandleFunc("GET /api/v1/system/library/check", a.requireRole(auth.RoleAdmin, a.wizardPaths(a.handleCheckLibraryFolder)).viaSetup())
 	// Extra Movies and TV folders: staff read them (pickers on add/approve/detail), only
 	// admins change them, like every folder setting.
 	mux.HandleFunc("GET /api/v1/library/folders", a.requireRole(auth.RoleManager, a.handleLibraryFolders))
@@ -335,9 +335,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/system/widget-key", a.requireRole(auth.RoleAdmin, a.handleRotateWidgetKey))
 	mux.HandleFunc("DELETE /api/v1/system/widget-key", a.requireRole(auth.RoleAdmin, a.handleRevokeWidgetKey))
 	mux.HandleFunc("GET /api/v1/system/pending-restart", a.requireRole(auth.RoleManager, a.handlePendingRestart))
-	mux.HandleFunc("GET /api/v1/system/browse", a.requireRole(auth.RoleAdmin, a.handleBrowse))
+	mux.HandleFunc("GET /api/v1/system/browse", a.requireRole(auth.RoleAdmin, a.wizardPaths(a.handleBrowse)).viaSetup())
 	// First-run setup wizard + restart to apply new folders.
-	mux.HandleFunc("GET /api/v1/setup", a.requireRole(auth.RoleAdmin, a.handleSetupState))
+	mux.HandleFunc("GET /api/v1/setup", a.requireRole(auth.RoleAdmin, a.handleSetupState).viaSetup())
 	mux.HandleFunc("POST /api/v1/setup/complete", a.requireRole(auth.RoleAdmin, a.handleSetupComplete))
 	// Getting started: the self-ticking checklist on the Dashboard and the wizard's last step.
 	mux.HandleFunc("GET /api/v1/setup/checklist", a.requireRole(auth.RoleAdmin, a.handleSetupChecklist))
@@ -399,6 +399,16 @@ func (a *api) registerRoutes(mux *router) {
 		setup = setup.ext()
 	}
 	mux.HandleFunc("POST /api/v1/auth/setup", setup)
+	// The first-run wizard runs before any account exists and makes the account last: a
+	// setup session authorises its calls (the routes marked "setup" in routes.golden), and
+	// the account step ends it. Both are LAN-only like /auth/setup, and both refuse once an
+	// admin exists (setup_session.go).
+	setupSession, setupAccount := a.public(a.handleSetupSession), a.public(a.handleSetupAccount)
+	if a.deps.Config.AllowRemoteSetup {
+		setupSession, setupAccount = setupSession.ext(), setupAccount.ext()
+	}
+	mux.HandleFunc("POST /api/v1/setup/session", setupSession)
+	mux.HandleFunc("POST /api/v1/setup/account", setupAccount)
 	mux.HandleFunc("POST /api/v1/auth/login", a.public(a.handleLogin).ext())
 	// Two-factor sign-in's second step, with the ticket a right password answered (never a
 	// session): the code, or (an admin the policy requires it of) setting it up first.
@@ -519,11 +529,11 @@ func (a *api) registerRoutes(mux *router) {
 
 	// Indexers + search
 	mux.HandleFunc("GET /api/v1/indexers", a.requireRole(auth.RoleManager, a.handleListIndexers))
-	mux.HandleFunc("POST /api/v1/indexers", a.requireRole(auth.RoleManager, a.handleCreateIndexer))
+	mux.HandleFunc("POST /api/v1/indexers", a.requireRole(auth.RoleManager, a.handleCreateIndexer).viaSetup())
 	mux.HandleFunc("PUT /api/v1/indexers/{id}", a.requireRole(auth.RoleManager, a.handleUpdateIndexer))
 	mux.HandleFunc("DELETE /api/v1/indexers/{id}", a.requireRole(auth.RoleManager, a.handleDeleteIndexer))
 	mux.HandleFunc("POST /api/v1/indexers/{id}/test", a.requireRole(auth.RoleManager, a.handleTestIndexer))
-	mux.HandleFunc("POST /api/v1/indexers/test", a.requireRole(auth.RoleManager, a.handleTestIndexerSettings))
+	mux.HandleFunc("POST /api/v1/indexers/test", a.requireRole(auth.RoleManager, a.handleTestIndexerSettings).viaSetup())
 	mux.HandleFunc("GET /api/v1/flaresolverr/status", a.requireRole(auth.RoleManager, a.handleFlareSolverrStatus))
 	// Settings → Connections: every integration's status in one list, and a Test for each.
 	// Managers run the indexers and clients day to day; the metadata keys are the admin's
@@ -545,9 +555,9 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/downloadclients/restore-bundled", a.requireRole(auth.RoleManager, a.handleRestoreBundledClient))
 	// The all-in-one image's qBittorrent web UI login: a credential, so admins only.
 	mux.HandleFunc("GET /api/v1/downloadclients/bundled-login", a.requireRole(auth.RoleAdmin, a.handleBundledQbitLogin))
-	mux.HandleFunc("GET /api/v1/indexers/prowlarr", a.requireRole(auth.RoleManager, a.handleProwlarrInfo))
-	mux.HandleFunc("PUT /api/v1/indexers/prowlarr", a.requireRole(auth.RoleManager, a.handleProwlarrSettings))
-	mux.HandleFunc("POST /api/v1/indexers/prowlarr/sync", a.requireRole(auth.RoleManager, a.handleProwlarrSync))
+	mux.HandleFunc("GET /api/v1/indexers/prowlarr", a.requireRole(auth.RoleManager, a.handleProwlarrInfo).viaSetup())
+	mux.HandleFunc("PUT /api/v1/indexers/prowlarr", a.requireRole(auth.RoleManager, a.handleProwlarrSettings).viaSetup())
+	mux.HandleFunc("POST /api/v1/indexers/prowlarr/sync", a.requireRole(auth.RoleManager, a.handleProwlarrSync).viaSetup())
 	// Alert connections: staff see the list (URLs redacted); writes and sends are the
 	// admin's, since a connection decides where the server posts.
 	mux.HandleFunc("GET /api/v1/notifications", a.requireRole(auth.RoleManager, a.handleListNotifications))
@@ -802,14 +812,14 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/convert/devices", a.requireRole(auth.RoleManager, a.handleConvertDevices))
 
 	// Insights (Tautulli replacement — Plex watch monitoring). I0: connection config + test.
-	mux.HandleFunc("GET /api/v1/insights/plex", a.requireRole(auth.RoleManager, a.handleInsightsConfig))
+	mux.HandleFunc("GET /api/v1/insights/plex", a.requireRole(auth.RoleManager, a.handleInsightsConfig).viaSetup())
 	// The Plex connection (address, token, Sign in with Plex) is the admin's, like Jellyfin's:
 	// the server it names gates Plex sign-in. Managers keep monitoring and Test of the saved one.
-	mux.HandleFunc("PUT /api/v1/insights/plex", a.requireRole(auth.RoleAdmin, a.handleUpdateInsightsConfig))
+	mux.HandleFunc("PUT /api/v1/insights/plex", a.requireRole(auth.RoleAdmin, a.handleUpdateInsightsConfig).viaSetup())
 	mux.HandleFunc("PUT /api/v1/insights/plex/monitoring", a.requireRole(auth.RoleManager, a.handlePlexMonitoring))
-	mux.HandleFunc("POST /api/v1/insights/plex/test", a.requireRole(auth.RoleManager, a.handleInsightsTest))
-	mux.HandleFunc("POST /api/v1/insights/plex/auth", a.requireRole(auth.RoleAdmin, a.handleInsightsPlexAuthStart))
-	mux.HandleFunc("GET /api/v1/insights/plex/auth/{id}", a.requireRole(auth.RoleAdmin, a.handleInsightsPlexAuthPoll))
+	mux.HandleFunc("POST /api/v1/insights/plex/test", a.requireRole(auth.RoleManager, a.handleInsightsTest).viaSetup())
+	mux.HandleFunc("POST /api/v1/insights/plex/auth", a.requireRole(auth.RoleAdmin, a.handleInsightsPlexAuthStart).viaSetup())
+	mux.HandleFunc("GET /api/v1/insights/plex/auth/{id}", a.requireRole(auth.RoleAdmin, a.handleInsightsPlexAuthPoll).viaSetup())
 	// Library updates: scan-after-changes toggle, path mappings, Test / Scan now.
 	mux.HandleFunc("GET /api/v1/insights/plex/scan", a.requireRole(auth.RoleManager, a.handlePlexScanView))
 	mux.HandleFunc("PUT /api/v1/insights/plex/scan", a.requireRole(auth.RoleManager, a.handlePlexScanSave))
@@ -824,19 +834,19 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/media/links", a.signedIn(a.handleMediaLinks).ext())
 	// Jellyfin: the connection (the API key is a credential, so saving it is an admin's
 	// job; it never comes back), its Test, and its library updates like Plex's.
-	mux.HandleFunc("GET /api/v1/jellyfin", a.requireRole(auth.RoleManager, a.handleJellyfinConfig))
-	mux.HandleFunc("PUT /api/v1/jellyfin", a.requireRole(auth.RoleAdmin, a.handleJellyfinSave))
+	mux.HandleFunc("GET /api/v1/jellyfin", a.requireRole(auth.RoleManager, a.handleJellyfinConfig).viaSetup())
+	mux.HandleFunc("PUT /api/v1/jellyfin", a.requireRole(auth.RoleAdmin, a.handleJellyfinSave).viaSetup())
 	mux.HandleFunc("DELETE /api/v1/jellyfin", a.requireRole(auth.RoleAdmin, a.handleJellyfinDisconnect))
-	mux.HandleFunc("POST /api/v1/jellyfin/test", a.requireRole(auth.RoleManager, a.handleJellyfinTest))
+	mux.HandleFunc("POST /api/v1/jellyfin/test", a.requireRole(auth.RoleManager, a.handleJellyfinTest).viaSetup())
 	mux.HandleFunc("GET /api/v1/jellyfin/scan", a.requireRole(auth.RoleManager, a.handleJellyfinScanView))
 	mux.HandleFunc("PUT /api/v1/jellyfin/scan", a.requireRole(auth.RoleManager, a.handleJellyfinScanSave))
 	mux.HandleFunc("POST /api/v1/jellyfin/scan/test", a.requireRole(auth.RoleManager, a.handleJellyfinScanTest))
 	// Watch monitoring on Jellyfin: a switch and an interval, a manager's like Plex's.
 	mux.HandleFunc("PUT /api/v1/jellyfin/monitoring", a.requireRole(auth.RoleManager, a.handleJellyfinMonitoring))
-	mux.HandleFunc("GET /api/v1/emby", a.requireRole(auth.RoleManager, a.handleEmbyConfig))
-	mux.HandleFunc("PUT /api/v1/emby", a.requireRole(auth.RoleAdmin, a.handleEmbySave))
+	mux.HandleFunc("GET /api/v1/emby", a.requireRole(auth.RoleManager, a.handleEmbyConfig).viaSetup())
+	mux.HandleFunc("PUT /api/v1/emby", a.requireRole(auth.RoleAdmin, a.handleEmbySave).viaSetup())
 	mux.HandleFunc("DELETE /api/v1/emby", a.requireRole(auth.RoleAdmin, a.handleEmbyDisconnect))
-	mux.HandleFunc("POST /api/v1/emby/test", a.requireRole(auth.RoleManager, a.handleEmbyTest))
+	mux.HandleFunc("POST /api/v1/emby/test", a.requireRole(auth.RoleManager, a.handleEmbyTest).viaSetup())
 	mux.HandleFunc("GET /api/v1/emby/scan", a.requireRole(auth.RoleManager, a.handleEmbyScanView))
 	mux.HandleFunc("PUT /api/v1/emby/scan", a.requireRole(auth.RoleManager, a.handleEmbyScanSave))
 	mux.HandleFunc("POST /api/v1/emby/scan/test", a.requireRole(auth.RoleManager, a.handleEmbyScanTest))
