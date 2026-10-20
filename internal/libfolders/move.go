@@ -445,6 +445,11 @@ func holdsOtherShows(dir string) string {
 	}
 	var others []string
 	for _, e := range entries {
+		// A link may lead to another show's folder or files: moving the folder would carry
+		// it along.
+		if e.Type()&os.ModeSymlink != 0 && library.LinkMayHoldVideo(filepath.Join(dir, e.Name())) {
+			return fmt.Sprintf("%q in it is a link", e.Name())
+		}
 		if !e.IsDir() || library.SkipScanDir(e.Name()) || strings.HasPrefix(e.Name(), ".") || library.LooksLikeSeasonFolder(e.Name()) {
 			continue
 		}

@@ -330,6 +330,58 @@ func TestMoveRefusesAFolderOfShows(t *testing.T) {
 	readFile(t, ep)
 }
 
+// A show folder holding a link — to another show's folder or season, or to a video — is
+// never moved whole: the link would be carried along. A link to a poster doesn't count.
+func TestMoveRefusesAFolderHoldingALink(t *testing.T) {
+	for _, c := range []struct {
+		name, link string
+		target     func(t *testing.T, base string) string
+		refused    bool
+	}{
+		{"linked show folder", "Star Trek TNG", func(t *testing.T, base string) string {
+			writeFile(t, filepath.Join(base, "elsewhere", "TNG", "Season 1", "TNG - S01E01.mkv"), "x")
+			return filepath.Join(base, "elsewhere", "TNG")
+		}, true},
+		{"linked season folder", "S03", func(t *testing.T, base string) string {
+			writeFile(t, filepath.Join(base, "elsewhere", "Season 3", "Other - S03E01.mkv"), "x")
+			return filepath.Join(base, "elsewhere", "Season 3")
+		}, true},
+		{"linked video", "Other - S01E01.mkv", func(t *testing.T, base string) string {
+			return writeFile(t, filepath.Join(base, "elsewhere", "Other - S01E01.mkv"), "x")
+		}, true},
+		{"linked poster", "poster.jpg", func(t *testing.T, base string) string {
+			return writeFile(t, filepath.Join(base, "elsewhere", "poster.jpg"), "x")
+		}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			ctx := context.Background()
+			anime := f.add(t, MediaSeries, "anime", RuleAnime)
+			show := filepath.Join(f.tv, "Star Trek")
+			ep := writeFile(t, filepath.Join(show, "S01", "Star Trek - S01E01.mkv"), "e1")
+			if err := os.Symlink(c.target(t, f.base), filepath.Join(show, c.link)); err != nil {
+				t.Skipf("no symlinks here: %v", err)
+			}
+			db := f.st.DB()
+			if _, err := db.Exec(`INSERT INTO series (id, tmdb_id, title) VALUES (1, 253, 'Star Trek')`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO episodes (series_id, season_number, episode_number, has_file, file_path) VALUES (1, 1, 1, 1, ?)`, ep); err != nil {
+				t.Fatal(err)
+			}
+			m, _ := f.mover(t, filepath.Join(f.base, "bin"))
+			m.ShowFolders = func(context.Context, int64) func(string) string { return func(string) string { return show } }
+			_, err := m.Move(ctx, MediaSeries, 1, anime.ID, nil)
+			if refused := errors.Is(err, ErrBadPath) && strings.Contains(err.Error(), "is a link"); refused != c.refused {
+				t.Fatalf("move = %v, want refused=%v", err, c.refused)
+			}
+			if c.refused {
+				readFile(t, ep)
+			}
+		})
+	}
+}
+
 func TestMoveRefusals(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

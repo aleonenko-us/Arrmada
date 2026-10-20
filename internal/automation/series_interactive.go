@@ -527,6 +527,14 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 	// Never walk a folder other shows' files are in: every file there that parses to one
 	// of this show's episode numbers would be claimed as its own.
 	imp, folder, ferr := c.seriesPlacement(ctx, s) // folder "" → importer derives the name
+	// The way out for a show whose folder can't be told: files moved by hand into a folder
+	// of its own are followed there, then the show is judged again.
+	if ferr != nil && c.series.FollowMovedEpisodeFiles(ctx, seriesID) > 0 {
+		if s, err = c.series.Get(ctx, seriesID); err != nil {
+			return err
+		}
+		imp, folder, ferr = c.seriesPlacement(ctx, s)
+	}
 	if ferr != nil {
 		return &RescanRefusedError{Reason: ferr.Error(), Cause: ferr}
 	}
@@ -538,7 +546,7 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 	// others' paths, and reported nothing: the extra copies became invisible to Arrmada
 	// while still filling the disk and showing up as duplicates in Plex.
 	byEpisode := map[[2]int][]library.FoundVideo{}
-	for _, v := range imp.SeriesLibraryVideos(folder, s.Title, s.Year) {
+	for _, v := range c.showEpisodeVideos(ctx, s, imp, folder) {
 		// Run each file through the full resolver: SxxExx, multi-episode, and — for anime
 		// — absolute ("S2 29") and per-cour numbering all map onto the metadata's episodes.
 		for _, ref := range c.series.ResolveEpisodes(ctx, seriesID, parser.Parse(filepath.Base(v.Path))) {
@@ -603,6 +611,25 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 		_ = c.series.MarkEpisodeMissing(ctx, seriesID, e.SeasonNumber, e.EpisodeNumber)
 	}
 	return nil
+}
+
+// showEpisodeVideos is the show's episode videos for a rescan or the duplicate check, which
+// read exactly the same files: those in its folder, minus Plex extras folders' (library.
+// SeriesEpisodeVideos), that series.EpisodeFileFilter lets through — so neither ever claims
+// or offers for deletion a file in another show's folder inside it, or another show's file.
+func (c *Coordinator) showEpisodeVideos(ctx context.Context, s series.Series, imp *library.Importer, folder string) []library.FoundVideo {
+	dir, vids := imp.SeriesEpisodeVideos(folder, s.Title, s.Year)
+	if dir == "" {
+		return nil
+	}
+	keep := c.series.EpisodeFileFilter(ctx, s, dir)
+	out := vids[:0:0]
+	for _, v := range vids {
+		if keep(v.Path) {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // RescanRefusedError is a series rescan that changed nothing because the folders its
@@ -857,7 +884,7 @@ func (c *Coordinator) SeriesDuplicates(ctx context.Context, seriesID int64) ([]D
 	}
 
 	byEpisode := map[[2]int][]library.FoundVideo{}
-	for _, v := range imp.SeriesLibraryVideos(folder, s.Title, s.Year) {
+	for _, v := range c.showEpisodeVideos(ctx, s, imp, folder) {
 		for _, ref := range c.series.ResolveEpisodes(ctx, seriesID, parser.Parse(filepath.Base(v.Path))) {
 			key := [2]int{ref.Season, ref.Episode}
 			byEpisode[key] = append(byEpisode[key], v)

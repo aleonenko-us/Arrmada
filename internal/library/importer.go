@@ -1399,6 +1399,36 @@ func (im *Importer) SeriesLibraryVideos(seriesFolder, title string, year int) []
 	return vids
 }
 
+// SeriesEpisodeVideos is SeriesLibraryVideos without the files in a Plex local-extras
+// folder anywhere in the show's folder (Extras, Featurettes, Behind The Scenes…): a
+// featurette called "Show - S01E01 - Behind the Scenes" is never an episode. Rescans and
+// the duplicate check read a show's episodes through it. dir is the folder it walked (""
+// when none).
+func (im *Importer) SeriesEpisodeVideos(seriesFolder, title string, year int) (dir string, vids []FoundVideo) {
+	dir, ok := im.seriesLibraryDir(seriesFolder, title, year)
+	if !ok {
+		return "", nil
+	}
+	found, _ := FindVideos(dir)
+	out := found[:0:0]
+	for _, v := range found {
+		rel, err := filepath.Rel(dir, filepath.Dir(v.Path))
+		extras := false
+		if err == nil && rel != "." {
+			for _, part := range strings.Split(rel, string(filepath.Separator)) {
+				if IsExtrasFolder(part) {
+					extras = true
+					break
+				}
+			}
+		}
+		if !extras {
+			out = append(out, v)
+		}
+	}
+	return dir, out
+}
+
 // seriesLibraryDir is the show's folder under the TV root: seriesFolder, or
 // "<Title> (<Year>)" when that's empty. ok is false for anything that isn't strictly
 // inside the TV root, so a rescan never walks the root itself (and every other show in it)

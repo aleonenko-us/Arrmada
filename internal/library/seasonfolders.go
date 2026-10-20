@@ -1,6 +1,8 @@
 package library
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -26,6 +28,28 @@ var reSpecials = regexp.MustCompile(`(?i)^(?:specials?|special episodes|speciali
 // reExtras is a show's bonus-material folder: it sits next to the season folders, inside
 // the show's folder, so it is never the show itself.
 var reExtras = regexp.MustCompile(`(?i)^(?:extras?|featurettes|behind the scenes|bonus|trailers|other|interviews|deleted scenes)$`)
+
+// rePlexExtras is a Plex local-extras folder: featurettes, trailers and the like that sit
+// inside a show's folder and are never episodes, whatever their files are called.
+var rePlexExtras = regexp.MustCompile(`(?i)^(?:extras|featurettes|behind the scenes|deleted scenes|interviews|scenes|shorts|trailers|other)$`)
+
+// IsExtrasFolder reports whether a folder name is a Plex local-extras folder.
+func IsExtrasFolder(name string) bool { return rePlexExtras.MatchString(strings.TrimSpace(name)) }
+
+// LinkMayHoldVideo reports whether the symlink at path leads to a folder or a video, or
+// can't be followed (so nothing tells what it is): a link that may bring another show's
+// files into a folder. A link to a poster or a subtitle doesn't.
+func LinkMayHoldVideo(path string) bool {
+	if isVideo(path) {
+		return true
+	}
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return true
+	}
+	fi, err := os.Stat(target)
+	return err != nil || fi.IsDir() || isVideo(target)
+}
 
 // SeasonFolderNumber reads the season number from a season folder's name ("Specials" is
 // season 0). ok is false for anything that isn't a season folder — including a bare

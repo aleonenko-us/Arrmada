@@ -178,6 +178,41 @@ func (s *Service) ShowFolderFor(path string) string {
 	return pl.dir
 }
 
+// EpisodeFileFilter reports, for show sr whose folder is showDir, whether a video found in
+// that folder may be one of its episodes, for a rescan or the duplicate check — the two
+// read exactly the same files through it:
+//
+//   - a file the show has recorded always may;
+//   - any other must sit where the show's episodes sit: right in showDir, in one of its
+//     season folders (or a disc folder inside one), or in one of its own download folders —
+//     never inside another folder in it (another show's, tracked or not; hidden; however
+//     deep), and never in a folder that may as well be a season's (filePlace.unsure);
+//   - and when its name carries a title, that is the show's (its titles, aliases or
+//     FitRelease): another show's file dropped into one of its season folders is never
+//     claimed, nor offered as a duplicate to delete.
+func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir string) func(path string) bool {
+	j := s.dbJudge(ctx, sr.ID)
+	showDir = filepath.Clean(showDir)
+	recorded := map[string]bool{}
+	if paths, err := s.repo.EpisodeFilePaths(ctx, sr.ID); err == nil {
+		for _, p := range paths {
+			recorded[filepath.Clean(p)] = true
+		}
+	}
+	return func(path string) bool {
+		path = filepath.Clean(path)
+		if recorded[path] {
+			return true
+		}
+		if pl := s.placeOf(j.roots, path, j.titles); pl.unsure || filepath.Clean(pl.dir) != showDir {
+			return false
+		}
+		rel := parser.Parse(filepath.Base(path))
+		key := parser.TitleKey(rel.Title)
+		return key == "" || j.titles[key] || FitRelease(rel, sr).OK
+	}
+}
+
 // ShowFoldersOf answers, for each episode file of show seriesID, the folder of the show it
 // is in: the folder ShowFolderOf would count it towards, else where it is (ShowFolderFor).
 // For Move to folder, which moves a show's folders whole.
@@ -347,6 +382,11 @@ func (j *folderJudge) foreignChildren(dir string) string {
 	}
 	for _, e := range entries {
 		n := e.Name()
+		// A link (to a folder or a video, hidden or not) may lead to another show's: Move to
+		// folder would carry it along, and nothing tells whose it is.
+		if e.Type()&fs.ModeSymlink != 0 && library.LinkMayHoldVideo(filepath.Join(dir, n)) {
+			return fmt.Sprintf("%s holds %q, a link", dir, n)
+		}
 		if !e.IsDir() || strings.HasPrefix(n, ".") || library.SkipScanDir(n) {
 			continue
 		}
@@ -485,6 +525,85 @@ func (s *Service) ShowFolderOf(ctx context.Context, seriesID int64) ShowFolderIn
 		return ShowFolderInfo{Total: len(paths), Unknown: true, Why: "the files it had are no longer where they were recorded; rescan it once they're back in its folder"}
 	}
 	return s.showFolderFrom(kept, j)
+}
+
+// followVisitLimit bounds FollowMovedEpisodeFiles' walk of a TV folder.
+const followVisitLimit = 500_000
+
+// FollowMovedEpisodeFiles is the way out for a show whose folder can't be told: once its
+// files are moved by hand into a folder of its own — out of a folder named like a season,
+// a folder another show is in, or anywhere — each recorded file that's gone is re-pointed
+// at the one file of the same name now in that TV folder. Only a regular file no other
+// show has recorded counts, and only when exactly one has that name; hidden and system
+// folders (recycle bins, thumbnails) are never looked in, nor are links followed. It
+// returns how many files it re-pointed; nothing else changes. Refresh & rescan calls it
+// for a show it would refuse, then judges the show again.
+func (s *Service) FollowMovedEpisodeFiles(ctx context.Context, seriesID int64) int {
+	paths, err := s.repo.EpisodeFilePaths(ctx, seriesID)
+	if err != nil {
+		return 0
+	}
+	roots := s.libRoots()
+	want := map[string][]string{} // file name -> gone recorded paths with it
+	walk := map[string]bool{}     // TV folders to look in
+	for _, p := range paths {
+		p = filepath.Clean(p)
+		if _, err := os.Lstat(p); !errors.Is(err, fs.ErrNotExist) {
+			continue // still there, or can't tell
+		}
+		root, ok := rootOf(roots, p)
+		if !ok {
+			continue
+		}
+		want[filepath.Base(p)] = append(want[filepath.Base(p)], p)
+		walk[root] = true
+	}
+	if len(want) == 0 {
+		return 0
+	}
+	found := map[string][]string{}
+	for root := range walk {
+		visited := 0
+		_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if visited++; visited > followVisitLimit || ctx.Err() != nil {
+				return filepath.SkipAll
+			}
+			if d.IsDir() {
+				if p != root && strings.ContainsAny(d.Name()[:1], ".#@$") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if d.Type().IsRegular() && len(want[d.Name()]) > 0 {
+				found[d.Name()] = append(found[d.Name()], p)
+			}
+			return nil
+		})
+	}
+	moved := 0
+	for name, olds := range want {
+		if len(found[name]) != 1 || len(olds) != 1 {
+			continue // not there, or more than one: the person decides
+		}
+		to := found[name][0]
+		if s.repo.FileRecorded(ctx, to) {
+			continue
+		}
+		fi, err := os.Stat(to)
+		if err != nil {
+			continue
+		}
+		if n, err := s.repo.RepointEpisodeFile(ctx, seriesID, olds[0], to, fi.Size()); err == nil && n > 0 {
+			moved++
+		}
+	}
+	if moved > 0 {
+		s.repo.AddEvent(ctx, seriesID, "files.followed", fmt.Sprintf("Found %d moved episode file(s) in their new folder", moved))
+	}
+	return moved
 }
 
 // dropGoneMisplaced leaves out files recorded in a folder no show should own that are no
@@ -658,7 +777,7 @@ var ErrNoShowFolder = errors.New("no safe folder for the show")
 func (e *ShowFolderError) Unwrap() error { return ErrNoShowFolder }
 
 func (e *ShowFolderError) Error() string {
-	return fmt.Sprintf("Can't tell which folder %s lives in (%s), so nothing was imported. Move the show's files into its own folder (the show's page offers to put misplaced files back), then import again.", e.Title, e.Why)
+	return fmt.Sprintf("Can't tell which folder %s lives in (%s), so nothing was imported. Move the show's files into a folder of its own (the show's page offers to put misplaced files back), then use Refresh & rescan on its page.", e.Title, e.Why)
 }
 
 // ImportDir is the folder the show's own folder sits in — the TV folder, normally — for

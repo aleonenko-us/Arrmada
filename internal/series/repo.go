@@ -1565,6 +1565,15 @@ func (r *Repo) AllEpisodeFilePaths(ctx context.Context) ([]SeriesFilePath, error
 	return out, rows.Err()
 }
 
+// FileRecorded reports whether any series' episode has path as its file (true on a read
+// error: the caller then leaves the file alone).
+func (r *Repo) FileRecorded(ctx context.Context, path string) bool {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM episodes WHERE has_file = 1 AND file_path = ?`, path).Scan(&n)
+	return err != nil || n > 0
+}
+
 // OtherSeriesUnder is up to limit OTHER series with an episode file inside dir.
 //
 // Two shows in one folder is corruption waiting to happen: their season folders merge, and
