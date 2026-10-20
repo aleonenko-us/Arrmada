@@ -46,7 +46,9 @@ func TestUnraidTemplate(t *testing.T) {
 	}
 	paths := map[string]string{}
 	vars := map[string]string{}
-	ports := map[string]string{} // "8080/tcp" → host port
+	values := map[string]string{}  // a variable's value as the template fills it in
+	ports := map[string]string{}   // "8080/tcp" → host port
+	hostPorts := map[string]string{} // "8085/tcp" (host side) → the entry's name
 	for _, cfg := range c.Configs {
 		up := strings.ToUpper(cfg.Target + " " + cfg.Name)
 		for _, secret := range []string{"KEY", "TOKEN", "PASSWORD", "SECRET", "API_"} {
@@ -65,11 +67,18 @@ func TestUnraidTemplate(t *testing.T) {
 			}
 		case "Variable":
 			vars[cfg.Target] = cfg.Default
+			values[cfg.Target] = cfg.Value
 		case "Port":
 			if cfg.Default == "" || cfg.Value != cfg.Default {
 				t.Errorf("port %q: default %q, value %q", cfg.Name, cfg.Default, cfg.Value)
 			}
 			ports[cfg.Target+"/"+cfg.Mode] = cfg.Default
+			// Every port is published whether or not what's behind it is switched on, so
+			// two entries with one host port would stop the container from starting.
+			if other, dup := hostPorts[cfg.Default+"/"+cfg.Mode]; dup {
+				t.Errorf("ports %q and %q both default to host port %s/%s", other, cfg.Name, cfg.Default, cfg.Mode)
+			}
+			hostPorts[cfg.Default+"/"+cfg.Mode] = cfg.Name
 		case "Device":
 			// Unraid passes a blank Device as its Default, and Docker refuses to start a
 			// container whose device doesn't exist: a server without a GPU couldn't run it.
@@ -115,6 +124,23 @@ func TestUnraidTemplate(t *testing.T) {
 	}
 	if ui := ports[strconv.Itoa(aio.WebUIPort)+"/tcp"]; ui == "" || vars["ARRMADA_QBIT_WEBUI_HOST_PORT"] != ui {
 		t.Errorf("qBittorrent web UI: port %q, ARRMADA_QBIT_WEBUI_HOST_PORT %q", ui, vars["ARRMADA_QBIT_WEBUI_HOST_PORT"])
+	}
+	// The opt-in companions: off unless switched on (false is both the value filled in
+	// and the dropdown's first choice, which Unraid uses for a blank field), each with its
+	// web UI published on the port the image listens on and the link following it.
+	for _, oc := range []struct {
+		sw, hostVar string
+		port        int
+	}{
+		{"ARRMADA_BUNDLE_SABNZBD", "ARRMADA_SABNZBD_HOST_PORT", aio.SABnzbdPort},
+		{"ARRMADA_BUNDLE_PROWLARR", "ARRMADA_PROWLARR_HOST_PORT", aio.ProwlarrPort},
+	} {
+		if d, ok := vars[oc.sw]; !ok || !strings.HasPrefix(d, "false") || values[oc.sw] != "false" {
+			t.Errorf("%s defaults to %q (value %q), want off", oc.sw, d, values[oc.sw])
+		}
+		if ui := ports[strconv.Itoa(oc.port)+"/tcp"]; ui == "" || vars[oc.hostVar] != ui || values[oc.hostVar] != ui {
+			t.Errorf("%s: port %d published on %q, %s %q", oc.sw, oc.port, ui, oc.hostVar, vars[oc.hostVar])
+		}
 	}
 	// FlareSolverr listens inside the container only; no port of its own is published.
 	if _, ok := ports[strconv.Itoa(aio.FlareSolverrPort)+"/tcp"]; ok {
