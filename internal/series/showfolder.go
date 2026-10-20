@@ -228,7 +228,7 @@ func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir stri
 		if pl := s.placeOf(j.roots, path, j.titles); pl.unsure || filepath.Clean(pl.dir) != showDir {
 			return false
 		}
-		rel := parser.Parse(filepath.Base(path))
+		rel := parser.Parse(withoutYearSeason(filepath.Base(path)))
 		key := parser.TitleKey(rel.Title)
 		if key == "" {
 			// A name without a title ("S01E01.mkv", "01.mkv") could be anyone's: only one

@@ -1921,3 +1921,21 @@ func (r *Repo) aliasTitles(ctx context.Context) (map[int64][]Alias, error) {
 	}
 	return out, scanErr
 }
+
+// NthEpisodeAiredIn is the nth (from 1) episode, across every real season in order, whose
+// air date falls in year: how a year-numbered season ("Season 1931") of a library maps
+// onto a listing that numbers its seasons otherwise.
+func (r *Repo) NthEpisodeAiredIn(ctx context.Context, seriesID int64, year, n int) (season, episode int, ok bool) {
+	if n < 1 {
+		return 0, 0, false
+	}
+	err := r.db.QueryRowContext(ctx,
+		`SELECT season_number, episode_number FROM episodes
+		 WHERE series_id = ? AND season_number > 0 AND substr(air_date, 1, 4) = ?
+		 ORDER BY season_number, episode_number LIMIT 1 OFFSET ?`,
+		seriesID, fmt.Sprintf("%04d", year), n-1).Scan(&season, &episode)
+	if err != nil {
+		return 0, 0, false
+	}
+	return season, episode, true
+}

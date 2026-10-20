@@ -109,14 +109,58 @@ func (s *Service) scanMatch(ctx context.Context, rel parser.Release) (match meta
 func noEpisodesDetail(title string, videos []library.FoundVideo) string {
 	byYear := 0
 	for _, v := range videos {
-		if p := parser.Parse(filepath.Base(v.Path)); p.Season >= 1900 {
+		if _, _, ok := yearSeasonOf("", v.Path, parser.Parse(filepath.Base(v.Path))); ok {
 			byYear++
 		}
 	}
 	n := len(videos)
 	files := fmt.Sprintf("%d video file%s", n, plural(n))
 	if byYear > 0 {
-		return fmt.Sprintf("Added as “%s”, but none of its %s matched an episode: its files are numbered by year (S1931E01…) and this listing's seasons aren't. Open the show to check its seasons.", title, files)
+		return fmt.Sprintf("Added as “%s”, but none of its %s matched an episode: its files are numbered by year (Season 1931…) and no episode in this listing aired in those years. Open the show to check its seasons.", title, files)
 	}
 	return fmt.Sprintf("Added as “%s”, but none of its %s matched an episode of it. The folder may hold a different show, or number its episodes differently from TMDB. Open the show to check.", title, files)
+}
+
+var (
+	yearSeasonDirRe  = regexp.MustCompile(`(?i)^season\s*((?:19|20)\d{2})$`)
+	yearSeasonFileRe = regexp.MustCompile(`(?i)\bS((?:19|20)\d{2})[. ]?E(\d{1,3})\b`)
+)
+
+// yearSeasonOf reads a file's year-numbered season and episode: "S1931E04" in the name, or
+// a "Season 1931" folder with the episode number the name carries. ok is false for a file
+// that isn't numbered that way.
+func yearSeasonOf(dir, path string, rel parser.Release) (year, ep int, ok bool) {
+	if m := yearSeasonFileRe.FindStringSubmatch(filepath.Base(path)); m != nil {
+		_, _ = fmt.Sscan(m[1], &year)
+		_, _ = fmt.Sscan(m[2], &ep)
+		return year, ep, true
+	}
+	if m := yearSeasonDirRe.FindStringSubmatch(filepath.Base(filepath.Dir(path))); m != nil && len(rel.Episodes) > 0 {
+		_, _ = fmt.Sscan(m[1], &year)
+		return year, rel.Episodes[0], true
+	}
+	return 0, 0, false
+}
+
+// resolveByYear maps a file numbered by year onto the episode that aired as the nth of that
+// year. Nothing is invented: a year the listing has no episodes in leaves the file unmatched.
+func (s *Service) resolveByYear(ctx context.Context, seriesID int64, dir, path string, rel parser.Release) []EpisodeRef {
+	year, ep, ok := yearSeasonOf(dir, path, rel)
+	if !ok {
+		return nil
+	}
+	if s.repo.EpisodeExists(ctx, seriesID, year, ep) {
+		return nil // the listing really has that season: nothing to translate
+	}
+	se, e, found := s.repo.NthEpisodeAiredIn(ctx, seriesID, year, ep)
+	if !found {
+		return nil
+	}
+	return []EpisodeRef{{Season: se, Episode: e}}
+}
+
+// withoutYearSeason rewrites a year-numbered "S1931E04" in a file name as "S01E04", so the
+// title in front of it reads like any episode's.
+func withoutYearSeason(name string) string {
+	return yearSeasonFileRe.ReplaceAllString(name, "S01E$2")
 }

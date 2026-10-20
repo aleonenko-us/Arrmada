@@ -2024,7 +2024,13 @@ func (s *Service) importSeriesFolder(ctx context.Context, dir string, videos []l
 		p := parser.Parse(filepath.Base(v.Path))
 		// ResolveEpisodes handles multi-episode files, and — for anime — absolute
 		// numbering and the per-cour positional fallback.
-		for _, ref := range s.ResolveEpisodes(ctx, added.ID, p) {
+		// Seasons numbered by year (Looney Tunes: "Season 1931") that the listing doesn't
+		// number that way are read through the episodes' air dates.
+		refs := s.resolveByYear(ctx, added.ID, dir, v.Path, p)
+		if len(refs) == 0 {
+			refs = s.ResolveEpisodes(ctx, added.ID, p)
+		}
+		for _, ref := range refs {
 			if s.repo.SetEpisodeFile(ctx, added.ID, ref.Season, ref.Episode, v.Path, v.Size) == nil {
 				marked++
 			}
