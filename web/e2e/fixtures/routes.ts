@@ -26,6 +26,9 @@ const get = (path: string | RegExp, body: unknown): MockRoute => ({ method: "GET
 // matters only where a regex could shadow a later exact path.
 export function routes(p: PersonaInfo): MockRoute[] {
   const staff = p.user.role === "admin" || p.user.role === "manager";
+  // Not interested and the watchlist switch remember what the page sent.
+  const hidden = discover.hiddenStore();
+  let watchlistAuto = false;
   return [
     // Boot and shell
     get("/api/v1/status", sys.status(p)),
@@ -101,7 +104,15 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/discover/recently-added", discover.recentlyAdded),
     get("/api/v1/discover/provider", discover.items),
     get("/api/v1/discover", discover.items),
+    get("/api/v1/discover/rows/just_out", discover.justOut),
     get(/^\/api\/v1\/discover\/rows\/[a-z_]+$/, discover.items),
+    { method: "GET", path: "/api/v1/discover/hidden", respond: () => hidden.list() },
+    { method: "POST", path: "/api/v1/discover/hidden", respond: ({ body }) => hidden.hide(body) },
+    { method: "DELETE", path: /^\/api\/v1\/discover\/hidden\/(movie|series)\/(\d+)$/, respond: ({ params }) => hidden.restore(params[0], Number(params[1])) },
+    // The Plex watchlist row: staff only here (the requester isn't the linked owner).
+    { method: "GET", path: "/api/v1/discover/plex-watchlist", respond: () => discover.plexWatchlist(staff, watchlistAuto) },
+    { method: "PUT", path: "/api/v1/discover/plex-watchlist/auto", respond: ({ body }) => ({ auto: (watchlistAuto = Boolean((body as { on?: boolean }).on)) }) },
+    get("/api/v1/discover/certifications", discover.certifications),
     get("/api/v1/discover/because", discover.because),
     get("/api/v1/discover/genres", discover.genres),
     get("/api/v1/discover/providers", discover.providers),

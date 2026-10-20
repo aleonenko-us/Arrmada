@@ -217,6 +217,55 @@ export function gridPage(url: URL): { items: DiscoverCard[]; people: PersonResul
 // recentlyAdded is GET /api/v1/discover/recently-added: what's in the library.
 export const recentlyAdded = { items: [cards[6], { ...cards[5], has_file: true }] };
 
+// justOut is GET /api/v1/discover/rows/just_out: films that reached digital or disc in
+// the last fortnight, newest first.
+export const justOut: { items: DiscoverCard[] } = {
+  items: [
+    card(21, "Harbour Lights", { media_type: "movie", home_release: "2026-10-12" }),
+    card(22, "The Long Ferry", { media_type: "movie", home_release: "2026-10-09" }),
+    card(23, "Night Pilot", { media_type: "movie", home_release: "2026-10-07" }),
+  ],
+};
+
+// plexWatchlist is GET /api/v1/discover/plex-watchlist: the owner's watchlist, shown to
+// staff here (a requester's account isn't linked to the owner's Plex).
+export function plexWatchlist(staff: boolean, auto: boolean): { items: DiscoverCard[]; auto: boolean; available: boolean } {
+  if (!staff) return { items: [], auto: false, available: false };
+  return { items: [card(31, "Watchlisted Comet", { media_type: "movie" }), card(33, "Watchlisted Tides", { media_type: "series" })], auto, available: true };
+}
+
+// certifications is GET /api/v1/discover/certifications.
+export const certifications = {
+  country: "US",
+  certifications: [
+    { code: "G", meaning: "All ages", order: 1 },
+    { code: "PG", meaning: "Some material may not be suitable for children", order: 2 },
+    { code: "PG-13", meaning: "Some material may be inappropriate for children under 13", order: 3 },
+    { code: "R", meaning: "Under 17 requires an accompanying adult", order: 4 },
+  ],
+};
+
+interface Hidden { media_type: string; tmdb_id: number; title: string; year?: number; poster_url?: string }
+
+// hiddenStore is GET/POST/DELETE /api/v1/discover/hidden for one page: what this person
+// said they're not interested in, remembered across calls.
+export function hiddenStore() {
+  const list: Hidden[] = [];
+  return {
+    list: () => ({ items: [...list].reverse() }),
+    hide: (b: unknown) => {
+      const h = b as Hidden;
+      if (!list.some((x) => x.media_type === h.media_type && x.tmdb_id === h.tmdb_id)) list.push(h);
+      return { status: "hidden" };
+    },
+    restore: (media: string, id: number) => {
+      const i = list.findIndex((x) => x.media_type === media && x.tmdb_id === id);
+      if (i >= 0) list.splice(i, 1);
+      return { status: "restored" };
+    },
+  };
+}
+
 // A pending request for three seasons of a show, opened by its id (?id=7) but kept off the
 // lists so the Requests page's counts and bulk selection stay as they are.
 export const seasonsRequest: MediaRequest = {
