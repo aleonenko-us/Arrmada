@@ -154,13 +154,8 @@ func (s *Service) ApplyVerify(ctx context.Context, w VerifyWrites) (VerifyApplie
 	return out, err
 }
 
-// ClearSearchMisses ends the search backoff of albums whose tracks went missing, so the
-// sweep looks for them again promptly. The last search time is left alone.
-func (s *Service) ClearSearchMisses(ctx context.Context, albumIDs []int64) error {
-	args, marks := idArgs(albumIDs)
-	if len(args) == 0 {
-		return nil
-	}
-	_, err := s.repo.db.ExecContext(ctx, `UPDATE albums SET search_misses = 0 WHERE id IN (`+marks+`)`, args...)
-	return err
+// AlbumsWithMissingFiles lists the albums with a track file gone from disk (see
+// Repo.AlbumsWithMissingFiles).
+func (s *Service) AlbumsWithMissingFiles(ctx context.Context) ([]Album, error) {
+	return s.repo.AlbumsWithMissingFiles(ctx)
 }

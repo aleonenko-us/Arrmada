@@ -47,7 +47,7 @@ export function ScanResultsModal({ onClose, onRescan }: { onClose: () => void; o
         ["Waiting for a MusicBrainz track listing", last.waiting, "looked at again next scan"],
         ["Couldn't be judged just now", last.failed, "MusicBrainz didn't answer; next scan"],
         ["Left for the next scan", last.remaining, "a scan reads a few thousand folders at most"],
-        ["Track files gone from disk", last.verify?.missing ?? 0, "wanted again; linked back if they return"],
+        ["Track files gone from disk", last.verify?.missing ?? 0, "flagged, not downloaded again by themselves"],
         ["Files not found this time", last.verify?.not_found ?? 0, "missing only if the next check agrees"],
         ["Files back on disk", last.verify?.back ?? 0, ""],
         ["Files changed outside Arrmada", last.verify?.changed ?? 0, "measured again"],

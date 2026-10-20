@@ -23,16 +23,19 @@ import (
 //   - A file that is there again ends its missing (or not-found) mark.
 //   - A file that isn't found is only noted the first time (missing_seen_at). It becomes
 //     missing (missing_since) when a pass at least musicMissingGrace later still can't find
-//     it; only then does its album count the track as gone, and want it again. A missing
-//     file keeps its row and its track: a remount links it straight back.
+//     it. A missing file keeps its row and its track: a remount links it straight back.
+//   - Missing is a flag, never a reason to download: the album shows "gone from disk",
+//     and the search sweep leaves it alone (Repo.WantedAlbums) until a person asks with
+//     "Search for missing tracks". The file may only be renamed, or on a disk that's away;
+//     movies work the same way (movies/missing.go).
 //   - A file whose size or modification time changed outside Arrmada is measured again
 //     (ffprobe at idle priority) and its house-tags state rechecked.
 //
-// Never deleted, never un-recorded. And never en masse: when the music folder (or the
-// folder a file outside it sits in) looks unmounted, missing or empty, files under it are
-// left alone, and when more files vanish in one pass than a deletion would explain, nothing
-// is marked at all. Either way the pass says so as a health warning instead (the movie
-// missing-file check's guard, library.FolderLooksMounted, reused).
+// Never deleted, never un-recorded. And never en masse: when the folder a missing file
+// should be in looks unmounted — the music folder empty or gone, or the nearest folder
+// still there empty or on another device than the file was (a share mounted on a subfolder
+// that went away) — or when more files vanish in one pass than a deletion would explain,
+// nothing is marked at all. Either way the pass says so as a health warning instead.
 
 // musicMissingGrace is how long a file must stay unfound before it counts as missing: a
 // pass a day means it was gone on two passes a day apart.
@@ -44,16 +47,16 @@ const musicMissingGrace = 20 * time.Hour
 const musicChangedPerPass = 500
 
 // musicMissingThreshold is how many files may newly vanish in one pass before the pass
-// decides it's looking at an unmounted share rather than deletions: a fifth of the files
-// checked, and never fewer than 20.
-func musicMissingThreshold(checked int) int { return max(20, checked/5) }
+// decides it's looking at an unmounted share rather than deletions: 5% of the files
+// checked, and never fewer than 20 (the movie check's threshold).
+func musicMissingThreshold(checked int) int { return max(20, checked*5/100) }
 
 // MusicVerifyResult is what one verify pass did.
 type MusicVerifyResult struct {
 	At       time.Time `json:"at"`
 	Checked  int       `json:"checked"`   // recorded files looked at
 	NotFound int       `json:"not_found"` // not found for the first time: marked, not missing yet
-	Missing  int       `json:"missing"`   // missing after the grace period: their tracks are wanted again
+	Missing  int       `json:"missing"`   // missing after the grace period: flagged as gone from disk, never searched by themselves
 	Back     int       `json:"back"`      // found again
 	Changed  int       `json:"changed"`   // changed outside Arrmada: measured again
 	Skipped  int       `json:"skipped"`   // couldn't be judged (unreadable, or under a folder that looks unmounted)
@@ -138,6 +141,7 @@ func (c *Coordinator) VerifyMusicFiles(ctx context.Context) (MusicVerifyResult, 
 		}
 		return ok
 	}
+	devs := map[string]string{} // folder → its device ("" when it can't be read)
 	w := music.VerifyWrites{At: out.At}
 	var changed []int // row indexes
 	unmounted := map[string]int{}
@@ -168,9 +172,13 @@ func (c *Coordinator) VerifyMusicFiles(ctx context.Context) (MusicVerifyResult, 
 			}
 		case errors.Is(st.err, fs.ErrNotExist):
 			anchor := verifyAnchor(root, r.Path)
+			nearest, away := nearestLooksAway(r.Path, r.FileID, anchorOK, devs)
 			switch {
 			case !anchorOK(anchor):
 				unmounted[anchor]++
+				out.Skipped++
+			case away:
+				unmounted[nearest]++
 				out.Skipped++
 			case r.MissingSince != "":
 				// Already missing; stays so until it's back.
@@ -192,7 +200,7 @@ func (c *Coordinator) VerifyMusicFiles(ctx context.Context) (MusicVerifyResult, 
 			dirs = append(dirs, d)
 		}
 		sort.Strings(dirs)
-		out.Refused = fmt.Sprintf("The music folder %s looks unmounted (it's missing or empty), so the music file check marked nothing there. Check the share or the array is mounted, then run the check again from Settings → Status → Tasks.", strings.Join(dirs, ", "))
+		out.Refused = fmt.Sprintf("Music files are gone from %s, which looks unmounted (missing, empty, or on another disk than the files were), so the music file check marked nothing. Check the share or the array is mounted, then run the check again from Settings → Status → Tasks.", strings.Join(dirs, ", "))
 	case len(w.NotFound)+len(w.Missing) > musicMissingThreshold(out.Checked):
 		out.Refused = fmt.Sprintf("%d music files vanished since the last check — more than a deletion would explain — so nothing was marked. Part of the array or a share may be unmounted; check it, then run the check again from Settings → Status → Tasks.", len(w.NotFound)+len(w.Missing))
 	}
@@ -238,16 +246,12 @@ func (c *Coordinator) VerifyMusicFiles(ctx context.Context) (MusicVerifyResult, 
 	}
 	out.Back, out.NotFound, out.Missing, out.Changed = applied.Back, applied.NotFound, applied.Missing, applied.Changed
 
-	// One history line per album, and its search backoff cleared: wanted again, promptly.
-	var albums []int64
-	for albumID, idx := range gone {
-		albums = append(albums, albumID)
+	// One history line per album. Nothing is searched: the files may only be renamed or
+	// on a disk that's away (the album page offers the search, as an explicit choice).
+	for _, idx := range gone {
 		r := rows[idx[0]]
 		c.music.AddEvent(wctx, r.ArtistID, "missing",
-			fmt.Sprintf("%d track file(s) of %q are gone from disk, wanted again", len(idx), r.AlbumTitle))
-	}
-	if err := c.music.ClearSearchMisses(wctx, albums); err != nil {
-		c.log.Warn("music file check: couldn't clear the search backoff of albums with missing tracks", "err", err)
+			fmt.Sprintf("%d track file(s) of %q are gone from disk — not searched for by itself; the album page can search for them", len(idx), r.AlbumTitle))
 	}
 	for albumID, n := range back {
 		r := rows[backRow[albumID]]
@@ -299,6 +303,48 @@ func (c *Coordinator) recheckTagState(ctx context.Context, tcs map[int64]*music.
 func notFoundLongEnough(since string, now time.Time) bool {
 	t := parseTime(since)
 	return !t.IsZero() && now.Sub(t) >= musicMissingGrace
+}
+
+// nearestLooksAway finds the nearest folder above a missing file that is still there, and
+// reports whether it looks like a mount point whose disk is away: empty, or on another
+// device than the file was recorded on (fileID is "dev:ino"). A share mounted on a
+// subfolder of the music folder leaves exactly that behind when it drops: its mount point,
+// empty, on the parent's disk. mounted and devs cache the looks per folder.
+func nearestLooksAway(path, fileID string, mounted func(string) bool, devs map[string]string) (string, bool) {
+	dir := filepath.Dir(filepath.Clean(path))
+	for {
+		if _, seen := devs[dir]; !seen {
+			if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+				devs[dir] = deviceOf(music.FileIdentity(fi))
+			} else {
+				devs[dir] = "\x00gone"
+			}
+		}
+		if devs[dir] != "\x00gone" {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return dir, true // nothing above it is there at all
+		}
+		dir = parent
+	}
+	if !mounted(dir) {
+		return dir, true
+	}
+	if want := deviceOf(fileID); want != "" && devs[dir] != "" && devs[dir] != want {
+		return dir, true
+	}
+	return dir, false
+}
+
+// deviceOf is the device part of a "dev:ino" file identity ("" when there is none).
+func deviceOf(fileID string) string {
+	dev, _, ok := strings.Cut(fileID, ":")
+	if !ok {
+		return ""
+	}
+	return dev
 }
 
 // verifyAnchor is the folder that has to be there for a missing file to count as missing:

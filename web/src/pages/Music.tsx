@@ -105,8 +105,32 @@ export function Music() {
       say((e as Error).message, true); // a toast: `error` is the list's own load state
     }
   };
+  // Albums with track files gone from disk (MUS-15): never searched by themselves, so the
+  // tools menu offers the search, after asking.
+  const [missingAlbums, setMissingAlbums] = useState(0);
+  const loadMissing = () => musicApi.missingAlbums().then((r) => setMissingAlbums(r.albums)).catch(() => {});
+  const [missingJob, setMissingJob] = useState<number | null>(null);
+  const missingSearch = useJob(missingJob, {
+    giveUpMs: 6 * 60 * 60 * 1000,
+    onDone: (j) => { setMissingJob(null); load(); void loadMissing(); say(jobToast(j, "Search finished."), jobFailed(j)); },
+  });
+  const searchAllMissing = async () => {
+    const ok = await confirm({
+      title: `Search for the missing tracks of ${missingAlbums} album${missingAlbums === 1 ? "" : "s"}?`,
+      body: "Their track files are gone from disk. Arrmada doesn't download them again by itself, because they may only be renamed or on a disk that's away. Search only if they're really gone.",
+      confirmLabel: "Search",
+    });
+    if (!ok) return;
+    try {
+      const r = await musicApi.searchAllMissing();
+      if (r.job_id) setMissingJob(r.job_id);
+    } catch (e) {
+      say((e as Error).message, true);
+    }
+  };
   useEffect(() => {
     load();
+    void loadMissing();
     qualityApi.qualityProfiles("music")
       .then((r) => setProfiles(r.profiles.map((p) => ({ key: p.key, name: p.name }))))
       .catch(() => {});
@@ -168,6 +192,14 @@ export function Music() {
             label: "Last scan results",
             title: "What the last library scan found, and the folders waiting to be matched",
             onClick: () => setShowScan(true),
+          }, {
+            label: `Search for missing tracks (${missingAlbums})`,
+            busyLabel: "Searching for missing tracks…",
+            busy: missingSearch.running,
+            progress: missingSearch.running && missingSearch.message ? missingSearch.message : undefined,
+            title: "Search for the albums whose track files are gone from disk",
+            hidden: missingAlbums === 0,
+            onClick: () => void searchAllMissing(),
           }]}
           actions={[{
             label: "New releases",

@@ -475,11 +475,29 @@ func (r *Repo) UpsertAlbum(ctx context.Context, al Album) (int64, error) {
 //
 // An album MusicBrainz no longer lists (stale_since) is left out too: it is kept with its
 // files, and a person can still search for it by hand, but nothing searches it by itself.
+//
+// So is an album with a track file the file check found gone from disk (MUS-15): the file
+// may only be renamed, or on a disk that's away, and downloading it again by itself could
+// fill the library with copies of music the owner still has. The album page says the
+// files are gone and offers "Search for missing tracks"; that, or the file coming back,
+// is the way out. As movies do (movies/missing.go): flag, never re-want.
 func (r *Repo) WantedAlbums(ctx context.Context) ([]Album, error) {
 	return r.albums(ctx, `
 		JOIN artists ar ON ar.id = al.artist_id
 		WHERE al.monitored = 1 AND ar.monitored = 1 AND al.stale_since IS NULL
 		  AND NOT EXISTS (SELECT 1 FROM music_migration_notes n WHERE n.album_id = al.id AND `+openNote+`)
+		  AND NOT EXISTS (SELECT 1 FROM music_track_files f WHERE f.album_id = al.id AND f.missing_since IS NOT NULL
+		                  AND f.release_track_id IS NOT NULL)
+		ORDER BY al.id`)
+}
+
+// AlbumsWithMissingFiles lists the albums with a track file the file check found gone
+// from disk, for the "Search for missing tracks" bulk action. Monitoring doesn't matter:
+// the person asked.
+func (r *Repo) AlbumsWithMissingFiles(ctx context.Context) ([]Album, error) {
+	return r.albums(ctx, `
+		WHERE EXISTS (SELECT 1 FROM music_track_files f WHERE f.album_id = al.id AND f.missing_since IS NOT NULL
+		              AND f.release_track_id IS NOT NULL)
 		ORDER BY al.id`)
 }
 

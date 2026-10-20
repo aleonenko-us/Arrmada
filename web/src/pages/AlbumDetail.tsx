@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EditionPicker } from "../components/music/EditionPicker";
 import { trackFileMark } from "../components/music/fileMarks";
+import { MissingFiles } from "../components/music/MissingFiles";
 import { api, type MusicAlbum, type MusicEdition, type MusicNote, type MusicTrack } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { MusicRenameModal } from "../components/music/MusicRenameModal";
@@ -196,6 +197,7 @@ export function AlbumDetail() {
         )}
 
         {al.notes && al.notes.length > 0 && <UpgradeNotes albumId={al.id} notes={al.notes} onResolved={load} />}
+        {(al.missing_tracks ?? 0) > 0 && <MissingFiles albumId={al.id} count={al.missing_tracks ?? 0} onDone={load} />}
         {picking && <EditionPicker albumId={al.id} onClose={() => setPicking(false)} onChanged={load} />}
 
         <h2 className="m-0 mb-3 mt-8 text-md font-bold">Tracks</h2>
@@ -366,9 +368,9 @@ function TrackRow({ t }: { t: MusicTrack }) {
       <span className="w-[52px] flex-none text-right font-mono text-xs text-ink-faint">{fmtDuration(t.duration_sec)}</span>
       <span
         className="w-[74px] flex-none text-right font-mono text-2xs font-semibold uppercase"
-        style={{ color: t.has_file ? "var(--good-text)" : "var(--avoid-text)" }}
+        style={{ color: t.has_file ? "var(--good-text)" : t.missing ? "var(--reject-text)" : "var(--avoid-text)" }}
       >
-        {t.has_file ? "downloaded" : "wanted"}
+        {t.has_file ? "downloaded" : t.missing ? "file missing" : "wanted"}
       </span>
     </div>
   );

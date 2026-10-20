@@ -144,8 +144,11 @@ test.describe("Music on the kit", () => {
   // MUS-15: the file check's markers on track rows.
   test("the album page marks tracks gone from disk or changed elsewhere", async ({ page }) => {
     await mockMusic(page);
+    let searched = 0;
+    await page.route((u) => u.pathname === "/api/v1/music/albums/51/search-missing", (route) => { searched++; return json(route, { status: "searching" }); });
     await page.route((u) => u.pathname === "/api/v1/music/albums/51", (route) => json(route, {
       ...album,
+      missing_tracks: 1,
       tracks: [
         { ...album.tracks![0], changed_at: "2026-10-20T08:00:00Z" },
         album.tracks![1],
@@ -155,6 +158,12 @@ test.describe("Music on the kit", () => {
     await page.goto("/music/album/51");
     await expect(page.getByText("gone from disk", { exact: true })).toBeVisible();
     await expect(page.getByText("changed", { exact: true })).toBeVisible();
+    await expect(page.getByText("file missing", { exact: true })).toBeVisible();
+    // Never searched by itself: the album page offers the search.
+    const note = page.getByRole("region", { name: "Track files gone from disk" });
+    await expect(note.getByText(/doesn't download them again by itself/)).toBeVisible();
+    await note.getByRole("button", { name: "Search for missing tracks" }).click();
+    await expect.poll(() => searched).toBe(1);
   });
 
   test("the album page explains an upgrade note and resolves it", async ({ page }) => {

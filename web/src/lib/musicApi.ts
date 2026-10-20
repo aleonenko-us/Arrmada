@@ -156,6 +156,14 @@ export const musicApi = {
       body: JSON.stringify({ release_id: releaseId, pinned }),
     }),
 
+  /** Search for an album whose track files are gone from disk (nothing does by itself). */
+  searchMissingTracks: (albumId: number) =>
+    req<{ status: string } & JobRef>(`/api/v1/music/albums/${albumId}/search-missing`, { method: "POST" }),
+  /** How many albums have track files gone from disk. */
+  missingAlbums: () => req<{ albums: number }>("/api/v1/music/search-missing"),
+  /** Search for every album with track files gone from disk, one after another. */
+  searchAllMissing: () => req<{ status: string } & JobRef>("/api/v1/music/search-missing", { method: "POST" }),
+
   /** The last library scan's summary (null before the first). */
   lastScan: () => req<{ last: MusicScanSummary | null; started_at?: string; finished_at?: string }>("/api/v1/music/scan"),
   /** Scan the music folder; full looks at every folder again, ignoring the scan's memory. */

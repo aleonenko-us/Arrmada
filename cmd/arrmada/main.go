@@ -902,7 +902,7 @@ func main() {
 			return nil
 		}
 		return err
-	}, scheduler.Label("Check music files"), scheduler.Description("Notices music files that vanished from disk or changed outside Arrmada. A file not found twice, a day apart, is marked missing and its track wanted again; a changed one is measured again. Never deletes anything; if the music folder looks unmounted it marks nothing and raises a health warning."))
+	}, scheduler.Label("Check music files"), scheduler.Description("Notices music files that vanished from disk or changed outside Arrmada. A file not found twice, a day apart, is marked as gone from disk; it is never downloaded again by itself (Search for missing tracks on the album page). A changed one is measured again. Never deletes anything; if the music folder or a share in it looks unmounted it marks nothing and raises a health warning."))
 	// Bring stale MusicBrainz answers up to date, slowly, on the background lane: cached
 	// answers are never removed, and a page open never waits on this.
 	sched.Register("refresh-music-cache", 6*time.Hour, false, func(ctx context.Context) error {

@@ -68,7 +68,7 @@ func (h *musicHarness) track(t *testing.T, albumID int64, title string) music.Tr
 }
 
 // MUS-15: a file gone from disk is only noted on the first pass; a pass after the grace
-// period marks it missing (its track wanted again, its row kept); when it's back it's
+// period marks it missing (flagged as gone, its row kept, never searched); when it's back it's
 // linked again. Nothing is ever deleted.
 func TestVerifyMarksMissingAfterGrace(t *testing.T) {
 	h, lib, a, paths := verifyLib(t, 2)
@@ -96,7 +96,7 @@ func TestVerifyMarksMissingAfterGrace(t *testing.T) {
 	}
 	tr := h.track(t, al.ID, "One")
 	if tr.HasFile || !tr.Missing || tr.FileID == 0 || tr.FilePath != paths[0] {
-		t.Errorf("missing track = %+v; want it wanted again with its file row kept", tr)
+		t.Errorf("missing track = %+v; want it flagged with its file row kept", tr)
 	}
 	if got := h.album(t, a.ID, "Album 00"); got.MissingTracks != 1 {
 		t.Errorf("album missing_tracks = %d, want 1", got.MissingTracks)
