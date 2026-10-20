@@ -199,7 +199,8 @@ function emptyProfile(media: string): StoredProfile {
     rejected: [...EXECUTABLE_TYPES], // reject executables by default (malware safety)
     min_seeders: 0,
     stall_minutes: 0,
-    upgrades_enabled: true,
+    // Music starts with upgrades off: replacing albums a library holds is the owner's call.
+    upgrades_enabled: media !== "music",
     upgrade_min_percent: 0,
     upgrade_trigger: "any",
     ideal: media === "movie" || media === "series" ? {} : undefined,
@@ -328,7 +329,7 @@ export function Quality() {
           {media === "book"
             ? "A book profile picks which formats to grab (EPUB, M4B…) and can boost releases by keyword — e.g. GraphicAudio +100 to prefer full-cast dramatizations. Higher score wins."
             : media === "music"
-              ? "A music profile is a ladder of audio qualities. Arrmada grabs the best tier available on your ladder. Albums you already have aren't replaced when a better tier turns up — there's no music upgrade sweep yet."
+              ? "A music profile is a ladder of audio qualities. Arrmada grabs the best tier available on your ladder, and with upgrades on, replaces complete albums with a better tier up to the top of the ladder."
               : "A profile describes the file you want — codec, HDR, audio and a bitrate window. Arrmada grabs to it, ranks releases by it, and shows which files in your library don't fit."}
         </p>
 
@@ -1420,8 +1421,8 @@ function NumberField({ label, hint, value, onChange, allowNegative }: { label: s
 // Music builder
 // =====================================================================================
 
-// A music profile is a ladder: each tier on it can be grabbed and the highest available wins.
-// There is no music upgrade sweep yet, so the profile only decides the first grab. Scores follow the ladder's rank, the same spacing
+// A music profile is a ladder: each tier on it can be grabbed and the highest available wins,
+// and with upgrades on, complete albums are upgraded up to its top tier. Scores follow the ladder's rank, the same spacing
 // the presets use, and anything off the ladder scores nothing — which the engine refuses.
 function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial: StoredProfile; ladder: string[]; presets: MusicPreset[]; onCancel: () => void; onSaved: (sp: StoredProfile) => void }) {
   const start = useMemo(() => ({ ...initial, format_scores: initial.format_scores ?? {}, rejected: initial.rejected ?? [] }), [initial]);
@@ -1448,7 +1449,7 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
     else next[tier] = canonical[tier];
     patch({ format_scores: next, min_format_score: 1 });
   };
-  const applyPreset = (p: MusicPreset) => patch({ format_scores: { ...p.format_scores }, min_format_score: p.min_format_score, upgrades_enabled: p.upgrades_enabled, name: sp.name || p.name });
+  const applyPreset = (p: MusicPreset) => patch({ format_scores: { ...p.format_scores }, min_format_score: p.min_format_score, name: sp.name || p.name });
   const top = ladder.find((t) => on(t));
   const kept = ladder.filter((t) => on(t)).length;
 
@@ -1513,10 +1514,17 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
         </div>
 
         <SectionLabel>Upgrades</SectionLabel>
-        {/* No music upgrade sweep exists, so a switch here would promise something nothing does.
-            upgrades_enabled is left as saved, so the switch can come back with the sweep. */}
-        <div className="rounded-xl p-4 text-sm text-ink-faint" style={panelStyle}>
-          Automatic album upgrades aren't built yet. An album is grabbed once, at the best tier available on your ladder.
+        <div className="rounded-xl p-4" style={panelStyle}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <label htmlFor="mp-upgrades" className="block text-base font-semibold">Automatically upgrade</label>
+              <div className="text-xs leading-[1.45] text-ink-faint">
+                Keep looking for a better copy of complete albums, up to {top ?? "the top of your ladder"}. A copy only counts when it's a higher tier
+                you prefer; lossless never replaces lossless, and the files it replaces go to the recycle bin. A few albums are looked at each run.
+              </div>
+            </div>
+            <Switch id="mp-upgrades" checked={sp.upgrades_enabled} onChange={(v) => patch({ upgrades_enabled: v })} />
+          </div>
         </div>
 
         <SectionLabel>Reject</SectionLabel>

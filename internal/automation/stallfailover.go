@@ -619,9 +619,11 @@ func (c *Coordinator) detectStalledMusic(ctx context.Context, g grab, queue []do
 		c.closeStale(ctx, g, grabStatusFailed, tick)
 		return
 	}
-	if al.Complete() {
+	if al.Complete() && c.completedUnderGrab(ctx, g, al) {
 		// Another download completed the album while this one was still in flight. Nothing
 		// of it was imported, so it is closed keeping its files rather than as 'imported'.
+		// An upgrade or a person's grab of an album that was already complete is a download
+		// meant for a complete album: it is judged like any other (MUS-16).
 		c.closeStale(ctx, g, grabStatusDismissed, tick)
 		return
 	}
@@ -681,7 +683,14 @@ func (c *Coordinator) musicStallTarget(ctx context.Context, al music.Album, g gr
 		// Music history is kept per artist.
 		event: func(ctx context.Context, detail string) { c.music.AddEvent(ctx, a.ID, "failed", detail) },
 		replace: func(ctx context.Context, exclude map[string]bool) (string, error) {
-			out := c.grabAlbumExcluding(ctx, a, al, exclude)
+			var out albumOutcome
+			if al.Complete() {
+				// A stalled upgrade (or a person's grab of a complete album) is replaced only
+				// by another upgrade, never by a second copy of what the album has.
+				out = c.replaceUpgrade(ctx, a, al, exclude)
+			} else {
+				out = c.grabAlbumExcluding(ctx, a, al, exclude)
+			}
 			switch out.Code {
 			case outcomeGrabbed:
 				return out.Release, nil

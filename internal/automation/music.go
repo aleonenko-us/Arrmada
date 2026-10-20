@@ -220,11 +220,18 @@ func (c *Coordinator) albumDownloading(queue []download.Item, a music.Artist, al
 // call is one search attempt (scope "album"); the sweep's backoff still reads the
 // albumOutcome as before.
 func (c *Coordinator) grabAlbum(ctx context.Context, a music.Artist, al music.Album) albumOutcome {
+	out, _, _ := c.grabAlbumRecorded(ctx, a, al)
+	return out
+}
+
+// grabAlbumRecorded is grabAlbum that also returns the recorded outcome, with what the
+// search saw folded in (counts, each indexer's error): what Search now reports.
+func (c *Coordinator) grabAlbumRecorded(ctx context.Context, a music.Artist, al music.Album) (albumOutcome, SearchOutcome, error) {
 	ctx, notes := newSearchNotes(ctx)
 	out := c.grabAlbumExcluding(ctx, a, al, nil)
 	so, err := out.searchOutcome()
 	c.recordAttempt(ctx, notes, AttemptMusic, al.ID, ScopeAlbum, &so, err)
-	return out
+	return out, so, err
 }
 
 // searchOutcome is an album search's result in the shared outcome's terms. A failure on our
@@ -243,6 +250,8 @@ func (o albumOutcome) searchOutcome() (SearchOutcome, error) {
 		res.Reason = ReasonBlockedOrBelow
 	case outcomeNoListing:
 		res.Searched, res.Reason = false, ReasonNothingWanted
+	case outcomeDeferred:
+		// Found, and left for the next sweep by the upgrade budget: settled from the counts.
 	case outcomeIndexerError:
 		// Nobody could answer: recorded as indexers_failed, with each indexer's error.
 		res.Reason = ReasonIndexersFailed
@@ -254,9 +263,14 @@ func (o albumOutcome) searchOutcome() (SearchOutcome, error) {
 }
 
 // SearchAlbumNow searches for one album now and grabs the best release, the way the
-// sweep would, and says what it found. Used after a Block, to find another release.
+// sweep would, and says what it found: a person's Search now (the album page, Wanted),
+// and the search after a Block. It ignores the album's backoff, but not the rest:
+//   - nothing is searched while the Music module is off;
+//   - an album with a download in flight isn't searched again (the outcome names it);
+//   - a complete album gets an upgrade search, and only when its profile allows upgrades
+//     and it is below its cutoff: another copy of what it has is never grabbed.
 func (c *Coordinator) SearchAlbumNow(ctx context.Context, albumID int64) (SearchOutcome, error) {
-	if c.music == nil {
+	if c.music == nil || !c.moduleOn(ctx, "music") {
 		return SearchOutcome{Reason: ReasonNothingWanted}, nil
 	}
 	release, ok := c.claims.claim(albumKey(albumID))
@@ -272,130 +286,71 @@ func (c *Coordinator) SearchAlbumNow(ctx context.Context, albumID int64) (Search
 	if err != nil {
 		return SearchOutcome{}, err
 	}
-	out := c.grabAlbum(ctx, a, al)
-	return out.searchOutcome()
+	busy, err := c.albumInFlight(ctx, al.ID)
+	if err != nil {
+		return SearchOutcome{}, err
+	}
+	if busy != "" {
+		ctx, notes := newSearchNotes(ctx)
+		out := SearchOutcome{Reason: ReasonAlreadyDownloading, Example: busy}
+		c.recordAttempt(ctx, notes, AttemptMusic, al.ID, ScopeAlbum, &out, nil)
+		return out, nil
+	}
+	if al.Complete() {
+		return c.upgradeAlbumNow(ctx, a, al)
+	}
+	_, so, err := c.grabAlbumRecorded(ctx, a, al)
+	return so, err
+}
+
+// albumInFlight names a download still in flight for an album ("" for none). An
+// unreadable answer is an error: a second copy mustn't be grabbed on a guess.
+func (c *Coordinator) albumInFlight(ctx context.Context, albumID int64) (string, error) {
+	acqs, err := c.Active(ctx, "music", albumID)
+	if err != nil {
+		return "", err
+	}
+	for _, acq := range acqs {
+		if acq.Downloading() {
+			return acq.Title, nil
+		}
+	}
+	return "", nil
 }
 
 // grabAlbumExcluding is grabAlbum that also skips the normalized titles in exclude: a stall
 // fail-over keeps the stalled release out of the replacement search without blocklisting
 // it, because it stays in the client until something else is found.
 func (c *Coordinator) grabAlbumExcluding(ctx context.Context, a music.Artist, al music.Album, exclude map[string]bool) albumOutcome {
-	// The album needs its track listing before anything can be imported against it, and the
-	// listing is fetched lazily. Do it here rather than at import time so a grabbed release
-	// always has somewhere to land.
-	if err := c.music.EnsureTracks(ctx, al); err != nil {
-		c.log.Warn("music: couldn't fetch the track listing — skipping", "album", al.Title, "err", err)
-		return albumOutcome{Code: outcomeListingError, Detail: err.Error()}
-	}
-	if al.EditionTracks == 0 {
-		// Still nothing after asking MusicBrainz means no official release carries a
-		// listing. Searching the indexers would be pointless — a download would have
-		// nothing to land against — so it's a miss without the search.
-		tracks, err := c.music.Tracks(ctx, al.ID)
-		if err != nil {
-			return albumOutcome{Code: outcomeListingError, Detail: err.Error()}
-		}
-		if len(tracks) == 0 {
-			c.log.Info("music: no track listing on MusicBrainz yet — not searching", "artist", a.Name, "album", al.Title)
-			return albumOutcome{Code: outcomeNoListing, Detail: "MusicBrainz lists no tracks for this album"}
-		}
-	}
-	sp := c.musicProfile(ctx, a.QualityProfile)
-	query := a.Name + " " + al.Title
-	// Artist and album also travel as parts, for an indexer whose caps take t=music. The
-	// discography search below stays text: there's no album to name.
-	res, err := c.searchMusic(ctx, indexer.SearchQuery{
-		Text: query, Artist: a.Name, Album: al.Title, MediaType: indexer.MediaMusic, Limit: 100,
-	})
-	if err != nil {
-		c.log.Warn("music: search failed", "album", al.Title, "err", err)
-		return albumOutcome{Code: outcomeIndexerError, Detail: err.Error()}
-	}
-	notes := notesFrom(ctx) // the album's search attempt, when it is recorded
-	notes.consider(res.Releases)
-	if len(res.Releases) == 0 {
-		if len(res.Errors) > 0 && len(res.Errors) >= res.Asked {
-			// Nothing came back because every indexer asked failed. That says nothing
-			// about the album, so it mustn't count against it. One dead indexer among
-			// healthy ones that found nothing is a plain miss, though, or a single broken
-			// tracker would keep every unfindable album out of the backoff for good.
-			return albumOutcome{Code: outcomeIndexerError, Detail: fmt.Sprintf("%d indexer(s) failed", len(res.Errors))}
-		}
-		return albumOutcome{Code: outcomeNoResults, Detail: "no releases"}
-	}
-
-	// Only releases that actually name THIS artist and album. Without this a search for one
-	// album happily grabs another by the same artist — the hole the Books module shipped
-	// with, and the reason its downloads landed on the wrong title. Releases no client can
-	// take go too (usenet without a usenet client): a FLAC from usenet would otherwise
-	// outrank every torrent and fail the grab on every sweep.
-	nets := c.networks(ctx)
-	usable := nets.grabbable(res.Releases)
-	nets.noteDropped(notes, res.Releases, usable)
-	var cands []indexer.Release
-	for _, rel := range usable {
-		if music.ReleaseIsForAlbum(rel.Title, a.Name, al.Title) {
-			cands = append(cands, rel)
-		} else {
-			notes.mark(rel.Title, DropWrongTitle)
-		}
-	}
-	if len(cands) == 0 {
-		c.log.Info("music: no release matched this album", "artist", a.Name, "album", al.Title)
-		return albumOutcome{Code: outcomeNoMatch, Detail: fmt.Sprintf("%d release(s), none named this album", len(usable))}
-	}
-	matched := len(cands)
-	before := append([]indexer.Release(nil), cands...)
-	cands, err = c.dropBlockedMusic(ctx, al.ID, cands)
-	notes.dropped(before, cands, DropBlocklisted)
-	var pending map[string]bool
-	if err == nil {
-		pending, err = c.pendingMusicGrabTitles(ctx, al.ID)
-	}
-	if err != nil {
-		c.skipUnreadable(a.Name+" — "+al.Title, err)
-		return albumOutcome{Code: outcomeUnreadable, Detail: err.Error()}
-	}
-	before = append(before[:0], cands...)
-	cands = dropPendingMusic(cands, pending)
-	notes.dropped(before, cands, DropPending)
-	before = append(before[:0], cands...)
-	cands = dropPendingMusic(cands, exclude) // same normalized-title filter
-	notes.dropped(before, cands, DropBlocklisted)
-	if len(cands) == 0 {
-		return albumOutcome{Code: outcomeBlocked, Detail: fmt.Sprintf("%d match(es), all blocklisted or already grabbed", matched)}
-	}
-	// A partly held album only takes releases at least as good as the worst track it has:
-	// anything lower would be kept out at import anyway (placeAlbumTracks), or leave the
-	// album a patchwork of tiers.
+	// A partly held album only takes releases at least as good as the worst track it has
+	// (albumJudge.tierCheck).
+	var mode albumMode
 	if al.HaveTracks > 0 {
 		held, ok, err := c.music.HeldTiers(ctx, al.ID)
 		if err != nil {
 			c.skipUnreadable(a.Name+" — "+al.Title, err)
 			return albumOutcome{Code: outcomeUnreadable, Detail: err.Error()}
 		}
-		if ok && held != music.QualityUnknown {
-			before = append(before[:0], cands...)
-			cands = dropBelowTier(cands, held)
-			notes.dropped(before, cands, DropNotWanted)
-			if len(cands) == 0 {
-				return albumOutcome{Code: outcomeBelowProfile,
-					Detail: fmt.Sprintf("%d release(s) below the %s you already have", len(before), held)}
-			}
+		if ok {
+			mode.held = held
 		}
 	}
-
-	for _, rel := range cands {
-		if _, code := albumVerdict(sp, rel); code != "" {
-			notes.mark(rel.Title, code)
-		} else {
-			notes.mark(rel.Title, classEligible)
-		}
+	judged, sp, fail := c.searchAlbumReleases(ctx, a, al, mode, exclude)
+	if fail != nil {
+		return *fail
 	}
-	best := pickBestAlbum(nets, sp, cands)
+	cands, fail := albumVerdictOutcome(judged, sp, mode)
+	if fail != nil {
+		switch fail.Code {
+		case outcomeNoMatch:
+			c.log.Info("music: no release matched this album", "artist", a.Name, "album", al.Title)
+		case outcomeBelowProfile:
+			c.log.Info("music: no release met the quality profile", "artist", a.Name, "album", al.Title, "why", fail.Detail)
+		}
+		return *fail
+	}
+	best := pickBestAlbum(c.networks(ctx), sp, cands)
 	if best == nil {
-		c.log.Info("music: no release met the quality profile", "artist", a.Name, "album", al.Title,
-			"candidates", len(cands))
 		return albumOutcome{Code: outcomeBelowProfile, Detail: fmt.Sprintf("%d match(es), none accepted by %q", len(cands), sp.Name)}
 	}
 	if !c.diskOKFor(ctx, best.Indexer, float64(best.SizeBytes)/(1<<30)) {
@@ -448,8 +403,8 @@ func (c *Coordinator) grabMusic(ctx context.Context, indexerName, url, title, ca
 // between torrents (nets.beats: a usenet release isn't compared on seeders).
 //
 // The ladder is the profile's format_scores keyed by tier ("FLAC", "MP3-320"…), so scoring
-// is just a lookup — and because nothing outscores the tier already held, this same scoring
-// is what makes upgrades stop by themselves at the top of the ladder.
+// is just a lookup. The upgrade sweep picks with it too, among releases already shown to be
+// an upgrade (music.UpgradeTiers), which is what stops it at the top of the ladder.
 func pickBestAlbum(nets netPolicy, sp quality.StoredProfile, releases []indexer.Release) *indexer.Release {
 	var best *indexer.Release
 	bestScore := 0
@@ -994,24 +949,30 @@ func discOfFolder(name string) int {
 // recordMusicGrab records a grab so the pending guard, seed rules and stall fail-over can
 // see it: an album ("music", the album id) or a discography (mediaMusicArtist, the artist
 // id). stall_minutes comes from the profile — writing a literal 0 is what made the book
-// stall fail-over dead code for months.
-func (c *Coordinator) recordMusicGrab(ctx context.Context, mediaType string, id int64, title, indexerName, profile, infoHash string) {
+// stall fail-over dead code for months. It returns the grab row's id (0 when it couldn't
+// be recorded).
+func (c *Coordinator) recordMusicGrab(ctx context.Context, mediaType string, id int64, title, indexerName, profile, infoHash string) int64 {
 	defer c.grabsChanged()
 	notesFrom(ctx).grabbed(title) // the search attempt this grab came from, if any
 	// Same profile the album was chosen under (musicProfile), so the stall window matches.
 	profile = c.effectiveProfile(ctx, profile, quality.MediaMusic)
 	transport, seedEnabled, seedRatio, seedHours := c.grabPolicy(ctx, indexerName, infoHash)
-	_, err := c.db.ExecContext(ctx,
-		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, transport)
-		 VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	// An upgrade grab says so (decided_mode 'upgrade'): its import mustn't move the album
+	// to another edition (importMusicDownload).
+	key, mode := pickOf(ctx, title)
+	res, err := c.db.ExecContext(ctx,
+		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, decided_by, decided_mode, transport)
+		 VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, title, indexerName, profile, c.quality.StallMinutes(ctx, profile),
-		boolToInt(seedEnabled), seedRatio, seedHours, mediaType, infoHash, transport)
+		boolToInt(seedEnabled), seedRatio, seedHours, mediaType, infoHash, key, mode, transport)
 	if err != nil {
 		c.log.Warn("music: recording the grab failed", "kind", mediaType, "id", id, "err", err)
-		return
+		return 0
 	}
 	c.noteHashless(mediaType, title, infoHash)
 	c.noteHandoff(ctx, mediaType, id, title, infoHash)
+	rowID, _ := res.LastInsertId()
+	return rowID
 }
 
 // pendingMusicGrabTitles returns releases already grabbed for this album and not yet
@@ -1031,39 +992,6 @@ func dropPendingMusic(releases []indexer.Release, pending map[string]bool) []ind
 		}
 	}
 	return out
-}
-
-// dropBelowTier keeps the releases whose tier (read from the name) is at least held, any
-// lossless tier counting as good as another (the import never churns lossless against
-// lossless either). An unknown tier is dropped: it can't be shown to be at least as good.
-func dropBelowTier(releases []indexer.Release, held music.Quality) []indexer.Release {
-	out := make([]indexer.Release, 0, len(releases))
-	for _, rel := range releases {
-		q := music.DetectQuality(rel.Title)
-		if music.QualityRank(q) >= music.QualityRank(held) ||
-			(music.IsLosslessQuality(q) && music.IsLosslessQuality(held)) {
-			out = append(out, rel)
-		}
-	}
-	return out
-}
-
-// dropBlockedMusic removes releases blocklisted for this album.
-func (c *Coordinator) dropBlockedMusic(ctx context.Context, albumID int64, releases []indexer.Release) ([]indexer.Release, error) {
-	blocked, err := c.blockedSetMusic(ctx, albumID)
-	if err != nil {
-		return nil, err
-	}
-	if len(blocked) == 0 {
-		return releases, nil
-	}
-	out := make([]indexer.Release, 0, len(releases))
-	for _, rel := range releases {
-		if !blocked[normTitle(rel.Title)] {
-			out = append(out, rel)
-		}
-	}
-	return out, nil
 }
 
 // ensure the library importer is referenced even if the album helpers move.

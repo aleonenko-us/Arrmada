@@ -59,9 +59,13 @@ export function ReleaseSearchModal({
   onGrab,
   onBlock,
   onClose,
+  audio,
 }: {
   title: string;
   subtitle?: string;
+  // audio: a music album's search. There are no resolutions, video features or bitrates
+  // to filter or sort by, and an album's size reads better in MB.
+  audio?: boolean;
   // Optional scopes rendered as tabs (a show's seasons); switching one re-runs the
   // search, and the caller's fetchReleases reads the active tab.
   tabs?: { key: string; label: string }[];
@@ -87,8 +91,8 @@ export function ReleaseSearchModal({
     () => (list?.releases ?? []).map((rel, i) => ({ rel, i, res: resOf(rel), feats: featsOf(rel) })),
     [list],
   );
-  const resAvailable = useMemo(() => RES_ORDER.filter((r) => decorated.some((d) => d.res === r)), [decorated]);
-  const featAvailable = useMemo(() => FEATURES.filter((f) => decorated.some((d) => d.feats.has(f.key))), [decorated]);
+  const resAvailable = useMemo(() => (audio ? [] : RES_ORDER.filter((r) => decorated.some((d) => d.res === r))), [decorated, audio]);
+  const featAvailable = useMemo(() => (audio ? [] : FEATURES.filter((f) => decorated.some((d) => d.feats.has(f.key)))), [decorated, audio]);
   const view = useMemo(() => {
     const rows = decorated.filter(
       (d) =>
@@ -196,7 +200,7 @@ export function ReleaseSearchModal({
             <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-faint">
               Sort
               <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-lg px-2 py-1 text-xs font-medium" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}>
-                {SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                {SORTS.filter((s) => !audio || s.key !== "bitrate").map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </label>
           </div>
@@ -224,6 +228,7 @@ export function ReleaseSearchModal({
                   disabled={busy !== null}
                   onGrab={() => grab(rel)}
                   onBlock={block ? () => block(rel) : undefined}
+                  audio={audio}
                 />
               ))}
             </div>
@@ -258,7 +263,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   );
 }
 
-function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onBlock }: { rel: RankedRelease; why?: string[]; chosenOver?: string; busy: boolean; grabbed: boolean; disabled: boolean; onGrab: () => void; onBlock?: () => void }) {
+function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onBlock, audio }: { rel: RankedRelease; why?: string[]; chosenOver?: string; busy: boolean; grabbed: boolean; disabled: boolean; onGrab: () => void; onBlock?: () => void; audio?: boolean }) {
   const blocked = rel.blocklisted;
   // Usenet has no seeders to count. A release on a network with no download client set up
   // for it can't be grabbed at all; its reject reason says so.
@@ -290,7 +295,7 @@ function ReleaseRow({ rel, why, chosenOver, busy, grabbed, disabled, onGrab, onB
           </div>
           <div className="mt-1 truncate font-mono text-xs text-ink-faint" title={rel.title}>{rel.title}</div>
           <div className="mt-1.5 flex flex-wrap items-center gap-3 font-mono text-xs text-ink-dim">
-            <span>{rel.size_gb.toFixed(1)} GB</span>
+            <span>{audio && rel.size_gb < 1 ? `${Math.round(rel.size_gb * 1024)} MB` : `${rel.size_gb.toFixed(1)} GB`}</span>
             {rel.bitrate_mbps ? <span title="Average bitrate (size ÷ runtime)" style={{ color: "var(--accent-text)" }}>{rel.bitrate_mbps.toFixed(1)} Mb/s</span> : null}
             {!usenet && <span title="Seeders / peers, as the indexer reports them">{rel.seeders}/{rel.peers ?? 0} seeders/peers</span>}
             {age && <span title={rel.published_at ? `Posted ${new Date(rel.published_at).toLocaleString()}` : undefined}>{age} old</span>}

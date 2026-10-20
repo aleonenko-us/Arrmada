@@ -275,9 +275,11 @@ func TestMusicSweepStopsWhenOutOfSpace(t *testing.T) {
 	h := musicTestCoord(t)
 	h.releases = func(q indexer.SearchQuery) (indexer.SearchResult, error) {
 		r := rel(strings.Replace(q.Text, "Radiohead ", "Radiohead - ", 1) + " [FLAC]")
-		r.SizeBytes = 1 << 62 // no disk is this big
 		return indexer.SearchResult{Releases: []indexer.Release{r}}, nil
 	}
+	// A full disk (a release absurdly big for its album is refused before the disk is
+	// asked, by the size check).
+	h.c.freeGBFn = func(string) (float64, bool) { return 0.1, true }
 	a := h.addArtist(t, "Radiohead", "", []string{"OK Computer", "Kid A", "Amnesiac"}, nil, "")
 
 	h.c.SearchMusicMissing(h.ctx)

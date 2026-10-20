@@ -378,6 +378,14 @@ func (c *Coordinator) importMusicDownload(ctx context.Context, it download.Item)
 		c.holdMusicMatch(ctx, it, idx, gid, res)
 		return
 	}
+	// An upgrade the sweep grabbed never moves the album to another edition, nor puts
+	// another edition's files on one kept by hand (MUS-16).
+	if grabbed && c.musicGrabWasUpgrade(ctx, it.Hash, it.Name, gid) {
+		if hold := c.upgradeEditionHold(ctx, gid, results); hold != nil {
+			c.holdMusicMatch(ctx, it, idx, gid, *hold)
+			return
+		}
+	}
 
 	var total albumImport
 	total.found = true

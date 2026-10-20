@@ -386,6 +386,13 @@ func main() {
 		}
 		log.Info("quality: repointed titles on deleted profiles to the default", args...)
 	}
+	// One sensible music profile on an install that has none, once (MUS-14): never a
+	// second one, and never again after the owner deletes it.
+	if created, err := qualitySvc.EnsureDefaultMusicProfile(context.Background()); err != nil {
+		log.Warn("quality: couldn't set up the default music profile", "err", err)
+	} else if created {
+		log.Info("quality: added the music profile " + quality.DefaultMusicPreset)
+	}
 	notifySvc := notify.NewService(st.DB(), bus, modLog(log, "notify"))
 	pushSvc := push.New(st.DB(), settingsSvc, modLog(log, "notify"))
 	// Episode NUMBERING comes from TVmaze; everything else about a show still comes from
@@ -894,6 +901,11 @@ func main() {
 		coordinator.SearchMusicMissing(ctx)
 		return nil
 	}, scheduler.Label("Search for missing albums"), scheduler.Description("Searches the indexers for monitored albums that are missing tracks."))
+	// Look for better copies of complete albums, up to each profile's cutoff (MUS-16).
+	sched.Register("upgrade-music", 6*time.Hour, false, func(ctx context.Context) error {
+		coordinator.UpgradeMusic(ctx)
+		return nil
+	}, scheduler.Label("Look for better album releases"), scheduler.Description("Grabs a better copy of a complete album when its quality profile allows upgrades and the files are below the profile's top tier. Searches at most 10 albums a run and grabs no more than the per-sweep limit (Settings → Downloads); replaced files go to the recycle bin."))
 	// Bring stale MusicBrainz answers up to date, slowly, on the background lane: cached
 	// answers are never removed, and a page open never waits on this.
 	sched.Register("refresh-music-cache", 6*time.Hour, false, func(ctx context.Context) error {

@@ -27,6 +27,7 @@ const (
 	ReleaseKindMovie  = "movie"
 	ReleaseKindSeries = "series"
 	ReleaseKindBook   = "book"
+	ReleaseKindAlbum  = "album" // a music album's interactive search (MUS-17)
 )
 
 const (
@@ -54,7 +55,7 @@ type ReleaseRef struct {
 	// The grab itself routes by the indexer (grabTo), so a stale token can't send an NZB
 	// to a torrent client; this is what the release was offered as.
 	Transport string
-	MediaKind string // ReleaseKindMovie | ReleaseKindSeries | ReleaseKindBook
+	MediaKind string // ReleaseKindMovie | ReleaseKindSeries | ReleaseKindBook | ReleaseKindAlbum
 	MediaID   int64
 	VersionID int64 // books: the audiobook version the release was matched to (0 = standard)
 	// Series: the search the result came from — a negative Season is the whole show,

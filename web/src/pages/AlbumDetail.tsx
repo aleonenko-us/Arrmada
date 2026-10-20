@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { EditionPicker } from "../components/music/EditionPicker";
+import { AlbumSearch } from "../components/music/AlbumSearch";
 import { api, type MusicAlbum, type MusicEdition, type MusicNote, type MusicTrack } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { MusicRenameModal } from "../components/music/MusicRenameModal";
@@ -185,6 +186,7 @@ export function AlbumDetail() {
               </Button>
               {al.have_tracks > 0 && <FileActions albumId={al.id} onChanged={load} />}
             </div>
+            <AlbumSearch album={al} onChanged={load} />
           </div>
         </div>
 

@@ -8,9 +8,10 @@ package quality
 //
 // They're still expressed as format_scores rather than a separate ladder field: score the
 // tiers in rank order and the existing engine picks the best tier available at grab time and
-// refuses anything scoring 0 or below. There is no music upgrade sweep yet — an album that
-// is complete isn't searched again — so the ladder decides the first grab only. When a sweep
-// is built, the same scores give it a natural stop: nothing outranks the top tier you kept.
+// refuses anything scoring 0 or below. The same scores drive the music upgrade sweep
+// (automation.UpgradeMusic, with upgrades_enabled): a complete album is upgraded only to a
+// tier scored higher than what it holds that is also better audio (music.UpgradeTiers),
+// which gives it a natural stop at the top tier you kept.
 //
 // The names match what trackers actually print, so a profile reads like the release list.
 
@@ -49,7 +50,7 @@ func MusicPresets() []MusicPreset {
 			FormatScores: map[string]int{
 				"FLAC-24": 130, "FLAC": 120, "ALAC": 110, "WAV": 100,
 			},
-			MinFormatScore: 1, UpgradesEnabled: true,
+			MinFormatScore: 1, UpgradesEnabled: false,
 		},
 		{
 			Name:        "Lossless, or the best MP3",
@@ -58,7 +59,7 @@ func MusicPresets() []MusicPreset {
 				"FLAC-24": 130, "FLAC": 120, "ALAC": 110, "WAV": 100,
 				"MP3-320": 60, "MP3-V0": 55, "AAC-256": 45, "MP3-256": 40, "MP3-V2": 30,
 			},
-			MinFormatScore: 1, UpgradesEnabled: true,
+			MinFormatScore: 1, UpgradesEnabled: false,
 		},
 		{
 			Name:        "High-quality lossy",
@@ -66,7 +67,7 @@ func MusicPresets() []MusicPreset {
 			FormatScores: map[string]int{
 				"MP3-320": 60, "MP3-V0": 55, "AAC-256": 45, "MP3-256": 40, "MP3-V2": 30, "OPUS": 25,
 			},
-			MinFormatScore: 1, UpgradesEnabled: true,
+			MinFormatScore: 1, UpgradesEnabled: false,
 		},
 		{
 			Name:        "Any quality",
@@ -76,20 +77,21 @@ func MusicPresets() []MusicPreset {
 				"MP3-320": 60, "MP3-V0": 55, "AAC-256": 45, "MP3-256": 40,
 				"MP3-V2": 30, "OPUS": 25, "OGG": 20, "MP3-192": 15, "MP3-128": 5,
 			},
-			MinFormatScore: 1, UpgradesEnabled: true,
+			MinFormatScore: 1, UpgradesEnabled: false,
 		},
 	}
 }
 
 // FallbackMusicProfile scores the full ladder in rank order. Used when an artist references
 // a profile that no longer exists, so acquisition degrades to "best available" instead of
-// stalling — the same role fallbackProfile plays for video.
+// stalling — the same role fallbackProfile plays for video. It never upgrades: nobody
+// chose it, so it mustn't replace albums anyone already has.
 func FallbackMusicProfile() StoredProfile {
 	for _, p := range MusicPresets() {
 		if p.Name == "Any quality" {
 			return StoredProfile{
 				MediaType: MediaMusic, Name: p.Name, FormatScores: p.FormatScores,
-				MinFormatScore: p.MinFormatScore, UpgradesEnabled: p.UpgradesEnabled,
+				MinFormatScore: p.MinFormatScore, UpgradesEnabled: false,
 			}
 		}
 	}

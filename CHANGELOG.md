@@ -26,6 +26,17 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Before you update
 
+- **Music upgrades are off until you turn them on.** The update switches automatic upgrades off
+  on every music profile, and new profiles and presets start with them off. Turn them on per
+  profile (Quality → Music → Automatically upgrade).
+
+- **Artists with no music profile now use "Lossless, or the best MP3",** created once if you have
+  no music profile. They were on "Any quality" before, so MP3-192 and below, OGG and Opus are no
+  longer grabbed for them. Pick another profile on the artist to change it.
+
+- **Adding an artist searches its wanted albums straight away** (up to 25, in the background),
+  following Settings' "search on add". The add dialog has a "Start searching now" box.
+
 - **Homepage widget: `wanted.total` now includes albums** (released albums still missing) while
   Music is on. New fields `artists`, `albums`, `tracks` and `wanted.albums` are 0 while it's off.
 
@@ -169,27 +180,6 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 - **SECURITY.md**: how to report a vulnerability privately, and which versions get fixes.
   The README now explains how Arrmada is built and tested.
 
-### Changed
-
-- **Built with Go 1.26.9**, because Go 1.25 is out of support. The Docker build pins Go to
-  the patch release. Building from source outside Docker needs Go 1.26.
-- **Vulnerability scanning in CI.** Every change runs govulncheck (it fails when our code
-  can reach a known-vulnerable function) and `npm audit` (high or critical, in the UI's
-  production dependencies). CodeQL code scanning runs on Go and TypeScript. Go modules with
-  known advisories were upgraded (`golang.org/x/net`, `x/crypto`, `x/sys`,
-  `golang-jwt/jwt`).
-- **Sign-in limits are shared.** The audiobook server and the OPDS catalogue count wrong
-  passwords with the main sign-in limiter (10 per address in 15 minutes, then a pause per
-  username from outside your network). Your own devices that signed in recently aren't held
-  up, and an e-reader repeating the same stale password counts once.
-- **Web Push** only sends to the browsers' own push services, and an account keeps at most
-  10 devices (the oldest goes).
-- The image's Apprise is pinned and installed with hashes.
-- Release notes on GitHub now come from this changelog, with a Before you update section
-  for each version (#31).
-
-### Fixed
-
 - **Music (Preview) on the Dashboard and Calendar.** With Music on, staff get an Albums tile and a
   Music card (library, missing and upcoming albums, new releases, recent imports), album release
   dates on the Calendar and in their personal calendar feed, and music counts in the Homepage
@@ -232,6 +222,35 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   instead of being cleaned up; albums show as complete again. MusicBrainz lookups share one
   polite limit and a permanent local cache, so music keeps working when MusicBrainz is down, and
   Settings → Connections → Metadata can point at your own MusicBrainz copy.
+- **Music (Preview) searches and upgrades on its own terms.** Album and artist pages say why an
+  album isn't downloading (last outcome, next try) and have **Search now**; an artist's Search now
+  takes up to 25 albums a click, never-searched first, and a second click moves on to the rest.
+  Interactive search lists every release with the reason it would or wouldn't be grabbed, and a
+  manual grab imports into the album you picked (the same release twice is refused while it's
+  still downloading). Video and implausibly sized releases are dropped. With upgrades turned on
+  for a profile, a paced sweep replaces albums with strictly better quality, never a downgrade,
+  old files to the recycle bin.
+
+### Changed
+
+- **Built with Go 1.26.9**, because Go 1.25 is out of support. The Docker build pins Go to
+  the patch release. Building from source outside Docker needs Go 1.26.
+- **Vulnerability scanning in CI.** Every change runs govulncheck (it fails when our code
+  can reach a known-vulnerable function) and `npm audit` (high or critical, in the UI's
+  production dependencies). CodeQL code scanning runs on Go and TypeScript. Go modules with
+  known advisories were upgraded (`golang.org/x/net`, `x/crypto`, `x/sys`,
+  `golang-jwt/jwt`).
+- **Sign-in limits are shared.** The audiobook server and the OPDS catalogue count wrong
+  passwords with the main sign-in limiter (10 per address in 15 minutes, then a pause per
+  username from outside your network). Your own devices that signed in recently aren't held
+  up, and an e-reader repeating the same stale password counts once.
+- **Web Push** only sends to the browsers' own push services, and an account keeps at most
+  10 devices (the oldest goes).
+- The image's Apprise is pinned and installed with hashes.
+- Release notes on GitHub now come from this changelog, with a Before you update section
+  for each version (#31).
+
+### Fixed
 
 - Library folders: a show, artist or album whose name is only dots can no longer reach
   outside its library folder. Names like "..." are still allowed.
