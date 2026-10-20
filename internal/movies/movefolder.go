@@ -52,14 +52,15 @@ func (s *Service) MoveFolderCheck(ctx context.Context, id int64, dir string) str
 			return "it couldn't be read"
 		}
 	}
-	if o := recordedInto(dir, others); o != "" {
+	probe := newLinkProbe(others)
+	if o := probe.recordedInto(dir); o != "" {
 		rel, err := filepath.Rel(dir, o)
 		if err != nil {
 			rel = filepath.Base(o)
 		}
 		return "another film in your library has a file recorded in it (" + filepath.ToSlash(rel) + ")"
 	}
-	if link := s.aliasInto(dir); link != "" {
+	if link := s.aliasInto(probe, dir); link != "" {
 		return "another folder links into it (" + filepath.Base(link) + ")"
 	}
 	if reason := s.ownFolder(m, dir); reason != "" {
