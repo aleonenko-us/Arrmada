@@ -1916,6 +1916,8 @@ export interface DiscoverCard {
   vote_average: number;
   release_date?: string;
   genres?: string[]; // up to three
+  /** "Just out at home" only: the first digital or disc release, YYYY-MM-DD. */
+  home_release?: string;
   in_library: boolean;
   has_file: boolean;
   wanted?: boolean; // in the library, monitored and missing files: the server is already after it
@@ -3449,7 +3451,7 @@ export const api = {
     req<{ items: DiscoverCard[] }>(`/api/v1/discover/upcoming${media ? `?media=${media}` : ""}`).then((r) => r.items),
   discoverRecommended: () =>
     req<{ items: DiscoverCard[] }>(`/api/v1/discover/recommended`).then((r) => r.items),
-  discoverRow: (kind: "now_playing" | "top_rated" | "anime" | "hidden_gems" | "region", media?: string) =>
+  discoverRow: (kind: "now_playing" | "top_rated" | "anime" | "hidden_gems" | "region" | "just_out", media?: string) =>
     req<{ items: DiscoverCard[] }>(`/api/v1/discover/rows/${kind}${media ? `?media=${media}` : ""}`).then((r) => r.items),
   discoverProviders: (media: string) =>
     req<{ providers: WatchProvider[] }>(`/api/v1/discover/providers?media=${media}`).then((r) => r.providers),

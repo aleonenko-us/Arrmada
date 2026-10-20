@@ -1,7 +1,6 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
-import { MetadataMissing } from "../../components/MetadataMissing";
 import { lazyPage } from "../../lib/lazyPage";
 import { pickTab, withTab } from "../../lib/useTabParam";
 import { TabPanel, Tabs } from "../../ui/Tabs";
@@ -22,6 +21,8 @@ const HIDE_IN_LIBRARY_KEY = "discover.hideInLibrary";
 // the rows, and whatever is open over them at its own address. Its parts live beside it in
 // features/discover; pages/Discover.tsx re-exports it so the route table doesn't change.
 
+// The "no TMDB key" message only shows on a server not set up yet: its own small chunk.
+const MetadataMissing = lazyPage(() => import("../../components/MetadataMissing"), "MetadataMissing");
 // The Books tab is a separate Open Library experience; its code loads only when chosen.
 const BooksDiscover = lazyPage(() => import("../../pages/BooksDiscover"), "BooksDiscover");
 const MusicDiscover = lazyPage(() => import("./MusicDiscover"), "MusicDiscover");
@@ -121,8 +122,18 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
   }, [toast]);
   const isRequested = useCallback((c: DiscoverCard) => requested.get(`${c.media_type}:${c.tmdb_id}`), [requested]);
 
+  // "Not interested": the card goes at once; the server is told (and Undo offered) by a
+  // small chunk loaded on first use.
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set());
+  const hide = useCallback((c: Pick<DiscoverCard, "media_type" | "tmdb_id">, restored?: boolean) => {
+    const key = `${c.media_type}:${c.tmdb_id}`;
+    const mark = (on: boolean) => setHidden((h) => { const n = new Set(h); if (on) n.add(key); else n.delete(key); return n; });
+    mark(!restored);
+    if (!restored) void import("./notInterested").then((m) => m.hideTitle(c as DiscoverCard, toast, () => mark(false)));
+  }, [toast]);
+
   const hideInLibrary = params.get("hide_in_library") === "1";
-  const ctx: RowCtx = { doRequest, isRequested, canRequest, hideInLibrary, flash: toast };
+  const ctx: RowCtx = { doRequest, isRequested, canRequest, hideInLibrary, flash: toast, hide, hidden };
   const setHideInLibrary = (checked: boolean) => {
     try { localStorage.setItem(HIDE_IN_LIBRARY_KEY, checked ? "1" : "0"); } catch { /* storage blocked */ }
     setParams((p) => {
@@ -206,7 +217,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
             // worded for their role instead. Books use Open Library and are unaffected.
             <div className="flex flex-col gap-7">
               <MyRequestsRow />
-              <MetadataMissing variant="empty" />
+              <Suspense fallback={null}><MetadataMissing variant="empty" /></Suspense>
             </div>
           ) : place.browse ? (
             <Suspense fallback={gridLoading}><DiscoverBrowse ctx={ctx} /></Suspense>

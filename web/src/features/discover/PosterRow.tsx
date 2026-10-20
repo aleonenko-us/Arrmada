@@ -1,8 +1,8 @@
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { DiscoverCard } from "../../lib/api";
 import { usePoll } from "../../lib/usePoll";
-import { CardSkeleton, LoadError, MediaCard, type RowCtx } from "./shared";
+import { CardSkeleton, cardKey, LoadError, MediaCard, type RowCtx } from "./shared";
 import { MIN_ROW_ITEMS, RowRegistryCtx } from "./rowRegistry";
 import { RailArrows, RailStrip, useRail } from "./rail";
 
@@ -11,8 +11,12 @@ export function browseLink(list: string, media: string): string {
   return `/discover/browse?list=${list}&media=${media}`;
 }
 
-export function PosterRow({ title, load, ctx, order, excludeOwned, hideOnError, hideUntilLoaded, seeAll }: {
+export function PosterRow({ title, note, action, load, ctx, order, excludeOwned, hideOnError, hideUntilLoaded, seeAll }: {
   title: string;
+  /** A short line under the title. */
+  note?: string;
+  /** A control beside "See all" (Request all, a switch). */
+  action?: ReactNode;
   /** "See all →": where the row's whole list opens (a browse grid, a collection). */
   seeAll?: string | (() => void);
   load: () => Promise<DiscoverCard[]>;
@@ -29,7 +33,7 @@ export function PosterRow({ title, load, ctx, order, excludeOwned, hideOnError, 
   hideUntilLoaded?: boolean;
 }) {
   const registry = useContext(RowRegistryCtx);
-  const { hideInLibrary } = ctx;
+  const { hideInLibrary, hidden } = ctx;
   const [items, setItems] = useState<DiscoverCard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const rail = useRail();
@@ -39,7 +43,7 @@ export function PosterRow({ title, load, ctx, order, excludeOwned, hideOnError, 
   const mounted = useRef(false);
 
   const recompute = useCallback(() => {
-    const r = raw.current;
+    const r = raw.current?.filter((c) => !hidden?.has(cardKey(c)));
     if (!r) return;
     let pool = r;
     if (hideInLibrary) {
@@ -49,10 +53,10 @@ export function PosterRow({ title, load, ctx, order, excludeOwned, hideOnError, 
       pool = fresh.length >= MIN_ROW_ITEMS ? fresh : r;
     }
     setItems(order == null ? pool : registry.claim(order, pool));
-  }, [excludeOwned, hideInLibrary, order, registry]);
+  }, [excludeOwned, hideInLibrary, hidden, order, registry]);
   const recomputeRef = useRef(recompute); recomputeRef.current = recompute;
 
-  useEffect(() => { recomputeRef.current(); }, [hideInLibrary]);
+  useEffect(() => { recomputeRef.current(); }, [hideInLibrary, hidden]);
 
   useEffect(() => {
     if (order == null) return;
@@ -79,10 +83,13 @@ export function PosterRow({ title, load, ctx, order, excludeOwned, hideOnError, 
   if (items && items.length === 0 && !error) return null;
   return (
     <div>
-      <div className="mb-2.5 flex items-center justify-between">
-        {title ? <h2 className="m-0 min-w-0 text-lg font-bold">{title}</h2> : <span />}
+      <div className={`mb-2.5 flex items-center justify-between gap-x-3 ${action ? "flex-wrap gap-y-1.5" : ""}`}>
+        {title && note ? (
+          <div className="min-w-0"><h2 className="m-0 text-lg font-bold">{title}</h2><p className="m-0 text-sm text-ink-faint">{note}</p></div>
+        ) : title ? <h2 className="m-0 min-w-0 text-lg font-bold">{title}</h2> : <span />}
         {items && items.length > 0 && (
           <div className="flex flex-none items-center gap-2">
+            {action}
             {seeAll && <SeeAll to={seeAll} label={title} />}
             <RailArrows rail={rail} />
           </div>

@@ -319,6 +319,10 @@ function RequestDetailModal({ card, ctx, pick, onClose }: { card: DiscoverCard; 
                   Trailer
                 </a>
               )}
+              {/* Not interested: off this person's Discover (Undo in the toast, or Hidden titles). */}
+              {ctx.hide && c.title && !c.in_library && !c.has_file && (
+                <button onClick={() => { ctx.hide!(c); onClose(); }} aria-label={`Not interested in ${c.display_title || c.title}`} className="min-h-[36px] px-1 text-sm font-semibold text-ink-dim underline-offset-2 hover:underline">Not interested</button>
+              )}
               {/* Something wrong with the copy in the library: tell the owner. */}
               {ctx.canRequest && c.title && c.in_library && c.has_file && (
                 <button onClick={() => setReporting(true)} className="min-h-[36px] px-1 text-sm font-semibold text-ink-dim underline-offset-2 hover:underline">Report a problem</button>

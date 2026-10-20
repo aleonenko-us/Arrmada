@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type CollectionRow, type DiscoverCard, type Genre, type WatchProvider } from "../../lib/api";
-import { CardSkeleton, GRID, LoadError, MediaCard, useOpenOverlay, visibleCards, type RowCtx } from "./shared";
+import { isStaff, useMe } from "../../lib/me";
+import { Button } from "../../ui";
+import { Switch } from "../../ui/Switch";
+import { badgeFor, CardSkeleton, GRID, LoadError, MediaCard, useOpenOverlay, visibleCards, type RowCtx } from "./shared";
 import { PosterRow, SeeAll } from "./PosterRow";
+import { discoverApi } from "./discoverApi";
 
 // The rows further down Discover that build themselves from a list: the collections to
 // complete, new on streaming, and the genre explorer. None of them dedupes against the
@@ -23,10 +27,77 @@ export function CollectionRows({ ctx }: { ctx: RowCtx }) {
   return (
     <>
       {rows.map((r) => (
-        <PosterRow key={r.collection_id} excludeOwned title={r.title} seeAll={() => openOverlay("collection", r.collection_id)} load={() => Promise.resolve(r.items)} ctx={ctx} />
+        <PosterRow key={r.collection_id} excludeOwned title={r.title} action={<RequestAll row={r} ctx={ctx} />} seeAll={() => openOverlay("collection", r.collection_id)} load={() => Promise.resolve(r.items)} ctx={ctx} />
       ))}
     </>
   );
+}
+
+// RequestAll asks for every film on a collection row nobody has or has asked for yet, one
+// normal request each (approvals, limits and notifications as for any request), and says
+// how it went once. Staff only, like the collection page's "Request the rest": a
+// requester asks one title at a time.
+function RequestAll({ row, ctx }: { row: CollectionRow; ctx: RowCtx }) {
+  const { user } = useMe();
+  const [busy, setBusy] = useState(false);
+  const missing = visibleCards(row.items, ctx).filter((m) => !badgeFor(m, ctx.isRequested(m)));
+  if (!isStaff(user) || !ctx.canRequest || missing.length < 2) return null;
+  const name = row.title.replace(/^Complete the /, "");
+  const go = async () => {
+    setBusy(true);
+    let asked = 0;
+    for (const m of missing) {
+      try { await ctx.doRequest(m, undefined, null, true); asked++; } catch { /* the next one may still go */ }
+    }
+    setBusy(false);
+    ctx.flash(asked === missing.length ? `Requested ${asked} films from ${name}` : `Requested ${asked} of ${missing.length} — some couldn’t be asked for`, { tone: asked === missing.length ? undefined : "error" });
+  };
+  return (
+    <Button size="sm" onClick={() => { void go(); }} busy={busy} busyLabel="Requesting…" aria-label={`Request all ${missing.length} missing films from ${name}`}>
+      Request all ({missing.length})
+    </Button>
+  );
+}
+
+// WatchlistRow is "Your Plex watchlist": the server owner's watchlist (only they see it),
+// minus what's in the library, with "Request automatically" beside it. Nothing renders
+// for anyone else, or without Plex.
+export function WatchlistRow({ ctx }: { ctx: RowCtx }) {
+  const [state, setState] = useState<{ items: DiscoverCard[]; auto: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    discoverApi.plexWatchlist().then((r) => { if (alive) setState(r.available ? r : null); }).catch(() => { if (alive) setState(null); });
+    return () => { alive = false; };
+  }, []);
+  if (!state) return null;
+  const setAuto = (on: boolean) => {
+    setBusy(true);
+    discoverApi.setWatchlistAuto(on)
+      .then((r) => {
+        setState((s) => (s ? { ...s, auto: r.auto } : s));
+        ctx.flash(r.auto ? "New titles on your Plex watchlist will be requested for you." : "Plex watchlist titles won’t be requested automatically.");
+      })
+      .catch((e) => ctx.flash((e as Error).message, { tone: "error" }))
+      .finally(() => setBusy(false));
+  };
+  const toggle = (
+    <Switch size="sm" checked={state.auto} onChange={setAuto} disabled={busy} title="Request everything on your Plex watchlist automatically" className="text-sm">
+      Request automatically
+    </Switch>
+  );
+  if (state.items.length === 0) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+        <div>
+          <h2 className="m-0 text-lg font-bold">Your Plex watchlist</h2>
+          <p className="m-0 text-sm text-ink-faint">Everything on it is already here.</p>
+        </div>
+        {toggle}
+      </div>
+    );
+  }
+  return <PosterRow title="Your Plex watchlist" action={toggle} load={() => Promise.resolve(state.items)} ctx={ctx} />;
 }
 
 // StreamingRow: "New on <service>", one strip with a chip per streaming service in the

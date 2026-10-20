@@ -11,6 +11,11 @@ import { browseLink, PosterRow } from "./PosterRow";
 const CollectionRows = lazyPage(() => import("./moreRows"), "CollectionRows");
 const StreamingRow = lazyPage(() => import("./moreRows"), "StreamingRow");
 const GenreExplorer = lazyPage(() => import("./moreRows"), "GenreExplorer");
+const WatchlistRow = lazyPage(() => import("./moreRows"), "WatchlistRow");
+const HiddenTitles = lazyPage(() => import("./HiddenTitles"), "HiddenTitles");
+
+// The Upcoming row's promise: a request waits for the real release, never a cinema copy.
+const UPCOMING_NOTE = "Fetched once it’s out at home.";
 
 // The Discover tab and the Movies / Series tabs: rows in render order, each tab with its
 // own de-duplication registry.
@@ -36,15 +41,20 @@ export function DiscoverTab({ ctx }: { ctx: RowCtx }) {
             order 0 it claims the top slot so the rows below dedupe against it. */}
         <PosterRow order={0} hideUntilLoaded hideOnError title="Recommended for you" load={() => api.discoverRecommended()} ctx={ctx} />
         <BecauseRows ctx={ctx} firstOrder={1} />
-        <PosterRow order={3} title="Trending this week" seeAll={browseLink("trending", "all")} load={() => api.discoverTrending("all")} ctx={ctx} />
-        <PosterRow order={4} title="Popular movies" seeAll={browseLink("popular", "movie")} load={() => api.discoverPopular("movie")} ctx={ctx} />
-        <PosterRow order={5} title="Popular series" seeAll={browseLink("popular", "series")} load={() => api.discoverPopular("series")} ctx={ctx} />
-        <PosterRow order={6} hideOnError title="In cinemas now" seeAll={browseLink("now_playing", "movie")} load={() => api.discoverRow("now_playing")} ctx={ctx} />
+        {/* The owner's Plex watchlist (only for them), with its "request automatically". */}
+        <Suspense fallback={null}><WatchlistRow ctx={ctx} /></Suspense>
+        {/* Films whose first digital or disc release was in the last two weeks. */}
+        <PosterRow order={4} hideUntilLoaded hideOnError title="Just out at home" load={() => api.discoverRow("just_out")} ctx={ctx} />
+        <PosterRow order={5} title="Trending this week" seeAll={browseLink("trending", "all")} load={() => api.discoverTrending("all")} ctx={ctx} />
+        <PosterRow order={6} title="Popular movies" seeAll={browseLink("popular", "movie")} load={() => api.discoverPopular("movie")} ctx={ctx} />
+        <PosterRow order={7} title="Popular series" seeAll={browseLink("popular", "series")} load={() => api.discoverPopular("series")} ctx={ctx} />
+        <PosterRow order={8} hideOnError title="In cinemas now" seeAll={browseLink("now_playing", "movie")} load={() => api.discoverRow("now_playing")} ctx={ctx} />
         <Suspense fallback={null}><StreamingRow media="movie" switchable ctx={ctx} /></Suspense>
         <Suspense fallback={null}><CollectionRows ctx={ctx} /></Suspense>
-        <PosterRow order={8} hideOnError title="Hidden gems" seeAll={browseLink("hidden_gems", "movie")} load={() => api.discoverRow("hidden_gems", "movie")} ctx={ctx} />
-        <PosterRow order={9} excludeOwned title="Upcoming — request ahead" seeAll={browseLink("upcoming", "movie")} load={() => api.discoverUpcoming()} ctx={ctx} />
+        <PosterRow order={10} hideOnError title="Hidden gems" seeAll={browseLink("hidden_gems", "movie")} load={() => api.discoverRow("hidden_gems", "movie")} ctx={ctx} />
+        <PosterRow order={11} excludeOwned title="Upcoming — request ahead" note={UPCOMING_NOTE} seeAll={browseLink("upcoming", "movie")} load={() => api.discoverUpcoming()} ctx={ctx} />
         <Suspense fallback={null}><GenreExplorer media="movie" switchable ctx={ctx} /></Suspense>
+        <Suspense fallback={null}><HiddenTitles ctx={ctx} /></Suspense>
       </div>
     </RowRegistryCtx.Provider>
   );
@@ -68,7 +78,7 @@ export function BrowseTab({ media, ctx }: { media: "movie" | "series"; ctx: RowC
         <PosterRow order={4} hideOnError title="Hidden gems" seeAll={browseLink("hidden_gems", media)} load={() => api.discoverRow("hidden_gems", media)} ctx={ctx} />
         <PosterRow order={5} hideUntilLoaded hideOnError title="From your region" load={() => api.discoverRow("region", media)} ctx={ctx} />
         {media === "movie" ? (
-          <PosterRow order={6} excludeOwned title="Upcoming — request ahead" seeAll={browseLink("upcoming", "movie")} load={() => api.discoverUpcoming()} ctx={ctx} />
+          <PosterRow order={6} excludeOwned title="Upcoming — request ahead" note={UPCOMING_NOTE} seeAll={browseLink("upcoming", "movie")} load={() => api.discoverUpcoming()} ctx={ctx} />
         ) : (
           // Series upcoming ships behind a backend change; if it isn't live the row
           // hides itself rather than showing an error on an otherwise healthy tab.
@@ -80,7 +90,7 @@ export function BrowseTab({ media, ctx }: { media: "movie" | "series"; ctx: RowC
   );
 }
 
-// BecauseRows are the per-title strips ("Because you watched Silo"): the viewer's two
+// BecauseRows are the per-title strips ("Because you watched Silo"): the viewer's three
 // most recent titles, each with its own recommendations. Nothing renders until the
 // rows arrive, and none when there's no history to build them from.
 function BecauseRows({ ctx, firstOrder }: { ctx: RowCtx; firstOrder: number }) {

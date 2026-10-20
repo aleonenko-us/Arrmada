@@ -6,10 +6,12 @@ export interface ToastOptions {
   tone?: ToastTone;
   /** How long it stays up, in ms. */
   ms?: number;
+  /** A button in the toast (Undo); pressing it also closes the toast. */
+  action?: { label: string; onClick: () => void };
 }
 export type ToastFn = (msg: string, opts?: ToastOptions) => void;
 
-interface Item { id: number; msg: string; tone: ToastTone }
+interface Item { id: number; msg: string; tone: ToastTone; action?: ToastOptions["action"] }
 
 // Each tone's tint, border and icon badge, from the theme's tokens (light and dark alike).
 const TONES: Record<ToastTone, { soft: string; line: string; badge: string }> = {
@@ -50,7 +52,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const id = ++next.current;
     const tone = opts?.tone ?? "info";
     setItems((xs) => {
-      const keep = [...xs, { id, msg, tone }];
+      const keep = [...xs, { id, msg, tone, action: opts?.action }];
       // Drop the oldest beyond the cap, and its timer with it.
       for (const old of keep.slice(0, Math.max(0, keep.length - MAX))) {
         const t = timers.current.get(old.id);
@@ -96,6 +98,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   <ToneIcon tone={t.tone} />
                 </span>
                 <span className="min-w-0 flex-1 self-center break-words font-medium leading-snug">{t.msg}</span>
+                {t.action && (
+                  <button type="button" onClick={() => { dismiss(t.id); t.action!.onClick(); }} className="min-h-[28px] shrink-0 self-center rounded-md px-2 text-sm font-semibold" style={{ color: "var(--accent-text)" }}>
+                    {t.action.label}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => dismiss(t.id)}

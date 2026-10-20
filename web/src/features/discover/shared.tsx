@@ -95,10 +95,17 @@ export interface RowCtx {
   /** Hide titles already present in a Movies or TV library. */
   hideInLibrary: boolean;
   flash: ToastFn;
+  /** "Not interested": hide a title from this person's Discover (with an Undo); restored: it
+   * was put back (Hidden titles), so show it again. */
+  hide?: (c: Pick<DiscoverCard, "media_type" | "tmdb_id">, restored?: boolean) => void;
+  /** What was hidden this visit (cardKey), dropped at once; the server leaves them out after. */
+  hidden?: Set<string>;
 }
 
+export const cardKey = (c: DiscoverCard) => `${c.media_type}:${c.tmdb_id}`;
+
 export function visibleCards(cards: DiscoverCard[], ctx: RowCtx): DiscoverCard[] {
-  return ctx.hideInLibrary ? cards.filter((c) => !c.has_file && !c.in_library) : cards;
+  return cards.filter((c) => !ctx.hidden?.has(cardKey(c)) && !(ctx.hideInLibrary && (c.has_file || c.in_library)));
 }
 
 // Compact inline error line for a failed fetch — distinct from a genuine empty result.
@@ -186,6 +193,7 @@ export function MediaCard({ c, ctx, full }: { c: DiscoverCard; ctx: RowCtx; full
       badge={badge}
       progress={c.download_progress}
       quick={showQuick ? { label: "＋ Request", busy: quickBusy, onClick: quick } : null}
+      onHide={canHover && ctx.hide ? () => ctx.hide!(c) : undefined}
       art={c.poster_url
         ? <img src={posterThumb(c.poster_url)} alt={name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         : <PosterPlaceholder title={name} year={c.year} />}

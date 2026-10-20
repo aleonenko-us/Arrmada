@@ -14,6 +14,8 @@ export interface PosterCardProps {
   onOpen: () => void;
   /** The quick request, only where a mouse can reveal it first; null hides it. */
   quick?: { label: string; busy: boolean; onClick: () => void } | null;
+  /** "Not interested": a corner button hover or focus reveals (touch uses the sheet's). */
+  onHide?: () => void;
   /** A grid cell (fills its column) rather than a fixed-width rail card. */
   full?: boolean;
   /** Use a square crop for artist art; title posters stay 2:3. */
@@ -25,7 +27,7 @@ export interface PosterCardProps {
 // PosterCard is the poster tile every Discover surface shows, films and series and books
 // alike: the whole poster opens the item's sheet, a corner badge says where it stands, a
 // hover lifts it and offers a quick request, and an always-visible caption names it.
-export function PosterCard({ title, kind, art, badge, progress, onOpen, quick, full, aspectRatio = "2/3", children }: PosterCardProps) {
+export function PosterCard({ title, kind, art, badge, progress, onOpen, quick, onHide, full, aspectRatio = "2/3", children }: PosterCardProps) {
   return (
     <div className={`group relative hover:z-10 ${full ? "w-full" : "w-[150px] flex-none"}`} style={{ scrollSnapAlign: "start" }}>
       <div
@@ -62,6 +64,17 @@ export function PosterCard({ title, kind, art, badge, progress, onOpen, quick, f
             style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)", filter: quick.busy ? "brightness(.8)" : undefined }}
           >
             {quick.busy ? "Requesting…" : quick.label}
+          </button>
+        )}
+        {onHide && (
+          <button
+            onClick={onHide}
+            aria-label={`Not interested in ${title}`}
+            title="Not interested"
+            className="pointer-events-none absolute left-1.5 top-1.5 z-20 grid h-7 w-7 place-items-center rounded-full opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+            style={{ background: "rgba(20,12,7,.78)", color: "#fff" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
           </button>
         )}
       </div>
