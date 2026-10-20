@@ -37,4 +37,19 @@ describe("needsYouRows", () => {
     expect(rows[2].detail).toBe("permission denied");
     expect(rows[3].to).toBe(LINKS.downloadProblems);
   });
+
+  it("lists a few files that look wrong one by one, and many as one counted line", () => {
+    const link = "/activity/needs-you#file-checks";
+    const item = (id: number) => ({
+      key: `filecheck:${id}`, kind: "filecheck" as const, level: "warning" as const, id, link, since: id,
+      title: `Film ${id} (2026): probably a cam — blocklisted it and looking for a better copy`,
+    });
+    const few: Attention = { ...base, groups: [{ kind: "filecheck", level: "warning", count: 2, title: "2 files look wrong inside", link }], items: [item(1), item(2)] };
+    const rows = needsYouRows(few);
+    expect(rows.map((r) => r.text)).toEqual([item(1).title, item(2).title]);
+    expect(rows[0]).toMatchObject({ to: link, action: "See it" });
+
+    const many: Attention = { ...few, groups: [{ ...few.groups[0], count: 9, title: "9 files look wrong inside" }] };
+    expect(needsYouRows(many)).toEqual([expect.objectContaining({ key: "group:filecheck", text: "9 files look wrong inside", action: "See them" })]);
+  });
 });

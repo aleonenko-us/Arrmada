@@ -87,7 +87,10 @@ export const attention: Attention = {
   ],
 };
 
-const paths: LibraryPaths = { movies: "/media/movies", tv: "/media/tv", ebooks: "/media/ebooks", audiobooks: "/media/audiobooks", music: "/media/music", downloads: "/media/downloads" };
+// The file check's answer: nothing found, "Replace bad copies automatically" on.
+export const fileChecks = { findings: [], auto_replace: true };
+
+const paths: LibraryPaths ={ movies: "/media/movies", tv: "/media/tv", ebooks: "/media/ebooks", audiobooks: "/media/audiobooks", music: "/media/music", downloads: "/media/downloads" };
 
 // The Library section of the Settings hub reads the same folders.
 export const libraryPaths: LibraryPaths = paths;

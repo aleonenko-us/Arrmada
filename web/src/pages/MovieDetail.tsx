@@ -43,6 +43,7 @@ import { queuedNote } from "../lib/movieQueue";
 import { Button, Menu, Modal, StatusChip, useToast } from "../ui";
 import { Switch } from "../ui/Switch";
 import { orphanApi } from "./subtitles/orphanApi";
+import { FileCheckBadges } from "../components/FileCheckBadges";
 import { MovieSubtitles } from "../components/subtitles/MovieSubtitles";
 import { TitleProfilePicker } from "./subtitles/ProfileSelect";
 import { movieStatus, trackStatus } from "../lib/movieStatus";
@@ -1394,6 +1395,7 @@ function FileBody({ movieId, versionId, file, audio, onAdopted }: { movieId: num
           <span key={c} className="rounded px-2 py-0.5 text-xs" style={{ background: "var(--panel-2)", color: "var(--ink-dim)" }}>{c}</span>
         ))}
         {!file.missing && <AudioLangChips langs={audio?.audio_langs} fit={audio?.audio_lang_fit} />}
+        {!file.missing && <FileCheckBadges kind="movie" ownerId={movieId} versionId={versionId} />}
         <span className="font-mono text-ink-dim">{fmtSize(file.size_bytes)}</span>
         {file.duration_min ? <span className="font-mono text-xs text-ink-faint">{file.duration_min}m</span> : null}
         {file.group && <span className="font-mono text-xs text-ink-faint">{file.group}</span>}

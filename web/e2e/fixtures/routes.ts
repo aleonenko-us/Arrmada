@@ -129,6 +129,12 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/dashboard", media.dashboard),
     // The staff shell polls this on every page (sidebar badges, the Dashboard card).
     get("/api/v1/attention", sys.attention),
+    // The file check: nothing found, automatic replacing on (Needs you, the detail badges).
+    get("/api/v1/file-checks", sys.fileChecks),
+    get(/^\/api\/v1\/(movies|series)\/\d+\/file-checks$/, sys.fileChecks),
+    { method: "PUT", path: "/api/v1/file-checks/settings", respond: ({ body }) => body },
+    { method: "POST", path: /^\/api\/v1\/file-checks\/\d+\/replace$/, body: { status: "searching", message: "Blocklisted that release and looking for a better copy." } },
+    { method: "POST", path: /^\/api\/v1\/file-checks\/\d+\/dismiss$/, status: 204 },
     get("/api/v1/downloads", media.activity),
     get("/api/v1/wanted", media.wanted),
     { method: "POST", path: /^\/api\/v1\/wanted\/(movie|series|book|music)\/(\d+)\/search$/, status: 202, body: media.wantedSearchStarted },

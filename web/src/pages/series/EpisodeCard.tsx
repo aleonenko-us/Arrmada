@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AudioLangChips } from "../../components/AudioLangChips";
 import { FitBadge } from "../../components/FitBadge";
+import { FileCheckBadges } from "../../components/FileCheckBadges";
 import { refreshSearches } from "../../components/LastSearch";
 import { api, type Episode, type FitItem, type SearchAttempt, type Series as SeriesT, type SubFileEntry } from "../../lib/api";
 import { seriesApi } from "../../lib/seriesApi";
@@ -183,6 +184,7 @@ export function EpisodeCard({ series, ep, seasonMonitored = true, fit, last, onC
             </span>
           )}
           {ep.has_file && <AudioLangChips langs={ep.audio_langs} fit={ep.audio_lang_fit} />}
+          {ep.has_file && <FileCheckBadges kind="episode" ownerId={series.id} mediaId={ep.id} size="xs" />}
           {ep.has_file && subs && onSubs && !selecting && <EpisodeSubChip entry={subs} onOpen={onSubs} />}
         </div>
 

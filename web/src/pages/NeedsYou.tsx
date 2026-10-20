@@ -2,12 +2,14 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, type AttentionItem, type ReviewKind, type UnmanagedDownload } from "../lib/api";
 import { downloadClientApi } from "../lib/downloadClientApi";
+import { fileCheckApi } from "../lib/fileCheckApi";
 import { formatAgo, formatBytes } from "../lib/format";
 import { LINKS, fixLink } from "../lib/links";
 import { USENET_KEY_PREFIX } from "../lib/network";
 import { loadAttention, refreshAttention, useAttention } from "../lib/useAttention";
 import { jobDone, jobFailed, jobToast, useJob } from "../lib/useJob";
 import { Skeleton, useToast } from "../ui";
+import { Switch } from "../ui/Switch";
 import { CardActions, type CardAction } from "./activity/transfer";
 import { IMPORT_FOLLOW_MS, ImportingLine, ReviewsPanel, TargetPicker, kindLabelOf, runningImport } from "./Reviews";
 
@@ -20,7 +22,7 @@ import { IMPORT_FOLLOW_MS, ImportingLine, ReviewsPanel, TargetPicker, kindLabelO
 
 const STALLED_KINDS = new Set(["stalled", "download"]);
 // What the other sections of the feed are, for the "Elsewhere" footer.
-const HERE = new Set(["review", "import", "stalled", "download", "wrongcat"]);
+const HERE = new Set(["review", "import", "stalled", "download", "wrongcat", "filecheck"]);
 
 export function NeedsYouPanel() {
   const att = useAttention();
@@ -40,6 +42,7 @@ export function NeedsYouPanel() {
   const imports = items.filter((i) => i.kind === "import");
   const stalled = items.filter((i) => STALLED_KINDS.has(i.kind));
   const wrong = items.filter((i) => i.kind === "wrongcat");
+  const files = items.filter((i) => i.kind === "filecheck");
   const elsewhere = att.groups.filter((g) => !HERE.has(g.kind));
 
   return (
@@ -55,6 +58,10 @@ export function NeedsYouPanel() {
       </Section>
       <Section id="wrong-category" title="Wrong category" count={wrong.length} hint="Finished TV downloads filed where the series import never looks. Move them to TV and the next import check takes them.">
         {wrong.length === 0 ? <Empty>Nothing is filed in the wrong place.</Empty> : wrong.map((it) => <WrongCategoryCard key={it.key} it={it} />)}
+      </Section>
+      <Section id="file-checks" title="Files that look wrong" count={att.counts.file_checks ?? files.length} hint="Library files with no sound, silent sound, audio only in a language nobody here watches in, a damaged file, or probably a cam sold under a false label. Arrmada looks inside every new file and checks the library each night.">
+        <FileCheckControls />
+        {files.length === 0 ? <Empty>Every file checked looks right.</Empty> : files.map((it) => <FileCheckCard key={it.key} it={it} />)}
       </Section>
       <UnmanagedSection />
       {elsewhere.length > 0 && (
@@ -215,6 +222,78 @@ function WrongCategoryCard({ it }: { it: AttentionItem }) {
       it={it}
       primary={hash ? <PrimaryBtn label={busy ? "Moving…" : "Move to TV"} disabled={busy} title="File it under Arrmada's TV category, where the series import looks" onClick={() => void move()} /> : undefined}
       secondary={[show]}
+    />
+  );
+}
+
+// FileCheckControls is the file check's one setting — replace bad copies automatically —
+// and a check of the whole library on demand. The setting is read once when the tab opens.
+function FileCheckControls() {
+  const toast = useToast();
+  const [auto, setAuto] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [job, setJob] = useState<number | null>(null);
+  const check = useJob(job, {
+    onDone: (j) => {
+      setJob(null);
+      toast(jobFailed(j) ? jobToast(j) : "Checked the library.", { tone: jobFailed(j) ? "error" : undefined, ms: 6000 });
+      refreshAttention();
+    },
+  });
+  useEffect(() => {
+    void fileCheckApi.list().then((r) => setAuto(r.auto_replace)).catch(() => setAuto(null));
+  }, []);
+  const flip = async (on: boolean) => {
+    setSaving(true);
+    try {
+      const r = await fileCheckApi.setAutoReplace(on);
+      setAuto(r.auto_replace);
+      refreshAttention();
+    } catch (e) {
+      toast((e as Error).message, { tone: "error", ms: 7000 });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const run = async () => {
+    try {
+      const r = await fileCheckApi.run();
+      if (r.job_id) setJob(r.job_id);
+      toast("Checking new and changed files — this runs in the background.", { ms: 5000 });
+    } catch (e) {
+      toast((e as Error).message, { tone: "error", ms: 7000 });
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl px-3.5 py-2.5" style={{ border: "1px solid var(--line)" }}>
+      <div className="min-w-0 flex-1">
+        {auto === null ? (
+          <span className="text-sm text-ink-faint">Loading the setting…</span>
+        ) : (
+          <Switch size="sm" checked={auto} disabled={saving} onChange={(on) => void flip(on)}>Replace bad copies automatically</Switch>
+        )}
+        <p className="m-0 mt-1 max-w-[72ch] text-xs text-ink-faint">
+          A probable cam, a file with no or silent sound, or a damaged file: its release is blocklisted and a better copy searched for. The file stays until the new one arrives. At most once a day and three times per title. A wrong language is only flagged.
+        </p>
+      </div>
+      <PrimaryBtn label={check.running ? "Checking…" : "Check library now"} disabled={check.running} title="Look inside new or changed files now instead of tonight" onClick={() => void run()} />
+    </div>
+  );
+}
+
+// FileCheckCard is one file that looks wrong: Find a better copy (blocklist its release and
+// search again, the file kept until a replacement lands) or Ignore.
+function FileCheckCard({ it }: { it: AttentionItem }) {
+  const { busy, run } = useAct();
+  const id = it.id;
+  if (!id) return <ProblemCard it={it} />;
+  const replace = () => run(() => fileCheckApi.replace(id), "Looking for a better copy — this file stays until one arrives.");
+  const ignore: CardAction = { label: "Ignore", disabled: busy, title: "Keep this file as it is and stop flagging it (until the file changes)", onSelect: () => run(() => fileCheckApi.dismiss(id), "Ignored — it won't be flagged again unless the file changes.") };
+  return (
+    <ProblemCard
+      it={it}
+      primary={<PrimaryBtn label={busy ? "Working…" : "Find a better copy"} disabled={busy} title="Blocklist the release this file came from and search for another; the file stays until a replacement is imported" onClick={() => void replace()} />}
+      secondary={[ignore]}
     />
   );
 }

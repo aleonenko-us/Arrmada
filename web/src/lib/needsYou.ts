@@ -20,6 +20,10 @@ export interface NeedsYouRow {
 
 // Kinds listed item by item rather than as one counted line.
 const ITEMIZED = new Set<AttentionKind>(["health", "import", "wrongcat", "convert"]);
+// Files that look wrong are listed one by one while there are only a few — each line says
+// what's wrong and what was done ("…: probably a cam — blocklisted it and looking for a
+// better copy") — and as one counted line past that.
+const ITEMIZED_UP_TO: Partial<Record<AttentionKind, number>> = { filecheck: 5 };
 
 const ACTION: Record<AttentionKind, [one: string, many: string]> = {
   request: ["Review it", "Review them"],
@@ -33,6 +37,7 @@ const ACTION: Record<AttentionKind, [one: string, many: string]> = {
   convert: ["See it", "See them"],
   issue: ["Look at it", "Look at them"],
   subtitles: ["Fix it", "Fix them"],
+  filecheck: ["See it", "See them"],
 };
 
 export function needsYouRows(a: Attention | undefined): NeedsYouRow[] {
@@ -40,7 +45,7 @@ export function needsYouRows(a: Attention | undefined): NeedsYouRow[] {
   const rows: NeedsYouRow[] = [];
   for (const g of a.groups) {
     const [one, many] = ACTION[g.kind] ?? ["Open", "Open"];
-    if (ITEMIZED.has(g.kind)) {
+    if (ITEMIZED.has(g.kind) || g.count <= (ITEMIZED_UP_TO[g.kind] ?? 0)) {
       const items = a.items.filter((it) => it.kind === g.kind);
       for (const it of items) {
         rows.push({ key: it.key, level: it.level, text: it.title, detail: it.detail, to: fixLink(it), action: one });
