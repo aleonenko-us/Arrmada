@@ -55,6 +55,27 @@ const SERVER_CHOICES: { id: ServerChoice; label: string; hint: string }[] = [
   { id: "both", label: "Both", hint: "Plex and Jellyfin side by side" },
   { id: "later", label: "Later", hint: "Connect one in Settings" },
 ];
+// ChoiceIcon is the picture at the head of a media server choice: the server's own tile (Plex,
+// Jellyfin, Emby), two overlapping tiles for Both, and a clock for Later.
+const CHOICE_TILE = 36;
+function ChoiceIcon({ id }: { id: ServerChoice }) {
+  if (id === "both") {
+    return (
+      <span className="flex items-center" aria-hidden="true">
+        <ServerTile server="plex" size={CHOICE_TILE} />
+        <span className="-ml-3 rounded-xl" style={{ boxShadow: "0 0 0 2px var(--panel-2)" }}><ServerTile server="jellyfin" size={CHOICE_TILE} /></span>
+      </span>
+    );
+  }
+  if (id === "later") {
+    return (
+      <span aria-hidden="true" className="grid flex-none place-items-center rounded-xl text-ink-faint" style={{ width: CHOICE_TILE, height: CHOICE_TILE, border: "1px dashed var(--line)", background: "var(--panel)" }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+      </span>
+    );
+  }
+  return <ServerTile server={id} size={CHOICE_TILE} />;
+}
 const usesPlex = (c: ServerChoice | null) => c === "plex" || c === "both";
 const usesJellyfin = (c: ServerChoice | null) => c === "jellyfin" || c === "both";
 const usesEmby = (c: ServerChoice | null) => c === "emby";
@@ -552,13 +573,13 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
 
           <fieldset className="m-0 min-w-0 border-0 p-0">
             <legend className="mb-1.5 p-0 text-base font-semibold">Which media server do you use?</legend>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {SERVER_CHOICES.map((c) => {
                 const on = choice === c.id;
                 return (
                   <label
                     key={c.id}
-                    className="flex min-h-[88px] cursor-pointer flex-col items-start gap-1.5 rounded-xl p-3 focus-within:outline focus-within:outline-2"
+                    className="flex min-h-[112px] cursor-pointer flex-col items-start gap-2 rounded-xl p-4 focus-within:outline focus-within:outline-2"
                     style={{
                       border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
                       background: on ? "var(--accent-soft)" : "var(--panel-2)",
@@ -566,12 +587,7 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
                     }}
                   >
                     <input type="radio" name="setup-media-server" value={c.id} checked={on} onChange={() => setChoice(c.id)} className="sr-only" />
-                    <span className="flex items-center gap-1" aria-hidden="true">
-                      {usesPlex(c.id) && <ServerTile server="plex" size={22} />}
-                      {usesJellyfin(c.id) && <ServerTile server="jellyfin" size={22} />}
-                      {c.id === "emby" && <span className="grid h-[22px] w-[22px] place-items-center rounded-lg text-xs font-bold" style={{ border: "1px solid var(--line)" }}>E</span>}
-                      {c.id === "later" && <span className="grid h-[22px] w-[22px] place-items-center rounded-lg text-sm text-ink-faint" style={{ border: "1px solid var(--line)" }}>…</span>}
-                    </span>
+                    <ChoiceIcon id={c.id} />
                     <span className="text-base font-semibold" style={{ color: on ? "var(--accent-text)" : undefined }}>{c.label}</span>
                     <span className="text-xs text-ink-dim">{c.hint}</span>
                   </label>
