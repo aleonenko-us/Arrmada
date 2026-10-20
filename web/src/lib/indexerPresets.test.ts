@@ -3,7 +3,7 @@ import { INDEXER_PRESETS, presetById, presetsFor } from "./indexerPresets";
 
 describe("indexer presets", () => {
   it("carry no credentials: only names, URLs, scopes and copy", () => {
-    const allowed = new Set(["id", "label", "monogram", "blurb", "kind", "defaultName", "fields", "mediaTypes", "urlPlaceholder", "urlOptional", "help", "privateTracker", "usenet"]);
+    const allowed = new Set(["id", "label", "monogram", "blurb", "kind", "defaultName", "fields", "mediaTypes", "urlPlaceholder", "urlOptional", "help", "privateTracker", "usenet", "icon", "defaultUrl"]);
     for (const p of INDEXER_PRESETS) {
       for (const k of Object.keys(p)) expect(allowed.has(k), `${p.id}.${k}`).toBe(true);
       expect(JSON.stringify(p)).not.toMatch(/apikey=|passkey=|token=|api_key=/i);
@@ -24,5 +24,10 @@ describe("indexer presets", () => {
     const nz = presetsFor(true).find((p) => p.kind === "newznab");
     expect(nz).toMatchObject({ usenet: true, fields: ["url", "api_key"] });
     expect(presetsFor(true)).toHaveLength(INDEXER_PRESETS.length);
+  });
+
+  it("fill in the API address of the known usenet indexers", () => {
+    expect(presetById("nzbgeek")).toMatchObject({ kind: "newznab", usenet: true, defaultUrl: "https://api.nzbgeek.info/api" });
+    for (const p of INDEXER_PRESETS.filter((x) => x.usenet && x.id !== "newznab")) expect(p.defaultUrl).toMatch(/^https:\/\/.+\/api$/);
   });
 });

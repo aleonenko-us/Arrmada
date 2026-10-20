@@ -76,7 +76,7 @@ describe("adding an indexer", () => {
     return screen.getByRole("form", { name: "Add an indexer" });
   };
 
-  it("offers the presets as monogram tiles, with no Newznab", async () => {
+  it("offers the presets as tiles, with usenet shown but off until there's a usenet client", async () => {
     serve({});
     page();
     const dialog = await openCatalogue();
@@ -84,8 +84,9 @@ describe("adding an indexer", () => {
     for (const t of ["TorrentLeech", "MyAnonaMouse", "1337x", "Prowlarr", "Jackett / other Torznab"]) {
       expect(tiles.some((x) => x.includes(t))).toBe(true);
     }
-    expect(tiles.some((x) => /newznab|usenet/i.test(x))).toBe(false);
-    expect(dialog.querySelector("img")).toBeNull();
+    const nzb = within(dialog).getByRole("button", { name: /NZBgeek/ });
+    expect((nzb as HTMLButtonElement).disabled).toBe(true);
+    expect(within(dialog).getByText(/Usenet needs a usenet download client first/)).toBeTruthy();
     // Two tiles a row from 400px, one on a 375px phone.
     expect((dialog.querySelector("ul") as HTMLElement).className).toMatch(/grid-cols-1 .*min-\[400px\]:grid-cols-2/);
   });

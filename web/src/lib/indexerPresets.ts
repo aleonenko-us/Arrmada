@@ -15,8 +15,12 @@ export interface IndexerPreset {
   id: string;
   /** The tile's title. */
   label: string;
-  /** Two letters on the tile: no third-party logos. */
+  /** Two letters on the tile, shown until (or instead of) the site's icon. */
   monogram: string;
+  /** The site icon's slug (siteIcons.ts), when the site has one. */
+  icon?: string;
+  /** The address the URL field starts with (a known usenet indexer's API). */
+  defaultUrl?: string;
   /** One line under the title. */
   blurb: string;
   /** The indexer kind it creates. "prowlarr" isn't one: that tile opens the Prowlarr card. */
@@ -41,6 +45,7 @@ export interface IndexerPreset {
 export const INDEXER_PRESETS: IndexerPreset[] = [
   {
     id: "torrentleech",
+    icon: "torrentleech",
     label: "TorrentLeech",
     monogram: "TL",
     blurb: "Private tracker · movies and TV",
@@ -53,6 +58,7 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
   },
   {
     id: "myanonamouse",
+    icon: "myanonamouse",
     label: "MyAnonaMouse",
     monogram: "MA",
     blurb: "Private tracker · books and audiobooks",
@@ -65,6 +71,7 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
   },
   {
     id: "1337x",
+    icon: "1337x",
     label: "1337x",
     monogram: "13",
     blurb: "Public tracker · movies and TV",
@@ -78,6 +85,7 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
   },
   {
     id: "prowlarr",
+    icon: "prowlarr",
     label: "Prowlarr",
     monogram: "PR",
     blurb: "Bring in every indexer Prowlarr has",
@@ -100,10 +108,115 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
     help: "A Torznab feed from Jackett or anything else that speaks it. Copy the feed URL and API key from Jackett's indexer list. Test reads what the feed supports, so searches use its ids and categories.",
   },
   {
+    id: "nzbgeek",
+    label: "NZBgeek",
+    monogram: "NG",
+    icon: "nzbgeek",
+    blurb: "Usenet · popular, paid",
+    kind: "newznab",
+    defaultName: "NZBgeek",
+    fields: ["url", "api_key"],
+    mediaTypes: [],
+    defaultUrl: "https://api.nzbgeek.info/api",
+    urlPlaceholder: "https://api.nzbgeek.info/api",
+    help: "Paste your API key from your NZBgeek profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    usenet: true,
+  },
+  {
+    id: "drunkenslug",
+    label: "DrunkenSlug",
+    monogram: "DS",
+    icon: "drunkenslug",
+    blurb: "Usenet · invite or open signups",
+    kind: "newznab",
+    defaultName: "DrunkenSlug",
+    fields: ["url", "api_key"],
+    mediaTypes: [],
+    defaultUrl: "https://drunkenslug.com/api",
+    urlPlaceholder: "https://drunkenslug.com/api",
+    help: "Paste your API key from your DrunkenSlug profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    usenet: true,
+  },
+  {
+    id: "nzbfinder",
+    label: "NZBFinder",
+    monogram: "NF",
+    icon: "nzbfinder",
+    blurb: "Usenet · free tier",
+    kind: "newznab",
+    defaultName: "NZBFinder",
+    fields: ["url", "api_key"],
+    mediaTypes: [],
+    defaultUrl: "https://nzbfinder.ws/api",
+    urlPlaceholder: "https://nzbfinder.ws/api",
+    help: "Paste your API key from your NZBFinder profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    usenet: true,
+  },
+  {
+    id: "nzbplanet",
+    label: "NZBPlanet",
+    monogram: "NP",
+    icon: "nzbplanet",
+    blurb: "Usenet · paid",
+    kind: "newznab",
+    defaultName: "NZBPlanet",
+    fields: ["url", "api_key"],
+    mediaTypes: [],
+    defaultUrl: "https://api.nzbplanet.net/api",
+    urlPlaceholder: "https://api.nzbplanet.net/api",
+    help: "Paste your API key from your NZBPlanet profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    usenet: true,
+  },
+  {
+    id: "dognzb",
+    label: "DOGnzb",
+    monogram: "DG",
+    icon: "dognzb",
+    blurb: "Usenet · invite only",
+    kind: "newznab",
+    defaultName: "DOGnzb",
+    fields: ["url", "api_key"],
+    mediaTypes: [],
+    defaultUrl: "https://api.dognzb.cr/api",
+    urlPlaceholder: "https://api.dognzb.cr/api",
+    help: "Paste your API key from your DOGnzb profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    usenet: true,
+  },
+  {
+    id: "althub",
+    label: "altHUB",
+    monogram: "AH",
+    icon: "althub",
+    blurb: "Usenet · free tier",
+    kind: "newznab",
+    defaultName: "altHUB",
+    fields: ["url", "api_key"],
+    mediaTypes: [],
+    defaultUrl: "https://api.althub.co.za/api",
+    urlPlaceholder: "https://api.althub.co.za/api",
+    help: "Paste your API key from your altHUB profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    usenet: true,
+  },
+  {
+    id: "ninjacentral",
+    label: "NinjaCentral",
+    monogram: "NC",
+    icon: "ninjacentral",
+    blurb: "Usenet · paid",
+    kind: "newznab",
+    defaultName: "NinjaCentral",
+    fields: ["url", "api_key"],
+    mediaTypes: [],
+    defaultUrl: "https://ninjacentral.co.za/api",
+    urlPlaceholder: "https://ninjacentral.co.za/api",
+    help: "Paste your API key from your NinjaCentral profile page; the address is filled in. What it finds goes to your usenet client (SABnzbd or NZBGet). Usenet doesn't seed, so there are no seed rules.",
+    usenet: true,
+  },
+  {
     id: "newznab",
-    label: "Newznab (Usenet)",
+    label: "Other Newznab indexer",
     monogram: "NZ",
-    blurb: "A usenet indexer by URL and key",
+    blurb: "Any usenet indexer by URL and key",
     kind: "newznab",
     defaultName: "Newznab",
     fields: ["url", "api_key"],
@@ -118,6 +231,10 @@ export const INDEXER_PRESETS: IndexerPreset[] = [
 export function presetsFor(hasUsenetClient: boolean): IndexerPreset[] {
   return INDEXER_PRESETS.filter((p) => !p.usenet || hasUsenetClient);
 }
+
+/** The catalogue in two groups; usenet always shows, and says when it needs a client first. */
+export const torrentPresets = () => INDEXER_PRESETS.filter((p) => !p.usenet);
+export const usenetPresets = () => INDEXER_PRESETS.filter((p) => p.usenet);
 
 export const presetById = (id: string) => INDEXER_PRESETS.find((p) => p.id === id);
 

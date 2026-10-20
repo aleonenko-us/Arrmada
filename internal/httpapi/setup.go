@@ -246,6 +246,7 @@ func (a *api) handleSetupState(w http.ResponseWriter, r *http.Request) {
 		// The Indexers step: how many searches can use, and whether Prowlarr answers
 		// (null when not asked).
 		"indexers_enabled":   a.enabledIndexers(ctx),
+		"usenet_client":      a.deps.Downloads != nil && a.usenetClient(ctx),
 		"prowlarr_available": prowlarr,
 
 		"needed":           !complete && (!tmdb || !chosen),

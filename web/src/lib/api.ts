@@ -911,6 +911,8 @@ export interface SetupState {
   emby_connected?: boolean;
   /** The Indexers step: how many indexers searches can use. */
   indexers_enabled?: number;
+  /** A usenet download client (SABnzbd, NZBGet) is set up, so usenet indexers can be added. */
+  usenet_client?: boolean;
   /** Whether a Prowlarr answers at the saved address; null unless asked (?prowlarr=1). */
   prowlarr_available?: boolean | null;
 }

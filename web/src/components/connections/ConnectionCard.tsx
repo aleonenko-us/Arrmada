@@ -4,6 +4,7 @@ import type { ConnectionItem } from "../../lib/connectionsApi";
 import { connectionStatusLine, countsLine, kindLabel, needsFix } from "../../lib/connectionStatus";
 import { Button, Menu, type MenuItem } from "../../ui";
 import { StatusDot } from "./StatusDot";
+import { monogramOf, SiteIcon, siteIconFor } from "./SiteIcon";
 
 /** The last Test's answer on a card. */
 export interface CardTest {
@@ -58,6 +59,7 @@ export function ConnectionCard({ item, test, onTest, fix, onEdit, editing, menu,
       style={{ background: "var(--panel)", border: `1px solid ${targeted ? "var(--accent)" : "var(--line)"}` }}
     >
       <div className="flex items-start gap-2.5">
+        {item.kind === "indexer" && <SiteIcon slug={siteIconFor(item.name)} monogram={monogramOf(item.name)} size={32} />}
         <span className="mt-[5px]"><StatusDot item={item} /></span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

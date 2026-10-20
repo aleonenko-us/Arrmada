@@ -2,7 +2,8 @@ import { useState } from "react";
 import { type Indexer, type NewIndexer } from "../../lib/api";
 import { indexerApi } from "../../lib/indexerApi";
 import { useUnsavedGuard } from "../../lib/useUnsavedGuard";
-import { DEFAULT_SEED_DAYS, presetsFor, type IndexerPreset } from "../../lib/indexerPresets";
+import { DEFAULT_SEED_DAYS, torrentPresets, usenetPresets, type IndexerPreset } from "../../lib/indexerPresets";
+import { SiteIcon } from "./SiteIcon";
 import { Button, Modal } from "../../ui";
 import { ALL_MEDIA, Labeled, MEDIA_TYPES, SeedingRules, TestLine, TIE_BREAK_HELP, field, fieldStyle, type TestState } from "./IndexerEditor";
 
@@ -34,28 +35,35 @@ export default function AddIndexerModal({ usenet = false, onClose, onAdded, onPr
 }
 
 function Catalogue({ usenet, onPick }: { usenet: boolean; onPick: (p: IndexerPreset) => void }) {
+  const tile = (p: IndexerPreset, disabled = false) => (
+    <li key={p.id}>
+      <button
+        type="button"
+        onClick={() => onPick(p)}
+        disabled={disabled}
+        className="flex w-full items-center gap-3 rounded-xl border border-line bg-panel-2 p-3 text-left transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-line"
+      >
+        <SiteIcon slug={p.icon} monogram={p.monogram} />
+        <span className="min-w-0">
+          <span className="block text-md font-semibold">{p.label}</span>
+          <span className="block text-xs text-ink-faint">{p.blurb}</span>
+        </span>
+      </button>
+    </li>
+  );
+  const grid = "m-0 grid list-none grid-cols-1 gap-2 p-0 min-[400px]:grid-cols-2";
   return (
     <>
       <p className="mb-3 mt-1.5 text-sm text-ink-dim">Pick where releases come from. You can test it before anything is saved.</p>
-      <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 min-[400px]:grid-cols-2">
-        {presetsFor(usenet).map((p) => (
-          <li key={p.id}>
-            <button
-              type="button"
-              onClick={() => onPick(p)}
-              className="flex w-full items-center gap-3 rounded-xl border border-line bg-panel-2 p-3 text-left transition-colors hover:border-accent"
-            >
-              <span aria-hidden className="grid h-9 w-9 flex-none place-items-center rounded-lg font-mono text-sm font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>
-                {p.monogram}
-              </span>
-              <span className="min-w-0">
-                <span className="block text-md font-semibold">{p.label}</span>
-                <span className="block text-xs text-ink-faint">{p.blurb}</span>
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      <h3 className="m-0 mb-1.5 text-xs font-bold uppercase tracking-wide text-ink-faint">Torrent</h3>
+      <ul className={grid}>{torrentPresets().map((p) => tile(p))}</ul>
+      <h3 className="m-0 mb-1.5 mt-4 text-xs font-bold uppercase tracking-wide text-ink-faint">Usenet</h3>
+      {!usenet && (
+        <p className="m-0 mb-2 text-xs text-ink-dim">
+          Usenet needs a usenet download client first (SABnzbd or NZBGet): add one in Settings → Connections → Download clients, then come back here.
+        </p>
+      )}
+      <ul className={grid}>{usenetPresets().map((p) => tile(p, !usenet))}</ul>
     </>
   );
 }
@@ -68,7 +76,7 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
 }) {
   const has = (f: IndexerPreset["fields"][number]) => preset.fields.includes(f);
   const [name, setName] = useState(preset.defaultName);
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(preset.defaultUrl ?? "");
   const [secret, setSecret] = useState(""); // API key or mam_id session
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

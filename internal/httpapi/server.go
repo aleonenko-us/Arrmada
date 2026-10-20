@@ -207,6 +207,7 @@ type api struct {
 	// keySprayLimiter is the per-address ceiling on wrong personal API keys (auth.go).
 	keySprayLimiter *loginLimiter
 	plexPins        *plexPinGuard // which browser (and account) started each Plex PIN
+	siteIcons       siteIconsOnce // indexer site icons, kept under the data folder (siteicons.go)
 	jfQC            *jfQCGuard    // Jellyfin Quick Connect requests in flight (their secrets stay here)
 	// turns lets one password check at a time through per address and username; appKnown and
 	// appWrong are the app sign-ins' known addresses and counted wrong passwords (signinguard.go).
@@ -532,6 +533,7 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/indexers", a.requireRole(auth.RoleManager, a.handleCreateIndexer).viaSetup())
 	mux.HandleFunc("PUT /api/v1/indexers/{id}", a.requireRole(auth.RoleManager, a.handleUpdateIndexer))
 	mux.HandleFunc("DELETE /api/v1/indexers/{id}", a.requireRole(auth.RoleManager, a.handleDeleteIndexer))
+	mux.HandleFunc("GET /api/v1/site-icons/{slug}", a.requireRole(auth.RoleManager, a.handleSiteIcon).viaSetup())
 	mux.HandleFunc("POST /api/v1/indexers/{id}/test", a.requireRole(auth.RoleManager, a.handleTestIndexer))
 	mux.HandleFunc("POST /api/v1/indexers/test", a.requireRole(auth.RoleManager, a.handleTestIndexerSettings).viaSetup())
 	mux.HandleFunc("GET /api/v1/flaresolverr/status", a.requireRole(auth.RoleManager, a.handleFlareSolverrStatus))

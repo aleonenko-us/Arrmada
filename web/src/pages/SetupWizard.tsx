@@ -740,11 +740,16 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
               <Button onClick={() => setAddingIndexer(true)}>{(state.indexers_enabled ?? 0) > 0 ? "Add another tracker…" : "Add a tracker…"}</Button>
               <span className="text-sm text-ink-faint">Pick it from the list, fill in its key, and Test it first.</span>
             </div>
-            <p className="m-0 text-sm text-ink-dim">Using Usenet? Add SABnzbd in Settings → Connections, then your Newznab indexers.</p>
+            <p className="m-0 text-sm text-ink-dim">
+              {state.usenet_client
+                ? "Usenet indexers (NZBgeek, DrunkenSlug, NZBFinder and more) are in the list too."
+                : "Usenet indexers are in the list too; they need SABnzbd or NZBGet, which you can add in Settings → Connections after setup."}
+            </p>
           </div>
           {addingIndexer && (
             <Suspense fallback={null}>
               <AddIndexerModal
+                usenet={!!state.usenet_client}
                 onClose={() => setAddingIndexer(false)}
                 onAdded={(created) => { setAddingIndexer(false); toast(`Added ${created.name}`, { tone: "good" }); void refreshIndexers(); }}
                 onProwlarr={() => { setAddingIndexer(false); setShowProwlarr(true); }}
