@@ -23,8 +23,9 @@ import (
 //     stored; the person sees the link once, when they make it, and can make a new one
 //     (the old stops at once) or turn it off.
 //   - The token opens this feed and nothing else, and the feed shows what that person's
-//     own Calendar shows them — episodes and film releases in the library, the adult
-//     filter applied — never anything about audiobooks.
+//     own Calendar shows them — episodes and film releases in the library (album releases
+//     too for staff while Music is on), the adult filter applied — never anything about
+//     audiobooks.
 //   - It's reachable from outside the network (calendar services fetch from there) and
 //     rate-limited per address. A wrong, old or turned-off token, or a disabled account,
 //     all get the same 404, so it says nothing about who exists.
@@ -170,7 +171,8 @@ func (a *api) handleCalendarICS(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	now := time.Now()
-	items := a.calendarItems(ctx, now.AddDate(0, 0, -icsDaysBack).Format("2006-01-02"), now.AddDate(0, 0, icsDaysAhead).Format("2006-01-02"))
+	items := a.calendarItems(ctx, now.AddDate(0, 0, -icsDaysBack).Format("2006-01-02"), now.AddDate(0, 0, icsDaysAhead).Format("2006-01-02"),
+		a.calendarMusicFor(ctx, u))
 	items = a.markRequestedBy(ctx, items, u.ID, mine)
 	kept := items[:0]
 	for _, it := range items {
@@ -238,13 +240,20 @@ func writeICS(w io.Writer, items []CalendarItem, host string, now time.Time) err
 			continue
 		}
 		var uid, summary string
-		if it.Type == "episode" {
+		switch it.Type {
+		case "episode":
 			uid = "arrmada-ep-" + strconv.FormatInt(it.RefID, 10) + "-" + strconv.Itoa(it.Season) + "x" + strconv.Itoa(it.Episode) + "@" + host
 			summary = it.Title + " — S" + pad2(it.Season) + "E" + pad2(it.Episode)
 			if it.EpisodeTitle != "" {
 				summary += " · " + it.EpisodeTitle
 			}
-		} else {
+		case "album":
+			uid = "arrmada-album-" + strconv.FormatInt(it.RefID, 10) + "@" + host
+			summary = it.Title
+			if it.Artist != "" {
+				summary += " — " + it.Artist
+			}
+		default:
 			uid = "arrmada-movie-" + strconv.FormatInt(it.RefID, 10) + "@" + host
 			summary = it.Title
 			if it.Year > 0 {

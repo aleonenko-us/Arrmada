@@ -7,7 +7,7 @@ import type { PlexScanView } from "../../src/lib/plexLibraryApi";
 import type { Language } from "../../src/lib/languages";
 import type { ProfileList } from "../../src/pages/subtitles/profileApi";
 import type { SubFileView } from "../../src/lib/subtitleFileApi";
-import type { MusicMatching } from "../../src/lib/musicApi";
+import type { MusicMatching, ReleaseDefaults, ReleaseTypeChoices } from "../../src/lib/musicApi";
 
 // The optional modules (Convert, Subtitles, Insights, Music), idle and empty: the
 // admin smoke only needs each page to load cleanly.
@@ -145,9 +145,17 @@ export const artists: { artists: Artist[] } = { artists: [] };
 // Settings → Naming & metadata → Music matching (MUS-30/31): the shipped defaults.
 const matchingDefaults: MusicMatching = {
   strong: 0.04, expected: 0.15, review: 0.4, track_max: 0.3, gap: 0.03, partial_min: 0.5,
-  edition_policy: "original", edition_countries: [], edition_media: ["Digital Media", "CD"],
+  edition_policy: "original", edition_countries: [], edition_media: ["Digital Media", "CD"], scan_workers: 4,
 };
 export const musicMatching = { settings: matchingDefaults, defaults: matchingDefaults };
+
+// Settings → Naming & metadata → Music: new releases (MUS-13/14): the shipped defaults.
+const releaseDefaults: ReleaseDefaults = { monitor_new: "all", release_types: { primary: ["Album", "EP"], secondary: [] } };
+export const releaseTypeChoices: ReleaseTypeChoices = {
+  primary: ["Album", "EP", "Single", "Broadcast", "Other"],
+  secondary: ["Compilation", "Soundtrack", "Live", "Remix", "DJ-mix", "Mixtape/Street", "Demo", "Spokenword", "Interview", "Audiobook", "Audio drama", "Field recording"],
+};
+export const musicReleaseDefaults = { settings: releaseDefaults, defaults: releaseDefaults, choices: releaseTypeChoices };
 
 // Settings → Import: a saved Tautulli connection (key masked), one finished import and one
 // that timed out, and the job an undo runs as.

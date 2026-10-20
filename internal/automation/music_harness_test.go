@@ -25,12 +25,19 @@ type fakeMusicProvider struct {
 	albums  map[string][]metadata.AlbumResult // artist MBID → release groups
 	tracks  map[string][]metadata.TrackResult // release-group MBID → listing
 	listing int                               // AlbumTracks calls made
+	// search answers an artist search by its exact query (nil: nothing found); searches
+	// counts them.
+	search   map[string][]metadata.ArtistResult
+	searches int
 }
 
 func (f *fakeMusicProvider) Available() bool { return true }
 
-func (f *fakeMusicProvider) SearchArtists(context.Context, string) ([]metadata.ArtistResult, error) {
-	return nil, nil
+func (f *fakeMusicProvider) SearchArtists(_ context.Context, q string) ([]metadata.ArtistResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.searches++
+	return f.search[q], nil
 }
 
 func (f *fakeMusicProvider) GetArtist(_ context.Context, mbid string) (*metadata.ArtistDetails, error) {
@@ -150,9 +157,14 @@ func (h *musicHarness) album(t *testing.T, artistID int64, title string) music.A
 	return music.Album{}
 }
 
-// rel is a release on the "Test" indexer.
+// rel is a release on the "Test" indexer, about the size the harness's two-track album is
+// in the tier its name claims (lossless 300 MB, lossy 20 MB), so it passes the size check.
 func rel(title string) indexer.Release {
-	return indexer.Release{Title: title, Indexer: "Test", DownloadURL: "magnet:?xt=" + title, SizeBytes: 300 << 20, Seeders: 10}
+	size := int64(300 << 20)
+	if q := music.DetectQuality(title); q != music.QualityUnknown && !music.IsLosslessQuality(q) {
+		size = 20 << 20
+	}
+	return indexer.Release{Title: title, Indexer: "Test", DownloadURL: "magnet:?xt=" + title, SizeBytes: size, Seeders: 10}
 }
 
 // found answers every search with the given releases.

@@ -115,8 +115,8 @@ func TestCompletenessFromTheTargetEdition(t *testing.T) {
 	}
 
 	wanted, _ := r.WantedAlbums(ctx)
-	if len(wanted) != 5 {
-		t.Errorf("wanted albums = %d, want every monitored album (completeness is the sweep's call)", len(wanted))
+	if len(wanted) != 4 {
+		t.Errorf("wanted albums = %d, want every monitored album but the one with a file gone from disk (completeness is the sweep's call; a missing file is never searched by itself)", len(wanted))
 	}
 }
 
@@ -289,9 +289,14 @@ func TestEnsureTracksStoresTheRelease(t *testing.T) {
 	p := &listingProvider{flakyProvider{albums: []metadata.AlbumResult{{MBID: "rg1", Title: "OK Computer", Type: "Live"}}}}
 	s := NewService(st.DB(), p, slog.Default())
 	ctx := context.Background()
-	a, err := s.AddArtist(ctx, "abc", "", true)
+	// A live album is listed only when the artist's release types allow Live (MUS-14).
+	live := ReleaseTypes{Primary: []string{"Album"}, Secondary: []string{"Live"}}
+	a, err := s.AddArtistWith(ctx, "abc", "", AddOptions{Monitored: true, ReleaseTypes: &live})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(a.Albums) == 0 {
+		t.Fatal("the live album wasn't listed")
 	}
 	if al := a.Albums[0]; al.PrimaryType != "Album" || al.SecondaryTypes != "Live" || al.ArtistCredit != "Radiohead" {
 		t.Errorf("new album types/credit = %q/%q/%q", al.PrimaryType, al.SecondaryTypes, al.ArtistCredit)

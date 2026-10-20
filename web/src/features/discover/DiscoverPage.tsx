@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
 import { MetadataMissing } from "../../components/MetadataMissing";
 import { lazyPage } from "../../lib/lazyPage";
@@ -132,7 +132,24 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
           {tab !== "books" && (
             <div className="flex w-full items-center justify-end gap-2 sm:order-last sm:w-auto sm:justify-start">
               {metadataReady ? (
-                <SearchBox value={searchInput} onChange={onSearchChange} onSeeAll={commitSearch} />
+                <>
+                  <SearchBox value={searchInput} onChange={onSearchChange} onSeeAll={commitSearch} />
+                  {/* The browse grid with every filter (genre, rating, length, language, years,
+                      streaming service), otherwise only reached through a row's "See all". */}
+                  <Link
+                    to={`/discover/browse?media=${tab === "series" ? "series" : "movie"}`}
+                    aria-label="Filters: browse by genre, rating, length, language, year and streaming service"
+                    title="Browse with filters: genre, rating, length, language, year, streaming service"
+                    className="inline-flex flex-none items-center gap-1.5 rounded-lg px-3 py-2 text-base font-semibold hover:brightness-110"
+                    style={{ background: place.browse ? "var(--accent-soft)" : "var(--panel-2)", border: `1px solid ${place.browse ? "var(--accent-line)" : "var(--line)"}`, color: place.browse ? "var(--accent-text)" : "var(--ink)" }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                      <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" />
+                      <circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" />
+                    </svg>
+                    Filters
+                  </Link>
+                </>
               ) : (
                 <input disabled placeholder="Search isn't available yet" aria-label="Search movies and TV (not available yet)" className="min-w-0 flex-1 rounded-lg px-3 py-2 text-base opacity-60 sm:w-[210px] sm:flex-initial" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
               )}

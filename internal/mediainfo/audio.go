@@ -24,9 +24,11 @@ type AudioInfo struct {
 	FormatBitrate int `json:"format_bitrate"`
 	// BitsPerSample is the stream's real sample depth (16, 24), 0 when unknown or when the
 	// codec has none (lossy codecs).
-	BitsPerSample int     `json:"bits_per_sample"`
-	SampleRateHz  int     `json:"sample_rate_hz"`
-	Channels      int     `json:"channels"`
+	BitsPerSample int `json:"bits_per_sample"`
+	SampleRateHz  int `json:"sample_rate_hz"`
+	Channels      int `json:"channels"`
+	// ChannelLayout is ffmpeg's name for the channel layout ("stereo", "5.1"), "" when unknown.
+	ChannelLayout string  `json:"channel_layout,omitempty"`
 	DurationSec   float64 `json:"duration_sec"`
 	// Tags are the container's tags, keys as ffprobe prints them.
 	Tags     map[string]string `json:"tags,omitempty"`
@@ -55,6 +57,23 @@ const audioProbeTimeout = 90 * time.Second
 // ProbeAudio runs ffprobe on an audio file (music's tier check). It only reads the file.
 func ProbeAudio(ctx context.Context, path string) (AudioInfo, error) {
 	info, err := ProbeAudioWith(ctx, "ffprobe", path)
+	if err == nil && info.Codec == "" {
+		return info, ErrNoAudio
+	}
+	return info, err
+}
+
+// ProbeAudioIdle is ProbeAudio at idle CPU and I/O priority, for background passes over a
+// whole library (music's measuring and verify passes), which must never compete with
+// playback or an import someone is waiting on.
+func ProbeAudioIdle(ctx context.Context, path string) (AudioInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, audioProbeTimeout)
+	defer cancel()
+	out, err := toolrun.Command(ctx, toolrun.Idle, "ffprobe", audioProbeArgs(path)...).Output()
+	if err != nil {
+		return AudioInfo{}, err
+	}
+	info, err := ParseAudio(out)
 	if err == nil && info.Codec == "" {
 		return info, ErrNoAudio
 	}
@@ -91,6 +110,7 @@ func ParseAudio(out []byte) (AudioInfo, error) {
 			SampleRate       string `json:"sample_rate"`
 			SampleFmt        string `json:"sample_fmt"`
 			Channels         int    `json:"channels"`
+			ChannelLayout    string `json:"channel_layout"`
 			BitsPerSample    int    `json:"bits_per_sample"`
 			BitsPerRawSample string `json:"bits_per_raw_sample"`
 		} `json:"streams"`
@@ -113,6 +133,7 @@ func ParseAudio(out []byte) (AudioInfo, error) {
 		}
 		info.Codec = strings.ToLower(s.CodecName)
 		info.Channels = s.Channels
+		info.ChannelLayout = s.ChannelLayout
 		info.SampleRateHz, _ = strconv.Atoi(s.SampleRate)
 		if br, _ := strconv.Atoi(s.BitRate); br > 0 {
 			info.BitrateKbps = kbps(br)

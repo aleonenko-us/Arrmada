@@ -34,6 +34,21 @@ type Artist struct {
 	// artist's album, or removed from the library while still credited somewhere).
 	InLibrary bool `json:"in_library"`
 
+	// MonitorNew is the artist's own choice for albums MusicBrainz newly lists ("all",
+	// "none"); "" follows the library default. ReleaseTypes is its own release-type choice;
+	// nil follows the library default (MUS-14).
+	MonitorNew   string        `json:"monitor_new"`
+	ReleaseTypes *ReleaseTypes `json:"release_types,omitempty"`
+	// LastRefreshedAt is when its albums were last read from MusicBrainz; StaleSince is
+	// set while MusicBrainz isn't answering for it (everything kept).
+	LastRefreshedAt string `json:"last_refreshed_at,omitempty"`
+	StaleSince      string `json:"stale_since,omitempty"`
+	// seenScopes are the browses whose release groups have been seen ("main", "other").
+	seenScopes string
+	// pendingAdd is the add dialog's choice, kept when the add couldn't read the albums,
+	// for the first refresh that can to apply.
+	pendingAdd string
+
 	// Albums is filled by the detail read, not the list read: the albums filed under
 	// this artist.
 	Albums []Album `json:"albums,omitempty"`
@@ -66,7 +81,7 @@ type ArtistStats struct {
 func statsFromAlbums(albums []Album) *ArtistStats {
 	s := &ArtistStats{}
 	for _, al := range albums {
-		s.add(al.TrackCount, al.HaveTracks, al.EditionTracks, al.SizeBytes, al.Monitored)
+		s.add(al.TrackCount, al.HaveTracks, al.EditionTracks, al.SizeBytes, al.Monitored && al.StaleSince == "")
 	}
 	return s
 }
@@ -124,6 +139,16 @@ type Album struct {
 	// no listing yet); EditionPinned keeps automatic switching off it.
 	TargetEditionID int64 `json:"target_edition_id,omitempty"`
 	EditionPinned   bool  `json:"edition_pinned,omitempty"`
+	// FoundAt is when a refresh found the album after its artist was added; FoundAs says
+	// whether it was wanted and why not (see the Found* constants). StaleSince is set when
+	// MusicBrainz no longer lists it: kept, files and all. Source is where it came from.
+	FoundAt    string `json:"found_at,omitempty"`
+	FoundAs    string `json:"found_as,omitempty"`
+	StaleSince string `json:"stale_since,omitempty"`
+	Source     string `json:"-"`
+	// departureChecked is when the album, gone from its artist's list, was found still on
+	// MusicBrainz (credited elsewhere): kept, and looked at again only in turn.
+	departureChecked string
 
 	// Tracks are the target edition's tracks with their files, filled by the detail read.
 	Tracks []Track `json:"tracks,omitempty"`
@@ -138,6 +163,11 @@ type Album struct {
 	// HeldTier is the lowest tier among the tracks on disk ("" when none are, or one
 	// can't be told), filled by the album detail read.
 	HeldTier Quality `json:"held_tier,omitempty"`
+	// MissingTracks counts track files the verify pass found gone from disk (flagged, never
+	// searched for by themselves: the album is left out of the sweep until a person asks);
+	// ChangedTracks those it found changed outside Arrmada (MUS-15).
+	MissingTracks int `json:"missing_tracks,omitempty"`
+	ChangedTracks int `json:"changed_tracks,omitempty"`
 
 	// Filled by the detail read: the album's editions (summaries, the target first), the
 	// target edition's discs (without their tracks), and the album's extra files (on no
@@ -195,6 +225,11 @@ type Track struct {
 	Channels      int    `json:"channels,omitempty"`
 	TagState      string `json:"tag_state,omitempty"`
 	Missing       bool   `json:"missing,omitempty"`
+	// NotFoundSince is when the verify pass first couldn't find the file (MUS-15): not
+	// missing yet, only once a later pass still can't. ChangedAt is when it found the file
+	// changed outside Arrmada (measured again since).
+	NotFoundSince string `json:"not_found_since,omitempty"`
+	ChangedAt     string `json:"changed_at,omitempty"`
 }
 
 // Event is one entry in an artist's activity timeline.

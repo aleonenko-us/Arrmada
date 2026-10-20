@@ -17,6 +17,10 @@ export const REASON_LABELS: Record<string, string> = {
   not_usenet: "torrent only",
   not_wanted: "a format you don't want",
   wrong_language: "not in your book languages",
+  // Album releases (MUS-21, MUS-16).
+  video: "video, not an album",
+  size: "far from the album's size",
+  not_better: "no better than what you have",
   rejected: "rejected by your profile",
   resolution: "not a resolution you want",
   source_floor: "below your minimum source",

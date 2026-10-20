@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 	"strconv"
@@ -19,12 +20,15 @@ type matchingSettings struct {
 	EditionPolicy    string   `json:"edition_policy"`
 	EditionCountries []string `json:"edition_countries"`
 	EditionMedia     []string `json:"edition_media"`
+	// ScanWorkers is how many album folders the library scan reads at once (MUS-37).
+	ScanWorkers int `json:"scan_workers"`
 }
 
 func (a *api) currentMatching() matchingSettings {
 	p := a.deps.Music.EditionPolicy()
 	return matchingSettings{MatchSettings: a.deps.Music.MatchSettings(), EditionPolicy: p.Mode,
-		EditionCountries: nonNilStrings(p.Countries), EditionMedia: nonNilStrings(p.Media)}
+		EditionCountries: nonNilStrings(p.Countries), EditionMedia: nonNilStrings(p.Media),
+		ScanWorkers: a.deps.Music.ScanWorkers()}
 }
 
 func nonNilStrings(s []string) []string {
@@ -39,7 +43,7 @@ func (a *api) handleGetMusicMatching(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]any{
 		"settings": a.currentMatching(),
 		"defaults": matchingSettings{MatchSettings: music.DefaultMatchSettings(), EditionPolicy: music.PolicyOriginal,
-			EditionCountries: []string{}, EditionMedia: music.DefaultEditionMedia},
+			EditionCountries: []string{}, EditionMedia: music.DefaultEditionMedia, ScanWorkers: music.DefaultScanWorkers},
 	})
 }
 
@@ -56,6 +60,7 @@ func (a *api) handleSetMusicMatching(w http.ResponseWriter, r *http.Request) {
 		EditionPolicy    *string   `json:"edition_policy"`
 		EditionCountries *[]string `json:"edition_countries"`
 		EditionMedia     *[]string `json:"edition_media"`
+		ScanWorkers      *int      `json:"scan_workers"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
@@ -82,6 +87,13 @@ func (a *api) handleSetMusicMatching(w http.ResponseWriter, r *http.Request) {
 	if err := next.Validate(); err != nil {
 		a.writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if req.ScanWorkers != nil {
+		if n := *req.ScanWorkers; n < 1 || n > music.MaxScanWorkers {
+			a.writeError(w, http.StatusBadRequest, fmt.Sprintf("scan_workers must be between 1 and %d", music.MaxScanWorkers))
+			return
+		}
+		set[music.KeyScanWorkers] = strconv.Itoa(*req.ScanWorkers)
 	}
 	if req.EditionPolicy != nil {
 		p := strings.TrimSpace(*req.EditionPolicy)

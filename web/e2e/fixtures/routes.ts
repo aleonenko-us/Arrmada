@@ -113,7 +113,7 @@ export function routes(p: PersonaInfo): MockRoute[] {
     { method: "GET", path: `/api/v1/media/movie/${discover.hiddenTitleID}`, status: 404, body: { message: "That title isn't available." } },
     { method: "GET", path: /^\/api\/v1\/media\/(movie|series)\/(\d+)$/, respond: ({ params }) => discover.mediaDetail(params[0], Number(params[1])) },
     { method: "GET", path: /^\/api\/v1\/media\/series\/(\d+)\/seasons$/, respond: ({ params }) => discover.seriesSeasons(Number(params[0])) },
-    { method: "GET", path: "/api/v1/calendar", respond: ({ url }) => media.calendar(url) },
+    { method: "GET", path: "/api/v1/calendar", respond: ({ url }) => media.calendar(url, staff) },
     get("/api/v1/me/books", media.myBooks),
     get("/api/v1/me/kindle", media.myKindle),
 
@@ -209,6 +209,18 @@ export function routes(p: PersonaInfo): MockRoute[] {
     get("/api/v1/music/artists", mod.artists),
     get("/api/v1/music/matching", mod.musicMatching),
     { method: "PUT", path: "/api/v1/music/matching", respond: ({ body }) => ({ settings: { ...mod.musicMatching.settings, ...(body as object) } }) },
+    get("/api/v1/music/release-defaults", mod.musicReleaseDefaults),
+    { method: "PUT", path: "/api/v1/music/release-defaults", respond: ({ body }) => ({ settings: { ...mod.musicReleaseDefaults.settings, ...(body as object) } }) },
+    get("/api/v1/music/new-releases", { albums: [], days: 30 }),
+    // Album and artist searching (MUS-09, MUS-16, MUS-17); e2e/music-search.spec.ts
+    // answers them with more.
+    get(/^\/api\/v1\/music\/albums\/\d+\/search-state$/, { upgrade: { profile: "Lossless", state: "incomplete", cutoff: "FLAC" } }),
+    get(/^\/api\/v1\/music\/albums\/\d+\/releases$/, { profile: "lossless", releases: [] }),
+    { method: "POST", path: /^\/api\/v1\/music\/artists\/\d+\/search$/, status: 202, body: { status: "searching" } },
+    // MUS-15: albums with track files gone from disk (none in the fixtures), and the scan's
+    // last summary (none yet).
+    get("/api/v1/music/search-missing", { albums: 0 }),
+    get("/api/v1/music/scan", { last: null }),
     // Per media, as the server answers: ?media=series lists the series profiles.
     { method: "GET", path: "/api/v1/quality/profiles", respond: ({ url }) => (url.searchParams.get("media") === "series" ? media.seriesQualityProfiles : media.qualityProfiles) },
     // Settings → Downloads and → Book server (only the full Settings sweep visits them).

@@ -230,6 +230,11 @@ func New(d Deps) *http.Server {
 	if d.Health != nil {
 		a.registerHealthChecks(d.Health)
 	}
+	// Files the daily music file check finds gone may only be renamed: it queues a scan,
+	// which links them again (MUS-15).
+	if d.Automation != nil {
+		d.Automation.SetMusicRescan(a.musicScanFollowUp)
+	}
 
 	// Chain: recover → authenticate (resolves the user) → external gate (LAN vs
 	// outside) → log → gzip for larger JSON → routes.
@@ -901,6 +906,10 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("GET /api/v1/music/artists", a.requireRole(auth.RoleManager, a.musicRoute(a.handleListArtists)))
 	mux.HandleFunc("GET /api/v1/music/lookup", a.requireRole(auth.RoleManager, a.musicRoute(a.handleLookupArtists)))
 	mux.HandleFunc("POST /api/v1/music/scan", a.requireRole(auth.RoleManager, a.musicRoute(a.handleScanMusicLibrary)))
+	mux.HandleFunc("GET /api/v1/music/scan", a.requireRole(auth.RoleManager, a.musicRoute(a.handleMusicScanStatus)))
+	mux.HandleFunc("GET /api/v1/music/search-missing", a.requireRole(auth.RoleManager, a.musicRoute(a.handleMissingTracksCount)))
+	mux.HandleFunc("POST /api/v1/music/search-missing", a.requireRole(auth.RoleManager, a.musicRoute(a.handleSearchAllMissing)))
+	mux.HandleFunc("POST /api/v1/music/albums/{id}/search-missing", a.requireRole(auth.RoleManager, a.musicRoute(a.handleSearchAlbumMissing)))
 	mux.HandleFunc("POST /api/v1/music/artists", a.requireRole(auth.RoleManager, a.musicRoute(a.handleAddArtist)))
 	mux.HandleFunc("GET /api/v1/music/artists/{id}", a.requireRole(auth.RoleManager, a.musicRoute(a.handleGetArtist)))
 	mux.HandleFunc("POST /api/v1/music/artists/{id}/refresh", a.requireRole(auth.RoleManager, a.musicRoute(a.handleRefreshArtist)))
@@ -909,7 +918,18 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("PUT /api/v1/music/artists/{id}/profile", a.requireRole(auth.RoleManager, a.musicRoute(a.handleSetArtistProfile)))
 	mux.HandleFunc("DELETE /api/v1/music/artists/{id}", a.requireRole(auth.RoleManager, a.musicRoute(a.handleDeleteArtist)))
 	mux.HandleFunc("GET /api/v1/music/artists/{id}/history", a.requireRole(auth.RoleManager, a.musicRoute(a.handleArtistHistory)))
+	mux.HandleFunc("GET /api/v1/music/artists/{id}/options", a.requireRole(auth.RoleManager, a.musicRoute(a.handleArtistOptions)))
+	mux.HandleFunc("PUT /api/v1/music/artists/{id}/options", a.requireRole(auth.RoleManager, a.musicRoute(a.handleSetArtistOptions)))
+	mux.HandleFunc("POST /api/v1/music/artists/{id}/options/apply", a.requireRole(auth.RoleManager, a.musicRoute(a.handleApplyArtistOptions)))
+	mux.HandleFunc("GET /api/v1/music/release-defaults", a.requireRole(auth.RoleManager, a.musicRoute(a.handleGetReleaseDefaults)))
+	mux.HandleFunc("PUT /api/v1/music/release-defaults", a.requireRole(auth.RoleManager, a.musicRoute(a.handleSetReleaseDefaults)))
+	mux.HandleFunc("GET /api/v1/music/new-releases", a.requireRole(auth.RoleManager, a.musicRoute(a.handleNewReleases)))
 	mux.HandleFunc("GET /api/v1/music/albums/{id}", a.requireRole(auth.RoleManager, a.musicRoute(a.handleGetAlbum)))
+	// Searching from the album and artist pages (MUS-09, MUS-16, MUS-17): music_search.go.
+	mux.HandleFunc("POST /api/v1/music/artists/{id}/search", a.requireRole(auth.RoleManager, a.musicRoute(a.handleArtistSearch)))
+	mux.HandleFunc("GET /api/v1/music/albums/{id}/releases", a.requireRole(auth.RoleManager, a.musicRoute(a.handleAlbumReleases)))
+	mux.HandleFunc("POST /api/v1/music/albums/{id}/grab", a.requireRole(auth.RoleManager, a.musicRoute(a.handleGrabAlbum)))
+	mux.HandleFunc("GET /api/v1/music/albums/{id}/search-state", a.requireRole(auth.RoleManager, a.musicRoute(a.handleAlbumSearchState)))
 	mux.HandleFunc("PUT /api/v1/music/albums/{id}/monitor", a.requireRole(auth.RoleManager, a.musicRoute(a.handleSetAlbumMonitored)))
 	mux.HandleFunc("POST /api/v1/music/albums/{id}/notes/{note}/resolve", a.requireRole(auth.RoleManager, a.musicRoute(a.handleResolveAlbumNote)))
 	// Music placement (MUS-33, MUS-34): naming templates with a live preview, an album's

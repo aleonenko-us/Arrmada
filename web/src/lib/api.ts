@@ -794,12 +794,14 @@ export interface UserNotification {
 }
 
 export interface CalendarItem {
-  date: string; type: "episode" | "movie"; title: string; subtitle: string; poster_url?: string; ref_id: number; has_file: boolean;
+  date: string; type: "episode" | "movie" | "album"; title: string; subtitle: string; poster_url?: string; ref_id: number; has_file: boolean;
   // Searched for (an episode: it's wanted and its show's searching is on). searching_off: a
-  // wanted episode of a show whose searching is off.
+  // wanted episode of a show whose searching is off (an album: of an artist switched off).
   monitored: boolean; searching_off?: boolean;
   // The title's TMDB id and kind open its Discover page (APP-16); the episode's numbers and name.
-  tmdb_id?: number; media_type?: "movie" | "series"; year?: number; season?: number; episode?: number; episode_title?: string;
+  tmdb_id?: number; media_type?: "movie" | "series" | "music"; year?: number; season?: number; episode?: number; episode_title?: string;
+  // An album's artist and kind (MUS-24). Albums are on staff's calendar only, while Music is on.
+  artist?: string; album_type?: string;
   // The viewer asked for this title or follows a request for it (APP-17).
   requested_by_me?: boolean;
 }
@@ -1036,7 +1038,21 @@ export interface LibraryCounts {
   movies: number; movies_missing: number;
   series: number; episodes: number; episodes_missing: number;
   books: number; books_missing: number;
-  artists: number; albums: number;
+}
+// DashboardMusic is Music's part of the Dashboard (MUS-24), sent only while Music is on.
+// albums: albums with a track on disk; albums_wanted: incomplete wanted albums by the
+// Wanted page's rules (downloading ones included), of which albums_missing are released
+// (the rest are on its Upcoming tab).
+export interface DashboardMusic {
+  artists: number; albums: number; tracks: number; size_bytes: number;
+  albums_wanted: number; albums_missing: number;
+  /** The newest of the New releases list (last 30 days); new_releases_total is how many it holds. */
+  new_releases: DashboardNewRelease[]; new_releases_total: number;
+  /** The newest music imports (title is the artist). */
+  imports: ActivityEvent[];
+}
+export interface DashboardNewRelease {
+  id: number; title: string; artist_name: string; album_type?: string; release_date?: string; monitored: boolean; found_as?: string;
 }
 export interface ActivityEvent {
   kind: HistoryKind; // music is the artist
@@ -1053,6 +1069,7 @@ export interface DashboardData {
   queue: QueueSummary;
   queue_note?: string;
   library: LibraryCounts;
+  music?: DashboardMusic;
   activity: ActivityEvent[];
   listening?: NowListening[];
   audio_off?: boolean;
@@ -3500,7 +3517,17 @@ export const api = {
   artists: () => req<{ artists: Artist[] }>("/api/v1/music/artists").then((r) => r.artists ?? []),
   lookupArtists: (q: string) =>
     req<{ results: ArtistLookup[] }>(`/api/v1/music/lookup?q=${encodeURIComponent(q)}`).then((r) => r.results ?? []),
-  addArtist: (body: { mbid: string; quality_profile?: string; monitored?: boolean }) =>
+  addArtist: (body: {
+    mbid: string;
+    quality_profile?: string;
+    monitored?: boolean;
+    /** Which of today's albums are wanted. */
+    monitor?: "all" | "future" | "latest" | "none";
+    monitor_new?: "" | "all" | "none";
+    release_types?: { primary: string[]; secondary: string[] };
+    /** Search the wanted albums straight away (left out: Settings' search on add). */
+    search_now?: boolean;
+  }) =>
     req<Artist>("/api/v1/music/artists", { method: "POST", body: JSON.stringify(body) }),
   scanMusic: () => req<{ status: string } & JobRef>("/api/v1/music/scan", { method: "POST" }),
   artistDetail: (id: number) => req<Artist>(`/api/v1/music/artists/${id}`),
@@ -3698,6 +3725,8 @@ export interface ArtistLookup {
   disambiguation?: string;
   country?: string;
   type?: string;
+  /** The alias the search matched when the name itself doesn't show it ("also known as"). */
+  aka?: string;
 }
 export interface ArtistStats {
   albums: number;
@@ -3727,6 +3756,10 @@ export interface MusicTrack {
   has_file: boolean;
   /** A file is recorded but has gone missing from disk. */
   missing?: boolean;
+  /** The last file check couldn't find the file (not missing until the next one agrees). */
+  not_found_since?: string;
+  /** The file check found it changed outside Arrmada (measured again since). */
+  changed_at?: string;
   file_path?: string;
   /** The measured tier ("FLAC-24", "MP3-320"), or an extension tag ("MP3") when unmeasured. */
   format?: string;
@@ -3793,6 +3826,9 @@ export interface MusicAlbum {
   edition_tracks?: number;
   /** The lowest tier among the tracks on disk (album detail only). */
   held_tier?: string;
+  /** Track files the file check found gone from disk, and changed outside Arrmada (MUS-15). */
+  missing_tracks?: number;
+  changed_tracks?: number;
   primary_type?: string;
   secondary_types?: string;
   /** The album's credit as it reads ("Daft Punk feat. Pharrell Williams"). */
@@ -3806,6 +3842,12 @@ export interface MusicAlbum {
   extras?: MusicExtraFile[];
   /** The upgrade's open notes: tracks the old library said had a file that it couldn't give one. */
   notes?: MusicNote[];
+  /** Set when a refresh found it after the artist was added (MUS-13); found_as says why it
+   *  is or isn't wanted: new, not_new, back_catalogue, too_many, single_pending, single_asked, single_on_album, undated_pending. */
+  found_at?: string;
+  found_as?: string;
+  /** MusicBrainz no longer lists it: kept, files and all. */
+  stale_since?: string;
 }
 /** A track the upgrade to editions couldn't give its file (two tracks on one file, or a file with no path). */
 export interface MusicNote {
@@ -3831,6 +3873,13 @@ export interface Artist {
   country?: string;
   /** False for an artist that is only credited (featured on another artist's album). */
   in_library?: boolean;
+  /** The artist's own new-release choice ("" = the library default) and release types
+   *  (absent = the library default). */
+  monitor_new?: "" | "all" | "none";
+  release_types?: { primary: string[]; secondary: string[] };
+  last_refreshed_at?: string;
+  /** MusicBrainz isn't answering for it; everything is kept. */
+  stale_since?: string;
   /** The albums filed under this artist (detail only). */
   albums?: MusicAlbum[];
   /** Albums filed under other artists that credit this one (detail only). */
@@ -4161,6 +4210,9 @@ export interface ImportReview {
   import_job?: Job;
   /** The music matcher's explanation of why it held the download (MUS-31). */
   match?: MusicMatchReport;
+  /** "library_scan": a folder already in the music library that the scan couldn't place
+   *  (MUS-37). It is matched where it is and can never be rejected. */
+  source?: "library_scan";
 }
 
 /** One field's part of a music match distance. */

@@ -195,6 +195,14 @@ func contains(list []string, s string) bool {
 // variousArtistsMBID is MusicBrainz's "Various Artists".
 const variousArtistsMBID = "89ad4ac3-39f7-470e-963a-56509c546377"
 
+// IsVariousArtistsName reports whether a name is a "Various Artists" placeholder.
+func IsVariousArtistsName(s string) bool { return isVariousArtists(s) }
+
+// IsVariousArtistsMBID reports whether an artist MBID is MusicBrainz's "Various Artists".
+func IsVariousArtistsMBID(mbid string) bool {
+	return strings.EqualFold(strings.TrimSpace(mbid), variousArtistsMBID)
+}
+
 // isVariousArtists reports whether a name is a "Various Artists" placeholder.
 func isVariousArtists(s string) bool {
 	switch compactFold(s) {
@@ -225,7 +233,7 @@ func trackDistance(f *MatchFile, t *candTrack, va bool) (float64, *distance, []s
 		}
 	}
 	if !va && f.Tags.Artist != "" && t.Credit != "" && !isVariousArtists(f.Tags.Artist) {
-		sd := stringDist(f.Tags.Artist, t.Credit)
+		sd := artistDist(f.Tags.Artist, t.Credit, t.creditAliases)
 		d.add(CompTrackArtist, sd)
 		if sd >= 0.3 {
 			notes = append(notes, fmt.Sprintf("artist %q differs from %q", f.Tags.Artist, t.Credit))
@@ -267,6 +275,19 @@ func trackDistance(f *MatchFile, t *candTrack, va bool) (float64, *distance, []s
 		return 1, d, []string{"nothing in the file to compare"}
 	}
 	return d.value(), d, notes
+}
+
+// artistDist is how far a tag's artist is from a credit: the credit's own distance, or an
+// alias's when one is closer (MUS-38: "Utada Hikaru" tags on 宇多田ヒカル's album fit).
+func artistDist(tag, credit string, aliases []string) float64 {
+	best := stringDist(tag, credit)
+	for _, a := range aliases {
+		if best == 0 {
+			break
+		}
+		best = math.Min(best, stringDist(tag, a))
+	}
+	return best
 }
 
 func numLabel(disc, n int) string {

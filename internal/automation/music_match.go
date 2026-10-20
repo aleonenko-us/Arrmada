@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/audiotag"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/extract"
+	"github.com/tristenlammi/arrmada/internal/mediainfo"
 	"github.com/tristenlammi/arrmada/internal/music"
 )
 
@@ -54,16 +56,28 @@ func (c *Coordinator) readMatchFile(path string) (tags music.FileTags, ms int, e
 	if c.musicTagsFn != nil {
 		return c.musicTagsFn(path)
 	}
+	tags, props, err := readAudioFacts(path)
+	if props != nil {
+		ms = int(props.DurationSec * 1000)
+	}
+	return tags, ms, err
+}
+
+// readAudioFacts reads one audio file's tags and what its headers say about the audio
+// (length, codec, sample rate, bit depth, channels, average bitrate), in-process: no
+// ffprobe, so the library scan can afford it for every new file. props is nil when the
+// headers couldn't be read.
+func readAudioFacts(path string) (tags music.FileTags, props *mediainfo.AudioInfo, err error) {
 	// A tag library meeting a file broken in a way nobody planned for must cost that
 	// file its tags, not the import loop.
 	defer func() {
 		if p := recover(); p != nil {
-			tags, ms, err = music.FileTags{}, 0, fmt.Errorf("reading tags: %v", p)
+			tags, props, err = music.FileTags{}, nil, fmt.Errorf("reading tags: %v", p)
 		}
 	}()
 	t, rerr := audiotag.Read(path)
 	if rerr != nil {
-		return music.FileTags{}, 0, rerr
+		return music.FileTags{}, nil, rerr
 	}
 	f := audiotag.FieldsOf(t)
 	tags = music.FileTags{
@@ -74,20 +88,33 @@ func (c *Coordinator) readMatchFile(path string) (tags music.FileTags, ms int, e
 		ISRC: f.ISRC, Barcode: f.Barcode, Label: f.Label, CatalogNumber: f.CatalogNumber,
 		Country: f.ReleaseCountry, Media: f.Media, Compilation: f.Compilation,
 	}
+	if len(f.MusicBrainzAlbumArtistIDs) > 0 {
+		tags.AlbumArtistMBID = f.MusicBrainzAlbumArtistIDs[0]
+	}
 	if f.Date == "" {
 		tags.Date = f.OriginalDate
 	}
 	if p, perr := audiotag.Properties(path); perr == nil {
-		ms = int(p.Duration.Milliseconds())
+		props = &mediainfo.AudioInfo{
+			Codec: p.Codec, BitrateKbps: p.Bitrate, BitsPerSample: p.BitDepth, SampleRateHz: p.SampleRate,
+			Channels: p.Channels, DurationSec: p.Duration.Seconds(),
+		}
 	}
-	return tags, ms, nil
+	return tags, props, nil
 }
 
-// readMatchFiles reads every file for the matcher.
-func (c *Coordinator) readMatchFiles(files []music.AudioFile) []music.MatchFile {
+// readMatchFiles reads every file for the matcher. A cue sheet's virtual track (MUS-35)
+// has the sheet's tags and the length between its INDEX points.
+func (c *Coordinator) readMatchFiles(ctx context.Context, files []music.AudioFile) []music.MatchFile {
 	out := make([]music.MatchFile, 0, len(files))
+	cs := cueSetFrom(ctx)
 	for _, f := range files {
 		mf := music.MatchFile{Path: f.Path, SizeBytes: f.SizeBytes, FolderDisc: f.Disc}
+		if part, ok := cs.part(f.Path); ok {
+			mf.Tags, mf.DurationMs = part.tags, part.ms
+			out = append(out, mf)
+			continue
+		}
 		if tags, ms, err := c.readMatchFile(f.Path); err == nil {
 			mf.Tags, mf.DurationMs = tags, ms
 		}
@@ -227,9 +254,13 @@ func (c *Coordinator) fingerprintPass(ctx context.Context, in music.MatchInput, 
 	files := append([]music.MatchFile(nil), in.Files...)
 	learned := 0
 	var recs []string
+	cs := cueSetFrom(ctx)
 	for i := range files {
 		if i >= fingerprintMax {
 			break
+		}
+		if _, virtual := cs.part(files[i].Path); virtual {
+			continue // a cue sheet's track: not a file until the image is split
 		}
 		got, err := c.fingerprinter.Recordings(ctx, files[i].Path)
 		if err != nil {
@@ -310,11 +341,30 @@ func (c *Coordinator) importMusicDownload(ctx context.Context, it download.Item)
 		}
 		return
 	}
+	// A disc image with a cue sheet stands in for its tracks (MUS-35); it is split only
+	// once the matcher is sure and placement takes its tracks.
+	files, cues, err := c.expandCueSheets(ctx, it.ContentPath, files)
+	if err != nil {
+		var problem *cueProblem
+		if !errors.As(err, &problem) {
+			// The image couldn't be read just now (a probe timed out, shutting down): the
+			// next sweep tries again.
+			c.log.Warn("music import: couldn't read a disc image just now — will retry", "release", it.Name, "err", err)
+			return
+		}
+		expected := gid
+		if expected == 0 && nameOK {
+			expected = named.ID
+		}
+		c.musicCueReview(ctx, it, idx, expected, err.Error())
+		return
+	}
+	ctx = withCueSet(ctx, cues)
 	m := musicMatch{grabbed: gid}
 	if nameOK {
 		m.named = []int64{named.ID}
 	}
-	groups := music.GroupFiles(c.readMatchFiles(files))
+	groups := music.GroupFiles(c.readMatchFiles(ctx, files))
 	results := make([]music.MatchResult, 0, len(groups))
 	for _, g := range groups {
 		m.folder = filepath.Base(g.Dir)
@@ -347,6 +397,14 @@ func (c *Coordinator) importMusicDownload(ctx context.Context, it download.Item)
 		c.holdMusicMatch(ctx, it, idx, gid, res)
 		return
 	}
+	// An upgrade the sweep grabbed never moves the album to another edition, nor puts
+	// another edition's files on one kept by hand (MUS-16).
+	if grabbed && c.musicGrabWasUpgrade(ctx, it.Hash, it.Name, gid) {
+		if hold := c.upgradeEditionHold(ctx, gid, results); hold != nil {
+			c.holdMusicMatch(ctx, it, idx, gid, *hold)
+			return
+		}
+	}
 
 	var total albumImport
 	total.found = true
@@ -366,6 +424,9 @@ func (c *Coordinator) importMusicDownload(ctx context.Context, it download.Item)
 	switch {
 	case total.taken > 0:
 		c.musicTakenReview(ctx, it, total, placedAlbum.ID, placedAlbum.Title)
+	case total.splitFailed > 0:
+		// The disc image couldn't be split exactly (MUS-35): nothing from it was placed.
+		c.musicSplitReview(ctx, it, total, placedAlbum.ID, placedAlbum.Title)
 	case total.tagFailed > 0:
 		// House tags couldn't be written into a staged copy, or it didn't check out
 		// (MUS-33): the download is untouched; a person looks.
@@ -608,7 +669,7 @@ func (c *Coordinator) matchInto(ctx context.Context, al music.Album, files []mus
 		return nil, nil, nil, nil
 	}
 	in := music.MatchInput{
-		Files: c.readMatchFiles(files), FolderName: folder, Candidates: cands, Forced: true,
+		Files: c.readMatchFiles(ctx, files), FolderName: folder, Candidates: cands, Forced: true,
 		ForceEditionID: musicEditionFrom(ctx), Settings: c.music.MatchSettings(), Policy: c.music.EditionPolicy(),
 	}
 	res := music.Match(in)
@@ -640,7 +701,7 @@ func (c *Coordinator) matchInto(ctx context.Context, al music.Album, files []mus
 // grabbed for that album (the folder's name chose it, and the pack was grabbed for its
 // artist). A doubtful folder places nothing; its files stay in the download.
 func (c *Coordinator) matchGrabbedFolder(ctx context.Context, al music.Album, files []music.AudioFile, folder string) ([]music.Track, map[int64]music.AudioFile, []music.AudioFile, error) {
-	mfiles := c.readMatchFiles(files)
+	mfiles := c.readMatchFiles(ctx, files)
 	cands, err := c.music.MatchCandidates(ctx, []int64{al.ID}, len(files))
 	if err != nil || len(cands) == 0 {
 		return nil, nil, files, err

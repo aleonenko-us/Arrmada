@@ -26,6 +26,34 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Before you update
 
+- **Missing music files are flagged, not downloaded again.** When a track file is gone on two
+  checks a day apart, the album says "N track files gone from disk" and isn't searched by
+  itself, like movies. Use **Search for missing tracks** on the album page, or Music → Library
+  tools for all of them at once (each run takes 25 albums, the ones not searched yet first, and
+  asks first). Moved or retagged the files yourself? The check then starts a library scan, which
+  links them again at their new place instead of downloading. A folder that looks empty or
+  unmounted is skipped and named in a health note; if the music folder itself looks unmounted, or
+  too many files vanish at once, nothing is marked at all. An album on a share that's away is never
+  re-linked to another copy of it.
+
+- **A music library scan of an empty or unmounted music folder is refused** and changes nothing.
+  Untagged folders matched only by their name are placed only as a whole album (or exactly the
+  tracks still wanted); anything else goes to Reviews.
+
+- **Music upgrades are off until you turn them on.** The update switches automatic upgrades off
+  on every music profile, and new profiles and presets start with them off. Turn them on per
+  profile (Quality → Music → Automatically upgrade).
+
+- **Artists with no music profile now use "Lossless, or the best MP3",** created once if you have
+  no music profile. They were on "Any quality" before, so MP3-192 and below, OGG and Opus are no
+  longer grabbed for them. Pick another profile on the artist to change it.
+
+- **Adding an artist searches its wanted albums straight away** (up to 25, in the background),
+  following Settings' "search on add". The add dialog has a "Start searching now" box.
+
+- **Homepage widget: `wanted.total` now includes albums** (released albums still missing) while
+  Music is on. New fields `artists`, `albums`, `tracks` and `wanted.albums` are 0 while it's off.
+
 - **Music imports are copies now, not hardlinks,** because Arrmada writes clean tags (Settings →
   Naming & metadata → Music naming & tags → Write house tags, on by default). While a torrent
   seeds, its album takes up space twice. Turn Write house tags off to keep hardlinks.
@@ -173,52 +201,23 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 - **SECURITY.md**: how to report a vulnerability privately, and which versions get fixes.
   The README now explains how Arrmada is built and tested.
 
-### Changed
-
-- **Built with Go 1.26.9**, because Go 1.25 is out of support. The Docker build pins Go to
-  the patch release. Building from source outside Docker needs Go 1.26.
-- **Vulnerability scanning in CI.** Every change runs govulncheck (it fails when our code
-  can reach a known-vulnerable function) and `npm audit` (high or critical, in the UI's
-  production dependencies). CodeQL code scanning runs on Go and TypeScript. Go modules with
-  known advisories were upgraded (`golang.org/x/net`, `x/crypto`, `x/sys`,
-  `golang-jwt/jwt`).
-- **Sign-in limits are shared.** The audiobook server and the OPDS catalogue count wrong
-  passwords with the main sign-in limiter (10 per address in 15 minutes, then a pause per
-  username from outside your network). Your own devices that signed in recently aren't held
-  up, and an e-reader repeating the same stale password counts once.
-- **Web Push** only sends to the browsers' own push services, and an account keeps at most
-  10 devices (the oldest goes).
-- The image's Apprise is pinned and installed with hashes.
-- Release notes on GitHub now come from this changelog, with a Before you update section
-  for each version (#31).
-
-### Fixed
-
-- **Shows kept inside a category folder stay there** (#56 follow-up). A show in
-  `<TV folder>/Anime/Show/` (or under a TV folder set one level too high) now gets its new
-  episodes in its own folder, `S01`-style season folders included, where v0.3.2 and earlier
-  put them in a new `<TV folder>/Show/` beside the category. A show's folder is never a
-  folder above the one holding its files (other than the show's folder above its season
-  folders), never a folder named like a download or disc unless it's right inside the TV
-  folder, and never a folder that also holds another show, tracked or not; when it can't be
-  told, the download waits in Needs you.
-- **Refresh & rescan and the duplicate check read only the show's own files** (#56
-  follow-up). Both read exactly the same files: those right in the show's folder, in its
-  season folders (and disc or download folders inside them), or in its own download
-  folders. They never read a folder inside it that holds another show, whether hidden,
-  nested deep, or under a folder called Other or Bonus. A file in a season folder whose name
-  is another show's (`Bluey - S01E02.mkv` in your show's `S01`) is never claimed, and never
-  offered as a duplicate to delete. Featurettes in Plex extras folders (Extras,
-  Featurettes, Behind The Scenes, Deleted Scenes, Interviews, Scenes, Shorts, Trailers,
-  Other) are never taken for episodes. Files the show already has always count.
-- **A link inside a show's folder keeps it from being taken for the show's alone** (#56
-  follow-up). A link to another folder or to a video means the download waits in Needs you,
-  and Move to folder won't move the folder.
-- **A show whose folder can't be told has a way out** (#56 follow-up). Move its files by hand
-  into a folder of its own, then use **Refresh & rescan**. Each recorded file that's gone is
-  found by its name in that TV folder, as long as the name has the show's title and an
-  episode number, exactly one file has it, and no other show has that file. Nothing is
-  followed while the TV folder looks unmounted. The show then reads normally again.
+- **Music (Preview) on the Dashboard and Calendar.** With Music on, staff get an Albums tile and a
+  Music card (library, missing and upcoming albums, new releases, recent imports), album release
+  dates on the Calendar and in their personal calendar feed, and music counts in the Homepage
+  widget. Requesters don't see albums.
+- **Music (Preview) keeps up with new releases.** Every few hours Arrmada checks your artists
+  (through the cache and MusicBrainz's polite limit); a genuinely new album from an artist set to
+  follow new releases is wanted and searched once, and listed under New releases on the Music page.
+  Release types work properly ("Album + Live" means live albums), singles already on an album
+  aren't wanted, and "Latest" never picks an unreleased album. Per-artist Options on the artist
+  page, a library default in Settings. Nothing old is ever wanted by surprise, changing settings
+  never wants anything by itself ("Want matching albums…" shows a count first), and albums
+  MusicBrainz removes are kept, files and all, but not searched automatically.
+- **Music (Preview) splits single-file albums.** A rip that's one big FLAC, WAV or WavPack image
+  plus a `.cue` sheet is matched first, then cut into one FLAC per track at the exact sample
+  positions (gaps stay where CD players put them), proven sample-exact against the image, and
+  imported like any other album. It streams, so even a 24/192 image needs well under 100 MB of
+  memory. A cue that doesn't fit the image, or the album's length on MusicBrainz, goes to Reviews.
 - **Music (Preview) writes proper tags and follows your naming.** Each import is copied into a
   hidden staging folder, given clean tags (every artist, MusicBrainz IDs, compilation flag,
   embedded cover plus `cover.jpg`), checked so the audio is unchanged, then moved into place in one
@@ -244,7 +243,77 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   instead of being cleaned up; albums show as complete again. MusicBrainz lookups share one
   polite limit and a permanent local cache, so music keeps working when MusicBrainz is down, and
   Settings → Connections → Metadata can point at your own MusicBrainz copy.
+- **Music (Preview) searches and upgrades on its own terms.** Album and artist pages say why an
+  album isn't downloading (last outcome, next try) and have **Search now**; an artist's Search now
+  takes up to 25 albums a click, never-searched first, and a second click moves on to the rest.
+  Interactive search lists every release with the reason it would or wouldn't be grabbed, and a
+  manual grab imports into the album you picked (the same release twice is refused while it's
+  still downloading). Video and implausibly sized releases are dropped. With upgrades turned on
+  for a profile, a paced sweep replaces albums with strictly better quality, never a downgrade,
+  old files to the recycle bin.
+- **Music (Preview) scans big libraries fast and keeps an eye on your files.** The library scan
+  reads tags (files with MusicBrainz IDs match straight away), runs in the background, and a
+  rescan only opens folders that changed. It never moves, retags or deletes anything; folders it
+  can't place go to Reviews with **Match…**. Albums moved or retagged outside Arrmada (Picard,
+  beets) are linked again at their new place. A daily "Check music files" task notices files that
+  vanished or changed outside Arrmada and shows them as gone from disk; it never deletes anything
+  and never downloads them again by itself. Artists are found under their other names too
+  ("Beyonce", "宇多田ヒカル").
 
+### Changed
+
+- **Built with Go 1.26.9**, because Go 1.25 is out of support. The Docker build pins Go to
+  the patch release. Building from source outside Docker needs Go 1.26.
+- **Vulnerability scanning in CI.** Every change runs govulncheck (it fails when our code
+  can reach a known-vulnerable function) and `npm audit` (high or critical, in the UI's
+  production dependencies). CodeQL code scanning runs on Go and TypeScript. Go modules with
+  known advisories were upgraded (`golang.org/x/net`, `x/crypto`, `x/sys`,
+  `golang-jwt/jwt`).
+- **Sign-in limits are shared.** The audiobook server and the OPDS catalogue count wrong
+  passwords with the main sign-in limiter (10 per address in 15 minutes, then a pause per
+  username from outside your network). Your own devices that signed in recently aren't held
+  up, and an e-reader repeating the same stale password counts once.
+- **Web Push** only sends to the browsers' own push services, and an account keeps at most
+  10 devices (the oldest goes).
+- The image's Apprise is pinned and installed with hashes.
+- Release notes on GitHub now come from this changelog, with a Before you update section
+  for each version (#31).
+
+### Fixed
+
+- **Shows with `S01`-style season folders work fully again** (#56). A show stored as
+  `<TV folder>/Show/S12/` (an `S{season00}` season folder template, `Stagione 1`, `Saison 1`…)
+  is read as living in `Show`, as v0.3.2 couldn't: new episodes go into the existing season
+  folder, a new season gets its own folder inside `Show` named by your template, and
+  **Refresh & rescan**, **Rename**, the duplicate check and **Move to folder** work again.
+  Shows that v0.3.2 refused this way read normally after the update, with nothing to do.
+- **Shows kept inside a category folder stay there** (#56). A show in
+  `<TV folder>/Anime/Show/` (or under a TV folder set one level too high) gets its new
+  episodes in its own folder, `S01`-style season folders included, where v0.3.2 and earlier
+  put them in a new `<TV folder>/Show/` beside the category. A show's folder is never a
+  folder above the one holding its files (other than the show's folder above its season
+  folders), never a folder named like a download or disc unless it's right inside the TV
+  folder, and never a folder that also holds another show, tracked or not; when it can't be
+  told, the download waits in Needs you.
+- **Refresh & rescan and the duplicate check read only the show's own files** (#56). Both
+  read exactly the same files: those right in the show's folder, in its season folders (and
+  disc or download folders inside them), or in its own download folders. They never read a
+  folder inside it that holds another show, whether hidden, nested deep, or under a folder
+  called Other or Bonus. A file whose name is another show's (`Bluey - S01E02.mkv` in your
+  show's `S01`) is never claimed, nor offered as a duplicate to delete. A file whose name has
+  no title (`S01E01.mkv`, `01.mkv`) counts only in a folder where the show already has files.
+  A video loose in the folder of a show kept in season folders isn't taken for an episode.
+  Featurettes in Plex extras folders (Extras, Featurettes, Behind The Scenes, Deleted Scenes,
+  Interviews, Scenes, Shorts, Trailers, Other) are never taken for episodes. Files the show
+  already has always count.
+- **A link inside a show's folder keeps it from being taken for the show's alone** (#56). A
+  link to another folder or to a video means the download waits in Needs you, and Move to
+  folder won't move the folder.
+- **A show whose folder can't be told has a way out** (#56). Move its files by hand into a
+  folder of its own, then use **Refresh & rescan**. Each recorded file that's gone is found
+  by its name in that TV folder, as long as the name has the show's title and an episode
+  number, exactly one file has it, and no other show has that file. Nothing is followed
+  while the TV folder looks unmounted.
 - Library folders: a show, artist or album whose name is only dots can no longer reach
   outside its library folder. Names like "..." are still allowed.
 - Archive extraction: a refused archive no longer stops the rest of the download. Zips of RAR
@@ -313,8 +382,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   anything: keep the show as it is.
 
 - **Shows whose own folder is named like a season** (`Special`, `Series 7 (2001)`,
-  `S1 (2020)`), and episodes loose in the TV folder, are refused the same way. Renaming
-  their season folders doesn't help. Rename the show's own folder so it doesn't read like a
+  `S1 (2020)`), and episodes loose in the TV folder, are refused too: all their new
+  episodes wait in Needs you, and the same actions are refused. Renaming their season
+  folders doesn't help. Rename the show's own folder so it doesn't read like a
   season (or move loose episodes into a folder named after the show), then start the show
   over (below) without the renaming step.
 
@@ -325,7 +395,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   3. On the Series page, use **Scan library**. The show is added back with its files.
 
   It comes back with searching off and no quality profile: turn searching on and pick its
-  profile again. Its history in Arrmada starts over. New episodes then go into its
+  profile again. Its history in Arrmada starts over, and so do its other settings: an
+  Anime switch you set by hand, its numbering source, aliases, a display title you chose,
+  "monitor new seasons" and per-episode monitoring. New episodes then go into its
   `Season 01`, `Season 02`… folders. The library scan only looks at the folders right
   inside a TV folder, so this doesn't work for a show inside a category folder.
 
@@ -555,7 +627,7 @@ The first tagged release (early development).
 - **Safety nets**: hardlinked imports, a recycle bin, nightly backups, a blocklist, and
   `update.sh` with automatic rollback.
 
-[Unreleased]: https://github.com/tristenlammi/Arrmada/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/tristenlammi/Arrmada/compare/v0.3.2...HEAD
 [0.3.2]: https://github.com/tristenlammi/Arrmada/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/tristenlammi/Arrmada/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/tristenlammi/Arrmada/compare/v0.2.0...v0.3.0

@@ -210,6 +210,11 @@ type homepageWidget struct {
 	Shows    int `json:"shows"`
 	Episodes int `json:"episodes"`
 	Books    int `json:"books"`
+	// Music: library artists, albums with a track on disk and tracks on disk. All 0 while
+	// the Music module is off.
+	Artists int `json:"artists"`
+	Albums  int `json:"albums"`
+	Tracks  int `json:"tracks"`
 	// Wanted is what's monitored and still missing (the Wanted page's searchable titles).
 	Wanted widgetWanted `json:"wanted"`
 	Queue  widgetQueue  `json:"queue"`
@@ -230,6 +235,7 @@ type widgetWanted struct {
 	Movies   int `json:"movies"`
 	Episodes int `json:"episodes"`
 	Books    int `json:"books"`
+	Albums   int `json:"albums"` // released albums Music is searching for; 0 while Music is off
 	Total    int `json:"total"`
 }
 
@@ -349,6 +355,12 @@ func (a *api) homepageWidget(ctx context.Context) homepageWidget {
 		},
 		Version: buildinfo.Version,
 		Disk:    a.widgetDisk(),
+	}
+	if a.musicOn(ctx) {
+		mc := a.musicCounts(ctx)
+		out.Artists, out.Albums, out.Tracks = mc.Artists, mc.Albums, mc.Tracks
+		out.Wanted.Albums = mc.AlbumsMissing
+		out.Wanted.Total += mc.AlbumsMissing
 	}
 
 	if a.deps.Downloads != nil {

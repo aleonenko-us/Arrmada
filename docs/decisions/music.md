@@ -73,6 +73,19 @@ Tags are written in a **staging** folder on the same drive as the library, check
 
 Files already in the library are never retagged in place. A retag of an existing album stages a tagged copy, checks it, and swaps it in, with the original going to the recycle bin.
 
+## Cue-sheet albums are split into tracks
+
+_Built with [MUS-35](../roadmap/MUS.md#mus-35), 2026-10-20._ A download that is one audio image per disc plus a `.cue` sheet is split into one FLAC per track, because Plex comes first and Plex doesn't read cue sheets. The rules it follows:
+
+- **Pregaps stay with the track before.** A track runs from its INDEX 01 to the next track's INDEX 01, so the next track's pregap (INDEX 00 to INDEX 01) is at the end of the earlier track. That's how a CD player plays the disc, what EAC, XLD and foobar2000 do by default, and what per-track rips of the same disc look like; played in order, the tracks are gapless.
+- **Audio before track 1** (track 1's pregap) is imported only as a hidden track ("track 0"), and only when it is at least four seconds long and MusicBrainz lists a track 0 on that disc. Otherwise it's left out, with a log line saying so. Data tracks of an enhanced CD are left out the same way.
+- **Exact, and proven.** ffmpeg decodes the image once to raw 32-bit samples on a pipe; Arrmada cuts that stream at the cue's INDEX points (CD frame × sample rate ÷ 75) and feeds each piece, one at a time, to an ffmpeg FLAC encoder at the image's own bit depth. Memory stays at ffmpeg's baseline (about 50–60 MB) however long the image is. The image's samples are hashed as they stream; then the pieces are decoded again (to 32-bit) and, joined in order, must be the image sample for sample, each with exactly its planned length. A FLAC image must also match the MD5 its own header carries. APE, WavPack and WAV images become FLAC this way too.
+- **The audio must be the disc.** A cue sheet only says where to cut, so before splitting, the image's track audio must be the length MusicBrainz lists for the disc it matched (within a few seconds). With an AcoustID key set, two of the split tracks are also listened to, and the split is refused if AcoustID names other recordings for all it recognises.
+- **Split late, in staging.** The image's tracks are matched first as "virtual" files named, tagged and timed from the cue sheet; the image is split only when the match is confident and placement takes its tracks. The split happens in the music folder's staging area, the download is only read, and each piece goes through the usual house-tag staging (tagged, checked, one move). A split interrupted by a crash is deleted at the next start.
+- **To Reviews, never guessed:** a cue naming a file that isn't in the download, a cue that runs past the end of its image, two cue sheets that cut one image differently, a lossy image, a WAV whose header doesn't describe the file, an image whose length isn't the disc's, or a split that doesn't prove exact. A probe that merely timed out, or a disk that filled up mid-split, is tried again later instead.
+- **Not split:** an image whose tracks are in the download as files already, and a cue sheet that describes per-track files. Those files are imported as they are.
+- The image itself is never copied into the library; the cue sheet and rip log follow the album as extras when the extras list includes them.
+
 ## Sources excluded
 
 Music comes from **Usenet and torrents only**, through the indexers and download clients Arrmada already has.
@@ -94,6 +107,30 @@ Deezer appears above only as a **metadata** source. Arrmada never downloads audi
 - [MUS-03](../roadmap/MUS.md#mus-03) is done (Rebuild); [MUS-25](../roadmap/MUS.md#mus-25) is won't-do.
 - [docs/roadmap/MUS.md](../roadmap/MUS.md) becomes the rebuild plan in five phases: **1 Safety**, **2 Core model**, **3 Stay current**, **4 Household**, **5 Beyond Lidarr**. Existing task IDs are kept where they apply; new work is MUS-26 onward.
 - The README's Music line changes only when [MUS-12](../roadmap/MUS.md#mus-12) graduates the module.
+
+## Staying current: nothing is wanted by surprise
+
+_Added 2026-10-20 with [MUS-13](../roadmap/MUS.md#mus-13) and [MUS-14](../roadmap/MUS.md#mus-14)._
+
+Music re-reads every followed artist from MusicBrainz about once a day (through the cache). Lidarr's version of this regularly wants dozens of albums nobody asked for: a release-type change, a MusicBrainz import of an artist's back catalogue, or a merge. Arrmada's rule is that **a refresh only ever wants a new release**: a release group MusicBrainz didn't list for the artist before, dated within the last year, for a monitored artist whose New releases option says "Want them", and not one of more than ten for that artist in 30 days. Everything else a refresh finds is listed and not wanted, with the reason shown, and Music → New releases offers it with one click. The refresh after a change of options, and the one after MusicBrainz merges the artist's own entry, want nothing. An add that couldn't read the albums keeps its choice for the first refresh that can.
+
+**Undated newcomers wait** (owner's decision, 2026-10-20). A release group MusicBrainz lists with no date could be an announcement or old music catalogued without one. It is listed and not wanted until a date appears; a date within the last year then makes it a new release.
+
+**Albums no longer on MusicBrainz are never searched by themselves** (decided 2026-10-20). They stay in the library with their files and show "No longer on MusicBrainz", not as wanted. Nothing searches them automatically, though a person can search by hand.
+
+Changing an artist's release types, or the library default, never wants or unwants an album by itself; it decides what new albums get and what is listed. Applying the types to the albums already listed is a separate "Want matching albums…" step that shows exactly what it would want or stop wanting first, and never unwants an album that holds files.
+
+And the cache rule holds for refreshes: when MusicBrainz is down, slow, or answers with an empty list, nothing is added, removed, unmonitored or flagged. An album MusicBrainz merged follows its new id; one it removed is flagged "no longer on MusicBrainz" and kept, files and all.
+
+## The library scan, the file check and aliases
+
+_Added 2026-10-20 with [MUS-37](../roadmap/MUS.md#mus-37), [MUS-15](../roadmap/MUS.md#mus-15) and [MUS-38](../roadmap/MUS.md#mus-38)._
+
+**The library scan only reads and records.** It never moves, renames, retags or deletes a file in the music folder; placing and retagging stay separate, explicit actions. It remembers each album folder's modification time, size and inode, so an unchanged folder isn't opened again, and it follows a renamed folder's files by inode instead of losing them. New folders go through the matcher against the target edition of the albums their MBIDs, tags or folder names point at; MusicBrainz is asked only for a missing track listing, or for an artist the library doesn't have (added unmonitored, only when exactly one artist has that name). A folder whose artist and album folder names exactly name a library album is judged as if it had been grabbed for that album. Anything the matcher won't place waits in Reviews, where Match… records it in place; such a folder can never be rejected, because that would delete library files.
+
+**The file check never forgets a file on one miss, and never marks a library missing en masse.** A file that isn't found is noted; it counts as missing only when a check at least 20 hours later still can't find it, and its record stays so a remount links it back. **Missing is a flag, never a download** (owner's rule, 2026-10-20, as for movies): the album shows the files as gone from disk and nothing searches for it by itself, because the files may only be renamed or on a disk that's away; the album page's "Search for missing tracks" (and the Music page's bulk one) is a person's choice. When the folder a missing file should be in looks unmounted (the music folder empty or gone, or the nearest folder still there empty or on another device than the file was), or more than 5% of the files (and at least 20) vanish at once, nothing is marked and a health warning says so. The scan refuses an empty music folder for the same reason. The scan follows a renamed file by inode only when its recorded size and time match too, and not once it has been missing more than three days. A file changed outside Arrmada is measured again and its house-tags state rechecked. Nothing is ever deleted.
+
+**An alias only counts as a release's whole artist part.** MusicBrainz aliases (other scripts, legal and old names) widen matching for the artist's own albums only: "Utada Hikaru - First Love" is 宇多田ヒカル's, but an alias found as words inside a longer name never matches ("Ye" names "Ye - Donda", never "Ye Vagabonds - Live"), and an alias that is another artist's name is never used. An album search tries at most two aliases, and only when the artist's own name found nothing.
 
 ## Revisit when
 

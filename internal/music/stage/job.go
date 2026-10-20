@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/audiotag"
-	"github.com/tristenlammi/arrmada/internal/diskspace"
 	"github.com/tristenlammi/arrmada/internal/library"
 )
 
@@ -150,7 +149,11 @@ func Start(libraryRoot string, m Manifest, d Deps) (*Job, error) {
 		if m.Kind != KindRename {
 			// A flat, numbered name: what the file is called in the download doesn't
 			// matter here, and can't collide or carry odd characters.
-			it.Staged = filepath.Join(dir, filesDir, fmt.Sprintf("%04d%s", i, strings.ToLower(filepath.Ext(it.Final))))
+			ext := strings.ToLower(filepath.Ext(it.Final))
+			if m.Kind == KindSplit {
+				ext = ".flac" // a split's pieces go nowhere themselves: they're imported
+			}
+			it.Staged = filepath.Join(dir, filesDir, fmt.Sprintf("%04d%s", i, ext))
 		}
 	}
 	j := &Job{dir: dir, m: m, d: d}
@@ -187,35 +190,27 @@ func (j *Job) set(i int, f func(it *Item)) error {
 // which is where the copies land. On a pooled filesystem (mergerfs, an Unraid user share)
 // that is the pool's free space as the pool reports it; which disk a copy actually lands
 // on is the pool's choice and can't be seen from here.
+//
+// A split piece (Item.Scratch) is already on this drive and is deleted as soon as its copy
+// is in the library, so only the biggest of them counts: one copy of one piece at a time.
 func (j *Job) CheckSpace() error {
-	var need uint64
+	var need, scratch uint64
 	for _, it := range j.Items() {
 		if it.State != Planned || it.Staged == "" {
 			continue
 		}
-		if fi, err := os.Stat(it.Source); err == nil {
-			need += uint64(fi.Size())
+		fi, err := os.Stat(it.Source)
+		if err != nil {
+			continue
+		}
+		switch n := uint64(fi.Size()); {
+		case !it.Scratch || !j.isScratch(it.Source):
+			need += n
+		case n > scratch:
+			scratch = n
 		}
 	}
-	if need == 0 {
-		return nil
-	}
-	free := j.d.FreeBytes
-	if free == nil {
-		free = func(p string) (uint64, bool) {
-			u, ok := diskspace.Of(p)
-			return u.FreeBytes, ok
-		}
-	}
-	have, ok := free(j.dir)
-	if !ok {
-		return nil
-	}
-	margin := uint64(64<<20) + need/50
-	if have < need+margin {
-		return fmt.Errorf("%w: %d MB needed, %d MB free", ErrNoSpace, (need+margin)>>20, have>>20)
-	}
-	return nil
+	return j.checkFree(need + scratch)
 }
 
 // Stage copies item i's source into the job. Always a copy, never a link: the source may
@@ -467,6 +462,7 @@ func (j *Job) placed(i int) error {
 		return err
 	}
 	j.retire(it)
+	j.dropScratch(it)
 	return nil
 }
 

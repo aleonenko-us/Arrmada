@@ -120,6 +120,56 @@ test.describe("Music on the kit", () => {
     await expect(page.getByText("hidden track.flac")).toBeVisible();
   });
 
+  // MUS-37: the scan results drawer says what the last scan found and links the folders
+  // waiting to be matched.
+  test("the last scan's results open from Library tools", async ({ page }) => {
+    await mockMusic(page);
+    await page.route((u) => u.pathname === "/api/v1/music/scan", (route) => json(route, {
+      last: {
+        folders: 1200, skipped: 1150, artists: 2, albums: 40, tracks: 480, moved: 12, unmatched: [], reviews: 3, failed: 0,
+        waiting: 0, remaining: 0, opened: 520, measured: 0, workers: 4, walk_ms: 850, read_ms: 4100, total_ms: 6200,
+        verify: { checked: 9000, not_found: 1, missing: 2, back: 0, changed: 1, skipped: 0 },
+      },
+      started_at: "2026-10-20T08:00:00Z", finished_at: "2026-10-20T08:00:06Z",
+    }));
+    await page.goto("/music");
+    await page.getByRole("button", { name: "Library tools" }).click();
+    await page.getByRole("menuitem", { name: "Last scan results" }).click();
+    const drawer = page.getByRole("dialog", { name: "Library scan" });
+    await expect(drawer.getByText("Unchanged since the last scan")).toBeVisible();
+    await expect(drawer.getByText("Track files gone from disk")).toBeVisible();
+    await expect(drawer.getByRole("link", { name: /Match the 3 folders in Reviews/ })).toHaveAttribute("href", "/activity/needs-you");
+  });
+
+  // MUS-15: the file check's markers on track rows.
+  test("the album page marks tracks gone from disk or changed elsewhere", async ({ page }) => {
+    await mockMusic(page);
+    let searched = 0;
+    await page.route((u) => u.pathname === "/api/v1/music/albums/51/search-missing", (route) => { searched++; return json(route, { status: "searching" }); });
+    await page.route((u) => u.pathname === "/api/v1/music/albums/51", (route) => json(route, {
+      ...album,
+      missing_tracks: 1,
+      tracks: [
+        { ...album.tracks![0], changed_at: "2026-10-20T08:00:00Z" },
+        album.tracks![1],
+        { ...album.tracks![2], missing: true, file_path: "/music/The Quiet Harbours/Low Tide/03 Lantern.flac" },
+      ],
+    }));
+    await page.goto("/music/album/51");
+    await expect(page.getByText("gone from disk", { exact: true })).toBeVisible();
+    await expect(page.getByText("changed", { exact: true })).toBeVisible();
+    await expect(page.getByText("file missing", { exact: true })).toBeVisible();
+    // Never searched by itself: the album page offers the search.
+    const note = page.getByRole("region", { name: "Track files gone from disk" });
+    await expect(note.getByText(/doesn't download them again by itself/)).toBeVisible();
+    await expect(note.getByText(/Run a library scan first/)).toBeVisible();
+    await note.getByRole("button", { name: "Search for missing tracks" }).click();
+    const ask = page.getByRole("dialog", { name: "Search for the missing tracks?" });
+    await expect(ask.getByText(/Moved or retagged these files yourself\?/)).toBeVisible();
+    await ask.getByRole("button", { name: "Search" }).click();
+    await expect.poll(() => searched).toBe(1);
+  });
+
   test("the album page explains an upgrade note and resolves it", async ({ page }) => {
     const state = await mockMusic(page);
     await page.goto("/music/album/51");
@@ -137,5 +187,73 @@ test.describe("Music on the kit", () => {
     await expect(page.getByText(/The Quiet Harbours & Ana Lys/)).toBeVisible();
     await page.getByRole("link", { name: /Low Tide/ }).click();
     await expect(page).toHaveURL(/\/music\/album\/51$/);
+  });
+
+  // MUS-14: the artist's options round trip. Saving sends what was chosen; wanting the
+  // albums the types allow asks first and sends the counts it showed.
+  test("an artist's options save, and Want matching albums asks first", async ({ page }) => {
+    await mockMusic(page);
+    const plan = { want: [{ id: 52, title: "Live at the Pier", year: 2021 }], unwant: [], singles: [] };
+    const options = {
+      monitor_new: "", release_types: null as null | { primary: string[]; secondary: string[] },
+      effective_monitor_new: "all", effective_release_types: { primary: ["Album", "EP"], secondary: [] as string[] },
+      default_monitor_new: "all", default_release_types: { primary: ["Album", "EP"], secondary: [] as string[] },
+      quality_profile: "lossless", apply: { want: [], unwant: [], singles: [] } as typeof plan,
+    };
+    const choices = { primary: ["Album", "EP", "Single", "Broadcast", "Other"], secondary: ["Compilation", "Soundtrack", "Live", "Remix"] };
+    const sent: unknown[] = [];
+    const applied: unknown[] = [];
+    await page.route((u) => u.pathname === "/api/v1/music/artists/5/options", async (route) => {
+      if (route.request().method() === "PUT") {
+        const body = route.request().postDataJSON() as { monitor_new: string; release_types: typeof options.release_types };
+        sent.push(body);
+        Object.assign(options, { monitor_new: body.monitor_new, release_types: body.release_types, effective_release_types: body.release_types ?? options.default_release_types, apply: plan });
+        return json(route, { options, choices, refreshed: true });
+      }
+      return json(route, { options, choices });
+    });
+    await page.route((u) => u.pathname === "/api/v1/music/artists/5/options/apply", (route) => {
+      applied.push(route.request().postDataJSON());
+      return json(route, { applied: plan });
+    });
+
+    await page.goto("/music/5");
+    await page.getByRole("button", { name: "Options", exact: true }).click();
+    const panel = page.getByRole("region", { name: "Artist options" });
+    await expect(panel.getByText("Every listed album already matches these types.")).toBeVisible();
+    await panel.getByRole("switch", { name: /use the library default/ }).click();
+    await panel.getByLabel("Live").check();
+    await panel.getByRole("button", { name: "Save options" }).click();
+    await expect.poll(() => sent).toEqual([{ monitor_new: "", release_types: { primary: ["Album", "EP"], secondary: ["Live"] } }]);
+
+    await panel.getByRole("button", { name: "Want matching albums…" }).click();
+    const ask = page.getByRole("dialog", { name: "Apply the release types to the albums already listed?" });
+    await expect(ask.getByText("Wanted: Live at the Pier (2021)")).toBeVisible();
+    expect(applied).toEqual([]);
+    await ask.getByRole("button", { name: "Apply" }).click();
+    await expect.poll(() => applied).toEqual([{ want: [52], unwant: [], singles: [] }]);
+  });
+
+  test("New releases lists what the refresh found and wants one by hand", async ({ page }) => {
+    await mockMusic(page);
+    const wanted: unknown[] = [];
+    await page.route((u) => u.pathname === "/api/v1/music/new-releases", (route) => json(route, {
+      days: 30,
+      albums: [
+        { id: 61, artist_id: 5, artist_name: "The Quiet Harbours", title: "Spring Tide", album_type: "Album", release_date: "2026-10-03", monitored: true, found_as: "new" },
+        { id: 62, artist_id: 5, artist_name: "The Quiet Harbours", title: "Early Demos", album_type: "Album", release_date: "2009-01-01", monitored: false, found_as: "back_catalogue" },
+      ],
+    }));
+    await page.route((u) => u.pathname === "/api/v1/music/albums/62/monitor", (route) => {
+      wanted.push(route.request().postDataJSON());
+      return json(route, { monitored: true });
+    });
+    await page.goto("/music");
+    await page.getByRole("button", { name: "New releases" }).click();
+    const dialog = page.getByRole("dialog", { name: "New releases" });
+    await expect(dialog.getByText("New release, wanted")).toBeVisible();
+    await expect(dialog.getByText(/Older music MusicBrainz only now lists/)).toBeVisible();
+    await dialog.getByRole("button", { name: "Want" }).click();
+    await expect.poll(() => wanted).toEqual([{ monitored: true }]);
   });
 });

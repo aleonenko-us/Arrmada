@@ -127,6 +127,14 @@ export function foundLine(job: Job): string {
   return review > 0 ? `${titles}; ${review.toLocaleString()} need${review === 1 ? "s" : ""} review` : `${titles}.`;
 }
 
+// musicReviewsOf is how many folders a finished music scan left in Reviews to be matched
+// (MUS-37: its result's reviews).
+export function musicReviewsOf(job: Job | null): number {
+  if (!job || job.status !== "succeeded") return 0;
+  const r = job.result as { reviews?: unknown } | null | undefined;
+  return typeof r?.reviews === "number" ? r.reviews : 0;
+}
+
 // unmatchedOf is how many folders a finished scan couldn't identify (its result's count).
 export function unmatchedOf(job: Job | null): number {
   if (!job || job.status !== "succeeded") return 0;

@@ -103,6 +103,9 @@ type Coordinator struct {
 	musicSearchFn func(ctx context.Context, q indexer.SearchQuery) (indexer.SearchResult, error)
 	musicQueueFn  func(ctx context.Context) ([]download.Item, error)
 	musicGrabFn   func(ctx context.Context, indexerName, url, title, category string) (string, error)
+	// musicRefreshBudget overrides refresh-music-artists' MusicBrainz call budget (0: the
+	// default). See RefreshMusicArtists.
+	musicRefreshBudget int64
 	// probeAudioFn measures an audio file (nil: ffprobe through mediainfo). See probeAudio.
 	probeAudioFn func(ctx context.Context, path string) (mediainfo.AudioInfo, error)
 	// musicTagsFn reads an audio file's tags and length for the matcher (nil: audiotag).
@@ -137,6 +140,8 @@ type Coordinator struct {
 	// musicPlace is music placement's wiring: house tags, covers, extras, album locks
 	// (music_placement.go).
 	musicPlace musicPlacement
+	// musicVerify is the music verify pass's last outcome (music_verify.go).
+	musicVerify musicVerifyState
 
 	// The stall clock — when each pending grab's download last moved forward — and when a
 	// stalled one last found no replacement are kept on its grab row (acquisitions.go), so

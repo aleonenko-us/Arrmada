@@ -1,4 +1,4 @@
-import { req, type ReviewImportStarted } from "./api";
+import { req, type JobRef, type ReviewImportStarted } from "./api";
 
 // Music calls that only the staff music pages make. Their own module, not part of
 // lib/api.ts, so none of it lands in a requester's first load.
@@ -39,9 +39,109 @@ export interface MusicMatching {
   edition_policy: "original" | "most_complete" | "preferred";
   edition_countries: string[];
   edition_media: string[];
+  /** How many album folders the library scan reads at once (1–16). */
+  scan_workers: number;
+}
+
+/** What one library scan did (MUS-37). */
+export interface MusicScanSummary {
+  folders: number;
+  skipped: number;
+  artists: number;
+  albums: number;
+  tracks: number;
+  moved: number;
+  unmatched: string[];
+  reviews: number;
+  failed: number;
+  waiting: number;
+  /** Matched, but a track still holds another file on disk: looked at again next scan. */
+  held?: number;
+  remaining: number;
+  opened: number;
+  measured: number;
+  workers: number;
+  full?: boolean;
+  walk_ms: number;
+  read_ms: number;
+  total_ms: number;
+  /** The file check that runs after the scan (MUS-15). */
+  verify?: { checked: number; not_found: number; missing: number; back: number; changed: number; skipped: number; refused?: string; away?: string[] };
+}
+
+/** Which release groups an artist lists (MUS-14): the primary type must be allowed AND
+ *  every secondary type. */
+export interface ReleaseTypes {
+  primary: string[];
+  secondary: string[];
+}
+
+export type MonitorNew = "all" | "none";
+
+/** What "Want matching albums" would do: nothing happens until it's confirmed. */
+export interface ApplyPlan {
+  want: { id: number; title: string; type?: string; year?: number }[];
+  unwant: { id: number; title: string; type?: string; year?: number }[];
+  singles: { id: number; title: string; type?: string; year?: number }[];
+}
+
+/** An artist's options: its own choices ("" / null follow the library default). */
+export interface ArtistOptions {
+  monitor_new: "" | MonitorNew;
+  release_types: ReleaseTypes | null;
+  effective_monitor_new: MonitorNew;
+  effective_release_types: ReleaseTypes;
+  default_monitor_new: MonitorNew;
+  default_release_types: ReleaseTypes;
+  quality_profile: string;
+  apply: ApplyPlan;
+}
+
+export interface ReleaseTypeChoices {
+  primary: string[];
+  secondary: string[];
+}
+
+export interface ReleaseDefaults {
+  monitor_new: MonitorNew;
+  release_types: ReleaseTypes;
+}
+
+/** An album a refresh found, with why it is or isn't wanted (found_as). */
+export interface NewRelease {
+  id: number;
+  artist_id: number;
+  artist_name: string;
+  title: string;
+  album_type?: string;
+  release_date?: string;
+  year?: number;
+  monitored: boolean;
+  found_at?: string;
+  found_as?: string;
 }
 
 export const musicApi = {
+  artistOptions: (artistId: number) =>
+    req<{ options: ArtistOptions; choices: ReleaseTypeChoices }>(`/api/v1/music/artists/${artistId}/options`),
+  /** Save an artist's options. release_types null = follow the library default. */
+  setArtistOptions: (artistId: number, patch: { monitor_new?: "" | MonitorNew; release_types?: ReleaseTypes | null; quality_profile?: string }) =>
+    req<{ options: ArtistOptions; choices: ReleaseTypeChoices; refreshed: boolean }>(`/api/v1/music/artists/${artistId}/options`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+  /** Carry out the plan the person saw (its albums); 409 when it changed. */
+  applyArtistOptions: (artistId: number, plan: ApplyPlan) =>
+    req<{ applied: ApplyPlan }>(`/api/v1/music/artists/${artistId}/options/apply`, {
+      method: "POST",
+      body: JSON.stringify({ want: plan.want.map((a) => a.id), unwant: plan.unwant.map((a) => a.id), singles: plan.singles.map((a) => a.id) }),
+    }),
+  releaseDefaults: () =>
+    req<{ settings: ReleaseDefaults; defaults: ReleaseDefaults; choices: ReleaseTypeChoices }>("/api/v1/music/release-defaults"),
+  setReleaseDefaults: (patch: Partial<ReleaseDefaults>) =>
+    req<{ settings: ReleaseDefaults }>("/api/v1/music/release-defaults", { method: "PUT", body: JSON.stringify(patch) }),
+  newReleases: (days = 30) => req<{ albums: NewRelease[]; days: number }>(`/api/v1/music/new-releases?days=${days}`),
+
   /** Mark one of an album's upgrade notes as looked at; the sweep searches the album again. */
   resolveAlbumNote: (albumId: number, noteId: number) =>
     req<{ status: string }>(`/api/v1/music/albums/${albumId}/notes/${noteId}/resolve`, { method: "POST" }),
@@ -57,6 +157,20 @@ export const musicApi = {
       method: "PUT",
       body: JSON.stringify({ release_id: releaseId, pinned }),
     }),
+
+  /** Search for an album whose track files are gone from disk (nothing does by itself). */
+  searchMissingTracks: (albumId: number) =>
+    req<{ status: string } & JobRef>(`/api/v1/music/albums/${albumId}/search-missing`, { method: "POST" }),
+  /** How many albums have track files gone from disk. */
+  missingAlbums: () => req<{ albums: number }>("/api/v1/music/search-missing"),
+  /** Search for every album with track files gone from disk, one after another. */
+  searchAllMissing: () => req<{ status: string } & JobRef>("/api/v1/music/search-missing", { method: "POST" }),
+
+  /** The last library scan's summary (null before the first). */
+  lastScan: () => req<{ last: MusicScanSummary | null; started_at?: string; finished_at?: string }>("/api/v1/music/scan"),
+  /** Scan the music folder; full looks at every folder again, ignoring the scan's memory. */
+  scanLibrary: (full = false) =>
+    req<{ status: string } & JobRef>("/api/v1/music/scan", { method: "POST", body: JSON.stringify({ full }) }),
 
   matching: () => req<{ settings: MusicMatching; defaults: MusicMatching }>("/api/v1/music/matching"),
   setMatching: (patch: Partial<MusicMatching>) =>

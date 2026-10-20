@@ -386,6 +386,13 @@ func main() {
 		}
 		log.Info("quality: repointed titles on deleted profiles to the default", args...)
 	}
+	// One sensible music profile on an install that has none, once (MUS-14): never a
+	// second one, and never again after the owner deletes it.
+	if created, err := qualitySvc.EnsureDefaultMusicProfile(context.Background()); err != nil {
+		log.Warn("quality: couldn't set up the default music profile", "err", err)
+	} else if created {
+		log.Info("quality: added the music profile " + quality.DefaultMusicPreset)
+	}
 	notifySvc := notify.NewService(st.DB(), bus, modLog(log, "notify"))
 	pushSvc := push.New(st.DB(), settingsSvc, modLog(log, "notify"))
 	// Episode NUMBERING comes from TVmaze; everything else about a show still comes from
@@ -897,6 +904,20 @@ func main() {
 		coordinator.SearchMusicMissing(ctx)
 		return nil
 	}, scheduler.Label("Search for missing albums"), scheduler.Description("Searches the indexers for monitored albums that are missing tracks."))
+	// Look for better copies of complete albums, up to each profile's cutoff (MUS-16).
+	sched.Register("upgrade-music", 6*time.Hour, false, func(ctx context.Context) error {
+		coordinator.UpgradeMusic(ctx)
+		return nil
+	}, scheduler.Label("Look for better album releases"), scheduler.Description("Grabs a better copy of a complete album when its quality profile allows upgrades and the files are below the profile's top tier. Searches at most 10 albums a run and grabs no more than the per-sweep limit (Settings → Downloads); replaced files go to the recycle bin."))
+	// Check recorded music files against the disk (MUS-15). Daily: it stats every recorded
+	// file, which can wake array disks. It only marks; it never deletes or forgets a file.
+	sched.Register("verify-music-files", 24*time.Hour, false, func(ctx context.Context) error {
+		_, err := coordinator.VerifyMusicFiles(ctx)
+		if errors.Is(err, automation.ErrModuleOff) {
+			return nil
+		}
+		return err
+	}, scheduler.Label("Check music files"), scheduler.Description("Notices music files that vanished from disk or changed outside Arrmada. A file not found twice, a day apart, is marked as gone from disk; it is never downloaded again by itself (Search for missing tracks on the album page). A changed one is measured again. Never deletes anything; if the music folder or a share in it looks unmounted it marks nothing and raises a health warning."))
 	// Bring stale MusicBrainz answers up to date, slowly, on the background lane: cached
 	// answers are never removed, and a page open never waits on this.
 	sched.Register("refresh-music-cache", 6*time.Hour, false, func(ctx context.Context) error {
@@ -909,6 +930,19 @@ func main() {
 		}
 		return err
 	}, scheduler.Label("Refresh MusicBrainz answers"), scheduler.Description("Rechecks cached MusicBrainz answers that are past their freshness, at most 300 a run at MusicBrainz's pace. Nothing cached is ever removed; when MusicBrainz is down, Music keeps working from the cache."))
+	// Keep followed artists current: new releases, merged entries, missing listings and
+	// the upgrade's legacy editions, within a MusicBrainz call budget a run.
+	sched.Register("refresh-music-artists", 6*time.Hour, false, func(ctx context.Context) error {
+		rep, err := coordinator.RefreshMusicArtists(ctx)
+		if rep.Artists+rep.Listings+rep.SinglesSettled+rep.EditionsTried > 0 {
+			log.Info("music: refreshed followed artists", "artists", rep.Artists, "unanswered", rep.Unanswered,
+				"added", rep.Added, "wanted", rep.Wanted, "searched", rep.Searched, "no_longer_listed", rep.Stale,
+				"merged", rep.Merged, "singles_checked", rep.SinglesSettled, "listings", rep.Listings,
+				"editions_tried", rep.EditionsTried, "editions_rekeyed", rep.EditionsRekeyed,
+				"musicbrainz_calls", rep.Calls, "stopped", rep.Stopped)
+		}
+		return err
+	}, scheduler.Label("Refresh followed artists"), scheduler.Description("Rereads each followed artist's albums from MusicBrainz about once a day (through the cache, at most 200 requests a run) and adds new releases: wanted when the artist's New releases setting says so, older music only listed. Searches new releases that are out, fills missing track listings, and moves a few upgraded albums a run onto their real MusicBrainz edition. Nothing is removed when MusicBrainz is down."))
 	// Import finished album downloads (arrmada-music category).
 	sched.Register("import-music", 30*time.Second, false, func(ctx context.Context) error {
 		coordinator.ImportMusicDownloads(ctx)

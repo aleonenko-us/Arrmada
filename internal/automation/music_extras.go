@@ -36,8 +36,11 @@ func (c *Coordinator) bringExtras(al music.Album, contentRoot, release string, p
 	var dirs []string
 	lyrics := map[string]string{}
 	for _, p := range placed {
-		dirs = append(dirs, filepath.Dir(p.f.Path))
-		lyrics[strings.TrimSuffix(p.f.Path, filepath.Ext(p.f.Path))] = strings.TrimSuffix(p.target, filepath.Ext(p.target))
+		src := p.source() // a split track's image, not the piece in staging
+		dirs = append(dirs, filepath.Dir(src))
+		if !p.scratch {
+			lyrics[strings.TrimSuffix(src, filepath.Ext(src))] = strings.TrimSuffix(p.target, filepath.Ext(p.target))
+		}
 	}
 	base := commonDir(dirs)
 	albumDir := placed[0].albumDir

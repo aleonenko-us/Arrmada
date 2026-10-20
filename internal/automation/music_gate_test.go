@@ -62,7 +62,9 @@ func TestNilModuleGateIsOn(t *testing.T) {
 		t.Error("a nil gate must read as on")
 	}
 	on, _ := gateTestCoord(t, true)
-	if _, err := on.ScanMusicLibrary(context.Background(), nil); err != nil {
-		t.Errorf("scan of an empty library with Music on = %v, want nil", err)
+	// Music on, so the scan runs: an empty music folder is refused as possibly unmounted
+	// (MUS-37), not reported as the module being off.
+	if _, err := on.ScanMusicLibrary(context.Background(), nil); errors.Is(err, ErrModuleOff) || !errors.Is(err, ErrMusicFolderEmpty) {
+		t.Errorf("scan of an empty music folder with Music on = %v, want ErrMusicFolderEmpty", err)
 	}
 }

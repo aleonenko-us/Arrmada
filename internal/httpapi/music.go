@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -47,6 +48,15 @@ func (a *api) handleAddArtist(w http.ResponseWriter, r *http.Request) {
 		MBID           string `json:"mbid"`
 		QualityProfile string `json:"quality_profile"`
 		Monitored      *bool  `json:"monitored"`
+		// Monitor is which of the artist's current albums are wanted: all (default),
+		// future, latest or none. MonitorNew and ReleaseTypes are the artist's own
+		// options (MUS-14); left out, it follows the library defaults.
+		Monitor      string              `json:"monitor"`
+		MonitorNew   string              `json:"monitor_new"`
+		ReleaseTypes *music.ReleaseTypes `json:"release_types"`
+		// SearchNow searches the albums it wants straight away (the artist's Search now);
+		// left out, it follows Search on add (Settings).
+		SearchNow *bool `json:"search_now"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
@@ -55,11 +65,37 @@ func (a *api) handleAddArtist(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusBadRequest, "mbid is required")
 		return
 	}
+	if req.Monitor != "" && !music.ValidMonitor(req.Monitor) {
+		a.writeError(w, http.StatusBadRequest, `monitor must be "all", "future", "latest" or "none"`)
+		return
+	}
+	if !music.ValidMonitorNew(req.MonitorNew) {
+		a.writeError(w, http.StatusBadRequest, `monitor_new must be "all", "none" or "" (the library default)`)
+		return
+	}
+	if req.ReleaseTypes != nil {
+		if _, err := req.ReleaseTypes.Normalize(); err != nil {
+			a.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	if req.QualityProfile == "" {
 		req.QualityProfile = a.deps.Quality.DefaultProfile(r.Context(), quality.MediaMusic)
+	} else if a.deps.Automation != nil && !a.deps.Automation.KnownProfile(r.Context(), req.QualityProfile) {
+		a.writeError(w, http.StatusBadRequest, "unknown quality profile")
+		return
 	}
 	monitored := req.Monitored == nil || *req.Monitored
-	art, err := a.deps.Music.AddArtist(r.Context(), strings.TrimSpace(req.MBID), req.QualityProfile, monitored)
+	monitor := req.Monitor
+	if monitor == "" {
+		monitor = music.MonitorAll
+		if !monitored {
+			monitor = music.MonitorNone
+		}
+	}
+	art, err := a.deps.Music.AddArtistWith(r.Context(), strings.TrimSpace(req.MBID), req.QualityProfile, music.AddOptions{
+		Monitored: monitored, Monitor: monitor, MonitorNew: req.MonitorNew, ReleaseTypes: req.ReleaseTypes,
+	})
 	switch {
 	case errors.Is(err, music.ErrExists):
 		a.writeError(w, http.StatusConflict, "that artist is already in your library")
@@ -67,6 +103,13 @@ func (a *api) handleAddArtist(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		a.writeError(w, http.StatusBadGateway, "could not add the artist: "+err.Error())
 		return
+	}
+	searchNow := a.deps.Settings.GetBool(r.Context(), keySearchOnAdd, true)
+	if req.SearchNow != nil {
+		searchNow = *req.SearchNow
+	}
+	if searchNow && art.Monitored && a.deps.Automation != nil {
+		_, _, _ = a.submit(r, triggered(automation.TriggerAdd, a.artistSearchJob(art.ID, false)))
 	}
 	a.writeJSON(w, http.StatusCreated, art)
 }
@@ -238,32 +281,14 @@ func (a *api) musicErr(w http.ResponseWriter, err error, msg string) {
 // collection means one MusicBrainz lookup per unknown artist at one request per second,
 // far longer than any sensible request timeout.
 func (a *api) handleScanMusicLibrary(w http.ResponseWriter, r *http.Request) {
-	// One scan at a time (single-flight): two overlapping runs would double every
-	// MusicBrainz lookup and race each other's writes. Its own class, so an hours-long music
-	// scan doesn't hold up the other libraries' scans.
-	jobID, existing, ok := a.submitOr503(w, r, jobs.Spec{Kind: "music.scan", Target: "all", Class: "music.scan", Timeout: libraryScanTimeout,
-		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
-			res, err := a.deps.Automation.ScanMusicLibrary(ctx, func(done, total int) {
-				if total > 0 {
-					p.Set(float64(done)/float64(total), fmt.Sprintf("Scanning %s / %s album folders", thousands(done), thousands(total)))
-				}
-			})
-			if err != nil {
-				return nil, err
-			}
-			a.deps.Log.Info("music scan complete", "artists", res.Artists, "albums", res.Albums,
-				"tracks", res.Tracks, "unmatched", len(res.Unmatched))
-			a.deps.Bus.Publish("library.scanned", map[string]any{
-				"media": "music", "artists": res.Artists, "albums": res.Albums,
-				"tracks": res.Tracks, "unmatched": len(res.Unmatched),
-			})
-			msg := fmt.Sprintf("Found %s, %s and %s", countOf(res.Artists, "artist"), countOf(res.Albums, "album"), countOf(res.Tracks, "track"))
-			if n := len(res.Unmatched); n > 0 {
-				msg += "; " + countOf(n, "folder") + " not recognised"
-			}
-			p.SetMessage(msg)
-			return map[string]int{"artists": res.Artists, "albums": res.Albums, "tracks": res.Tracks, "unmatched": len(res.Unmatched)}, nil
-		}})
+	var req struct {
+		// Full looks at every folder again, ignoring what earlier scans remembered.
+		Full bool `json:"full"`
+	}
+	if r.ContentLength > 0 && !a.decodeJSON(w, r, &req) { // body optional
+		return
+	}
+	jobID, existing, ok := a.submitOr503(w, r, a.musicScanJob(req.Full))
 	if !ok {
 		return
 	}
@@ -272,6 +297,77 @@ func (a *api) handleScanMusicLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.accepted(w, jobID, false, map[string]any{"status": "scanning"})
+}
+
+// musicScanFollowUp queues an incremental music scan as a job (the file check's follow-up,
+// MUS-15): files it just found gone may be ones renamed elsewhere, which only a scan links
+// again. Single-flight with any scan already running.
+func (a *api) musicScanFollowUp() {
+	if _, _, err := a.submit(nil, withTrigger(a.musicScanJob(false), "system:music-file-check")); err != nil {
+		a.deps.Log.Warn("music: couldn't queue the scan after the file check", "err", err)
+	}
+}
+
+func withTrigger(s jobs.Spec, trigger string) jobs.Spec {
+	s.Trigger = trigger
+	return s
+}
+
+// musicScanJob is the library scan as a job. One scan at a time (single-flight): two
+// overlapping runs would double every MusicBrainz lookup and race each other's writes. Its
+// own class, so an hours-long music scan doesn't hold up the other libraries' scans.
+func (a *api) musicScanJob(full bool) jobs.Spec {
+	return jobs.Spec{Kind: "music.scan", Target: "all", Class: "music.scan", Timeout: libraryScanTimeout,
+		Fn: func(ctx context.Context, p *jobs.Progress) (any, error) {
+			p.SetMessage("Walking the music folder…")
+			res, err := a.deps.Automation.ScanMusicLibraryWith(ctx, automation.MusicScanOptions{Full: full}, func(done, total int) {
+				if total > 0 {
+					p.Set(float64(done)/float64(total), fmt.Sprintf("Reading %s / %s album folders", thousands(done), thousands(total)))
+				}
+			})
+			if err != nil {
+				return nil, err
+			}
+			a.deps.Log.Info("music scan complete", "artists", res.Artists, "albums", res.Albums,
+				"tracks", res.Tracks, "reviews", res.Reviews)
+			a.deps.Bus.Publish("library.scanned", map[string]any{
+				"media": "music", "artists": res.Artists, "albums": res.Albums,
+				"tracks": res.Tracks, "unmatched": res.Reviews,
+			})
+			p.SetMessage(musicScanMessage(res))
+			return res, nil
+		}}
+}
+
+// musicScanMessage is a finished scan's one line: what it found, and what's left to do.
+func musicScanMessage(res automation.MusicScanResult) string {
+	msg := fmt.Sprintf("Found %s, %s and %s", countOf(res.Artists, "new artist"), countOf(res.Albums, "album"), countOf(res.Tracks, "track"))
+	if res.Moved > 0 {
+		msg += "; followed " + countOf(res.Moved, "moved file")
+	}
+	if res.Reviews > 0 {
+		msg += "; " + countOf(res.Reviews, "folder") + " to match in Reviews"
+	}
+	if n := res.Remaining + res.Failed + res.Waiting + res.Held; n > 0 {
+		msg += "; " + countOf(n, "folder") + " left for the next scan"
+	}
+	return msg + "."
+}
+
+// handleMusicScanStatus answers the last library scan's summary (counts and timings), for
+// the scan results drawer.
+func (a *api) handleMusicScanStatus(w http.ResponseWriter, r *http.Request) {
+	summary, started, finished, ok, err := a.deps.Music.LastScanRun(r.Context())
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not read the last scan")
+		return
+	}
+	out := map[string]any{"last": nil}
+	if ok && json.Valid([]byte(summary)) {
+		out["last"] = json.RawMessage(summary)
+		out["started_at"], out["finished_at"] = started, finished
+	}
+	a.writeJSON(w, http.StatusOK, out)
 }
 
 // handleGrabDiscography grabs a whole-catalogue pack for an artist.

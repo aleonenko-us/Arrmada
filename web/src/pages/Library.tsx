@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { LINKS } from "../lib/links";
 import { api, type LibraryPaths, type BrowseResult, type FolderCheck, type UnmatchedFolder, type MatchCandidate } from "../lib/api";
 import { useMe, isAdmin } from "../lib/me";
 import { foldersApi } from "../lib/foldersApi";
@@ -9,7 +10,7 @@ import { useAutoSave } from "../lib/useAutoSave";
 import { SavedTick } from "../components/settings/auto";
 import { Modal, useToast } from "../ui";
 import { useLiveEvent, useOnReconnect } from "../lib/live";
-import { scanLine, unmatchedOf, useLibraryScan } from "../lib/useLibraryScan";
+import { musicReviewsOf, scanLine, unmatchedOf, useLibraryScan } from "../lib/useLibraryScan";
 
 // LibraryFolders — points each library at a folder (with an in-app picker) and scans it.
 // Lives inside Settings → Library. Mount your media into the container (see the
@@ -116,6 +117,8 @@ function FolderRow({ row, paths, admin, canScan, onScanned, onSaved }: {
   const scan = useLibraryScan(row.job ?? "", row.scan ?? noScan, onScanned, row.target);
   const line = scanLine(row.label, scan);
   const unmatched = row.review ? unmatchedOf(scan.job) : 0;
+  // Music's unplaced folders wait in Reviews (MUS-37), not in the list below.
+  const toMatch = row.key === "music" ? musicReviewsOf(scan.job) : 0;
   const [picking, setPicking] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const onBlocking = useCallback((_: PathKey, b: boolean) => setBlocking(b), []);
@@ -142,6 +145,7 @@ function FolderRow({ row, paths, admin, canScan, onScanned, onSaved }: {
         <div role="status" className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
           {line && <span style={{ color: line.tone === "good" ? "var(--good-text)" : line.tone === "error" ? "var(--reject-text)" : "var(--ink-dim)" }}>{line.text}</span>}
           {unmatched > 0 && <a href="#needs-review" className="font-semibold" style={{ color: "var(--accent-text)" }}>{unmatched} need review ↓</a>}
+          {toMatch > 0 && <Link to={LINKS.review} className="font-semibold" style={{ color: "var(--accent-text)" }}>{toMatch.toLocaleString()} to match in Reviews →</Link>}
           {scan.note && !scan.note.error && <span className="text-ink-faint">{scan.note.text}</span>}
         </div>
       )}

@@ -270,7 +270,9 @@ export function ReviewsPanel({ compact = false }: { compact?: boolean } = {}) {
                 onRetry={() => act(r.id, () => api.retryReview(r.id), "Retrying — the import runs again within a minute.")}
                 onRemove={() => setRemoving(r)}
                 onMap={() => setMapping(r)}
-                onDismiss={() => act(r.id, () => api.dismissReview(r.id), "Dismissed — the files stay in the downloads folder.")}
+                onDismiss={() => act(r.id, () => api.dismissReview(r.id), r.source === "library_scan"
+                  ? "Dismissed — the folder stays as it is."
+                  : "Dismissed — the files stay in the downloads folder.")}
               />
             ))}
           </div>
@@ -362,6 +364,9 @@ function ReviewCard({ r, busy: acting, importJob, importError, onImportDone, sel
   const label = kindLabel(r.media_type);
   const held = heldAt(r.created_at);
   const linked = r.expected_id > 0;
+  // A folder the music library scan couldn't place: already in the library, so it is
+  // matched where it is, and never rejected (that would delete library files).
+  const scanned = r.source === "library_scan";
 
   const btn = "rounded-lg px-3 py-1.5 text-sm font-semibold";
   const primary = { border: "1px solid var(--line)", color: "var(--ink)" };
@@ -376,13 +381,14 @@ function ReviewCard({ r, busy: acting, importJob, importError, onImportDone, sel
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded px-1.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: "var(--panel-2)", color: "var(--ink-faint)" }}>{r.media_type}</span>
             <StatusChip tone={reason.tone}>{reason.label}</StatusChip>
+            {scanned && <StatusChip tone="faint">Library scan</StatusChip>}
             <span className="min-w-0 break-all font-mono text-sm">{r.name}</span>
           </div>
           <div className="mt-2 text-base" style={{ color: "var(--avoid-text)" }}>{r.reason}</div>
           {r.match && <MatchBreakdown match={r.match} />}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-xs text-ink-faint">
             {linked ? (
-              <span>Grabbed for: {link
+              <span>{scanned ? "Closest fit" : "Grabbed for"}: {link
                 ? <Link to={link} className="font-bold" style={{ color: "var(--accent-text)" }}>{r.expected_title || `this ${label}`}</Link>
                 : <b className="text-ink-dim">{r.expected_title}</b>}</span>
             ) : (
@@ -411,14 +417,26 @@ function ReviewCard({ r, busy: acting, importJob, importError, onImportDone, sel
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 pl-7">
-        {r.reason_code === "mismatch" && (
+        {scanned && (
+          <>
+            {r.reason_code === "close_editions"
+              ? (r.match?.candidates ?? []).slice(0, 2).map((c) => (
+                  <button key={c.release_id} onClick={() => onImportEdition(c.album_id, c.release_id, c.album)} disabled={busy} className={btn} style={primary}>
+                    Match as {c.edition}
+                  </button>
+                ))
+              : linked && <button onClick={onImport} disabled={busy} className={btn} style={primary}>Match to {r.expected_title || "this album"}</button>}
+            <button onClick={onReassign} disabled={busy} className={btn} style={accent}>Match…</button>
+          </>
+        )}
+        {!scanned && r.reason_code === "mismatch" && (
           <>
             {linked && <button onClick={onImport} disabled={busy} className={btn} style={primary}>Import anyway</button>}
             <button onClick={onReassign} disabled={busy} className={btn} style={accent}>Choose different {label}…</button>
             <button onClick={() => onReject(true)} disabled={busy} className={btn} style={danger}>{linked ? "Reject & find another" : "Reject"}</button>
           </>
         )}
-        {r.reason_code === "unmatched" && (
+        {!scanned && r.reason_code === "unmatched" && (
           <>
             <button onClick={onReassign} disabled={busy} className={btn} style={accent}>Choose {label}…</button>
             <button onClick={() => onReject(false)} disabled={busy} className={btn} style={danger} title="Blocks this release for every title">Reject</button>
@@ -435,7 +453,7 @@ function ReviewCard({ r, busy: acting, importJob, importError, onImportDone, sel
         {r.reason_code === "import_failed" && (
           <button onClick={onRetry} disabled={busy} className={btn} style={primary} title="Fix the cause first — then the import sweep tries again">Retry import</button>
         )}
-        {MATCHER_REASONS.has(r.reason_code) && (
+        {!scanned && MATCHER_REASONS.has(r.reason_code) && (
           <>
             {r.reason_code === "close_editions"
               ? (r.match?.candidates ?? []).slice(0, 2).map((c) => (
@@ -451,7 +469,8 @@ function ReviewCard({ r, busy: acting, importJob, importError, onImportDone, sel
         {r.reason_code === "no_media" && (
           <button onClick={() => onReject(true)} disabled={busy} className={btn} style={danger}>{linked ? "Reject & find another" : "Reject"}</button>
         )}
-        <button onClick={onDismiss} disabled={busy} className="ml-auto rounded-lg px-3 py-1.5 text-sm text-ink-dim hover:text-[var(--ink)]" title="Leave the files in the downloads folder and handle it yourself">Dismiss</button>
+        <button onClick={onDismiss} disabled={busy} className="ml-auto rounded-lg px-3 py-1.5 text-sm text-ink-dim hover:text-[var(--ink)]"
+          title={scanned ? "Leave the folder as it is; the scan won't hold it again until it changes" : "Leave the files in the downloads folder and handle it yourself"}>Dismiss</button>
       </div>
     </div>
   );
@@ -557,7 +576,8 @@ function ReassignModal({ review, onClose, onPicked }: { review: ImportReview; on
   const label = kindLabel(review.media_type);
   return (
     <TargetPicker
-      title={review.expected_id > 0 ? `Import into a different ${label}…` : `Import into a ${label}…`}
+      title={review.source === "library_scan" ? "Match this folder to an album…"
+        : review.expected_id > 0 ? `Import into a different ${label}…` : `Import into a ${label}…`}
       name={review.name}
       kind={review.media_type}
       load={(q) => api.reviewTargets(review.id, q)}
