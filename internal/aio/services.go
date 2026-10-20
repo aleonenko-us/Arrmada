@@ -38,6 +38,12 @@ const (
 	// /storage is reachable only as far as the share's own permissions let anyone in.
 	FlareSolverrUID = 8191
 	FlareSolverrGID = 8191
+	// Prowlarr's self-contained .NET build, in bin/ with its package_info beside it (which
+	// tells it updates come with the image, as in its Docker images).
+	ProwlarrBin = "/opt/prowlarr/bin/Prowlarr"
+	// SABnzbd's source in app/, run by the Python in its own virtualenv.
+	SABnzbdPython = "/opt/sabnzbd/venv/bin/python"
+	SABnzbdApp    = "/opt/sabnzbd/app/SABnzbd.py"
 )
 
 // Plan is the services to run: Arrmada always, and each companion that's switched on.
@@ -90,6 +96,42 @@ func Plan(o Options, environ []string, getenv func(string) string) []Service {
 				"PYTHONDONTWRITEBYTECODE=1",
 			),
 			UID: &fuid, GID: &fgid, OwnUser: true,
+		})
+	}
+	// Prowlarr and SABnzbd run as PUID:PGID, like qBittorrent: their settings are in
+	// appdata, and SABnzbd writes the owner's downloads.
+	if o.Prowlarr {
+		dir := o.ProwlarrDir()
+		svcs = append(svcs, Service{
+			Name: "prowlarr",
+			Path: ProwlarrBin,
+			Args: []string{"-nobrowser", "-data=" + dir},
+			Dir:  dir,
+			Env: append(append([]string(nil), base...),
+				"HOME="+dir,
+				// Its port and address come from here rather than its config.xml, so the
+				// address Arrmada uses and the template publishes always holds.
+				"PROWLARR__SERVER__PORT="+strconv.Itoa(ProwlarrPort),
+				"PROWLARR__SERVER__BINDADDRESS=*",
+			),
+			UID: &uid, GID: &gid,
+		})
+	}
+	if o.SABnzbd {
+		dir := o.SABnzbdDir()
+		svcs = append(svcs, Service{
+			Name: "sabnzbd",
+			Path: SABnzbdPython,
+			// --server every start, for the same reason as Prowlarr's port.
+			Args: []string{SABnzbdApp, "--browser", "0", "--config-file", o.SABnzbdConfig(),
+				"--server", "0.0.0.0:" + strconv.Itoa(SABnzbdPort)},
+			Dir: dir,
+			Env: append(append([]string(nil), base...),
+				"HOME="+dir,
+				"PYTHONDONTWRITEBYTECODE=1", // its code is compiled in the image, which it can't write to
+				"PYTHONUNBUFFERED=1",
+			),
+			UID: &uid, GID: &gid,
 		})
 	}
 	return svcs

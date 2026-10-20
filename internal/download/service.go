@@ -367,20 +367,36 @@ func (s *Service) setFlag(ctx context.Context, key, value string) error {
 // KeyBundledSwitchedOff says the all-in-one image's built-in qBittorrent was switched off
 // in the container's settings and Arrmada switched its client off to match, so switching
 // it back on there switches the client back on. A client the owner switched off in
-// Arrmada doesn't carry it, and stays off.
+// Arrmada doesn't carry it, and stays off. The optional built-in SABnzbd has its own
+// (switchedOffKey).
 const KeyBundledSwitchedOff = "download_bundled_switched_off"
 
+// switchedOffKey is KeyBundledSwitchedOff for one kind's bundled client. qBittorrent keeps
+// the key it has always had, as bundledRemovedKey does.
+func switchedOffKey(kind Kind) string {
+	if kind == KindQbittorrent {
+		return KeyBundledSwitchedOff
+	}
+	return KeyBundledSwitchedOff + "_" + string(kind)
+}
+
 // SyncBundledSwitch keeps the bundled qBittorrent's client in step with the all-in-one
-// image's switch for it: url is where the built-in qBittorrent answers, on whether it's
-// running. Off, an enabled bundled client still pointing there is switched off (not
-// removed: its torrents are still read, and the owner can switch it back on), so nothing
-// is sent to a qBittorrent that isn't running. On again, a client switched off that way
-// is switched back on. A bundled client the owner pointed somewhere else is left alone.
+// image's switch for it (SyncBundledSwitchOf).
 func (s *Service) SyncBundledSwitch(ctx context.Context, url string, on bool) error {
+	return s.SyncBundledSwitchOf(ctx, KindQbittorrent, url, on)
+}
+
+// SyncBundledSwitchOf keeps a bundled client in step with the all-in-one image's switch
+// for it (its qBittorrent, or its optional SABnzbd): url is where the built-in one answers,
+// on whether it's running. Off, an enabled bundled client still pointing there is switched
+// off (not removed: what's in it is still read, and the owner can switch it back on), so
+// nothing is sent to a client that isn't running. On again, a client switched off that way
+// is switched back on. A bundled client the owner pointed somewhere else is left alone.
+func (s *Service) SyncBundledSwitchOf(ctx context.Context, kind Kind, url string, on bool) error {
 	if s.flags == nil {
 		return nil
 	}
-	c, ok, err := s.repo.BundledOf(ctx, KindQbittorrent)
+	c, ok, err := s.repo.BundledOf(ctx, kind)
 	if err != nil {
 		return err
 	}
@@ -388,11 +404,12 @@ func (s *Service) SyncBundledSwitch(ctx context.Context, url string, on bool) er
 		// Nothing of the switch's to undo. A note left from before (the row deleted, or
 		// pointed elsewhere, outside Update) mustn't wake a later client up.
 		if on {
-			return s.clearSwitchedOff(ctx)
+			return s.clearSwitchedOff(ctx, kind)
 		}
 		return nil
 	}
-	paused := s.flags.Get(ctx, KeyBundledSwitchedOff, "") == "1"
+	key, app := switchedOffKey(kind), builtInName(kind)
+	paused := s.flags.Get(ctx, key, "") == "1"
 	switch {
 	case on && paused:
 		if !c.Enabled {
@@ -400,22 +417,33 @@ func (s *Service) SyncBundledSwitch(ctx context.Context, url string, on bool) er
 			if _, err := s.update(ctx, c); err != nil {
 				return err
 			}
-			s.log.Info("built-in qBittorrent switched back on; sending downloads to it again", "name", c.Name)
+			s.log.Info("built-in "+app+" switched back on; sending downloads to it again", "name", c.Name)
 		}
-		return s.flags.Set(ctx, KeyBundledSwitchedOff, "")
+		return s.flags.Set(ctx, key, "")
 	case !on && c.Enabled:
 		// The flag first: if the client is switched off without it, it would stay off
-		// when the owner switches qBittorrent back on.
-		if err := s.flags.Set(ctx, KeyBundledSwitchedOff, "1"); err != nil {
+		// when the owner switches it back on.
+		if err := s.flags.Set(ctx, key, "1"); err != nil {
 			return err
 		}
 		c.Enabled = false
 		if _, err := s.update(ctx, c); err != nil {
 			return err
 		}
-		s.log.Info("built-in qBittorrent is switched off in the container settings; its client is switched off too (its torrents are kept)", "name", c.Name)
+		s.log.Info("built-in "+app+" is switched off in the container settings; its client is switched off too (what's in it is kept)", "name", c.Name)
 	}
 	return nil
+}
+
+// builtInName is how the log names a kind's built-in client.
+func builtInName(kind Kind) string {
+	switch kind {
+	case KindQbittorrent:
+		return "qBittorrent"
+	case KindSABnzbd:
+		return "SABnzbd"
+	}
+	return string(kind)
 }
 
 // ErrBundledInactive means there's no bundled qBittorrent to tune: it was removed, or it
@@ -474,24 +502,25 @@ func (s *Service) forget(id int64) {
 // and drops out of the health check, but the torrents already in it are still read and
 // acted on — see existingClients.
 //
-// This is the owner's edit. An edit of the bundled qBittorrent drops the note that the
-// all-in-one image's switch turned it off (KeyBundledSwitchedOff): from then on its
-// on/off is the owner's, and switching qBittorrent back on in the container won't undo it.
-// Arrmada's own changes go through update, which leaves the note alone.
+// This is the owner's edit. An edit of a bundled client drops the note that the all-in-one
+// image's switch turned it off (KeyBundledSwitchedOff): from then on its on/off is the
+// owner's, and switching it back on in the container won't undo it. Arrmada's own changes
+// go through update, which leaves the note alone.
 func (s *Service) Update(ctx context.Context, c Client) (Client, error) {
 	saved, err := s.update(ctx, c)
-	if err == nil && saved.Bundled && saved.Kind == KindQbittorrent {
-		err = s.clearSwitchedOff(ctx)
+	if err == nil && saved.Bundled {
+		err = s.clearSwitchedOff(ctx, saved.Kind)
 	}
 	return saved, err
 }
 
-// clearSwitchedOff forgets that the all-in-one switch turned the bundled qBittorrent off.
-func (s *Service) clearSwitchedOff(ctx context.Context) error {
-	if s.flags == nil || s.flags.Get(ctx, KeyBundledSwitchedOff, "") == "" {
+// clearSwitchedOff forgets that the all-in-one switch turned a kind's bundled client off.
+func (s *Service) clearSwitchedOff(ctx context.Context, kind Kind) error {
+	key := switchedOffKey(kind)
+	if s.flags == nil || s.flags.Get(ctx, key, "") == "" {
 		return nil
 	}
-	return s.flags.Set(ctx, KeyBundledSwitchedOff, "")
+	return s.flags.Set(ctx, key, "")
 }
 
 // update is Update without the owner's-edit bookkeeping, for Arrmada's own changes.
@@ -527,10 +556,8 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 			return fmt.Errorf("couldn't record that the bundled client was removed: %w", err)
 		}
 		// A restored client starts fresh: the switch's note doesn't outlive its row.
-		if c.Kind == KindQbittorrent {
-			if err := s.clearSwitchedOff(ctx); err != nil {
-				return err
-			}
+		if err := s.clearSwitchedOff(ctx, c.Kind); err != nil {
+			return err
 		}
 	}
 	defer s.invalidateSnapshot()

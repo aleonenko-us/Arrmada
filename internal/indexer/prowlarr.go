@@ -262,7 +262,7 @@ func (s *Service) SyncProwlarr(ctx context.Context, o ProwlarrSync) (SyncResult,
 	// FlareSolverr; any other Prowlarr only when asked. A failure here never undoes the
 	// indexer sync.
 	switch {
-	case o.FlareSolverrURL != "" && (isBundledProwlarr(base) || o.AddFlareSolverrProxy):
+	case o.FlareSolverrURL != "" && (s.isBundledProwlarr(base) || o.AddFlareSolverrProxy):
 		if err := s.ensureFlareSolverrProxy(ctx, base, o.APIKey, o.FlareSolverrURL); err != nil {
 			s.log.Warn("prowlarr: could not add the FlareSolverr proxy", "err", err)
 			res.Notes = append(res.Notes, "Couldn't add Arrmada's FlareSolverr to Prowlarr: "+err.Error())
@@ -430,10 +430,43 @@ func (s *Service) syncOff(ctx context.Context, tx *sql.Tx, e Indexer, note strin
 	return nil
 }
 
-// isBundledProwlarr reports whether base is the Prowlarr that ships with Arrmada.
-func isBundledProwlarr(base string) bool {
+// SetBundledProwlarr says where the Unraid all-in-one image's optional Prowlarr answers
+// while it's switched on (config.AIOProwlarrURL; "" otherwise). A Prowlarr there ships
+// with Arrmada as much as the Compose install's arrmada-prowlarr does.
+func (s *Service) SetBundledProwlarr(url string) { s.aioProwlarr = strings.TrimSpace(url) }
+
+// isBundledProwlarr reports whether base is a Prowlarr that ships with Arrmada.
+func (s *Service) isBundledProwlarr(base string) bool {
+	return isBundledProwlarr(base, s.aioProwlarr)
+}
+
+// isBundledProwlarr reports whether base is the Compose install's Prowlarr (by its
+// service name), or the all-in-one image's at aio (its host and port; "" when it has none
+// running). Only the address decides: the all-in-one's is the container's own loopback.
+func isBundledProwlarr(base, aio string) bool {
 	u, err := url.Parse(base)
-	return err == nil && strings.EqualFold(u.Hostname(), bundledProwlarrHost)
+	if err != nil {
+		return false
+	}
+	if strings.EqualFold(u.Hostname(), bundledProwlarrHost) {
+		return true
+	}
+	if aio == "" {
+		return false
+	}
+	a, err := url.Parse(aio)
+	return err == nil && a.Hostname() != "" && strings.EqualFold(u.Hostname(), a.Hostname()) && portOf(u) == portOf(a)
+}
+
+// portOf is a URL's port, the scheme's own when it names none.
+func portOf(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	if strings.EqualFold(u.Scheme, "https") {
+		return "443"
+	}
+	return "80"
 }
 
 // prowlarrHasFlareSolverr asks Prowlarr whether it has a FlareSolverr proxy.

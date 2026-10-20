@@ -5,7 +5,7 @@ Status: planned (2026-10-14), checked against `fixes/integration` @ 41838483 (hi
 ## Owner decisions
 
 - **Downloader:** SABnzbd first; NZBGet later through the same client slot.
-- **Bundling:** optional, off by default — `install.sh --with-sabnzbd` (a compose profile like Prowlarr) adds a pre-wired SABnzbd; otherwise connect your own in Connections. Users bring their own provider and indexers.
+- **Bundling:** optional, off by default — `install.sh --with-sabnzbd` (a compose profile like Prowlarr) adds a pre-wired SABnzbd; otherwise connect your own in Connections. Users bring their own provider and indexers. The Unraid all-in-one image carries the same SABnzbd (and Prowlarr), off until the template switches them on (issue #64, owner approved 2026-10-20; see "Unraid all-in-one" below).
 - **Preference:** best release wins regardless of network by default; a setting prefers Usenet or torrents.
 - Defaults adopted from the plan (not asked):
   1. Tie-break when equal under "Best wins": indexer priority → download-client order (0148) → stable order.
@@ -44,6 +44,16 @@ Connections: kind picker (qBittorrent · SABnzbd), SABnzbd card with categories 
 ## Testing
 
 Unit tests with recorded SABnzbd 4.5/5.x fixtures; `ValidKey` fuzz; ranking/preference tables; stall/failure classes. Offline end-to-end (`ARRMADA_SABNZBD_IT=1`, `scripts/usenet-it.sh`): pinned linuxserver/sabnzbd 5.1.x + NZBGet's NServ as a fake NNTP provider serving synthetic yEnc articles and generated NZBs (fallback: a small Go NNTP test server in `internal/download/nntptest`) — happy path, missing articles, par2 repair, 7z split + passworded, SABnzbd restart mid-download. Owner checks with a real provider: SSL/563 and connections, retention, real RAR unpack and obfuscated names, indexer API limits, Prowlarr usenet sync, duplicate detection, speed and the disk guard during unpacking.
+
+## Unraid all-in-one (issue #64, 2026-10-20)
+
+Before this the Unraid template's image had only qBittorrent and FlareSolverr, while the docs read as if SABnzbd and Prowlarr were there too. Now the `aio` target carries both, each **off unless switched on** (`ARRMADA_BUNDLE_SABNZBD`, `ARRMADA_BUNDLE_PROWLARR`; blank or unreadable is off, unlike the opt-out qBittorrent/FlareSolverr switches). Idea from @aleonenko-us's PR #66 (not merged; rebuilt to the review's points).
+
+- **Image:** SABnzbd 5.1.3 source and Prowlarr 2.6.5.5623 (linux-core x64/arm64) from their GitHub releases, each checked by SHA-256; SABnzbd's Python packages pinned by hash (`docker/aio/sabnzbd-requirements.txt`, `--require-hashes`, wheels only but sgmllib3k, built against the pinned setuptools) in a venv without pip; par2cmdline-turbo 1.5.0 (static release, SHA-256); unrar (Ubuntu multiverse, already in the base image's sources) and 7-Zip from Ubuntu with every existing package held. Build-time checks: SABnzbd `--version` (imports everything), an import of the compiled packages, par2/unrar/7za, `ldd` over Prowlarr and its libraries. Both architectures.
+- **Supervisor (`internal/aio`):** Prowlarr runs `-nobrowser -data=/data/prowlarr` with `PROWLARR__SERVER__PORT=9696` / `BINDADDRESS=*` (its config.xml can't move it); SABnzbd runs `--config-file /data/sabnzbd/sabnzbd.ini --server 0.0.0.0:8085` (8080 is qBittorrent's). Both as PUID:PGID. `SeedSABnzbd` writes the Compose init container's first config (same categories, pp=3, English, random API/NZB keys and page login), with folders under `<downloads>/usenet/` and the host whitelist kept on (the container's own name; Arrmada uses 127.0.0.1, which SABnzbd always accepts).
+- **Arrmada's environment (`aio.AppEnv`):** `ARRMADA_AIO_SABNZBD_URL` always set; `ARRMADA_SABNZBD_URL`/`_CONFIG` only while it's on (blank otherwise, so a template value never registers a client that isn't running). `ARRMADA_PROWLARR_URL` defaults to the built-in one only when the template doesn't set one; `ARRMADA_AIO_PROWLARR_URL` only while it's on.
+- **App:** `download.Service.SyncBundledSwitchOf(KindSABnzbd, …)` switches the bundled SABnzbd's row off with the switch and back on again, with a note of its own (`download_bundled_switched_off_sabnzbd`) that an owner's edit or delete clears, exactly as for qBittorrent. `indexer.Service.SetBundledProwlarr` makes the built-in Prowlarr count as bundled (host and port), so it gets Arrmada's FlareSolverr like `arrmada-prowlarr`; the Prowlarr panel learns it from `bundled_url`.
+- **Template:** switches `false|true` (value `false`), web UI ports 8085→8085 and 9696→9697 with matching `*_HOST_PORT` variables; the template test checks both, and that no two host ports are the same. Existing installs keep their old template, so they get the image but no switches (docs/unraid.md shows the lines to add).
 
 ## Lanes
 

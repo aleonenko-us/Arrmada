@@ -131,12 +131,14 @@ It installs into the checkout itself (the same questions, minus the folder) and
 
 [templates/arrmada.xml](../templates/arrmada.xml) runs Arrmada as one container from the
 published all-in-one image (`stable-aio`), with qBittorrent and FlareSolverr inside it, set
-up and connected like the Compose install's; either can be switched off to use your own. It
-keeps the database in `/mnt/user/appdata/arrmada` (`/data`), runs as 99:100, puts the web
-page on port 7880, takes your media share at `/storage`, and publishes the torrent port
-56881 (TCP and UDP). Then pick each library folder and the Downloads folder in the app.
+up and connected like the Compose install's; either can be switched off to use your own.
+The same image has the optional SABnzbd and Prowlarr too (what `--with-sabnzbd` and
+`--with-prowlarr` add here), off until you switch them on in the template. It keeps the
+database in `/mnt/user/appdata/arrmada` (`/data`), runs as 99:100, puts the web page on
+port 7880, takes your media share at `/storage`, and publishes the torrent port 56881 (TCP
+and UDP). Then pick each library folder and the Downloads folder in the app.
 [Arrmada on Unraid](unraid.md) has the details: installing it, the built-in qBittorrent and
-using your own, the GPU, and updating.
+using your own, SABnzbd and Prowlarr, the GPU, and updating.
 
 ## What gets installed
 

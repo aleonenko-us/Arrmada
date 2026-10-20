@@ -292,6 +292,7 @@ func main() {
 	// fallback), read on every use, so changing it needs no restart.
 	flare := flaresolverr.NewFunc(keyStore.Func("flaresolverr"))
 	indexers := indexer.NewService(st.DB(), modLog(log, "indexer"), flare)
+	indexers.SetBundledProwlarr(cfg.AIOProwlarrURL) // the all-in-one image's, while it runs
 	downloads := download.NewService(st.DB(), modLog(log, "download"))
 	// How each indexer and download client has been answering, kept across restarts: a
 	// failing indexer backs off for background searches, and the Indexers page and the
@@ -497,6 +498,12 @@ func main() {
 	if cfg.AIOQbittorrentURL != "" {
 		if err := downloads.SyncBundledSwitch(context.Background(), cfg.AIOQbittorrentURL, cfg.QbittorrentURL == cfg.AIOQbittorrentURL); err != nil {
 			log.Warn("could not match the built-in qBittorrent's client to its on/off setting", "err", err)
+		}
+	}
+	// Its optional SABnzbd likewise (it ships switched off, so this is usually nothing).
+	if cfg.AIOSABnzbdURL != "" {
+		if err := downloads.SyncBundledSwitchOf(context.Background(), download.KindSABnzbd, cfg.AIOSABnzbdURL, cfg.SABnzbdURL == cfg.AIOSABnzbdURL); err != nil {
+			log.Warn("could not match the built-in SABnzbd's client to its on/off setting", "err", err)
 		}
 	}
 	if cfg.QbittorrentURL != "" {

@@ -106,6 +106,8 @@ export interface ProwlarrInfo {
   ui_port?: string;
   /** A saved address for a Prowlarr on another machine; wins over ui_port. */
   ui_url?: string;
+  /** The Unraid all-in-one image's own Prowlarr, while it's switched on (e.g. http://127.0.0.1:9696). */
+  bundled_url?: string;
   last_sync?: ProwlarrLastSync;
 }
 

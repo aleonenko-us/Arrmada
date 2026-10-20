@@ -382,8 +382,45 @@ func TestProwlarrFlareSolverrProxyOnlyWhenAsked(t *testing.T) {
 	if f.posts() != 1 || !res.FlareSolverrReady {
 		t.Fatalf("asked: posts %d, ready %v", f.posts(), res.FlareSolverrReady)
 	}
-	if !isBundledProwlarr("http://arrmada-prowlarr:9696") || isBundledProwlarr(f.srv.URL) {
+	if !s.isBundledProwlarr("http://arrmada-prowlarr:9696") || s.isBundledProwlarr(f.srv.URL) {
 		t.Fatal("bundled host check")
+	}
+}
+
+// The Unraid all-in-one image's Prowlarr (on the container's loopback, while it's switched
+// on) is Arrmada's own like the Compose install's: it's given Arrmada's FlareSolverr
+// without being asked. Matched by host and port, so nothing else on 127.0.0.1 counts.
+func TestProwlarrAIOCountsAsBundled(t *testing.T) {
+	for _, tc := range []struct {
+		base, aio string
+		want      bool
+	}{
+		{"http://arrmada-prowlarr:9696", "", true},
+		{"http://Arrmada-Prowlarr:9696/", "http://127.0.0.1:9696", true},
+		{"http://127.0.0.1:9696", "http://127.0.0.1:9696", true},
+		{"http://127.0.0.1:9696/", "http://127.0.0.1:9696", true},
+		{"http://127.0.0.1:9696", "", false}, // the all-in-one's Prowlarr is off, or not that image
+		{"http://127.0.0.1:9697", "http://127.0.0.1:9696", false},
+		{"http://192.168.1.10:9696", "http://127.0.0.1:9696", false},
+		{"http://127.0.0.1", "http://127.0.0.1:80", true},
+		{"https://127.0.0.1", "http://127.0.0.1:80", false},
+		{"::not a url", "http://127.0.0.1:9696", false},
+	} {
+		if got := isBundledProwlarr(tc.base, tc.aio); got != tc.want {
+			t.Errorf("isBundledProwlarr(%q, %q) = %v, want %v", tc.base, tc.aio, got, tc.want)
+		}
+	}
+
+	f := newFakeProwlarr(t)
+	s, _, _ := healthService(t)
+	ctx := context.Background()
+	s.SetBundledProwlarr(f.srv.URL)
+	res, err := s.SyncProwlarr(ctx, ProwlarrSync{URL: f.srv.URL, APIKey: "k", FlareSolverrURL: "http://127.0.0.1:8191"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.posts() != 1 || !res.FlareSolverrReady {
+		t.Fatalf("the all-in-one's Prowlarr wasn't given FlareSolverr: posts %d, ready %v", f.posts(), res.FlareSolverrReady)
 	}
 }
 
