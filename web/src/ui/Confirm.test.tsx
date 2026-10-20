@@ -46,7 +46,7 @@ describe("useToast", () => {
     act(() => { ["one", "two", "three", "four"].forEach((m) => h.current!(m)); });
     expect(screen.queryByText("one")).toBeNull();
     expect(screen.getByText("four")).toBeTruthy();
-    expect(screen.getByText("four").parentElement?.getAttribute("aria-live")).toBe("polite");
+    expect(screen.getByText("four").closest("[aria-live]")?.getAttribute("aria-live")).toBe("polite");
     act(() => { h.current!("broke", { tone: "error" }); });
     expect(screen.getByRole("alert").textContent).toBe("broke");
   });

@@ -320,7 +320,14 @@ func (a *api) setupPathRoots(ctx context.Context) []string {
 	}
 	c := a.pickedConfig(ctx)
 	for _, d := range libraryDirSettings(&c) {
-		if p := strings.TrimSpace(*d.field); p != "" && filepath.IsAbs(p) {
+		p := strings.TrimSpace(*d.field)
+		if p != "" && !filepath.IsAbs(p) {
+			// A plain (non-Docker) install keeps the defaults relative to where it runs.
+			if abs, err := filepath.Abs(p); err == nil {
+				p = abs
+			}
+		}
+		if p != "" && filepath.IsAbs(p) {
 			p = filepath.Clean(p)
 			roots = append(roots, p)
 			// The folder above it, so the picker can step up to a sibling; never "/".
@@ -347,7 +354,7 @@ func underAny(p string, roots []string) bool {
 	return false
 }
 
-const errOutsideWizardRoots = "While setting up, folders have to be under /storage or /media (or the folders named in .env). Create your account first, then pick any other folder in Settings → Library."
+const errOutsideWizardRoots = "While setting up, folders have to be under /storage or /media (or the folders named in .env). Finish setup first, then pick any other folder in Settings → Library."
 
 // wizardPaths narrows the folder routes for a setup session to setupPathRoots: the browse
 // and check queries (path, downloads) and the folders a save names. Without a path, browse

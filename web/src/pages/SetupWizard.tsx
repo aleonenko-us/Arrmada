@@ -12,6 +12,7 @@ import { useMe } from "../lib/me";
 import { setupApi } from "../lib/setupApi";
 import { Button, StatusChip, useConfirm, useToast } from "../ui";
 import { ServerChoiceTile } from "../components/brand/ServerBadge";
+import { Icon, type IconName } from "../components/icons";
 import { PlexConnect } from "./settings/PlexConnection";
 import { JellyfinConnect } from "./settings/JellyfinConnection";
 
@@ -95,13 +96,13 @@ const typesFrom = (csv: string): AutoTypes => {
 };
 const typesCSV = (t: AutoTypes) => TYPE_NAMES.filter(([k]) => t[k]).map(([k]) => k).join(",");
 
-const FOLDERS: { key: keyof LibraryPaths; label: string; hint: string; optional?: boolean }[] = [
-  { key: "movies", label: "Movies", hint: "Where movie folders live" },
-  { key: "tv", label: "TV shows", hint: "Where show folders live" },
-  { key: "downloads", label: "Downloads", hint: "Where qBittorrent saves downloads" },
-  { key: "ebooks", label: "Ebooks", hint: "Optional — only if you use Books", optional: true },
-  { key: "audiobooks", label: "Audiobooks", hint: "Optional — can be the same as Ebooks", optional: true },
-  { key: "music", label: "Music", hint: "Optional — only if you use Music", optional: true },
+const FOLDERS: { key: keyof LibraryPaths; label: string; hint: string; icon: IconName; optional?: boolean }[] = [
+  { key: "movies", label: "Movies", hint: "Where movie folders live", icon: "movies" },
+  { key: "tv", label: "TV shows", hint: "Where show folders live", icon: "series" },
+  { key: "downloads", label: "Downloads", hint: "Where qBittorrent saves downloads — keep it on the same drive as your libraries so finished downloads move instantly", icon: "downloads" },
+  { key: "ebooks", label: "Ebooks", hint: "Only if you use Books", icon: "books", optional: true },
+  { key: "audiobooks", label: "Audiobooks", hint: "Can be the same as Ebooks", icon: "audiobooks", optional: true },
+  { key: "music", label: "Music", hint: "Only if you use Music", icon: "music", optional: true },
 ];
 
 // The optional keys, Hardcover first: what each adds, what happens without it, and where
@@ -384,6 +385,47 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
   const noStorage = state.mounts.length > 0 && !state.mounts.includes("/storage");
   const managedOnly = noStorage && !state.media_host_folder;
   const mediaFolder = noStorage && !!state.media_host_folder;
+  // One library folder: its icon, name and hint, the path with Browse beside it, and the
+  // checks under it (missing, not writable, …).
+  const folderRow = (f: (typeof FOLDERS)[number]) => (
+    <div key={f.key} className="flex gap-3 px-3.5 py-3">
+      <span aria-hidden className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>
+        <Icon name={f.icon} size={18} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <label htmlFor={`setup-folder-${f.key}`} className="block text-base font-semibold">{f.label}</label>
+        <span className="mb-2 block text-xs text-ink-faint">{f.hint}</span>
+        <div className="flex items-stretch overflow-hidden rounded-lg focus-within:ring-2" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", ["--tw-ring-color" as string]: "var(--accent-line)" }}>
+          <input
+            id={`setup-folder-${f.key}`}
+            value={folders[f.key]}
+            onChange={(e) => setFolders({ ...folders, [f.key]: e.target.value })}
+            placeholder={f.optional ? "Leave blank if you don't use it" : "/storage/…"}
+            className="min-w-0 flex-1 bg-transparent px-3 py-2 font-mono text-sm outline-none"
+            style={{ color: "var(--ink)" }}
+          />
+          <button
+            type="button"
+            onClick={() => setPicking(f.key)}
+            aria-label={`Browse for the ${f.label} folder`}
+            className="flex flex-none items-center gap-1.5 px-3 text-sm font-semibold"
+            style={{ borderLeft: "1px solid var(--line)", color: "var(--accent-text)" }}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden><path d="M1.8 4.2c0-.6.5-1.1 1.1-1.1h3l1.4 1.6h5.8c.6 0 1.1.5 1.1 1.1v6.1c0 .6-.5 1.1-1.1 1.1H2.9c-.6 0-1.1-.5-1.1-1.1z" /></svg>
+            Browse
+          </button>
+        </div>
+        <FolderChips
+          kind={f.key}
+          path={folders[f.key]}
+          current={state.library[f.key] ?? ""}
+          downloads={folders.downloads}
+          onBlocking={onBlocking}
+          onCreated={(saved) => setFolders((cur) => (cur ? { ...cur, [f.key]: saved[f.key] } : cur))}
+        />
+      </div>
+    </div>
+  );
   const stepIndex = order.findIndex((s) => s.id === step);
   const restartFirst = state.restart_needed && state.can_restart;
 
@@ -406,7 +448,7 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
         ))}
       </ol>
 
-      {error && <div role="alert" className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--reject)", color: "var(--reject-text)" }}>{error}</div>}
+      {error && <Callout tone="error" role="alert" className="mb-4">{error}</Callout>}
 
       {step === "keys" && (
         <>
@@ -507,51 +549,33 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
       {step === "folders" && (
         <>
           <h1 className="m-0 text-2xl font-bold">Where's your media?</h1>
-          <p className="mb-1 mt-1 text-md text-ink-dim">
+          <p className="mb-4 mt-1 text-md text-ink-dim">
             Pick a folder for each library. {state.libraries_chosen ? "These are your current folders." : "We've filled in anything that looked right — check it."}
           </p>
-          <p className="mb-4 text-sm text-ink-faint">
-            Keep Downloads on the same drive or share as your libraries, so finished downloads are hardlinked instantly instead of copied.
-          </p>
           {managedOnly && (
-            <div className="mb-3 rounded-lg p-2.5 text-sm" style={{ border: "1px solid var(--avoid)", color: "var(--avoid-text)" }}>
-              Arrmada is using its own managed storage — no media folder was given at install. To use your existing library, run the install line again on the server with <code className="font-mono">--media</code> and your media folder, for example <code className="font-mono">… | sh -s -- --media /mnt/user/data</code>. It mounts the folder and restarts Arrmada; then pick each library here.
-            </div>
+            <Callout tone="warn" className="mb-4">
+              <strong className="font-semibold">No media folder was given at install</strong>, so Arrmada is using its own storage for now. To use your existing library, add your media folder to the install and restart Arrmada, then pick each library here.
+              <details className="mt-1.5">
+                <summary className="cursor-pointer text-xs font-semibold">How?</summary>
+                <span className="mt-1 block text-xs">Run the install line again on the server with <code className="font-mono">--media</code> and your folder, for example <code className="font-mono">… | sh -s -- --media /mnt/user/data</code>.</span>
+              </details>
+            </Callout>
           )}
           {mediaFolder && (
             <p className="mb-3 text-sm text-ink-dim">
               Your media folder is mounted at <code className="font-mono">/media</code>: pick each library inside it.
             </p>
           )}
-          <div className="flex flex-col gap-2.5">
-            {FOLDERS.map((f) => (
-              <div key={f.key}>
-                <div className="mb-1 flex items-baseline justify-between gap-2">
-                  <label htmlFor={`setup-folder-${f.key}`} className="text-base font-semibold">{f.label}</label>
-                  <span className="text-xs text-ink-faint">{f.hint}</span>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    id={`setup-folder-${f.key}`}
-                    value={folders[f.key]}
-                    onChange={(e) => setFolders({ ...folders, [f.key]: e.target.value })}
-                    placeholder={f.optional ? "Leave as is if you don't use it" : "/storage/…"}
-                    className="min-w-0 flex-1 rounded-lg px-3 py-2 font-mono text-sm"
-                    style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-                  />
-                  <Button onClick={() => setPicking(f.key)} className="flex-none" aria-label={`Browse for the ${f.label} folder`}>Browse</Button>
-                </div>
-                <FolderChips
-                  kind={f.key}
-                  path={folders[f.key]}
-                  current={state.library[f.key] ?? ""}
-                  downloads={folders.downloads}
-                  onBlocking={onBlocking}
-                  onCreated={(saved) => setFolders((cur) => (cur ? { ...cur, [f.key]: saved[f.key] } : cur))}
-                />
-              </div>
-            ))}
-          </div>
+          <FolderGroup title="Video and downloads">
+            {FOLDERS.filter((f) => !f.optional).map(folderRow)}
+          </FolderGroup>
+          <details className="group mt-3" open={state.libraries_chosen && FOLDERS.some((f) => f.optional && !!state.library[f.key])}>
+            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-1 py-1.5 text-sm font-semibold text-ink-dim">
+              <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden><path d="M6 3.5l4.5 4.5L6 12.5" /></svg>
+              Books and music <StatusChip tone="faint" size="xs">Optional</StatusChip>
+            </summary>
+            <FolderGroup>{FOLDERS.filter((f) => f.optional).map(folderRow)}</FolderGroup>
+          </details>
           <Nav busy={busy} blocked={folderBlocked} onBack={() => go(prv("folders")!)} onNext={saveFolders} nextLabel="Save and continue" />
           {picking && (
             <FolderPicker
@@ -927,6 +951,34 @@ function Nav({ busy, blocked, onBack, skip, onNext, nextLabel }: {
         )}
       </div>
       <Button variant="primary" onClick={onNext} disabled={blocked} busy={busy} busyLabel="Saving…" title={blocked ? "Fix the folders marked in red first" : undefined}>{nextLabel}</Button>
+    </div>
+  );
+}
+
+// FolderGroup is a card of folder rows, split by hairlines.
+function FolderGroup({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col">
+      {title && <h2 className="m-0 mb-1.5 px-1 text-xs font-bold uppercase tracking-wide text-ink-faint">{title}</h2>}
+      <div className="flex flex-col overflow-hidden rounded-xl [&>*+*]:border-t [&>*+*]:border-[color:var(--line)]" style={{ border: "1px solid var(--line)", background: "var(--panel)" }}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+// Callout is the wizard's note box: a tinted panel with an icon, for a problem (error) or
+// something to know before going on (warn).
+function Callout({ tone, role, className = "", children }: { tone: "error" | "warn"; role?: string; className?: string; children: ReactNode }) {
+  const c = tone === "error"
+    ? { bg: "var(--reject-soft)", line: "var(--reject)", ink: "var(--reject-text)" }
+    : { bg: "var(--avoid-soft)", line: "var(--avoid)", ink: "var(--avoid-text)" };
+  return (
+    <div role={role} className={`flex gap-2.5 rounded-xl p-3 text-sm ${className}`} style={{ background: c.bg, border: `1px solid ${c.line}` }}>
+      <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full" style={{ background: c.line, color: "var(--accent-ink)" }}>
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M8 3.5v5.5M8 12.2v.3" /></svg>
+      </span>
+      <div className="min-w-0 flex-1 self-center leading-snug" style={{ color: "var(--ink)" }}>{children}</div>
     </div>
   );
 }
