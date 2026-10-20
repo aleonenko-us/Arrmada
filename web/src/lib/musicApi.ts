@@ -55,6 +55,8 @@ export interface MusicScanSummary {
   reviews: number;
   failed: number;
   waiting: number;
+  /** Matched, but a track still holds another file on disk: looked at again next scan. */
+  held?: number;
   remaining: number;
   opened: number;
   measured: number;
@@ -64,7 +66,7 @@ export interface MusicScanSummary {
   read_ms: number;
   total_ms: number;
   /** The file check that runs after the scan (MUS-15). */
-  verify?: { checked: number; not_found: number; missing: number; back: number; changed: number; skipped: number; refused?: string };
+  verify?: { checked: number; not_found: number; missing: number; back: number; changed: number; skipped: number; refused?: string; away?: string[] };
 }
 
 /** Which release groups an artist lists (MUS-14): the primary type must be allowed AND

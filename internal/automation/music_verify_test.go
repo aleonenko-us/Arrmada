@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -127,7 +128,7 @@ func TestVerifyMarksMissingAfterGrace(t *testing.T) {
 // An unmounted or empty music folder marks nothing and raises a warning; so does a pass
 // where more files vanish than a deletion would explain.
 func TestVerifyGuardsAgainstUnmountedLibrary(t *testing.T) {
-	h, lib, a, paths := verifyLib(t, 13)
+	h, lib, a, _ := verifyLib(t, 13)
 	moved := lib.root + ".away"
 	if err := os.Rename(lib.root, moved); err != nil {
 		t.Fatal(err)
@@ -152,9 +153,9 @@ func TestVerifyGuardsAgainstUnmountedLibrary(t *testing.T) {
 		t.Fatalf("remounted: %+v; want all well again", res)
 	}
 
-	// 22 of 26 files gone at once: more than max(20, a fifth).
-	for _, p := range paths[:22] {
-		if err := os.Remove(p); err != nil {
+	// 22 of 26 files gone at once (11 album folders): more than max(20, 5%).
+	for i := 0; i < 11; i++ {
+		if err := os.RemoveAll(filepath.Join(lib.root, "Band", fmt.Sprintf("Album %02d", i))); err != nil {
 			t.Fatal(err)
 		}
 	}

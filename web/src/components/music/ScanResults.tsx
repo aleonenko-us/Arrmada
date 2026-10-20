@@ -46,6 +46,7 @@ export function ScanResultsModal({ onClose, onRescan }: { onClose: () => void; o
         ["Folders to match in Reviews", last.reviews, ""],
         ["Waiting for a MusicBrainz track listing", last.waiting, "looked at again next scan"],
         ["Couldn't be judged just now", last.failed, "MusicBrainz didn't answer; next scan"],
+        ["Matched, but a track still has another file", last.held ?? 0, "a duplicate, or a move half done; next scan"],
         ["Left for the next scan", last.remaining, "a scan reads a few thousand folders at most"],
         ["Track files gone from disk", last.verify?.missing ?? 0, "flagged, not downloaded again by themselves"],
         ["Files not found this time", last.verify?.not_found ?? 0, "missing only if the next check agrees"],
@@ -94,6 +95,11 @@ export function ScanResultsModal({ onClose, onRescan }: { onClose: () => void; o
           </dl>
           {last.verify?.refused && (
             <p role="alert" className="mb-0 mt-2 text-sm" style={{ color: "var(--avoid-text)" }}>{last.verify.refused}</p>
+          )}
+          {!last.verify?.refused && (last.verify?.away?.length ?? 0) > 0 && (
+            <p className="mb-0 mt-2 text-sm" style={{ color: "var(--avoid-text)" }}>
+              These folders look empty or unmounted, so their files weren't checked: {last.verify?.away?.join(", ")}.
+            </p>
           )}
           <p className="mb-0 mt-2 font-mono text-xs text-ink-faint">
             {seconds(last.total_ms)} in all · walking the folder {seconds(last.walk_ms)} · reading {last.opened.toLocaleString()} file

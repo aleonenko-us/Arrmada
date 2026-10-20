@@ -73,6 +73,9 @@ type VerifyWrites struct {
 	Missing  []VerifyBaseline // still not found after the grace period: missing
 	Baseline []VerifyBaseline // the same file, with a size, time or inode not yet recorded
 	Changed  []VerifyChange
+	// Redevice are files not on disk whose recorded device was renumbered (a reboot or
+	// remount): only FileID is written.
+	Redevice []VerifyBaseline
 }
 
 // VerifyApplied counts the rows each kind of write changed.
@@ -119,6 +122,11 @@ func (s *Service) ApplyVerify(ctx context.Context, w VerifyWrites) (VerifyApplie
 				return err
 			}
 			out.Missing += n
+		}
+		for _, b := range w.Redevice {
+			if _, err := exec(`UPDATE music_track_files SET file_id = ? WHERE id = ? AND path = ?`, b.FileID, b.ID, b.Path); err != nil {
+				return err
+			}
 		}
 		for _, b := range w.Baseline {
 			if _, err := exec(`UPDATE music_track_files SET size_bytes = ?, mtime_unix = ?, file_id = ? WHERE id = ? AND path = ?`,

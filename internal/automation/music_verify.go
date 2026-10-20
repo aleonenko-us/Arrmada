@@ -60,9 +60,32 @@ type MusicVerifyResult struct {
 	Back     int       `json:"back"`      // found again
 	Changed  int       `json:"changed"`   // changed outside Arrmada: measured again
 	Skipped  int       `json:"skipped"`   // couldn't be judged (unreadable, or under a folder that looks unmounted)
-	// Refused is set when the pass marked nothing because the library looked unmounted: the
-	// health warning's text.
+	// Refused is set when the pass marked nothing because the music folder looked unmounted
+	// or too many files vanished at once: the health warning's text.
 	Refused string `json:"refused,omitempty"`
+	// Away are folders that look empty or unmounted (a share on a subfolder that's away, an
+	// album folder emptied but left behind): their files weren't checked this pass; the
+	// rest of the library was.
+	Away []string `json:"away,omitempty"`
+}
+
+// musicAwayListed caps the folders the health note names.
+const musicAwayListed = 5
+
+// Warning is the pass's health note ("" when all was well): the refusal, else the folders
+// whose files weren't checked.
+func (r MusicVerifyResult) Warning() string {
+	if r.Refused != "" || len(r.Away) == 0 {
+		return r.Refused
+	}
+	names := r.Away
+	more := ""
+	if len(names) > musicAwayListed {
+		more = fmt.Sprintf(" and %d more", len(names)-musicAwayListed)
+		names = names[:musicAwayListed]
+	}
+	return fmt.Sprintf("These music folders look empty or unmounted, so their files weren't checked: %s%s. The rest of the library was. If a share or disk is away, mount it; if you emptied a folder on purpose, remove it.",
+		strings.Join(names, ", "), more)
 }
 
 // musicVerifyState holds the last pass's outcome for the health check, and a test seam.
@@ -81,7 +104,7 @@ func (c *Coordinator) LastMusicVerify() MusicVerifyResult {
 }
 
 // MusicFilesWarning is the health warning from the last verify pass ("" when all was well).
-func (c *Coordinator) MusicFilesWarning() string { return c.LastMusicVerify().Refused }
+func (c *Coordinator) MusicFilesWarning() string { return c.LastMusicVerify().Warning() }
 
 // verifyStat is one recorded file's look at the disk.
 type verifyStat struct {
@@ -142,11 +165,16 @@ func (c *Coordinator) VerifyMusicFiles(ctx context.Context) (MusicVerifyResult, 
 		return ok
 	}
 	devs := map[string]string{} // folder → its device ("" when it can't be read)
+	// A reboot or remount can renumber a filesystem's device (ZFS, FUSE/shfs, NFS, SMB,
+	// btrfs): what the files still there say maps each old number to the new one, so a
+	// missing file recorded under the old number isn't read as "on another disk".
+	remap := deviceRemap(rows, stats)
 	w := music.VerifyWrites{At: out.At}
-	var changed []int // row indexes
-	unmounted := map[string]int{}
-	gone := map[int64][]int{} // album → rows newly missing
-	back := map[int64]int{}   // album → files seen again
+	var changed []int             // row indexes
+	unmounted := map[string]int{} // the music folder (or an outside file's anchor) looks unmounted
+	away := map[string]int{}      // a nearer folder looks empty or unmounted: its files are skipped
+	gone := map[int64][]int{}     // album → rows newly missing
+	back := map[int64]int{}       // album → files seen again
 	backRow := map[int64]int{}
 	for i, r := range rows {
 		out.Checked++
@@ -172,13 +200,18 @@ func (c *Coordinator) VerifyMusicFiles(ctx context.Context) (MusicVerifyResult, 
 			}
 		case errors.Is(st.err, fs.ErrNotExist):
 			anchor := verifyAnchor(root, r.Path)
-			nearest, away := nearestLooksAway(r.Path, r.FileID, anchorOK, devs)
+			fileID := remapDevice(r.FileID, remap)
+			if fileID != r.FileID {
+				w.Redevice = append(w.Redevice, music.VerifyBaseline{ID: r.ID, Path: r.Path, FileID: fileID})
+			}
+			nearest, looksAway := nearestLooksAway(r.Path, fileID, anchorOK, devs)
 			switch {
 			case !anchorOK(anchor):
 				unmounted[anchor]++
 				out.Skipped++
-			case away:
-				unmounted[nearest]++
+			case looksAway:
+				// Only this folder's files wait: the rest of the library is still checked.
+				away[nearest]++
 				out.Skipped++
 			case r.MissingSince != "":
 				// Already missing; stays so until it's back.
@@ -200,7 +233,7 @@ func (c *Coordinator) VerifyMusicFiles(ctx context.Context) (MusicVerifyResult, 
 			dirs = append(dirs, d)
 		}
 		sort.Strings(dirs)
-		out.Refused = fmt.Sprintf("Music files are gone from %s, which looks unmounted (missing, empty, or on another disk than the files were), so the music file check marked nothing. Check the share or the array is mounted, then run the check again from Settings → Status → Tasks.", strings.Join(dirs, ", "))
+		out.Refused = fmt.Sprintf("The music folder %s looks unmounted (it's missing or empty), so the music file check marked nothing. Check the share or the array is mounted, then run the check again from Settings → Status → Tasks.", strings.Join(dirs, ", "))
 	case len(w.NotFound)+len(w.Missing) > musicMissingThreshold(out.Checked):
 		out.Refused = fmt.Sprintf("%d music files vanished since the last check — more than a deletion would explain — so nothing was marked. Part of the array or a share may be unmounted; check it, then run the check again from Settings → Status → Tasks.", len(w.NotFound)+len(w.Missing))
 	}
@@ -210,6 +243,13 @@ func (c *Coordinator) VerifyMusicFiles(ctx context.Context) (MusicVerifyResult, 
 		out.Skipped += len(w.NotFound) + len(w.Missing)
 		w.NotFound, w.Missing, gone = nil, nil, nil
 		c.log.Warn("music folder looks unmounted — the music file check marked nothing", "unmounted", unmounted, "checked", out.Checked, "skipped", out.Skipped)
+	}
+	for d := range away {
+		out.Away = append(out.Away, d)
+	}
+	sort.Strings(out.Away)
+	if len(out.Away) > 0 {
+		c.log.Warn("music file check: folders look empty or unmounted — their files weren't checked", "folders", out.Away)
 	}
 
 	// Changed files: measured again, their tags rechecked. Outside the transaction: a probe
@@ -336,6 +376,47 @@ func nearestLooksAway(path, fileID string, mounted func(string) bool, devs map[s
 		return dir, true
 	}
 	return dir, false
+}
+
+// deviceRemap learns, from the files still on disk, which device each recorded device
+// number is now: recorded "7:…" seen as "9:…" maps 7 to 9. A number seen as two different
+// devices is ambiguous and left out.
+func deviceRemap(rows []music.VerifyRow, stats []verifyStat) map[string]string {
+	seen := map[string]map[string]bool{}
+	for i, r := range rows {
+		if stats[i].err != nil {
+			continue
+		}
+		was, now := deviceOf(r.FileID), deviceOf(music.FileIdentity(stats[i].fi))
+		if was == "" || now == "" || was == now {
+			continue
+		}
+		if seen[was] == nil {
+			seen[was] = map[string]bool{}
+		}
+		seen[was][now] = true
+	}
+	out := map[string]string{}
+	for was, nows := range seen {
+		if len(nows) == 1 {
+			for now := range nows {
+				out[was] = now
+			}
+		}
+	}
+	return out
+}
+
+// remapDevice rewrites a file identity's device through the remap.
+func remapDevice(fileID string, remap map[string]string) string {
+	dev, ino, ok := strings.Cut(fileID, ":")
+	if !ok {
+		return fileID
+	}
+	if now, ok := remap[dev]; ok {
+		return now + ":" + ino
+	}
+	return fileID
 }
 
 // deviceOf is the device part of a "dev:ino" file identity ("" when there is none).

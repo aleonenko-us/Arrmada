@@ -331,7 +331,7 @@ func musicScanMessage(res automation.MusicScanResult) string {
 	if res.Reviews > 0 {
 		msg += "; " + countOf(res.Reviews, "folder") + " to match in Reviews"
 	}
-	if n := res.Remaining + res.Failed + res.Waiting; n > 0 {
+	if n := res.Remaining + res.Failed + res.Waiting + res.Held; n > 0 {
 		msg += "; " + countOf(n, "folder") + " left for the next scan"
 	}
 	return msg + "."

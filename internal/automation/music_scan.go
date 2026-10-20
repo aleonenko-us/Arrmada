@@ -63,13 +63,16 @@ type MusicScanResult struct {
 	// musicScanListed); Reviews counts every folder of this scan held there.
 	Unmatched []string `json:"unmatched"`
 	Reviews   int      `json:"reviews"`
-	Failed    int      `json:"failed"`    // couldn't be judged just now (MusicBrainz down): tried again next scan
-	Waiting   int      `json:"waiting"`   // their album has no track listing on MusicBrainz yet: tried again next scan
-	Remaining int      `json:"remaining"` // left for the next scan by the per-run cap
-	Opened    int      `json:"opened"`    // files whose tags were read
-	Measured  int      `json:"measured"`  // tracks on record measured with ffprobe afterwards
-	Workers   int      `json:"workers"`
-	Full      bool     `json:"full,omitempty"`
+	Failed    int      `json:"failed"`  // couldn't be judged just now (MusicBrainz down): tried again next scan
+	Waiting   int      `json:"waiting"` // their album has no track listing on MusicBrainz yet: tried again next scan
+	// Held are folders that matched, but some of whose files' tracks still hold another
+	// file that's on disk (a duplicate, or a move half done): looked at again next scan.
+	Held      int  `json:"held"`
+	Remaining int  `json:"remaining"` // left for the next scan by the per-run cap
+	Opened    int  `json:"opened"`    // files whose tags were read
+	Measured  int  `json:"measured"`  // tracks on record measured with ffprobe afterwards
+	Workers   int  `json:"workers"`
+	Full      bool `json:"full,omitempty"`
 	// Verify is the file check that runs after the scan (MUS-15).
 	Verify *MusicVerifyResult `json:"verify,omitempty"`
 	// Timings, in milliseconds: the walk, the reading of new files (summed over the
@@ -597,7 +600,7 @@ func (st *scanState) fill(res *MusicScanResult) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	res.Albums, res.Tracks, res.Moved = st.res.Albums, st.res.Tracks, st.res.Moved
-	res.Reviews, res.Failed, res.Waiting, res.Opened = st.res.Reviews, st.res.Failed, st.res.Waiting, st.res.Opened
+	res.Reviews, res.Failed, res.Waiting, res.Held, res.Opened = st.res.Reviews, st.res.Failed, st.res.Waiting, st.res.Held, st.res.Opened
 	res.Unmatched = append(res.Unmatched, st.res.Unmatched...)
 	res.Skipped += st.res.Skipped
 	res.Artists = st.artists.added()
@@ -737,7 +740,21 @@ func (st *scanState) scanFolder(ctx context.Context, g *scanGroup) {
 		st.holdFolder(ctx, g, fsig, id, res, len(cands) > 0)
 		return
 	}
-	n := st.recordMatch(ctx, g, res, files, props)
+	n, held, ok := st.recordMatch(ctx, g, res, files, props)
+	if !ok {
+		return // not remembered: the next scan tries again
+	}
+	if held > 0 {
+		// A matched file went unrecorded because its track still holds another file that's
+		// there (or couldn't be checked). Never cached as done: the folder is looked at
+		// again by the next scan, after the folders that changed, so once the other file is
+		// gone (a rename finished, a remount) this one is linked.
+		st.remember(music.ScanDir{Path: g.path, Sig: g.sig, FilesSig: fsig, Files: recorded + n, State: music.ScanDirWaiting})
+		st.mu.Lock()
+		st.res.Held++
+		st.mu.Unlock()
+		return
+	}
 	st.folderDone(g, fsig, recorded+n)
 }
 
@@ -836,8 +853,10 @@ func (st *scanState) folderDone(g *scanGroup, fsig string, recorded int) {
 }
 
 // recordMatch records the files a confident match placed, where they are: only files not
-// on record yet, only on tracks without a file. It returns how many were recorded.
-func (st *scanState) recordMatch(ctx context.Context, g *scanGroup, res music.MatchResult, files []scanFile, props map[string]*mediainfo.AudioInfo) int {
+// on record yet, on tracks without a file that's still there (RecordScanned). It returns
+// how many were recorded and how many were held back by a track's other file; ok is false
+// when the recording failed (the folder is tried again by the next scan).
+func (st *scanState) recordMatch(ctx context.Context, g *scanGroup, res music.MatchResult, files []scanFile, props map[string]*mediainfo.AudioInfo) (recorded, held int, ok bool) {
 	c := st.c
 	byPath := make(map[string]scanFile, len(files))
 	for _, f := range files {
@@ -860,15 +879,15 @@ func (st *scanState) recordMatch(ctx context.Context, g *scanGroup, res music.Ma
 		out = append(out, music.ScannedTrack{TrackID: a.TrackID, Rec: rec})
 	}
 	if len(out) == 0 {
-		return 0
+		return 0, 0, true
 	}
-	n, err := c.music.RecordScanned(ctx, out)
+	n, held, err := c.music.RecordScanned(ctx, out)
 	if err != nil {
 		c.log.Warn("music scan: recording an album's files failed", "folder", g.path, "err", err)
 		st.mu.Lock()
 		st.res.Failed++
 		st.mu.Unlock()
-		return 0
+		return 0, 0, false
 	}
 	if n > 0 {
 		title := ""
@@ -882,7 +901,7 @@ func (st *scanState) recordMatch(ctx context.Context, g *scanGroup, res music.Ma
 		st.res.Tracks += n
 		st.mu.Unlock()
 	}
-	return n
+	return n, held, true
 }
 
 // holdFolder sends a folder the matcher wouldn't place to Reviews, with its explanation.

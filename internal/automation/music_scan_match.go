@@ -61,9 +61,11 @@ func (c *Coordinator) matchScanFolder(ctx context.Context, r Review, albumID int
 	var out []music.ScannedTrack
 	for _, t := range tracks {
 		a, ok := matched[t.ID]
-		if !ok || t.HasFile {
-			continue
+		if !ok || (t.HasFile && t.FilePath == a.Path) {
+			continue // nothing to record: this very file is the track's already
 		}
+		// A track holding another file that's still there keeps it (RecordScanned); one
+		// whose file is gone from its path takes this one.
 		f := byPath[a.Path]
 		rec := music.FileRecord{Path: f.path, SizeBytes: f.size, MtimeUnix: f.mtime, FileID: f.fileID,
 			Quality: music.Quality(music.FormatOf(f.path))}
@@ -75,7 +77,7 @@ func (c *Coordinator) matchScanFolder(ctx context.Context, r Review, albumID int
 		}
 		out = append(out, music.ScannedTrack{TrackID: t.ID, Rec: rec})
 	}
-	n, err := c.music.RecordScanned(ctx, out)
+	n, _, err := c.music.RecordScanned(ctx, out)
 	if err != nil {
 		return err
 	}
