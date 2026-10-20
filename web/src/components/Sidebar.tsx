@@ -3,6 +3,8 @@ import { NavLink } from "react-router-dom";
 import { visibleNav } from "../lib/nav";
 import { useMe, isAdmin } from "../lib/me";
 import { api } from "../lib/api";
+import { convertApi } from "../lib/convertApi";
+import { usePoll } from "../lib/usePoll";
 import { badgeFor, useAttention, type NavBadge } from "../lib/useAttention";
 import { FleetMark } from "./FleetMark";
 import { Icon } from "./icons";
@@ -103,6 +105,25 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
       .then((a) => setAudioDot(a.enabled ? (a.running ? "var(--good)" : "var(--reject)") : null))
       .catch(() => {});
   }, []);
+  // Keep the two background-work nav icons in sync with the server. Downloads and
+  // conversions are independent endpoints, so one unavailable module can't hide the
+  // other's status. The poll slows down while idle and pauses in hidden tabs.
+  const [downloadActive, setDownloadActive] = useState(false);
+  const [convertActive, setConvertActive] = useState(false);
+  const hasActiveWork = downloadActive || convertActive;
+  usePoll(async () => {
+    const [activity, jobs] = await Promise.allSettled([api.activity(), convertApi.convertJobs()]);
+    if (activity.status === "fulfilled") {
+      setDownloadActive(activity.value.downloads?.some((d) =>
+        ["downloading", "checking", "moving", "allocating", "metadata"].includes(d.phase || d.state),
+      ) ?? false);
+    }
+    if (jobs.status === "fulfilled") {
+      setConvertActive(jobs.value.some((job) =>
+        ["preparing", "testing", "encoding", "verifying", "replacing"].includes(job.state),
+      ));
+    }
+  }, hasActiveWork ? 4000 : 15000);
   const signOut = () => { void endSession(user?.id); };
   // Hide nav entries for modules an admin has turned off, and admin-only pages (Logs)
   // from managers.
@@ -147,7 +168,9 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
                   {group.group}
                 </div>
               )}
-              {group.items.map((item) => (
+              {group.items.map((item) => {
+                const spinning = (item.to === "/activity" && downloadActive) || (item.to === "/convert" && convertActive);
+                return (
                 <NavLink
                   key={item.to}
                   to={item.to}
@@ -160,8 +183,12 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
                       : { color: "var(--ink-dim)" }
                   }
                 >
-                  <Icon name={item.icon} className="flex-none" />
+                  <Icon
+                    name={item.icon}
+                    className={`flex-none${spinning ? (item.to === "/activity" ? " sidebar-download-active" : " sidebar-work-spin") : ""}`}
+                  />
                   {item.label}
+                  {spinning && <span className="sr-only">, active</span>}
                   {item.tag && (
                     <span
                       className="ml-auto rounded-full px-1.5 py-px font-mono text-2xs uppercase"
@@ -175,7 +202,8 @@ export function Sidebar({ open, onClose, bell = false, returnFocus }: { open: bo
                   )}
                   {item.badge && <CountPill badge={badgeFor(item.badge, attention?.counts)} />}
                 </NavLink>
-              ))}
+                );
+              })}
             </div>
           ))}
         </nav>
