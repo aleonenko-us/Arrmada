@@ -124,6 +124,10 @@ func (c *Coordinator) ScanMusicLibraryWith(ctx context.Context, opt MusicScanOpt
 	if !c.moduleOn(ctx, "music") {
 		return res, ErrModuleOff
 	}
+	// MusicBrainz lookups of a scan wait behind anyone using the app: the background lane
+	// yields to interactive requests, and pauses when MusicBrainz refuses (a folder that
+	// couldn't be judged then is tried again by the next scan).
+	ctx = metadata.WithMBLane(ctx, metadata.MBBackground)
 	started := time.Now()
 	root := filepath.Clean(c.imp.MusicDir())
 	workers := opt.Workers
@@ -138,6 +142,11 @@ func (c *Coordinator) ScanMusicLibraryWith(ctx context.Context, opt MusicScanOpt
 
 	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
 		return res, fmt.Errorf("the music folder %s can't be read: %w", root, errOr(err, errors.New("not a folder")))
+	}
+	if !library.FolderLooksMounted(root) {
+		// An empty music folder is most often a share or array that isn't mounted: a scan
+		// then would settle every folder held in Reviews as gone. Nothing is touched.
+		return res, fmt.Errorf("%w: %s", ErrMusicFolderEmpty, root)
 	}
 	walkStart := time.Now()
 	dirs, err := walkMusicRoot(ctx, c.log, root, workers)
@@ -247,6 +256,10 @@ func (c *Coordinator) ScanMusicLibraryWith(ctx context.Context, opt MusicScanOpt
 		"remaining", res.Remaining, "opened", res.Opened, "measured", res.Measured, "ms", res.TotalMs)
 	return res, nil
 }
+
+// ErrMusicFolderEmpty refuses a scan of a music folder with nothing in it: most often a
+// share that isn't mounted, which a scan must never read as "everything's gone".
+var ErrMusicFolderEmpty = errors.New("the music folder is empty or not mounted, so nothing was scanned — check the share or array is mounted")
 
 // maxScanCandidates bounds the albums one folder is weighed against.
 const maxScanCandidates = 5
@@ -538,6 +551,12 @@ func (st *scanState) settleGone(ctx context.Context, groups []*scanGroup) {
 		}
 		if err := st.c.resolveReview(ctx, id, ResolutionRemoved); err != nil {
 			st.c.log.Warn("music scan: couldn't settle the review of a folder that's gone", "folder", path, "err", err)
+			continue
+		}
+		// Forgotten too: if the folder comes back (a share remounted), it is judged and
+		// held again rather than skipped as already looked at.
+		if err := st.c.music.ForgetScanDir(ctx, path); err != nil {
+			st.c.log.Warn("music scan: couldn't forget a folder that's gone", "folder", path, "err", err)
 		}
 	}
 }
@@ -702,7 +721,7 @@ func (st *scanState) scanFolder(ctx context.Context, g *scanGroup) {
 		return
 	}
 	in := music.MatchInput{
-		Files: mfiles, FolderName: folderName(g), Candidates: cands, GrabbedAlbumID: id.named,
+		Files: mfiles, FolderName: folderName(g), Candidates: cands, GrabbedAlbumID: id.named, ExpectedFromNames: id.named > 0,
 		Settings: c.music.MatchSettings(), Policy: c.music.EditionPolicy(),
 	}
 	if id.named > 0 {
@@ -755,7 +774,7 @@ func (st *scanState) followMove(ctx context.Context, f *scanFile) bool {
 		return false
 	}
 	for _, k := range st.byFileID[f.fileID] {
-		if k.Path == f.path {
+		if k.Path == f.path || !sameRecordedFile(k, *f, time.Now()) {
 			continue
 		}
 		if _, err := os.Lstat(k.Path); !errors.Is(err, fs.ErrNotExist) {
@@ -780,6 +799,29 @@ func (st *scanState) followMove(ctx context.Context, f *scanFile) bool {
 		return true
 	}
 	return false
+}
+
+// musicFollowWindow is how long after a file was marked missing the scan may still follow
+// it by inode. A filesystem hands a freed inode to the next new file, so an old missing
+// record is never matched to whatever has its number now.
+const musicFollowWindow = 3 * 24 * time.Hour
+
+// sameRecordedFile reports whether a file found at a new path is the recorded one moved:
+// the same inode (the caller's lookup), and the size and modification time recorded for it,
+// both known — a rename keeps both, a new file that was given a freed inode has neither.
+// A record missing for longer than musicFollowWindow isn't followed at all; the file goes
+// through the matcher as a new one.
+func sameRecordedFile(k music.ScanKnownFile, f scanFile, now time.Time) bool {
+	if k.SizeBytes <= 0 || k.MtimeUnix <= 0 || k.SizeBytes != f.size || k.MtimeUnix != f.mtime {
+		return false
+	}
+	if k.MissingSince != "" {
+		since := parseTime(k.MissingSince)
+		if since.IsZero() || now.Sub(since) > musicFollowWindow {
+			return false
+		}
+	}
+	return true
 }
 
 // folderDone remembers a folder whose files are all accounted for; a pending review of it

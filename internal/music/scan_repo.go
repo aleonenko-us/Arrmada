@@ -47,13 +47,15 @@ type ScanKnownFile struct {
 	SizeBytes, MtimeUnix int64
 	FileID               string
 	Missing              bool
+	// MissingSince is when the verify pass marked the file missing ("" when it isn't).
+	MissingSince string
 }
 
 // ScanKnownFiles lists every recorded music file, in one statement.
 func (s *Service) ScanKnownFiles(ctx context.Context) ([]ScanKnownFile, error) {
 	rows, err := s.repo.db.QueryContext(ctx, `
 		SELECT id, album_id, COALESCE(release_track_id, 0), path, size_bytes, mtime_unix, file_id,
-		       missing_since IS NOT NULL
+		       COALESCE(missing_since, '')
 		  FROM music_track_files WHERE path != ''`)
 	if err != nil {
 		return nil, err
@@ -62,11 +64,10 @@ func (s *Service) ScanKnownFiles(ctx context.Context) ([]ScanKnownFile, error) {
 	var out []ScanKnownFile
 	for rows.Next() {
 		var f ScanKnownFile
-		var missing int
-		if err := rows.Scan(&f.ID, &f.AlbumID, &f.TrackID, &f.Path, &f.SizeBytes, &f.MtimeUnix, &f.FileID, &missing); err != nil {
+		if err := rows.Scan(&f.ID, &f.AlbumID, &f.TrackID, &f.Path, &f.SizeBytes, &f.MtimeUnix, &f.FileID, &f.MissingSince); err != nil {
 			return nil, err
 		}
-		f.Missing = missing != 0
+		f.Missing = f.MissingSince != ""
 		out = append(out, f)
 	}
 	return out, rows.Err()
@@ -218,14 +219,16 @@ func (s *Service) RecordScanned(ctx context.Context, files []ScannedTrack) (int,
 }
 
 // FollowMovedFile records that a recorded file is now at another path (the scan found it
-// there by its inode, and the old path is gone): the row keeps everything else, and a
-// missing mark ends. False when the row changed meanwhile or another row holds the path.
+// there by its inode, with the size and modification time recorded for it, and the old
+// path is gone): the row keeps everything else, and a missing mark ends. False when the
+// row changed meanwhile, its recorded size or time isn't the file's, or another row holds
+// the path.
 func (s *Service) FollowMovedFile(ctx context.Context, id int64, from, to string, size, mtime int64, fileID string) (bool, error) {
 	res, err := s.repo.db.ExecContext(ctx, `
-		UPDATE music_track_files SET path = ?, size_bytes = ?, mtime_unix = ?, file_id = ?, missing_since = NULL,
-		       missing_seen_at = NULL
-		 WHERE id = ? AND path = ? AND NOT EXISTS (SELECT 1 FROM music_track_files o WHERE o.path = ?)`,
-		to, size, mtime, fileID, id, from, to)
+		UPDATE music_track_files SET path = ?, file_id = ?, missing_since = NULL, missing_seen_at = NULL
+		 WHERE id = ? AND path = ? AND size_bytes = ? AND mtime_unix = ? AND size_bytes > 0 AND mtime_unix > 0
+		   AND NOT EXISTS (SELECT 1 FROM music_track_files o WHERE o.path = ?)`,
+		to, fileID, id, from, size, mtime, to)
 	if err != nil {
 		return false, err
 	}

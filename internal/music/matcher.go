@@ -322,6 +322,10 @@ type MatchInput struct {
 	Candidates []MatchCandidate
 	// GrabbedAlbumID is the album the download was grabbed for (0: nobody grabbed it).
 	GrabbedAlbumID int64
+	// ExpectedFromNames says GrabbedAlbumID comes from a library folder's names (the
+	// library scan), not a grab: with untagged files that is the only evidence, so only a
+	// whole album, or exactly the tracks still wanted, is placed.
+	ExpectedFromNames bool
 	// Forced: a person chose the album (Reviews' "import anyway", the library scan): the
 	// best fit is placed, file by file, and nothing goes to Reviews.
 	Forced bool
@@ -520,7 +524,10 @@ func Match(in MatchInput) MatchResult {
 		res.Decision = MatchImport
 	case res.wantedExactly(in.Wanted, best):
 		res.Decision = MatchPartial
-	case float64(len(res.Assignments)) >= s.PartialMin*float64(tracks) && best.Distance <= s.Review:
+	case !(nameOnly && in.ExpectedFromNames) && float64(len(res.Assignments)) >= s.PartialMin*float64(tracks) && best.Distance <= s.Review:
+		// With nothing but file and folder names to go on (no tags, and the album chosen by
+		// a folder's name rather than a grab), only a whole album or exactly the tracks
+		// still wanted is placed: part of an album by names alone is a guess.
 		res.Decision = MatchPartial
 	default:
 		res.Assignments = nil

@@ -37,7 +37,17 @@ func (c *Coordinator) matchScanFolder(ctx context.Context, r Review, albumID int
 	for _, f := range files {
 		audio = append(audio, music.AudioFile{Path: f.path, SizeBytes: f.size, Disc: music.DiscOfFolder(filepath.Base(filepath.Dir(f.path)))})
 	}
-	tracks, matched, _, err := c.matchInto(ctx, al, audio, filepath.Base(r.ContentPath), false)
+	// The album's own edition, unless the person chose one ("Match as …"): only then may
+	// the album move to another edition, and it moves back if nothing is recorded.
+	chosen := musicEditionFrom(ctx) != 0
+	before := al
+	recorded := 0
+	defer func() {
+		if chosen && recorded == 0 {
+			c.switchBack(context.WithoutCancel(ctx), before, albumImport{})
+		}
+	}()
+	tracks, matched, _, err := c.matchInto(ctx, al, audio, filepath.Base(r.ContentPath), !chosen)
 	if err != nil {
 		return err
 	}
@@ -69,6 +79,7 @@ func (c *Coordinator) matchScanFolder(ctx context.Context, r Review, albumID int
 	if err != nil {
 		return err
 	}
+	recorded = n
 	if n == 0 {
 		return fmt.Errorf("%w: no file in the folder fits a track of %q that still needs one", ErrNothingToImport, al.Title)
 	}

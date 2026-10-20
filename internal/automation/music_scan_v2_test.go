@@ -242,6 +242,60 @@ func TestMusicScanUnmatchedFolderGoesToReviews(t *testing.T) {
 	}
 }
 
+// A scan of an empty music folder (a share that didn't mount) is refused and touches
+// nothing: the folders waiting in Reviews stay there. A folder that really went away
+// settles its review, and is held again if it comes back.
+func TestMusicScanEmptyRootKeepsReviews(t *testing.T) {
+	h := musicTestCoord(t)
+	lib := newScanLib(t, h)
+	h.addArtist(t, "Radiohead", "", []string{"OK Computer"}, nil, "")
+	lib.add("Keep/Radiohead/OK Computer/01 - One.flac", tagged("Radiohead", "OK Computer", 1, "One"))
+	lib.add("Mystery/Unknown Thing/01 - a.flac", music.FileTags{})
+	lib.add("Mystery/Unknown Thing/02 - b.flac", music.FileTags{})
+	if res := h.scan(t, MusicScanOptions{}); res.Reviews != 1 {
+		t.Fatalf("first scan = %+v", res)
+	}
+	away := lib.root + "-away"
+	if err := os.Rename(lib.root, away); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(lib.root, 0o755); err != nil { // the mount point, empty
+		t.Fatal(err)
+	}
+	if _, err := h.c.ScanMusicLibraryWith(h.ctx, MusicScanOptions{}, nil); !errors.Is(err, ErrMusicFolderEmpty) {
+		t.Fatalf("scan of an empty music folder = %v, want it refused", err)
+	}
+	if list, _ := h.c.ListReviews(h.ctx); len(list) != 1 {
+		t.Fatalf("pending reviews after the refused scan = %d, want 1", len(list))
+	}
+	if err := os.Remove(lib.root); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(away, lib.root); err != nil {
+		t.Fatal(err)
+	}
+	if res := h.scan(t, MusicScanOptions{}); res.Reviews != 1 {
+		t.Errorf("scan after the remount = %+v; want the folder still held", res)
+	}
+
+	// Really gone: settled. Back again: held again, not skipped as already judged.
+	mystery := filepath.Join(lib.root, "Mystery")
+	if err := os.Rename(mystery, away); err != nil {
+		t.Fatal(err)
+	}
+	h.scan(t, MusicScanOptions{})
+	if list, _ := h.c.ListReviews(h.ctx); len(list) != 0 {
+		t.Fatalf("a folder that's gone is still held: %+v", list)
+	}
+	if err := os.Rename(away, mystery); err != nil {
+		t.Fatal(err)
+	}
+	h.scan(t, MusicScanOptions{})
+	if list, _ := h.c.ListReviews(h.ctx); len(list) != 1 {
+		t.Errorf("the folder came back but isn't held again: %+v", list)
+	}
+}
+
 // A renamed album folder is followed by inode, not read as gone and new.
 func TestMusicScanFollowsRenamedFolder(t *testing.T) {
 	h := musicTestCoord(t)
@@ -265,6 +319,50 @@ func TestMusicScanFollowsRenamedFolder(t *testing.T) {
 	got := h.trackFiles(t, h.album(t, rh.ID, "OK Computer").ID)
 	if !strings.HasPrefix(got["One"], to) || !strings.HasPrefix(got["Two"], to) {
 		t.Errorf("files = %v, want them at %s", got, to)
+	}
+}
+
+// A deleted file's inode handed to a new, different file is never followed: only a file
+// with the recorded size and time is the recorded one moved. The new files are matched as
+// what they are, and the old album's records stay as they were.
+func TestMusicScanDoesNotFollowReusedInode(t *testing.T) {
+	h := musicTestCoord(t)
+	lib := newScanLib(t, h)
+	rh := h.addArtist(t, "Radiohead", "", []string{"OK Computer", "Kid A"}, nil, "")
+	o1 := lib.add("Radiohead/OK Computer/01 - One.flac", tagged("Radiohead", "OK Computer", 1, "One"))
+	o2 := lib.add("Radiohead/OK Computer/02 - Two.flac", tagged("Radiohead", "OK Computer", 2, "Two"))
+	h.scan(t, MusicScanOptions{})
+	okc := h.album(t, rh.ID, "OK Computer")
+	if err := os.RemoveAll(filepath.Join(lib.root, "Radiohead", "OK Computer")); err != nil {
+		t.Fatal(err)
+	}
+	k1 := lib.add("Radiohead/Kid A/01 - One.flac", tagged("Radiohead", "Kid A", 1, "One"))
+	k2 := lib.add("Radiohead/Kid A/02 - Two.flac", tagged("Radiohead", "Kid A", 2, "Two"))
+	later := time.Now().Add(2 * time.Hour) // new files: a later time than the ones deleted
+	for _, p := range []string{k1, k2} {
+		if err := os.Chtimes(p, later, later); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id1, id2 := music.FileIdentity(mustStat(t, k1)), music.FileIdentity(mustStat(t, k2))
+	if id1 == "" {
+		t.Skip("no inodes on this platform")
+	}
+	// The filesystem hands the freed inodes to the new files, crossed over.
+	for path, id := range map[string]string{o1: id2, o2: id1} {
+		if _, err := h.st.DB().Exec(`UPDATE music_track_files SET file_id = ? WHERE path = ?`, id, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res := h.scan(t, MusicScanOptions{})
+	if res.Moved != 0 || res.Tracks != 2 {
+		t.Fatalf("scan = %+v; want nothing followed and Kid A's two files matched as new", res)
+	}
+	if got := h.trackFiles(t, okc.ID); got["One"] != o1 || got["Two"] != o2 {
+		t.Errorf("OK Computer's records = %v; want them left at their old paths", got)
+	}
+	if got := h.trackFiles(t, h.album(t, rh.ID, "Kid A").ID); got["One"] != k1 || got["Two"] != k2 {
+		t.Errorf("Kid A's files = %v", got)
 	}
 }
 
