@@ -211,7 +211,8 @@ func (a *api) handleInsightsTest(w http.ResponseWriter, r *http.Request) {
 	if !a.decodeJSON(w, r, &req) { // send {} to test the stored config
 		return
 	}
-	if me, _ := userFrom(r); me == nil || !me.Role.AtLeast(auth.RoleAdmin) {
+	// A setup session tests what the wizard typed, as the admin it stands in for would.
+	if me, _ := userFrom(r); !viaSetupSession(r) && (me == nil || !me.Role.AtLeast(auth.RoleAdmin)) {
 		if req.Token != "" || (strings.TrimSpace(req.URL) != "" && !netsafe.SameEndpoint(req.URL, a.deps.Insights.Config(r.Context()).URL)) {
 			a.writeError(w, http.StatusForbidden, "Only an admin can test another Plex address or token; you can test the saved connection.")
 			return
@@ -227,11 +228,21 @@ func (a *api) handleInsightsTest(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, res)
 }
 
+// connectOwner is who a Plex connect PIN belongs to: the signed-in admin, or 0 for the
+// first-run wizard's setup session (nobody is signed in yet; the PIN is still bound to the
+// browser that started it by its own cookie).
+func connectOwner(r *http.Request) (int64, bool) {
+	if me, _ := userFrom(r); me != nil {
+		return me.ID, true
+	}
+	return 0, viaSetupSession(r)
+}
+
 // handleInsightsPlexAuthStart begins a "Sign in with Plex" flow: returns the PIN id
 // and the plex.tv URL the UI opens for the user to authorize.
 func (a *api) handleInsightsPlexAuthStart(w http.ResponseWriter, r *http.Request) {
-	me, _ := userFrom(r)
-	if me == nil {
+	ownerID, ok := connectOwner(r)
+	if !ok {
 		a.writeError(w, http.StatusUnauthorized, "sign in first")
 		return
 	}
@@ -255,7 +266,7 @@ func (a *api) handleInsightsPlexAuthStart(w http.ResponseWriter, r *http.Request
 		a.writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	if err := a.bindPlexPin(w, r, plexFlowConnect, me.ID, auth.ID); err != nil {
+	if err := a.bindPlexPin(w, r, plexFlowConnect, ownerID, auth.ID); err != nil {
 		a.writeError(w, http.StatusInternalServerError, "could not start Plex sign-in")
 		return
 	}
@@ -271,8 +282,8 @@ func (a *api) handleInsightsPlexAuthPoll(w http.ResponseWriter, r *http.Request)
 		a.writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	me, _ := userFrom(r)
-	if me == nil || !a.plexPinOwned(r, plexFlowConnect, me.ID, id) {
+	ownerID, ok := connectOwner(r)
+	if !ok || !a.plexPinOwned(r, plexFlowConnect, ownerID, id) {
 		a.writeError(w, http.StatusForbidden, errPlexPinElsewhere)
 		return
 	}

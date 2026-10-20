@@ -8,6 +8,8 @@ import { Input } from "../ui/Input";
 
 const PlexLoginButton = lazy(() => import("../components/PlexLoginButton"));
 // The Jellyfin sheet (username + password, or Quick Connect) downloads when it's opened.
+// A fresh install's first-run setup (no account yet; the account is its last step).
+const FirstRunSetup = lazy(() => import("./FirstRunSetup"));
 const JellyfinLoginSheet = lazy(() => import("../components/JellyfinSignInSheet"));
 // Two-factor sign-in's code step (or an admin's required setup) downloads when a right
 // password asks for it.
@@ -52,8 +54,7 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
     e.preventDefault();
     setBusy(true); setError(null);
     try {
-      // A new install's first admin lands on "/", where the setup wizard opens.
-      const r: LoginAnswer = mode === "setup" ? await api.setupAdmin(email.trim(), password) : await api.login(email.trim(), password);
+      const r: LoginAnswer = await api.login(email.trim(), password);
       if (r.two_factor) {
         setPassword("");
         setSecond({ step: r.two_factor, ticket: r.ticket });
@@ -76,6 +77,15 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
 
   const setup = mode === "setup";
 
+  // A fresh install: the setup wizard, whose last step makes the first admin.
+  if (setup && !second) {
+    return (
+      <Suspense fallback={<div className="grid h-full place-items-center text-sm text-ink-faint" style={{ background: "var(--bg)" }}>Loading…</div>}>
+        <FirstRunSetup onSignedIn={afterServerSignIn} />
+      </Suspense>
+    );
+  }
+
   return (
     <div className="grid h-full place-items-center px-5" style={{ background: "var(--bg)" }}>
       <div className="w-full max-w-[380px]">
@@ -84,14 +94,14 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
             <FleetMark className="h-6 w-6" />
           </span>
           <h1 className="m-0 text-2xl font-extrabold tracking-[0.14em]">ARRMADA</h1>
-          <p className="m-0 text-base text-ink-dim">{mode === "loading" ? "…" : mode !== "login" ? "Create your admin account to get started." : "Sign in to discover and request."}</p>
+          <p className="m-0 text-base text-ink-dim">{mode === "loading" ? "…" : mode === "remote" ? "Create your admin account to get started." : setup ? "Almost there. One more step." : "Sign in to discover and request."}</p>
         </div>
 
         {second && (
           <div className="rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}>
             <Suspense fallback={<div className="text-sm text-ink-faint">Loading…</div>}>
               <TwoFactorLogin step={second.step} ticket={second.ticket} username={email.trim()} onSignedIn={continueAfterSignIn}
-                onRestart={(why) => { setSecond(null); setError(why || null); }} />
+                onRestart={(why) => { setSecond(null); setError(why || null); if (setup) setMode("login"); }} />
             </Suspense>
           </div>
         )}
@@ -102,9 +112,9 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
             run <code>docker compose up -d</code>.
           </div>
         )}
-        {(mode === "login" || mode === "setup") && !second && (
+        {mode === "login" && !second && (
           <form onSubmit={submit} className="flex flex-col gap-3 rounded-2xl p-5" style={{ background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}>
-            {signedOut && !setup && !error && (
+            {signedOut && !error && (
               <div role="status" className="rounded-lg px-3 py-2.5 text-sm text-ink-dim" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
                 You were signed out. Sign in again to carry on.
               </div>
@@ -115,33 +125,27 @@ export function Login({ signedOut = false }: { signedOut?: boolean }) {
               <Input type="email" required autoFocus autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className={BOX} />
             </Field>
             <Field label="Password">
-              <Input type="password" required minLength={setup ? 8 : undefined} autoComplete={setup ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={setup ? "8+ characters" : "••••••••"} className={BOX} />
+              <Input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className={BOX} />
             </Field>
             {error && <div className="text-sm" style={{ color: "var(--reject-text)" }}>{error}</div>}
             <button type="submit" disabled={busy || plexBusy} className="mt-1 rounded-lg px-4 py-2.5 text-md font-semibold" style={{ background: "linear-gradient(150deg, var(--accent), var(--accent-deep))", color: "var(--accent-ink)" }}>
-              {busy ? "…" : setup ? "Create admin & continue" : "Sign in"}
+              {busy ? "…" : "Sign in"}
             </button>
-            {setup && (
-              <p className="m-0 mt-1 text-xs leading-snug text-ink-faint">
-                Next, a short setup asks for your free <b>TMDB</b> key and where your media lives. You can skip it and do it later in Settings.
-              </p>
-            )}
-
-            {!setup && (plexEnabled || jellyfin.enabled) && (
+            {(plexEnabled || jellyfin.enabled) && (
               <div className="my-0.5 flex items-center gap-2 text-xs uppercase tracking-wide text-ink-faint">
                 <span className="h-px flex-1" style={{ background: "var(--line)" }} /> or <span className="h-px flex-1" style={{ background: "var(--line)" }} />
               </div>
             )}
             {/* Sign in with Plex: the server checks the Plex account can reach this server
                 and signs it into its requester account. */}
-            {!setup && plexEnabled && (
+            {plexEnabled && (
               <Suspense fallback={<button type="button" disabled className={SERVER_BUTTON} style={{ background: "var(--plex)", color: "var(--plex-ink)" }}><PlexMark />Sign in with Plex</button>}>
                 <PlexLoginButton disabled={busy} onBusy={setPlexBusy} onError={setError} onSignedIn={afterServerSignIn} />
               </Suspense>
             )}
             {/* Sign in with Jellyfin: Jellyfin checks the username and password (or the
                 Quick Connect code) and the server signs that user into their account. */}
-            {!setup && jellyfin.enabled && (
+            {jellyfin.enabled && (
               <button type="button" disabled={busy || plexBusy} onClick={() => { setError(null); setJellyfin((j) => ({ ...j, open: true })); }} className={SERVER_BUTTON} style={{ background: "var(--jellyfin)", color: "var(--jellyfin-ink)" }}>
                 <JellyfinMark />Sign in with Jellyfin
               </button>

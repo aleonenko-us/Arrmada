@@ -907,6 +907,8 @@ export interface SetupState {
   jellyfin_connected?: boolean;
   jellyfin_server?: string;
   jellyfin_family?: { enabled: boolean; auto_approve_types: string };
+  /** Emby is connected (address and API key saved). */
+  emby_connected?: boolean;
   /** The Indexers step: how many indexers searches can use. */
   indexers_enabled?: number;
   /** Whether a Prowlarr answers at the saved address; null unless asked (?prowlarr=1). */

@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type APIKeyStatus, type LibraryPaths, type SetupState } from "../lib/api";
+import { api, ApiError, type APIKeyStatus, type LibraryPaths, type LoginAnswer, type SetupState } from "../lib/api";
+import { EmbyConnect } from "./settings/EmbyConnection";
+import AccountStep from "../components/setup/AccountStep";
 import { FolderChips, FolderPicker } from "./Library";
 import { restartAndWait } from "../lib/restart";
 import { FleetMark } from "../components/FleetMark";
@@ -24,7 +26,17 @@ import { JellyfinConnect } from "./settings/JellyfinConnection";
 // own small "Finish setup later" link, which says what's left.
 // Settings → System → Run setup again opens it again with what's set shown.
 
-type Step = "keys" | "folders" | "media" | "indexers" | "finish";
+type Step = "keys" | "folders" | "media" | "indexers" | "finish" | "account";
+
+// A fresh install (firstRun) has no account yet, so the order is providers first and the
+// account last: Sign in with Plex needs a connected server to check against.
+const FIRST_RUN_STEPS: { id: Step; label: string }[] = [
+  { id: "media", label: "Media server" },
+  { id: "keys", label: "Keys" },
+  { id: "folders", label: "Folders" },
+  { id: "indexers", label: "Indexers" },
+  { id: "account", label: "Account" },
+];
 
 const STEPS: { id: Step; label: string }[] = [
   { id: "keys", label: "Keys" },
@@ -35,15 +47,17 @@ const STEPS: { id: Step; label: string }[] = [
 ];
 
 // The Media server step's choice. later: neither for now (nothing is saved).
-type ServerChoice = "plex" | "jellyfin" | "both" | "later";
+type ServerChoice = "plex" | "jellyfin" | "emby" | "both" | "later";
 const SERVER_CHOICES: { id: ServerChoice; label: string; hint: string }[] = [
   { id: "plex", label: "Plex", hint: "Plex Media Server" },
   { id: "jellyfin", label: "Jellyfin", hint: "Free and open source" },
+  { id: "emby", label: "Emby", hint: "Emby Server" },
   { id: "both", label: "Both", hint: "Plex and Jellyfin side by side" },
   { id: "later", label: "Later", hint: "Connect one in Settings" },
 ];
 const usesPlex = (c: ServerChoice | null) => c === "plex" || c === "both";
 const usesJellyfin = (c: ServerChoice | null) => c === "jellyfin" || c === "both";
+const usesEmby = (c: ServerChoice | null) => c === "emby";
 
 // The Indexers step reuses Settings → Connections' add-indexer dialog (presets, Test
 // before saving); it loads when opened.
@@ -143,11 +157,21 @@ function useKeyChecks() {
  * step's checklist, to open next.
  * rerun: opened from Settings → System → Run setup again, not on a fresh install.
  */
-export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) => void; rerun?: boolean }) {
+export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedIn }: {
+  onDone: (to?: string) => void;
+  rerun?: boolean;
+  /** A fresh install with no account: providers first, the account last (setup session). */
+  firstRun?: boolean;
+  /** firstRun: the account step made the admin (or reached its two-factor step). */
+  onSignedIn?: (answer: LoginAnswer) => void;
+}) {
   const [state, setState] = useState<SetupState | null>(null);
+  const order = firstRun ? FIRST_RUN_STEPS : STEPS;
+  const nxt = (s: Step): Step => order[order.findIndex((x) => x.id === s) + 1]?.id ?? s;
+  const prv = (s: Step): Step | undefined => order[order.findIndex((x) => x.id === s) - 1]?.id;
   // Back from plex.tv after a Plex sign-in by redirect (a phone, or popups blocked): the
   // address carries ?plexpin=, and the Media server step picks the sign-in up again.
-  const [step, setStep] = useState<Step>(() => (hasPlexPin() ? "media" : "keys"));
+  const [step, setStep] = useState<Step>(() => (firstRun || hasPlexPin() ? "media" : "keys"));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [keys, setKeys] = useState<Record<string, string>>({});
@@ -178,11 +202,26 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
     setJFFamily((cur) => cur ?? { enabled: !!s.jellyfin_family?.enabled, types: typesFrom(s.jellyfin_family?.auto_approve_types ?? "") });
     setChoice((cur) => cur ?? (s.plex_connected && s.jellyfin_connected ? "both" : s.jellyfin_connected ? "jellyfin" : s.plex_connected ? "plex" : null));
   }).catch((e) => setError((e as Error).message));
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    // First run: open the setup session (a cookie) before anything asks for state.
+    if (!firstRun) { load(); return; }
+    setupApi.startSession().then(load).catch((e: Error) => {
+      if (e instanceof ApiError && e.status === 409) { window.location.reload(); return; } // an admin exists now: sign in
+      setError(e.message);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true); setError(null);
-    try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try {
+      try { await fn(); } catch (e) {
+        // A setup session that ended (two hours) is started again, once.
+        if (!(firstRun && e instanceof ApiError && e.status === 401)) throw e;
+        await setupApi.startSession();
+        await fn();
+      }
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
 
   const go = (s: Step) => { setError(null); setStep(s); };
@@ -261,7 +300,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
     if (unchecked.length > 0) toast(`Saved. ${unchecked.join(", ")} couldn't be checked first; Test it in Settings → Connections.`);
     setKeys({});
     await load();
-    go("folders");
+    go(nxt("keys"));
   });
 
   const saveFolders = () => run(async () => {
@@ -274,7 +313,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
     }))) return;
     if (folders) await api.setLibraryPaths(folders);
     await load();
-    go("media");
+    go(nxt("folders"));
   });
 
   // Each chosen server's family switches are saved as chosen here, both of them, so the
@@ -287,7 +326,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
     if (usesJellyfin(choice) && jfFamily) {
       await api.updateSettings({ jellyfin_login_enabled: jfFamily.enabled, jellyfin_login_auto_approve_types: typesCSV(jfFamily.types) });
     }
-    go("indexers");
+    go(nxt("media"));
   });
 
   // The Indexers step asks whether a Prowlarr answers (which can take a few seconds) only
@@ -324,21 +363,21 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
   const noStorage = state.mounts.length > 0 && !state.mounts.includes("/storage");
   const managedOnly = noStorage && !state.media_host_folder;
   const mediaFolder = noStorage && !!state.media_host_folder;
-  const stepIndex = STEPS.findIndex((s) => s.id === step);
+  const stepIndex = order.findIndex((s) => s.id === step);
   const restartFirst = state.restart_needed && state.can_restart;
 
   // Ending early, on every step but the last: small and under the card, so it's chosen,
   // not hit by mistake. Run again just goes back (its first step already has that button).
-  const endEarly = step !== "finish" && !(rerun && step === "keys") && (
-    <button type="button" onClick={() => (rerun ? onDone() : void finishLater())} disabled={busy} className="text-xs text-ink-faint underline hover:text-[var(--ink)]">
-      {rerun ? "Back to Settings → System" : "Finish setup later"}
+  const endEarly = step !== "finish" && step !== "account" && !(rerun && step === "keys") && (
+    <button type="button" onClick={() => (rerun ? onDone() : firstRun ? go("account") : void finishLater())} disabled={busy} className="text-xs text-ink-faint underline hover:text-[var(--ink)]">
+      {rerun ? "Back to Settings → System" : firstRun ? "Skip to account" : "Finish setup later"}
     </button>
   );
 
   return (
     <Frame after={endEarly || undefined}>
       <ol aria-label="Setup steps" className="m-0 mb-5 flex list-none flex-wrap items-center gap-x-1.5 gap-y-1 p-0 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-        {STEPS.map((s, i) => (
+        {order.map((s, i) => (
           <li key={s.id} aria-current={s.id === step ? "step" : undefined} style={{ color: s.id === step ? "var(--accent-text)" : undefined }}>
             {i > 0 && <span aria-hidden className="mr-1.5 text-ink-faint">›</span>}
             {i + 1}. {s.label}
@@ -350,7 +389,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
 
       {step === "keys" && (
         <>
-          <h1 className="m-0 text-2xl font-bold">{rerun ? "Run setup again" : "Welcome to Arrmada"}</h1>
+          <h1 className="m-0 text-2xl font-bold">{rerun ? "Run setup again" : firstRun ? "Add your API keys" : "Welcome to Arrmada"}</h1>
           <p className="mb-4 mt-1 text-md text-ink-dim">
             {rerun ? "What's already set is shown; change anything, or carry on to the next step." : "A few quick steps and you're ready. Everything here can be changed later in Settings."}
           </p>
@@ -437,7 +476,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
             // folders. Ending setup is the Finish setup later link.
             skip={rerun
               ? { label: "Back to Settings → System", onClick: () => onDone() }
-              : !tmdb?.configured ? { label: "Continue without a key", onClick: () => go("folders") } : undefined}
+              : !tmdb?.configured ? { label: "Continue without a key", onClick: () => go(nxt("keys")) } : undefined}
             onNext={saveKeys}
             nextLabel={Object.values(keys).some((v) => v.trim()) ? "Save and continue" : "Continue"}
           />
@@ -492,7 +531,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
               </div>
             ))}
           </div>
-          <Nav busy={busy} blocked={folderBlocked} onBack={() => go("keys")} onNext={saveFolders} nextLabel="Save and continue" />
+          <Nav busy={busy} blocked={folderBlocked} onBack={() => go(prv("folders")!)} onNext={saveFolders} nextLabel="Save and continue" />
           {picking && (
             <FolderPicker
               initial={folders[picking] || state.mounts[0]}
@@ -505,14 +544,15 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
 
       {step === "media" && family && jfFamily && (
         <>
-          <h1 className="m-0 text-2xl font-bold">Connect your media server</h1>
+          <h1 className="m-0 text-2xl font-bold">{firstRun ? "Welcome to Arrmada" : "Connect your media server"}</h1>
+          {firstRun && <p className="mb-1 mt-1 text-md text-ink-dim">A few quick steps, and your account is made last. Everything here can be changed later in Settings.</p>}
           <p className="mb-3 mt-1 text-md text-ink-dim">
-            Where your family watches: Plex, Jellyfin or both. Watch buttons, library updates, family sign-in, watch stats and pausing conversions while someone's watching all use it.
+            Where your family watches: Plex, Jellyfin, Emby or both. Watch buttons, library updates, family sign-in, watch stats and pausing conversions while someone's watching all use it.
           </p>
 
           <fieldset className="m-0 min-w-0 border-0 p-0">
             <legend className="mb-1.5 p-0 text-base font-semibold">Which media server do you use?</legend>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               {SERVER_CHOICES.map((c) => {
                 const on = choice === c.id;
                 return (
@@ -529,6 +569,7 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
                     <span className="flex items-center gap-1" aria-hidden="true">
                       {usesPlex(c.id) && <ServerTile server="plex" size={22} />}
                       {usesJellyfin(c.id) && <ServerTile server="jellyfin" size={22} />}
+                      {c.id === "emby" && <span className="grid h-[22px] w-[22px] place-items-center rounded-lg text-xs font-bold" style={{ border: "1px solid var(--line)" }}>E</span>}
                       {c.id === "later" && <span className="grid h-[22px] w-[22px] place-items-center rounded-lg text-sm text-ink-faint" style={{ border: "1px solid var(--line)" }}>…</span>}
                     </span>
                     <span className="text-base font-semibold" style={{ color: on ? "var(--accent-text)" : undefined }}>{c.label}</span>
@@ -593,14 +634,32 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
             </section>
           )}
 
+          {usesEmby(choice) && (
+            <section aria-labelledby="setup-emby-title" className="mt-6 flex flex-col gap-1">
+              <h2 id="setup-emby-title" className="m-0 text-md font-bold">Emby</h2>
+              <p className="m-0 text-sm text-ink-dim">Its address and an API key made in Emby. Both are tested before they're saved. Emby has no sign-in for Arrmada, so the account is made with an email and password.</p>
+              {state.emby_connected && <p role="status" className="m-0 text-base font-semibold" style={{ color: "var(--good-text)" }}>✓ Connected</p>}
+              <EmbyConnect testFirst onChanged={() => void load()} />
+            </section>
+          )}
+
           <Nav
             busy={busy}
-            onBack={() => go("folders")}
-            skip={choice === null ? { label: "Skip this step", onClick: () => go("indexers") } : undefined}
-            onNext={choice === null || choice === "later" ? () => go("indexers") : saveMedia}
+            onBack={prv("media") ? () => go(prv("media")!) : undefined}
+            skip={choice === null ? { label: "Skip this step", onClick: () => go(nxt("media")) } : undefined}
+            onNext={choice === null || choice === "later" ? () => go(nxt("media")) : saveMedia}
             nextLabel={choice === null || choice === "later" ? "Continue" : "Save and continue"}
           />
         </>
+      )}
+
+      {step === "account" && onSignedIn && (
+        <AccountStep
+          plexServer={state.plex_connected ? state.plex_server : undefined}
+          jellyfinServer={state.jellyfin_connected ? state.jellyfin_server : undefined}
+          onBack={() => go(prv("account") ?? "media")}
+          onSignedIn={onSignedIn}
+        />
       )}
 
       {step === "indexers" && (
@@ -646,9 +705,9 @@ export function SetupWizard({ onDone, rerun = false }: { onDone: (to?: string) =
           )}
           <Nav
             busy={busy}
-            onBack={() => go("media")}
-            skip={(state.indexers_enabled ?? 0) > 0 ? undefined : { label: "Skip this step", onClick: () => go("finish") }}
-            onNext={() => go("finish")}
+            onBack={() => go(prv("indexers")!)}
+            skip={(state.indexers_enabled ?? 0) > 0 ? undefined : { label: "Skip this step", onClick: () => go(nxt("indexers")) }}
+            onNext={() => go(nxt("indexers"))}
             nextLabel="Continue"
           />
         </>

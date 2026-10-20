@@ -164,6 +164,16 @@ func (a *api) handlePlexLoginPoll(w http.ResponseWriter, r *http.Request) {
 			a.writeError(w, http.StatusInternalServerError, "could not look up your account")
 			return
 		}
+		// First-run wizard: no admin exists yet, a setup session is open, and plex.tv has
+		// just said this account OWNS the server connected in the wizard. They become the
+		// admin (claimFirstAdmin switches staff Plex sign-in on so they can come back this
+		// way). A friend with access is never offered this: only the owner reaches here.
+		if u == nil && a.setupSessionOK(r) {
+			if u = a.claimFirstAdmin(w, r, "plex", plexID, acct.Username); u == nil {
+				return
+			}
+			staffAllowed = true
+		}
 		if u == nil {
 			if u, err = a.linkOwnerToAdmin(ctx, staffAllowed, plexID, acct.Username); err != nil {
 				a.writeError(w, http.StatusInternalServerError, "could not link your Plex account")

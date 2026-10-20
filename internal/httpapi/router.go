@@ -78,7 +78,17 @@ type guard struct {
 	// upload marks a route that takes a file as multipart/form-data (csrf.go); every other
 	// state-changing route takes JSON or nothing.
 	upload bool
-	h      http.HandlerFunc
+	// setup marks a first-run wizard route: besides an admin it also admits a live setup
+	// session (setup_session.go), and only while no admin exists. Every such route is a
+	// call SetupWizard.tsx makes, and the golden table shows them.
+	setup bool
+	h     http.HandlerFunc
+}
+
+// viaSetup marks the route as one the first-run wizard calls before any account exists.
+func (g guard) viaSetup() guard {
+	g.setup = true
+	return g
 }
 
 // ext marks the route as reachable from outside the LAN.
@@ -122,6 +132,7 @@ type routeSpec struct {
 	Scope    scope
 	External bool
 	APIKey   bool // a personal API key may call it
+	Setup    bool // a setup session may call it (first-run wizard, no admin yet)
 }
 
 // router is the only thing in this package that registers on the ServeMux.
@@ -148,7 +159,7 @@ func (rt *router) HandleFunc(pattern string, g guard) {
 		method, path = pattern[:i], strings.TrimSpace(pattern[i+1:])
 	}
 	g.apiKey = apiKeyRoutes[pattern]
-	spec := routeSpec{Method: method, Pattern: path, Scope: g.scope, External: g.external, APIKey: g.apiKey}
+	spec := routeSpec{Method: method, Pattern: path, Scope: g.scope, External: g.external, APIKey: g.apiKey, Setup: g.setup}
 	rt.specs = append(rt.specs, spec)
 	rt.mux.HandleFunc(pattern, rt.sameOrigin(g, rt.keyed(g, rt.wrap(g))))
 }
@@ -175,7 +186,11 @@ func (rt *router) keyed(g guard, h http.HandlerFunc) http.HandlerFunc {
 
 func (rt *router) wrap(g guard) http.HandlerFunc {
 	h := rt.scoped(g)
-	if g.external {
+	// A setup route is reachable from outside the LAN only when ARRMADA_ALLOW_REMOTE_SETUP
+	// lets the first admin be made from there too. Nobody is let through by that alone: the
+	// scope check below still needs an admin or a live setup session, which is re-checked
+	// against the LAN rule on every request.
+	if g.external || (g.setup && rt.a.deps.Config.AllowRemoteSetup) {
 		return h
 	}
 	a := rt.a
@@ -208,6 +223,12 @@ func (rt *router) scoped(g guard) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u, ok := userFrom(r)
 		if !ok || u == nil {
+			// The wizard's calls before any admin exists. setupSessionOK looks at its own
+			// cookie, which authenticate never reads, so this is the only way it matters.
+			if g.setup && a.setupSessionOK(r) {
+				h(w, withSetupSession(r))
+				return
+			}
 			a.writeError(w, http.StatusUnauthorized, "authentication required")
 			return
 		}

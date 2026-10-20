@@ -301,6 +301,15 @@ func (a *api) finishJellyfinSignIn(w http.ResponseWriter, r *http.Request, ju je
 		a.writeError(w, http.StatusInternalServerError, "could not look up your account")
 		return
 	}
+	if u == nil && ju.Policy.IsAdministrator && a.setupSessionOK(r) {
+		// First-run wizard: no admin exists yet, a setup session is open, and the Jellyfin
+		// server connected in the wizard has just said this user administers it. They become
+		// the admin (claimFirstAdmin switches staff Jellyfin sign-in on so they can come
+		// back this way).
+		if u = a.claimFirstAdmin(w, r, "jellyfin", ju.ID, ju.Name); u == nil {
+			return
+		}
+	}
 	if u == nil {
 		if ju.Policy.IsAdministrator {
 			a.writeError(w, http.StatusConflict, "This is a Jellyfin administrator. Sign in with your password, then link Jellyfin from your account page.")

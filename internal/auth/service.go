@@ -161,6 +161,13 @@ func (s *Service) UserCount(ctx context.Context) (int, error) {
 // CreateUser creates a user with a bcrypt-hashed password. Emails are stored lowercased,
 // and a name that matches an existing one ignoring case is taken.
 func (s *Service) CreateUser(ctx context.Context, username, password string, role Role, autoApprove bool) (*User, error) {
+	return s.createUser(ctx, username, password, role, autoApprove, false)
+}
+
+// createUser is CreateUser. firstAdmin makes the insert conditional on no admin existing
+// (one statement), answering ErrSetupClosed otherwise: the only way first-run setup makes
+// an admin, so two simultaneous callers can't both succeed.
+func (s *Service) createUser(ctx context.Context, username, password string, role Role, autoApprove, firstAdmin bool) (*User, error) {
 	username = normalizeUsername(username)
 	if username == "" {
 		return nil, ErrUsernameRequired
@@ -186,14 +193,24 @@ func (s *Service) CreateUser(ctx context.Context, username, password string, rol
 	}
 
 	aa := boolToInt(autoApprove)
-	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (username, password_hash, role, auto_approve, `+autoApproveCols+`) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		username, string(hash), string(role), aa, aa, aa, aa)
+	q := `INSERT INTO users (username, password_hash, role, auto_approve, ` + autoApproveCols + `) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	args := []any{username, string(hash), string(role), aa, aa, aa, aa}
+	if firstAdmin {
+		q = `INSERT INTO users (username, password_hash, role, auto_approve, ` + autoApproveCols + `)
+			SELECT ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM users WHERE role = ?)`
+		args = append(args, string(RoleAdmin))
+	}
+	res, err := s.db.ExecContext(ctx, q, args...)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil, ErrUserExists
 		}
 		return nil, err
+	}
+	if firstAdmin {
+		if n, _ := res.RowsAffected(); n == 0 {
+			return nil, ErrSetupClosed
+		}
 	}
 	id, _ := res.LastInsertId()
 	u := &User{ID: id, Username: username, Role: role}

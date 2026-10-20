@@ -43,6 +43,9 @@ func (s routeSpec) String() string {
 	if s.APIKey {
 		line += " key" // a personal API key may call it (apikey_routes.go)
 	}
+	if s.Setup {
+		line += " setup" // a first-run setup session may call it (setup_session.go)
+	}
 	return line
 }
 

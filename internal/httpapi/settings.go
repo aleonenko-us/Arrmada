@@ -334,7 +334,9 @@ func (a *api) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 
 	// Checked before anything is written, so a body with one forbidden change saves
 	// nothing at all rather than half of itself.
-	if u, ok := userFrom(r); !ok || u == nil || !u.Role.AtLeast(auth.RoleAdmin) {
+	// A setup session stands in for the admin, but only for the few settings the wizard
+	// writes (wizardSettings has already refused every other key).
+	if u, ok := userFrom(r); !viaSetupSession(r) && (!ok || u == nil || !u.Role.AtLeast(auth.RoleAdmin)) {
 		if label := a.adminSettingChange(ctx, &req); label != "" {
 			a.writeError(w, http.StatusForbidden, "Only an admin can change "+label)
 			return
