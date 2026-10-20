@@ -25,6 +25,13 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 - **The disk guard can measure a different drive**, for Unraid cache pools and ZFS.
 - **SABnzbd and Prowlarr on Unraid.** The Unraid container now has them built in, off until
   you switch them on.
+- **Update from Settings → Status, with one click.** Turn on the optional updater once
+  (`install.sh --with-updater`) and the Updates card gets an **Update to vX.Y.Z** button that
+  runs the same update as the install line: it backs up the database first and goes back by
+  itself if the new version doesn't start. There's also an **Install updates automatically**
+  switch, **off by default**: it installs a new release between 2 and 6 am, a day after it's
+  published. Without the updater nothing changes. Unraid installs keep updating from Unraid's
+  Docker page.
 
 ### Before you update
 

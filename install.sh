@@ -24,6 +24,9 @@
 #   --with-prowlarr    also run the optional Prowlarr indexer manager
 #   --with-sabnzbd     also run SABnzbd, for Usenet (you need your own Usenet provider and
 #                      indexers); Arrmada sets it up and connects to it by itself
+#   --with-updater     also run the updater, which gives Settings → Status an "Update now"
+#                      button (and optional automatic updates). It is the one container that
+#                      gets Docker's socket, which is root on this server, so it is opt-in
 #   --channel CHANNEL  which Arrmada to run and update to: stable (the default) is the
 #                      published releases, downloaded; main is the newest code, compiled on
 #                      this server every update (for developers)
@@ -184,6 +187,18 @@ profiles_with() {
   printf '%s' "$_list"
 }
 
+# updater_env: what --with-updater needs in .env of the install in this folder: the token the
+# app proves itself with (made once, kept on later runs), where the app reaches the updater,
+# and this folder's real path, which the updater mounts at the same path so update.sh's
+# relative paths mean the same thing to Docker there as here.
+updater_env() {
+  if [ -z "$(env_get ARRMADA_UPDATER_TOKEN)" ]; then
+    env_set ARRMADA_UPDATER_TOKEN "$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')" "# What the app proves itself with to the updater (install.sh --with-updater). Keep it private."
+  fi
+  env_set ARRMADA_UPDATER_URL "http://arrmada-updater:8080" "# Where the app reaches the updater (install.sh --with-updater)."
+  env_set ARRMADA_HOST_DIR "$(pwd)" "# This folder's real path, mounted at the same path in the updater."
+}
+
 # sabnzbd_note PORT: where to add the Usenet provider. Arrmada connects to SABnzbd by
 # itself; the provider's login goes into SABnzbd, never Arrmada.
 sabnzbd_note() {
@@ -263,6 +278,7 @@ usage() {
   say "  --puid N --pgid N  run as this user and group (default: the media folder's owner)"
   say "  --with-prowlarr    also run the optional Prowlarr indexer manager"
   say "  --with-sabnzbd     also run SABnzbd, for Usenet (bring your own provider and indexers)"
+  say "  --with-updater     also run the updater: an Update now button in Settings → Status (it gets Docker's socket)"
   say "  --channel stable   the published releases, downloaded (the default)"
   say "  --channel main     the newest code, compiled on this server every update (developers)"
   say "  --build            the same as --channel main"
@@ -451,6 +467,10 @@ existing_install() {
   if [ -n "$SABNZBD" ] && ! grep -q '^  arrmada-sabnzbd:' docker-compose.yml; then
     die "This install's files are older than the bundled SABnzbd. Update it first (sh $_dir/update.sh), then run the installer with --with-sabnzbd again."
   fi
+  # The updater is a service in docker-compose.yml too, and needs docker/updater/updater.cgi.
+  if [ -n "$UPDATER" ] && { ! grep -q '^  arrmada-updater:' docker-compose.yml || [ ! -f docker/updater/updater.cgi ]; }; then
+    die "This install's files are older than the bundled updater. Update it first (sh $_dir/update.sh), then run the installer with --with-updater again."
+  fi
   if [ -n "$MEDIA_SET" ] || [ -n "$TRANSCODE_SET" ]; then
     if ! override_generated; then
       die "docker-compose.override.yml here was written by hand, so the installer won't change it. Edit its mounts yourself, then run update.sh."
@@ -525,11 +545,17 @@ existing_install() {
   _want=""
   [ -n "$PROWLARR" ] && _want="prowlarr"
   [ -n "$SABNZBD" ] && _want="$_want sabnzbd"
+  if [ -n "$UPDATER" ]; then
+    _want="$_want updater"
+    updater_env
+    say "✓ The updater's token, address and folder are in .env (keep the token private)."
+    _changed=1
+  fi
   if [ -n "$_want" ]; then
     # shellcheck disable=SC2086 # the list of profiles is meant to split
     _profiles=$(profiles_with $_want)
     if [ "$_profiles" != "$(env_get COMPOSE_PROFILES | tr -d ' ')" ]; then
-      env_set COMPOSE_PROFILES "$_profiles" "# Optional companions to run (install.sh --with-prowlarr / --with-sabnzbd)."
+      env_set COMPOSE_PROFILES "$_profiles" "# Optional companions to run (install.sh --with-prowlarr / --with-sabnzbd / --with-updater)."
       say "✓ COMPOSE_PROFILES=$_profiles in .env."
       _changed=1
     fi
@@ -830,12 +856,14 @@ new_install() {
     _profiles=""
     [ -n "$PROWLARR" ] && _profiles="prowlarr"
     [ -n "$SABNZBD" ] && _profiles="${_profiles:+$_profiles,}sabnzbd"
+    [ -n "$UPDATER" ] && _profiles="${_profiles:+$_profiles,}updater"
     if [ -n "$_profiles" ]; then
       say ""
       say "# Optional companions to run (a comma list)."
       say "COMPOSE_PROFILES=$_profiles"
     fi
   } > .env
+  [ -n "$UPDATER" ] && updater_env
   write_override "$MEDIA" "$TRANSCODE" "$GPU"
   # A new data folder is private: it holds the database and its backups (the container
   # hands it to PUID:PGID). One that's already there keeps the mode it has.
@@ -874,7 +902,7 @@ new_install() {
 
 main() {
   DIR_ARG=""; DIR_SET=""; MEDIA=""; MEDIA_SET=""; TRANSCODE=""; TRANSCODE_SET=""
-  TZ_ARG=""; PUID=""; PGID=""; PROWLARR=""; SABNZBD=""; IMAGE_ARG=""; BUILD=""; CHANNEL_ARG=""; YES=""
+  TZ_ARG=""; PUID=""; PGID=""; PROWLARR=""; SABNZBD=""; UPDATER=""; IMAGE_ARG=""; BUILD=""; CHANNEL_ARG=""; YES=""
   _self="$0"
   while [ $# -gt 0 ]; do
     _opt="$1"; _val=""
@@ -898,6 +926,7 @@ main() {
       --pgid) PGID="$_val" ;;
       --with-prowlarr) PROWLARR=1 ;;
       --with-sabnzbd) SABNZBD=1 ;;
+      --with-updater) UPDATER=1 ;;
       --image) IMAGE_ARG="$_val" ;;
       --channel)
         case "$_val" in

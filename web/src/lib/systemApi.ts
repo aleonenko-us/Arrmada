@@ -1,4 +1,4 @@
-import { req, type BackupFile, type BackupSchedule, type BackupsState, type LogEntry, type RecentJob, type RecycleItem, type RestoreStaged, type TaskStatus, type UpdateStatus } from "./api";
+import { req, type BackupFile, type BackupSchedule, type BackupsState, type LogEntry, type RecentJob, type RecycleItem, type RestoreStaged, type TaskStatus, type UpdateProgress, type UpdateStatus } from "./api";
 
 // System calls: scheduled tasks, database backups and the recycle bins. They live here rather
 // than in api.ts so they only download with the staff pages that use them, not with a
@@ -46,6 +46,11 @@ export const systemApi = {
   setUpdateCheck: (enabled: boolean) =>
     req<UpdateStatus>("/api/v1/system/update-check", { method: "PUT", body: JSON.stringify({ enabled }) }),
   checkForUpdate: () => req<UpdateStatus>("/api/v1/system/update-check", { method: "POST" }),
+  // Update now (needs the updater container), how it is going, and the automatic-updates switch.
+  applyUpdate: () => req<UpdateProgress>("/api/v1/system/update/apply", { method: "POST" }),
+  updateProgress: () => req<UpdateProgress>("/api/v1/system/update/progress"),
+  setAutoUpdate: (enabled: boolean) =>
+    req<UpdateStatus>("/api/v1/system/update/auto", { method: "PUT", body: JSON.stringify({ enabled }) }),
 };
 
 export interface LogQuery {

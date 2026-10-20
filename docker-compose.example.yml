@@ -51,6 +51,9 @@ services:
       ARRMADA_FLARESOLVERR_URL: "http://arrmada-flaresolverr:8191"
       ARRMADA_PROWLARR_URL: "http://arrmada-prowlarr:9696"
       ARRMADA_PROWLARR_HOST_PORT: "9696"
+      # Empty unless install.sh --with-updater writes them: the Update now button's updater.
+      ARRMADA_UPDATER_URL: "${ARRMADA_UPDATER_URL:-}"
+      ARRMADA_UPDATER_TOKEN: "${ARRMADA_UPDATER_TOKEN:-}"
       ARRMADA_SABNZBD_URL: "http://arrmada-sabnzbd:8080"
       ARRMADA_SABNZBD_HOST_PORT: "8085"
       ARRMADA_QBIT_PORT: "${ARRMADA_QBIT_PORT:-6881}"
@@ -195,6 +198,13 @@ services:
     volumes:
       - arrmada-qbt-config:/config
     restart: "no"
+
+  # Optional: one-click updates from Settings → Status. It needs Docker's socket (root on
+  # this server) and files from the repository (docker/updater/updater.cgi), so it is set up
+  # by `install.sh --with-updater` rather than by uncommenting this:
+  # arrmada-updater:
+  #   image: docker:27-cli
+  #   container_name: Arrmada-updater
 
   # Optional: Prowlarr, to manage indexers in one place ("Sync from Prowlarr" in Arrmada).
   # arrmada-prowlarr:
