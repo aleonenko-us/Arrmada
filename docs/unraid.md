@@ -211,8 +211,8 @@ Cloudflare. Switched back to `false`, it stops; its settings stay in appdata. If
 keep your own Prowlarr, leave the built-in one off and put your Prowlarr's address in the
 same place in Arrmada.
 
-Both are in the ARM build too. They make the image about 230 MB larger on disk (about
-90 MB more to download), whether or not you switch them on.
+Both are in the ARM build too. They make the image about 220 MB larger on disk (about
+85 MB more to download), whether or not you switch them on.
 
 ## Using your own download client or FlareSolverr
 

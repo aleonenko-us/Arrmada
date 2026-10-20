@@ -140,7 +140,7 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   Settings → Connections is switched off with it. Prowlarr's page is on port 9697: add your
   indexers there, then its API key in Arrmada; it gets the built-in FlareSolverr like the
   Compose install's Prowlarr. Their settings live in Arrmada's appdata. The container image
-  is about 230 MB larger on disk (about 90 MB more to download) whether or not you use them.
+  is about 220 MB larger on disk (about 85 MB more to download) whether or not you use them.
   Already installed from the template? Unraid keeps your old template, so add the switch and
   port lines yourself: [Arrmada on Unraid](https://github.com/tristenlammi/Arrmada/blob/main/docs/unraid.md#updating) lists them. The docs no
   longer suggest SABnzbd or Prowlarr were inside before. Thanks to @aleonenko-us, whose PR #66
