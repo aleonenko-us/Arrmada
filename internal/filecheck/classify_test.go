@@ -38,6 +38,8 @@ func TestClassify(t *testing.T) {
 		{"untagged audio is never wrong", Input{OrigLanguage: "en"}, Probe{AudioLangs: []string{"rus", "und"}, DurationSec: 7000}, "", ""},
 		{"empty tag is never wrong", Input{OrigLanguage: "en"}, Probe{AudioLangs: []string{""}, DurationSec: 7000}, "", ""},
 		{"cut short", Input{Kind: KindMovie, RuntimeMin: 120}, Probe{AudioLangs: []string{"eng"}, DurationSec: 40 * 60}, CodeUnreadable, "the file is only 40 minutes long but the film runs 120"},
+		{"picture stops early", Input{Kind: KindMovie, RuntimeMin: 76}, Probe{AudioLangs: []string{"eng"}, DurationSec: 4560, HasVideo: true, VideoMissingAt: 3420, Loudness: loud, Windows: 3},
+			CodeUnreadable, "the picture stops early — there's no video 57 minutes in, though the file runs 76"},
 		{"no length", Input{}, Probe{AudioLangs: []string{"eng"}}, CodeUnreadable, "the file has no readable length"},
 		{"named a cam", Input{Release: "Film.2026.HDCAM.x264-GRP"}, Probe{AudioLangs: []string{"eng"}, DurationSec: 7000}, CodeSuspectedCam, "probably a cam — the release says so"},
 		{"cam allowed by the profile", Input{Release: "Film.2026.HDCAM.x264-GRP", CamOK: true}, Probe{AudioLangs: []string{"eng"}, DurationSec: 7000}, "", ""},

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tristenlammi/arrmada/internal/toolrun"
@@ -21,6 +22,11 @@ type Prober interface {
 // length). Three short windows rather than the whole film: a few seconds of decoding at
 // idle priority instead of two hours of it.
 var windowAt = []float64{0.25, 0.5, 0.75}
+
+// Where the picture check looks for video packets: a file can claim the film's full length
+// while its video track stops partway (a broken upload), and players then freeze there.
+// Reading packets is cheap — nothing is decoded.
+var videoAt = []float64{0.25, 0.5, 0.75, 0.95}
 
 const (
 	windowSec     = 20
@@ -54,6 +60,9 @@ func (f FFmpeg) Probe(ctx context.Context, path string) Probe {
 	if err != nil {
 		return Probe{Err: err}
 	}
+	if p.HasVideo && p.DurationSec > 0 {
+		p.VideoMissingAt = f.videoGap(ctx, path, p.DurationSec)
+	}
 	if len(p.AudioLangs) == 0 || p.DurationSec <= 0 {
 		return p
 	}
@@ -79,6 +88,44 @@ func (f FFmpeg) Probe(ctx context.Context, path string) Probe {
 	return p
 }
 
+// videoGap returns the first sampled point (seconds) with no video packet, or 0 when the
+// picture runs to the end. A window ffprobe couldn't read says nothing either way.
+func (f FFmpeg) videoGap(ctx context.Context, path string, dur float64) float64 {
+	for _, at := range videoAt {
+		if ctx.Err() != nil {
+			return 0
+		}
+		start := dur * at
+		if start+windowSec > dur {
+			start = max(0, dur-windowSec)
+		}
+		wctx, cancel := context.WithTimeout(ctx, probeTimeout)
+		out, err := toolrun.Command(wctx, toolrun.Idle, f.bin(f.FFprobe, "ffprobe"), "-v", "error",
+			"-select_streams", "v:0", "-read_intervals", strconv.FormatFloat(start, 'f', 1, 64)+"%"+strconv.FormatFloat(start+windowSec, 'f', 1, 64),
+			"-show_entries", "packet=pts_time", "-of", "csv=p=0", path).Output()
+		cancel()
+		if err != nil {
+			continue
+		}
+		if !HasPacketFrom(out, start) {
+			return start
+		}
+	}
+	return 0
+}
+
+// HasPacketFrom reports a packet time (one per line, ffprobe's csv) at or after from. A
+// seek lands on the keyframe before it (hence an absolute end for the interval), so
+// earlier packets alone mean the picture has already stopped.
+func HasPacketFrom(out []byte, from float64) bool {
+	for _, line := range strings.Split(string(out), "\n") {
+		if t, err := strconv.ParseFloat(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), ",")), 64); err == nil && t >= from-1 {
+			return true
+		}
+	}
+	return false
+}
+
 // ParseStreams reads ffprobe's JSON: one language tag per audio stream (cover art and
 // other attachments aren't streams worth counting) and the container's length.
 func ParseStreams(out []byte) (Probe, error) {
@@ -97,16 +144,15 @@ func ParseStreams(out []byte) (Probe, error) {
 		return Probe{}, fmt.Errorf("ffprobe output: %w", err)
 	}
 	var p Probe
-	video := false
 	for _, s := range r.Streams {
 		switch s.CodecType {
 		case "audio":
 			p.AudioLangs = append(p.AudioLangs, s.Tags.Language)
 		case "video":
-			video = true
+			p.HasVideo = true
 		}
 	}
-	if !video && len(p.AudioLangs) == 0 {
+	if !p.HasVideo && len(p.AudioLangs) == 0 {
 		return Probe{}, errors.New("no audio or video streams")
 	}
 	if d, err := strconv.ParseFloat(r.Format.Duration, 64); err == nil {

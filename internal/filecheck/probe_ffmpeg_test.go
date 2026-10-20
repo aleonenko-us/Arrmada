@@ -37,6 +37,13 @@ func TestFFmpegProbeOnRealFiles(t *testing.T) {
 	tone := gen("tone.mkv", []string{"-f", "lavfi", "-i", "sine=frequency=440:duration=90"}, "eng")
 	quiet := gen("silent.mkv", []string{"-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"}, "rus")
 	mute := gen("mute.mkv", nil, "")
+	// The picture stops at 10 s but the sound runs the full 90: a broken upload.
+	stops := filepath.Join(dir, "stops.mkv")
+	if b, err := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=64x36:d=10:r=5",
+		"-f", "lavfi", "-i", "sine=frequency=440:duration=90", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+		"-metadata:s:a:0", "language=eng", "-y", stops).CombinedOutput(); err != nil {
+		t.Fatalf("make stops.mkv: %v\n%s", err, b)
+	}
 
 	ctx := context.Background()
 	in := Input{Kind: KindMovie, RuntimeMin: 0, OrigLanguage: "en"}
@@ -53,6 +60,9 @@ func TestFFmpegProbeOnRealFiles(t *testing.T) {
 	// A 90-second file for a 100-minute film is cut short.
 	if got := codes(Classify(Input{Kind: KindMovie, RuntimeMin: 100}, FFmpeg{}.Probe(ctx, tone))); got != CodeUnreadable {
 		t.Errorf("short: %q", got)
+	}
+	if p := (FFmpeg{}).Probe(ctx, stops); codes(Classify(in, p)) != CodeUnreadable || p.VideoMissingAt == 0 {
+		t.Errorf("picture stops early: %q (probe %+v)", codes(Classify(in, p)), p)
 	}
 	if got := codes(Classify(in, FFmpeg{}.Probe(ctx, filepath.Join(dir, "missing.mkv")))); got != CodeUnreadable {
 		t.Errorf("unreadable: %q", got)

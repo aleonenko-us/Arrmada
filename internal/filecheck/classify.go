@@ -65,6 +65,10 @@ type Probe struct {
 	Loudness []float64
 	// Windows is how many windows were sampled (Loudness has one per measured window).
 	Windows int
+	// HasVideo says there is a video stream; VideoMissingAt is the first sampled point
+	// (seconds) where it had no packets — the picture stops there — or 0 when it runs on.
+	HasVideo       bool
+	VideoMissingAt float64
 }
 
 // Input is a file and what is known about it besides its contents.
@@ -105,6 +109,9 @@ func Classify(in Input, p Probe) []Finding {
 	} else if in.RuntimeMin >= minRuntimeForShort && p.DurationSec < float64(in.RuntimeMin*60)*ShortFraction {
 		out = append(out, Finding{CodeUnreadable, fmt.Sprintf("the file is only %d minutes long but the %s runs %d — it's cut short",
 			int(p.DurationSec/60), noun(in.Kind), in.RuntimeMin)})
+	} else if p.VideoMissingAt > 0 {
+		out = append(out, Finding{CodeUnreadable, fmt.Sprintf("the picture stops early — there's no video %d minutes in, though the file runs %d — players freeze there",
+			int(p.VideoMissingAt/60), int(p.DurationSec/60))})
 	}
 	switch {
 	case len(p.AudioLangs) == 0:
