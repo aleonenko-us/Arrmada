@@ -339,3 +339,61 @@ func BenchmarkRecordedInto5000(b *testing.B) {
 		b.ReportMetric(float64(c.resolve)/float64(b.N), "fullresolves/op")
 	})
 }
+
+// listedAs is a DirEntry whose type a test chooses (a filesystem whose listing types
+// disagree with Lstat).
+type listedAs struct {
+	name string
+	typ  fs.FileMode
+}
+
+func (e listedAs) Name() string               { return e.name }
+func (e listedAs) IsDir() bool                { return e.typ.IsDir() }
+func (e listedAs) Type() fs.FileMode          { return e.typ }
+func (e listedAs) Info() (fs.FileInfo, error) { return nil, fs.ErrInvalid }
+
+// A link into the folder that the filesystem lists as a folder (Unraid's shfs, SMB with
+// mfsymlinks) is still found, and an entry that can't be looked at keeps the leftovers.
+func TestAliasIntoLinkListedAsFolder(t *testing.T) {
+	top := t.TempDir()
+	movies := filepath.Join(top, "Movies")
+	heat := filepath.Join(movies, "Heat (1995)")
+	ronin := filepath.Join(movies, "Ronin (1998)")
+	probeFile(t, filepath.Join(heat, "Heat (1995).mkv"))
+	probeFile(t, filepath.Join(ronin, "Ronin (1998).mkv"))
+	alias := filepath.Join(movies, "HeatAlias")
+	if err := os.Symlink("Heat (1995)", alias); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+	fsys := osProbeFS
+	fsys.readDir = func(d string) ([]fs.DirEntry, error) {
+		es, err := os.ReadDir(d)
+		var out []fs.DirEntry
+		for _, e := range es {
+			typ := e.Type()
+			if typ&fs.ModeSymlink != 0 {
+				typ = fs.ModeDir
+			}
+			out = append(out, listedAs{e.Name(), typ})
+		}
+		return out, err
+	}
+	roots := []string{movies}
+	if got := newLinkProbeFS(fsys, nil).aliasInto(heat, roots); got != alias {
+		t.Errorf("link listed as a folder: aliasInto = %q, want %q", got, alias)
+	}
+	// Nothing links into Ronin's folder: the other folders listed are real ones.
+	if got := newLinkProbeFS(fsys, nil).aliasInto(ronin, roots); got != "" {
+		t.Errorf("aliasInto(Ronin) = %q, want none", got)
+	}
+	// An entry Lstat can't look at is returned: refuse rather than guess.
+	fsys.lstat = func(p string) (fs.FileInfo, error) {
+		if p == ronin {
+			return nil, &fs.PathError{Op: "lstat", Path: p, Err: fs.ErrPermission}
+		}
+		return os.Lstat(p)
+	}
+	if got := newLinkProbeFS(fsys, nil).aliasInto(filepath.Join(movies, "Other (2000)"), roots); got != ronin {
+		t.Errorf("unreadable entry: aliasInto = %q, want %q", got, ronin)
+	}
+}

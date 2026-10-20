@@ -26,7 +26,9 @@ import (
 //     couldn't be looked at, or a missing part below a link is resolved in full, as
 //     before. A library with no links on its paths is never resolved link by link.
 //   - Whether a part is a link is learnt with one Lstat per distinct path, never from a
-//     folder listing's entry types.
+//     folder listing's entry types. aliasInto lists the Movies folders and the movie's
+//     parent, and Lstats every entry not listed as a plain file (most already were, as
+//     parts of records' paths).
 //   - Everything is remembered for the pass only. A probe is made for one plan (the
 //     preview's, or the delete's) and a fresh one for the re-check right before
 //     leftovers move, so nothing seen earlier hides a change made since. Nothing is kept
@@ -132,7 +134,9 @@ func (p *linkProbe) recordedInto(dir string) string {
 	return ""
 }
 
-// aliasInto is Service.aliasInto, looking in each of roots and beside dir.
+// aliasInto is Service.aliasInto, looking in each of roots and beside dir. An entry the
+// listing doesn't call a plain file is Lstat'd: a link listed as a folder still counts,
+// and one that can't be looked at is returned (refuse rather than guess).
 func (p *linkProbe) aliasInto(dir string, roots []string) string {
 	realDir, err := p.resolvePath(dir)
 	if err != nil {
@@ -150,10 +154,22 @@ func (p *linkProbe) aliasInto(dir string, roots []string) string {
 			continue
 		}
 		for _, e := range l.entries {
-			if e.Type()&fs.ModeSymlink == 0 {
-				continue
-			}
 			link := filepath.Join(d, e.Name())
+			if typ := e.Type(); typ&fs.ModeSymlink == 0 {
+				// A listing's types aren't trusted for links (some FUSE and SMB
+				// filesystems list a link as a folder): anything listed as other than a
+				// plain file is Lstat'd, once per pass. One that can't be looked at counts.
+				if typ.IsRegular() {
+					continue
+				}
+				switch p.kindOf(link) {
+				case kindLink:
+				case kindErr:
+					return link
+				default:
+					continue
+				}
+			}
 			lt := p.linkTarget(link)
 			if lt.err != nil {
 				if lt.readErr != nil {
@@ -274,8 +290,8 @@ func kindOfMode(m fs.FileMode) entryKind {
 	}
 }
 
-// list reads dir once per pass, for aliasInto (which reads entry types from it exactly as
-// it always did). A listing that failed part way counts as failed.
+// list reads dir once per pass, for aliasInto (which trusts its types only for plain
+// files). A listing that failed part way counts as failed.
 func (p *linkProbe) list(dir string) *dirList {
 	if l, ok := p.lists[dir]; ok {
 		return l
