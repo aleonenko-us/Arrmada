@@ -112,16 +112,17 @@ function RequestPoster({ rq, staff, queueKnown = true, onOpen }: { rq: MediaRequ
         ) : (
           <PosterPlaceholder title={rq.title} year={rq.year} />
         )}
-        {/* The status badge keeps the top row to itself (with "Following" beside it): a
-            150 px poster has no room for a name next to "SEARCHING". */}
-        <span className="absolute inset-x-1.5 top-1.5 z-10 flex items-start justify-between gap-1">
-          {following && !(staff && rq.requested_by_name) ? (
-            <StatusChip tone="faint" surface="poster" className="min-w-0 truncate">Following</StatusChip>
-          ) : (
-            <span />
-          )}
+        {/* The status badge keeps the top row to itself: a 150 px poster has no room for a
+            name or "Following" next to "SEARCHING". */}
+        <span className="absolute right-1.5 top-1.5 z-10">
           <StatusChip tone={stage.tone} surface="poster" className="flex-none">{stage.badge}</StatusChip>
         </span>
+        {/* "Following" (someone else's request you joined) sits where staff see the name. */}
+        {following && !(staff && rq.requested_by_name) && (
+          <span className="absolute bottom-3 left-1.5 z-10 max-w-[calc(100%-12px)]">
+            <StatusChip tone="faint" surface="poster" className="max-w-full truncate">Following</StatusChip>
+          </span>
+        )}
         {/* Who asked for it — staff only, since staff see everyone's requests and "whose is
             this?" is the first question. Along the bottom, the full width of the poster, so the
             name reads whole; only a very long one truncates. Always high enough to clear the
