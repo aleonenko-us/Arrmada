@@ -34,7 +34,8 @@ export function clientBody(c: DownloadClient, change: Partial<NewDownloadClient>
 
 export function ClientForm({ editing, initialKind, onSaved }: {
   editing?: DownloadClient;
-  /** A new client's kind to start on (the setup wizard opens it as qBittorrent or SABnzbd). */
+  /** A new client of this kind only, with just its address and login: no kind, name or
+   *  order to pick (the setup wizard's card for each client). */
   initialKind?: Kind;
   onSaved: (c: DownloadClient) => void;
 }) {
@@ -98,7 +99,7 @@ export function ClientForm({ editing, initialKind, onSaved }: {
       className={editing ? "mt-2 rounded-lg p-3.5" : "rounded-xl p-4"}
       style={{ background: editing ? "var(--panel-2)" : "var(--panel)", border: "1px solid var(--line)" }}
     >
-      {!editing && (
+      {!editing && !initialKind && (
         <fieldset className="m-0 mb-3 border-0 p-0">
           <legend className="mb-1.5 p-0 font-mono text-2xs font-bold uppercase tracking-[0.1em] text-ink-faint">Kind</legend>
           <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
@@ -120,9 +121,11 @@ export function ClientForm({ editing, initialKind, onSaved }: {
         </fieldset>
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Labeled label="Name">
-          <input className={field} style={fieldStyle} value={name} onChange={(e) => setName(e.target.value)} required />
-        </Labeled>
+        {!initialKind && (
+          <Labeled label="Name">
+            <input className={field} style={fieldStyle} value={name} onChange={(e) => setName(e.target.value)} required />
+          </Labeled>
+        )}
         {usenet ? (
           <>
             <Labeled label="URL" hint="As reached from Arrmada, e.g. http://sabnzbd:8080">
@@ -169,9 +172,9 @@ export function ClientForm({ editing, initialKind, onSaved }: {
             </Labeled>
           </>
         )}
-        <Labeled label="Order (1 = first)" hint={usenet ? "Usenet releases go to the lowest-numbered usenet client; the next is used only when it can't be reached at all." : "New downloads go to the lowest number. The next client is used only when this one can't be reached at all."}>
+        {!initialKind && <Labeled label="Order (1 = first)" hint={usenet ? "Usenet releases go to the lowest-numbered usenet client; the next is used only when it can't be reached at all." : "New downloads go to the lowest number. The next client is used only when this one can't be reached at all."}>
           <input type="number" min={1} max={99} className={field} style={fieldStyle} value={priority} onChange={(e) => setPriority(e.target.value)} required />
-        </Labeled>
+        </Labeled>}
       </div>
       <p className="mt-3 text-xs text-ink-faint">
         {usenet
