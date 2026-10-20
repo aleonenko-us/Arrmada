@@ -175,16 +175,20 @@ describe("SetupWizard optional keys", () => {
     expect(save.mock.calls).toEqual([["opensubtitles_api", "os-key"], ["opensubtitles_username", "me"], ["opensubtitles_password", "secret"]]);
   });
 
-  it("shows which keys are already set, masked, when setup runs again — and fills nothing in", async () => {
+  it("shows a saved key as saved, masked, with Change — and fills nothing in", async () => {
     vi.spyOn(api, "setupState").mockResolvedValue({
       ...state,
       keys: [tmdbKey, status("hardcover", { configured: true, source: "settings", hint: "…ab12" }), status("opensubtitles_username", { configured: true, source: "settings", hint: "me" })],
     });
     page();
-    const hc = await screen.findByLabelText("Hardcover");
+    expect(await screen.findByText("••••ab12")).toBeTruthy();
+    expect(screen.queryByLabelText("Hardcover")).toBeNull(); // no field until Change
+    fireEvent.click(screen.getByRole("button", { name: "Change the Hardcover" }));
+    const hc = screen.getByLabelText("Hardcover");
     expect((hc as HTMLInputElement).value).toBe("");
-    expect(hc.getAttribute("placeholder")).toBe("Leave blank to keep the saved key");
-    expect(screen.getByText("✓ saved (…ab12)")).toBeTruthy();
+    expect(hc.getAttribute("placeholder")).toBe("Paste the new key");
+    fireEvent.click(screen.getByRole("button", { name: "Keep the saved key" }));
+    expect(screen.queryByLabelText("Hardcover")).toBeNull();
     expect(screen.getByText("✓ saved (me)")).toBeTruthy();
   });
 });

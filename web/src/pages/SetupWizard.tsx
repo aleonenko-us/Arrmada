@@ -859,31 +859,59 @@ function KeyField({ id, status, label, badge, note, value, onChange, onBlur }: {
 }) {
   const pasting = useRef(false);
   const inputId = `setup-key-${id}`;
+  // A saved key shows as saved, with Change; the field only opens when asked for (or when
+  // something is already typed in it).
+  const [changing, setChanging] = useState(false);
+  const showSaved = !!status?.configured && !changing && !value;
+  const noteEl = (
+    <span id={`${inputId}-note`} className="mt-1 block text-xs text-ink-dim">
+      {note}{id === "tmdb" && status?.help_url && <> · <a href={status.help_url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent-text)" }}>get one</a></>}
+    </span>
+  );
   return (
     <div>
-      <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <span className="flex items-center gap-2">
-          <label htmlFor={inputId} className="text-base font-semibold">{label}</label>
-          {badge}
-        </span>
-        {status?.configured && <Saved status={status} />}
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        {showSaved ? <span id={inputId} className="text-base font-semibold">{label}</span> : <label htmlFor={inputId} className="text-base font-semibold">{label}</label>}
+        {badge}
       </div>
-      <input
-        id={inputId}
-        type={status?.secret === false ? "text" : "password"}
-        value={value}
-        aria-describedby={`${inputId}-note`}
-        onPaste={() => { pasting.current = true; }}
-        onChange={(e) => { const p = pasting.current; pasting.current = false; onChange(e.target.value, p); }}
-        onBlur={onBlur ? (e) => onBlur(e.target.value) : undefined}
-        placeholder={status?.configured ? "Leave blank to keep the saved key" : "Paste the key"}
-        autoComplete="new-password"
-        className="block w-full rounded-lg px-3 py-2 font-mono text-sm"
-        style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
-      />
-      <span id={`${inputId}-note`} className="mt-1 block text-xs text-ink-dim">
-        {note}{id === "tmdb" && status?.help_url && <> · <a href={status.help_url} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--accent-text)" }}>get one</a></>}
-      </span>
+      {showSaved && status ? (
+        <div className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: "var(--good-soft)", border: "1px solid var(--line)" }} aria-describedby={`${inputId}-note`}>
+          <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full" style={{ background: "var(--good)", color: "var(--accent-ink)" }}>
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 8.5l3 3 6-7" /></svg>
+          </span>
+          <span className="min-w-0 flex-1 text-sm">
+            <span className="font-semibold">Key saved</span>
+            {status.hint && <span className="ml-1.5 font-mono text-xs text-ink-dim">••••{status.hint.replace(/^…/, "")}</span>}
+            {status.source === "env" && <span className="ml-1.5 text-xs text-ink-faint">· from install</span>}
+          </span>
+          <button type="button" onClick={() => setChanging(true)} className="shrink-0 rounded-md px-2.5 py-1 text-sm font-semibold" style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--accent-text)" }} aria-label={`Change the ${label}`}>
+            Change
+          </button>
+        </div>
+      ) : (
+        <>
+          <input
+            id={inputId}
+            type={status?.secret === false ? "text" : "password"}
+            value={value}
+            aria-describedby={`${inputId}-note`}
+            autoFocus={changing}
+            onPaste={() => { pasting.current = true; }}
+            onChange={(e) => { const p = pasting.current; pasting.current = false; onChange(e.target.value, p); }}
+            onBlur={onBlur ? (e) => onBlur(e.target.value) : undefined}
+            placeholder={status?.configured ? "Paste the new key" : "Paste the key"}
+            autoComplete="new-password"
+            className="block w-full rounded-lg px-3 py-2 font-mono text-sm"
+            style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
+          />
+          {status?.configured && (
+            <button type="button" onClick={() => { setChanging(false); onChange("", false); }} className="mt-1 text-xs font-semibold underline" style={{ color: "var(--accent-text)" }}>
+              Keep the saved key
+            </button>
+          )}
+        </>
+      )}
+      {noteEl}
     </div>
   );
 }
