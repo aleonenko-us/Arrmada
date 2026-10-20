@@ -18,6 +18,7 @@ const ALL_USES: MediaServerUse[] = ["watch", "library", "signin", "insights"];
 const PITCH: Record<MediaServerKind, string> = {
   plex: "Watch links, library updates, Plex sign-in and Insights.",
   jellyfin: "Free and open source. Connect it on its own or next to Plex.",
+  emby: "Watch links and library updates from your Emby server.",
 };
 
 // The chip beside the server's name: its health in one word.

@@ -160,6 +160,17 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 			},
 			a.deps.Jellyfin.Probe))
 	}
+	if a.deps.Emby != nil {
+		reg.Register(health.EmbyCheck(
+			func(ctx context.Context) health.PlexState {
+				h := a.deps.Emby.Health(ctx)
+				return health.PlexState{
+					Configured: h.Configured, Monitoring: h.Monitoring, LastOKAt: h.LastOKAt,
+					FailingSince: h.FailingSince, LastErr: connstatus.Redact(h.LastErr), Unauthorized: h.Unauthorized, Consecutive: h.Consecutive,
+				}
+			},
+			a.deps.Emby.Probe))
+	}
 
 	if v, ok := a.deps.Discovery.(tmdbValidator); ok && a.deps.APIKeys != nil {
 		reg.Register(health.TMDBCheck(a.deps.APIKeys.Func("tmdb"), func(ctx context.Context) error {

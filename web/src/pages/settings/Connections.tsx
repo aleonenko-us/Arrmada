@@ -13,13 +13,16 @@ import { downloadClientApi } from "../../lib/downloadClientApi";
 import { indexerApi } from "../../lib/indexerApi";
 import { connectionsApi, type ConnectionItem, type ConnectionSectionData, type ConnectionSectionId } from "../../lib/connectionsApi";
 import { jellyfinApi } from "../../lib/jellyfinApi";
+import { embyApi } from "../../lib/embyApi";
 import { isAdmin, useMe } from "../../lib/me";
 import { hasUsenetClient, isUsenetClient } from "../../lib/network";
 import { useQuery } from "../../lib/query";
 import { useLiveRefresh } from "../../lib/useLiveQuery";
 import { Button, ErrorState, Skeleton, StaleBanner, useConfirm, type MenuItem } from "../../ui";
 import { JellyfinConnect } from "./JellyfinConnection";
+import { EmbyConnect } from "./EmbyConnection";
 import { PlexConnect } from "./PlexConnection";
+import type { MediaServerKind } from "../../components/brand/servers";
 
 // The add-indexer catalogue loads when it's opened.
 const AddIndexerModal = lazy(() => import("../../components/connections/AddIndexerModal"));
@@ -31,7 +34,8 @@ const PROWLARR_CARD = "prowlarr";
 // to one that isn't connected yet opens its editor.
 const PLEX_CARD = "plex";
 const JELLYFIN_CARD = "jellyfin";
-const SERVER_CARDS = [PLEX_CARD, JELLYFIN_CARD];
+const EMBY_CARD = "emby";
+const SERVER_CARDS = [PLEX_CARD, JELLYFIN_CARD, EMBY_CARD];
 const MEDIA_SERVERS_ANCHOR = "media-servers";
 
 // Jellyfin's card before the server lists one (an older server, or none saved yet): not
@@ -40,7 +44,11 @@ const JELLYFIN_UNSET: ConnectionItem = {
   kind: "jellyfin", ref: "default", card: JELLYFIN_CARD, name: "Jellyfin",
   configured: false, enabled: false, state: "unknown", testable: false,
 };
-const isServer = (it: ConnectionItem) => it.kind === "plex" || it.kind === "jellyfin";
+const EMBY_UNSET: ConnectionItem = {
+  kind: "emby", ref: "default", card: EMBY_CARD, name: "Emby",
+  configured: false, enabled: false, state: "unknown", testable: false,
+};
+const isServer = (it: ConnectionItem) => it.kind === "plex" || it.kind === "jellyfin" || it.kind === "emby";
 
 // What each section holds, under its title.
 const SUBTITLES: Record<ConnectionSectionId, string> = {
@@ -90,9 +98,11 @@ export function ConnectionsSettings() {
   const usenet = hasUsenetClient(dl.data?.clients);
   const plexItem = sections.flatMap((s) => s.items).find((x) => x.kind === "plex");
   const jellyfinItem = sections.flatMap((s) => s.items).find((x) => x.kind === "jellyfin") ?? JELLYFIN_UNSET;
+  const embyItem = sections.flatMap((s) => s.items).find((x) => x.kind === "emby") ?? EMBY_UNSET;
   // Which Jellyfin server it is (name and version) comes from its own settings, read once
   // it's connected; the card's status comes from the list like every other card.
   const jf = useQuery("jellyfin", jellyfinApi.get, { enabled: jellyfinItem.configured, staleMs: 60_000 });
+  const eb = useQuery("emby", embyApi.get, { enabled: embyItem.configured, staleMs: 60_000 });
   const error = q.error?.message ?? null;
   const [tests, setTests] = useState<Record<string, CardTest>>({});
   const [notices, setNotices] = useState<Record<string, string>>({});
@@ -125,7 +135,7 @@ export function ConnectionsSettings() {
     scrolled.current = hash;
     const target = hash.slice(1);
     if (SERVER_CARDS.includes(target)) {
-      const it = q.data.flatMap((s) => s.items).find((x) => x.card === target) ?? (target === JELLYFIN_CARD ? JELLYFIN_UNSET : undefined);
+      const it = q.data.flatMap((s) => s.items).find((x) => x.card === target) ?? (target === JELLYFIN_CARD ? JELLYFIN_UNSET : target === EMBY_CARD ? EMBY_UNSET : undefined);
       if (it && !it.configured) setEditing((e) => e ?? target);
     }
     document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" });
@@ -262,6 +272,8 @@ export function ConnectionsSettings() {
         return admin ? <PlexConnect onChanged={refresh} /> : undefined;
       case "jellyfin":
         return admin ? <JellyfinConnect onChanged={refresh} /> : undefined;
+      case "emby":
+        return admin ? <EmbyConnect onChanged={refresh} /> : undefined;
     }
     return undefined;
   };
@@ -359,11 +371,13 @@ export function ConnectionsSettings() {
     return undefined;
   };
 
-  const serverCard = (server: "plex" | "jellyfin", it: ConnectionItem) => {
+  const serverCard = (server: MediaServerKind, it: ConnectionItem) => {
     const editor = editorFor(it);
     const open = editing === it.card && !!editor;
     const identity = server === "jellyfin" && jf.data?.server_name
       ? `${jf.data.server_name}${jf.data.version ? ` · Jellyfin ${jf.data.version}` : ""}`
+      : server === "emby" && eb.data?.server_name
+        ? `${eb.data.server_name}${eb.data.version ? ` · Emby ${eb.data.version}` : ""}`
       : undefined;
     return (
       <MediaServerCard
@@ -401,10 +415,11 @@ export function ConnectionsSettings() {
       <ConnectionSection
         id={MEDIA_SERVERS_ANCHOR}
         title="Media servers"
-        subtitle="Where your library is watched. Connect Plex, Jellyfin or both: a request is ready as soon as either has it, and each one gets its own Watch button."
+        subtitle="Where your library is watched. Connect Plex, Jellyfin, Emby or any combination: a request is ready when a connected server has it, and each one gets its own Watch button."
       >
         {plexItem && serverCard("plex", plexItem)}
         {serverCard("jellyfin", jellyfinItem)}
+        {serverCard("emby", embyItem)}
       </ConnectionSection>
       {sections.map((s) => ({ ...s, items: s.items.filter((x) => !isServer(x)) })).map((s) => (
         <ConnectionSection

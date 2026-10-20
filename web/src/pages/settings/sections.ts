@@ -1,6 +1,7 @@
 // The Settings hub's map: which sections exist, who sees them, where every control lives
 // (for the search box) and where an old link should land. Kept free of components so it
 // can be tested on its own; pages/Settings.tsx pairs each id with the component it renders.
+import { fixLink } from "../../lib/links";
 
 export type SectionId = "library" | "media" | "connections" | "downloads" | "subtitles" | "convert" | "alerts" | "media-servers" | "audiobook-server" | "users" | "import" | "system" | "status";
 
@@ -48,6 +49,40 @@ export function visibleSections(admin: boolean): SettingsSection[] {
   return SECTIONS.filter((s) => admin || !s.adminOnly);
 }
 
+export interface SettingsHealthCount {
+  count: number;
+  errors: number;
+}
+
+// Put each health finding's badge beside the settings section where its fix link lands.
+// The Status section remains the complete list, so it shows the overall number too.
+export function healthCountsBySection(
+  items: readonly { kind: string; level: string; link?: string; link_key?: string }[],
+  visible: readonly string[],
+): Partial<Record<SectionId, SettingsHealthCount>> {
+  const health = items.filter((item) => item.kind === "health");
+  const counts: Partial<Record<SectionId, SettingsHealthCount>> = {};
+  const add = (id: SectionId, level: string) => {
+    const count = counts[id] ?? { count: 0, errors: 0 };
+    count.count++;
+    if (level === "error") count.errors++;
+    counts[id] = count;
+  };
+
+  if (visible.includes("status") && health.length > 0) {
+    counts.status = { count: health.length, errors: health.filter((item) => item.level === "error").length };
+  }
+  for (const item of health) {
+    const target = fixLink(item);
+    if (!target) continue;
+    const section = sectionFromPath(target.split(/[?#]/, 1)[0]);
+    if (visible.includes(section) && section !== "status" && SECTIONS.some((s) => s.id === section)) {
+      add(section as SectionId, item.level);
+    }
+  }
+  return counts;
+}
+
 export interface SearchEntry {
   label: string;
   keywords: string;
@@ -84,6 +119,7 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Alerts and apps", keywords: "alerts apprise audiobook server listening apps status connected", section: "connections", anchor: "other-connections" },
   { label: "Plex connection", keywords: "plex server url token connect sign in with plex test", section: "connections", anchor: "plex" },
   { label: "Jellyfin connection", keywords: "jellyfin server url api key public address watch links connect test", section: "connections", anchor: "jellyfin" },
+  { label: "Emby connection", keywords: "emby server url api key public address watch links connect test", section: "connections", anchor: "emby" },
   { label: "Download clients and indexers", keywords: "qbittorrent sabnzbd usenet prowlarr torrent client indexer", section: "downloads", anchor: "download-links" },
   { label: "Search categories", keywords: "indexer categories category cat newznab torznab book audiobook music filter usual default", section: "downloads", anchor: "search-categories" },
   { label: "Usenet and torrents", keywords: "usenet torrent sabnzbd nzb newznab prefer preference network both best release wins", section: "downloads", anchor: "network" },
@@ -105,6 +141,9 @@ export const SEARCH_INDEX: readonly SearchEntry[] = [
   { label: "Plex sign-in", keywords: "plex login sign in with plex family auto-approve home shared users staff admin owner policy", section: "media-servers", anchor: "plex-sign-in", adminOnly: true },
   { label: "Linked Plex accounts", keywords: "plex linked accounts link unlink who family users", section: "media-servers", anchor: "plex-accounts", adminOnly: true },
   { label: "Jellyfin server", keywords: "jellyfin server connected status connection change disconnect remove", section: "media-servers", anchor: "jellyfin-server" },
+  { label: "Emby server", keywords: "emby server connected status connection change disconnect remove", section: "media-servers", anchor: "emby-server" },
+  { label: "Emby Watch links", keywords: "emby public address url watch links outside home phone open button", section: "media-servers", anchor: "emby-watch-links" },
+  { label: "Emby library updates", keywords: "emby scan path mapping library update after import rename delete convert", section: "media-servers", anchor: "emby-library-updates" },
   { label: "Jellyfin Watch links", keywords: "jellyfin public address url watch links outside home phone open button", section: "media-servers", anchor: "jellyfin-watch-links" },
   { label: "Jellyfin watch monitoring", keywords: "jellyfin monitoring record watched insights poll interval seconds activity history", section: "media-servers", anchor: "jellyfin-monitoring" },
   { label: "Jellyfin library updates", keywords: "jellyfin scan partial refresh path mapping map folder update library after import rename delete convert", section: "media-servers", anchor: "jellyfin-library-updates" },

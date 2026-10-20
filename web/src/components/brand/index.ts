@@ -1,6 +1,6 @@
 // Media server branding: marks, the server badge and tile, and the Watch links. Import
 // from here (or the files themselves); nothing in it fetches.
-export { PlexMark, JellyfinMark, ServerMark } from "./marks";
+export { PlexMark, JellyfinMark, EmbyMark, ServerMark } from "./marks";
 export { ServerBadge, ServerTile } from "./ServerBadge";
 export { WatchButton, WatchPills } from "./WatchPills";
 export {

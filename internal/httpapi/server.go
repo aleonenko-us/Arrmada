@@ -23,6 +23,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/connstatus"
 	"github.com/tristenlammi/arrmada/internal/convert"
 	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/embysvc"
 	"github.com/tristenlammi/arrmada/internal/eventbus"
 	"github.com/tristenlammi/arrmada/internal/flaresolverr"
 	"github.com/tristenlammi/arrmada/internal/health"
@@ -161,6 +162,8 @@ type Deps struct {
 	// JellyfinScan tells Jellyfin which folder changed (its own switch and path mappings).
 	// nil = the scan routes answer 503.
 	JellyfinScan *plexscan.Scanner
+	Emby         *embysvc.Service
+	EmbyScan     *plexscan.Scanner
 	// MediaServers is every media server (Plex, then Jellyfin) for features that work
 	// with whichever is connected. nil = none.
 	MediaServers *mediaserver.Registry
@@ -815,6 +818,13 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("POST /api/v1/jellyfin/scan/test", a.requireRole(auth.RoleManager, a.handleJellyfinScanTest))
 	// Watch monitoring on Jellyfin: a switch and an interval, a manager's like Plex's.
 	mux.HandleFunc("PUT /api/v1/jellyfin/monitoring", a.requireRole(auth.RoleManager, a.handleJellyfinMonitoring))
+	mux.HandleFunc("GET /api/v1/emby", a.requireRole(auth.RoleManager, a.handleEmbyConfig))
+	mux.HandleFunc("PUT /api/v1/emby", a.requireRole(auth.RoleAdmin, a.handleEmbySave))
+	mux.HandleFunc("DELETE /api/v1/emby", a.requireRole(auth.RoleAdmin, a.handleEmbyDisconnect))
+	mux.HandleFunc("POST /api/v1/emby/test", a.requireRole(auth.RoleManager, a.handleEmbyTest))
+	mux.HandleFunc("GET /api/v1/emby/scan", a.requireRole(auth.RoleManager, a.handleEmbyScanView))
+	mux.HandleFunc("PUT /api/v1/emby/scan", a.requireRole(auth.RoleManager, a.handleEmbyScanSave))
+	mux.HandleFunc("POST /api/v1/emby/scan/test", a.requireRole(auth.RoleManager, a.handleEmbyScanTest))
 	// Every /insights read takes ?server=plex|jellyfin (both when absent); servers lists them.
 	mux.HandleFunc("GET /api/v1/insights/servers", a.requireRole(auth.RoleManager, a.handleInsightsServers))
 	mux.HandleFunc("GET /api/v1/insights/activity", a.requireRole(auth.RoleManager, a.handleInsightsActivity))

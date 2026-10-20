@@ -8,6 +8,7 @@ import { type InsightsServerStatus, type Person, type PlexConfig, type PlexStatu
 import { peopleApi } from "../../lib/peopleApi";
 import { insightsApi } from "../../lib/insightsApi";
 import { jellyfinApi, type JellyfinConfig } from "../../lib/jellyfinApi";
+import { embyApi, type EmbyConfig } from "../../lib/embyApi";
 import { lanOnly } from "../../lib/lanAddress";
 import { LINKS } from "../../lib/links";
 import { isAdmin, useMe } from "../../lib/me";
@@ -22,8 +23,8 @@ import { requesterPages } from "./roles";
 import { AutoApproveChecks, ROLES, jellyfinUnlinkConfirm, plexUnlinkConfirm, typesFromCSV, typesToCSV } from "./People";
 
 // Settings → Media servers: how Arrmada uses each media server, one group per server —
-// Plex, then Jellyfin. Each group says which server it is, records what's watched (watch
-// monitoring), tells the server what changed (library updates) and, for admins, who may
+// Plex, Jellyfin and Emby. Each group says which server it is, records what's watched (watch
+// monitoring where available), tells the server what changed (library updates) and, for admins, who may
 // sign in with it and which accounts are linked to it. The connections themselves (address,
 // token or API key, Test) are the server cards on Settings → Connections; each group's
 // server card links to its own. It was the Plex section (/settings/plex): the old addresses
@@ -42,6 +43,7 @@ export function MediaServersSettings() {
 
 // The Jellyfin connection's cache key, shared with its card on Connections.
 const JELLYFIN_KEY = "jellyfin";
+const EMBY_KEY = "emby";
 
 function MediaServersPage({ admin }: { admin: boolean }) {
   // One read of the Plex settings for the server and monitoring cards; a monitoring save
@@ -51,6 +53,7 @@ function MediaServersPage({ admin }: { admin: boolean }) {
   useEffect(() => { insightsApi.insightsConfig().then(setCfg).catch((e: Error) => setErr(e.message)); }, []);
   // Jellyfin: its connection, and how its monitoring is doing (Insights' server list).
   const jf = useQuery(JELLYFIN_KEY, jellyfinApi.get, { staleMs: 0 });
+  const eb = useQuery(EMBY_KEY, embyApi.get, { staleMs: 0 });
   const [jfStatus, setJFStatus] = useState<InsightsServerStatus | null>(null);
   const loadJFStatus = useCallback(() => {
     insightsApi.insightsServers().then((ss) => setJFStatus(ss.find((s) => s.server === "jellyfin") ?? null)).catch(() => setJFStatus(null));
@@ -64,6 +67,8 @@ function MediaServersPage({ admin }: { admin: boolean }) {
         <a href="#plex-group" className="font-semibold" style={{ color: "var(--accent-text)" }}>Plex</a>
         <span aria-hidden="true">·</span>
         <a href="#jellyfin-group" className="font-semibold" style={{ color: "var(--accent-text)" }}>Jellyfin</a>
+        <span aria-hidden="true">·</span>
+        <a href="#emby-group" className="font-semibold" style={{ color: "var(--accent-text)" }}>Emby</a>
         <span className="text-xs text-ink-faint">— connect either, or both, in <Link to={LINKS.mediaServerCards} style={{ color: "var(--accent-text)" }}>Settings → Connections</Link>.</span>
       </nav>
 
@@ -90,6 +95,12 @@ function MediaServersPage({ admin }: { admin: boolean }) {
         <LibraryUpdates server="jellyfin" />
         {admin && <JellyfinSignIn />}
         {admin && <LinkedAccounts server="jellyfin" />}
+      </ServerGroup>
+
+      <ServerGroup server="emby">
+        <EmbyServer cfg={eb.data ?? null} err={eb.error?.message ?? null} admin={admin} onDisconnected={(next) => setQueryData(EMBY_KEY, next)} />
+        {eb.data && <EmbyWatchLinks cfg={eb.data} admin={admin} />}
+        <LibraryUpdates server="emby" />
       </ServerGroup>
     </div>
   );
@@ -322,6 +333,68 @@ function JellyfinMonitoring({ cfg, onSaved }: { cfg: JellyfinConfig; onSaved: ()
   );
 }
 
+function EmbyServer({ cfg, err, admin, onDisconnected }: {
+  cfg: EmbyConfig | null;
+  err: string | null;
+  admin: boolean;
+  onDisconnected: (cfg: EmbyConfig) => void;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const connected = !!cfg?.url && cfg.key_set;
+  const disconnect = async () => {
+    if (!(await confirm({
+      title: `Disconnect ${cfg?.server_name || "Emby"}?`,
+      body: "Arrmada forgets Emby's address and API key. Watch links and library updates stop until you connect it again.",
+      confirmLabel: "Disconnect",
+      tone: "danger",
+    }))) return;
+    try {
+      onDisconnected(await embyApi.disconnect());
+      toast("Emby disconnected", { tone: "good" });
+    } catch (e) {
+      toast(`Couldn't disconnect Emby: ${(e as Error).message}`, { tone: "error" });
+    }
+  };
+  return (
+    <Section id="emby-server" title="Emby server" subtitle="Emby can provide Watch links and receive library updates after imports, renames and deletes.">
+      {!cfg ? (
+        err ? <p role="alert" className="m-0 text-sm" style={{ color: "var(--reject-text)" }}>Couldn't load the Emby connection: {err}</p> : <p className="m-0 text-sm text-ink-dim">Loading…</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="text-sm text-ink-dim">
+            {connected ? <>Connected to <b className="font-semibold">{cfg.server_name || "your Emby server"}</b>{cfg.version && <span className="text-xs text-ink-faint"> · Emby {cfg.version}</span>}</> : "Not connected"}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            {!admin ? <span className="text-xs text-ink-faint">An admin {connected ? "changes" : "connects"} the Emby server.</span> : connected ? (
+              <Link to={LINKS.embyConnection} className="text-sm font-semibold" style={{ color: "var(--accent-text)" }}>Change the connection →</Link>
+            ) : <Link to={LINKS.embyConnection} className={connectButton} style={connectStyle}>Connect your Emby server →</Link>}
+            {admin && (connected || !!cfg.url) && <Button size="sm" variant="ghost" onClick={() => void disconnect()}>Disconnect Emby</Button>}
+          </div>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function EmbyWatchLinks({ cfg, admin }: { cfg: EmbyConfig; admin: boolean }) {
+  const shown = cfg.public_url || cfg.url;
+  const save = useAutoSave(shown, async (v) => {
+    const next = await embyApi.save({ url: cfg.url, public_url: v.trim() });
+    setQueryData(EMBY_KEY, next);
+  }, { validate: (v) => (v.trim() && !/^https?:\/\/\S+$/i.test(v.trim()) ? "Use a web address like https://emby.example.com." : null) });
+  const homeOnly = lanOnly(save.value || cfg.url);
+  const help = "What every requester's Emby button opens. Blank uses the server URL.";
+  return (
+    <Section id="emby-watch-links" title="Emby Watch links" subtitle="When a request is ready, the requester's notice and the title page get a button that opens the title in Emby's web app.">
+      {!cfg.url ? <p className="m-0 text-sm text-ink-dim">Connect your Emby server first; the address starts as its URL.</p> : admin ? (
+        <AutoText label="Public address for Watch links" save={save} placeholder={cfg.url}><span className="text-xs text-ink-faint">{help}</span></AutoText>
+      ) : <div className="flex flex-col gap-1 text-sm"><span className="font-semibold">Public address for Watch links</span><span className="break-all font-mono text-ink-dim">{shown}</span><span className="text-xs text-ink-faint">{help} An admin changes it.</span></div>}
+      {cfg.url && homeOnly && <Note tone="warn">This address only works on your home network, so Watch links won't open on a phone away from home. Use the address you reach Emby on from outside.</Note>}
+    </Section>
+  );
+}
+
 const LINK_FIELDS = {
   plex: {
     linked: (p: Person) => !!p.plex_linked,
@@ -348,7 +421,7 @@ const LINK_FIELDS = {
 // LinkedAccounts (admin): which Arrmada accounts are linked to which Plex account or
 // Jellyfin user, with Unlink. Blocking one and merging a duplicate sign-in stay under More
 // on the person's row in People & access, where the rest of their access is.
-function LinkedAccounts({ server }: { server: MediaServerKind }) {
+function LinkedAccounts({ server }: { server: Exclude<MediaServerKind, "emby"> }) {
   const { user } = useMe();
   const confirm = useConfirm();
   const toast = useToast();

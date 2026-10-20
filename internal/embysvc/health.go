@@ -1,0 +1,77 @@
+package embysvc
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"time"
+
+	"github.com/tristenlammi/arrmada/internal/emby"
+)
+
+// Health is how the Emby connection has been answering: the one record the health
+// panel and the Connections card read, so they never disagree. Monitoring means a poller
+// talks to Emby every few seconds; otherwise the numbers come from Probe.
+type Health struct {
+	Configured   bool
+	Monitoring   bool
+	LastOKAt     time.Time
+	LastErrAt    time.Time
+	FailingSince time.Time // first failure of the current run; zero when OK
+	LastErr      string
+	Unauthorized bool // the last failure was Emby refusing the key
+	Consecutive  int  // failures in a row
+}
+
+type pollHealth struct {
+	mu sync.Mutex
+	h  Health
+}
+
+// record notes one exchange and reports whether it changed between working and failing.
+func (p *pollHealth) record(err error, now time.Time) (startedFailing, recovered bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err == nil {
+		recovered = p.h.Consecutive > 0
+		p.h.LastOKAt = now
+		p.h.FailingSince = time.Time{}
+		p.h.Consecutive = 0
+		p.h.LastErr = ""
+		p.h.Unauthorized = false
+		return false, recovered
+	}
+	if p.h.Consecutive == 0 {
+		p.h.FailingSince = now
+		startedFailing = true
+	}
+	p.h.Consecutive++
+	p.h.LastErrAt = now
+	p.h.LastErr = Describe(err)
+	p.h.Unauthorized = errors.Is(err, emby.ErrUnauthorized)
+	return startedFailing, false
+}
+
+func (p *pollHealth) get() Health {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.h
+}
+
+// reset forgets the record: a new server or key starts with a clean slate.
+func (p *pollHealth) reset() {
+	p.mu.Lock()
+	p.h = Health{}
+	p.mu.Unlock()
+}
+
+// Health reports how the connection has been doing, without calling Emby.
+func (s *Service) Health(ctx context.Context) Health {
+	h := s.health.get()
+	h.Configured = s.Configured(ctx)
+	s.pollingMu.RLock()
+	polling := s.polling
+	s.pollingMu.RUnlock()
+	h.Monitoring = h.Configured && polling != nil && polling(ctx)
+	return h
+}

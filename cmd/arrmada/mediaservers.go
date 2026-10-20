@@ -7,6 +7,7 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/apikeys"
 	"github.com/tristenlammi/arrmada/internal/buildinfo"
+	"github.com/tristenlammi/arrmada/internal/embysvc"
 	"github.com/tristenlammi/arrmada/internal/insights"
 	"github.com/tristenlammi/arrmada/internal/jellyfinsvc"
 	"github.com/tristenlammi/arrmada/internal/mediaserver"
@@ -24,8 +25,10 @@ type mediaServers struct {
 	Plex         *plexscan.Scanner
 	Jellyfin     *jellyfinsvc.Service
 	JellyfinScan *plexscan.Scanner
+	Emby         *embysvc.Service
+	EmbyScan     *plexscan.Scanner
 	// Registry is the servers for features that work with whichever is connected
-	// (Watch links, "ready", Recently added): Plex first, then Jellyfin.
+	// (Watch links, "ready", Recently added): Plex, Jellyfin, then Emby.
 	Registry *mediaserver.Registry
 
 	insights *insights.Service
@@ -46,8 +49,8 @@ type mediaServerDeps struct {
 	Log        *slog.Logger // tagged "jellyfin"
 }
 
-// setupMediaServers builds the Jellyfin connection, its library index and its scanner,
-// starts their workers, and puts both servers in one Registry.
+// setupMediaServers builds the media servers’ connections, library indexes and scanners,
+// starts their workers, and puts them in one Registry.
 func setupMediaServers(d mediaServerDeps) *mediaServers {
 	jf := jellyfinsvc.New(jellyfinsvc.Options{
 		Settings: d.Settings, Keys: d.Keys, Version: buildinfo.Version, Roots: d.Roots, Log: d.Log,
@@ -68,15 +71,21 @@ func setupMediaServers(d mediaServerDeps) *mediaServers {
 		d.Insights.SetJellyfin(jf)
 		d.Group.Loop("insights: jellyfin poller", d.Insights.RunJellyfin)
 	}
-	m := &mediaServers{Plex: d.Plex, Jellyfin: jf, JellyfinScan: jfScan, insights: d.Insights}
-	m.Registry = mediaserver.NewRegistry(d.Insights.MediaServer(), jf)
+	eb := embysvc.New(embysvc.Options{Settings: d.Settings, Keys: d.Keys, Version: buildinfo.Version, Roots: d.Roots, Log: d.Log})
+	eb.SetExtraRoots(d.ExtraRoots)
+	ebScan := eb.NewScanner(d.Settings, d.Roots, d.Log)
+	ebScan.SetExtraRoots(d.ExtraRoots)
+	d.Group.Loop("emby: library scans", ebScan.Run)
+	d.Group.Loop("emby: library index", eb.RunIndex)
+	m := &mediaServers{Plex: d.Plex, Jellyfin: jf, JellyfinScan: jfScan, Emby: eb, EmbyScan: ebScan, insights: d.Insights}
+	m.Registry = mediaserver.NewRegistry(d.Insights.MediaServer(), jf, eb)
 	return m
 }
 
 // Request queues a scan of dir (a folder as Arrmada sees it) on every server; each
 // scanner drops it at once when its server isn't set up or its scans are off.
 func (m *mediaServers) Request(kind, dir string) {
-	for _, sc := range []*plexscan.Scanner{m.Plex, m.JellyfinScan} {
+	for _, sc := range []*plexscan.Scanner{m.Plex, m.JellyfinScan, m.EmbyScan} {
 		if sc != nil {
 			sc.Request(kind, dir)
 		}
@@ -93,5 +102,8 @@ func (m *mediaServers) IndexStaleAfterImport() {
 	}
 	if m.JellyfinScan != nil && m.Jellyfin != nil && !m.JellyfinScan.Enabled(ctx) {
 		m.Jellyfin.IndexStale(3 * time.Minute)
+	}
+	if m.EmbyScan != nil && m.Emby != nil && !m.EmbyScan.Enabled(ctx) {
+		m.Emby.IndexStale(3 * time.Minute)
 	}
 }

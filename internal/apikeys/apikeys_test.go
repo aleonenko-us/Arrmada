@@ -159,7 +159,7 @@ func TestCatalogIsComplete(t *testing.T) {
 		}
 		// A hidden credential is entered on its own card only — never from the install —
 		// except the Jellyfin key, which an install may set like the Plex token.
-		if k.Hidden && (k.ID == "" || (k.EnvVar != "" && k.ID != Jellyfin)) {
+		if k.Hidden && (k.ID == "" || (k.EnvVar != "" && k.ID != Jellyfin && k.ID != Emby)) {
 			t.Errorf("hidden credential %q must have an id and no env var", k.ID)
 		}
 		if seen[k.ID] {
@@ -187,7 +187,7 @@ func TestHiddenCredentialsStayOffTheList(t *testing.T) {
 		}
 	}
 	for _, st := range s.Status(ctx) {
-		if st.Hidden || st.ID == SMTPHost || st.ID == SMTPUsername || st.ID == SMTPPassword || st.ID == Jellyfin {
+		if st.Hidden || st.ID == SMTPHost || st.ID == SMTPUsername || st.ID == SMTPPassword || st.ID == Jellyfin || st.ID == Emby {
 			t.Errorf("Status lists %s", st.ID)
 		}
 	}

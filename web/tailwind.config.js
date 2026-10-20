@@ -63,6 +63,8 @@ export default {
         plex: "var(--plex)",
         "plex-ink": "var(--plex-ink)",
         "jellyfin-ink": "var(--jellyfin-ink)",
+        emby: "var(--emby)",
+        "emby-ink": "var(--emby-ink)",
       },
       boxShadow: {
         panel: "var(--shadow)",

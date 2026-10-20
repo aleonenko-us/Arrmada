@@ -8,6 +8,7 @@ DELETE /api/v1/books/{id}/audio-versions/{vid}/file staff -
 DELETE /api/v1/books/{id}/file staff -
 DELETE /api/v1/convert/requests staff -
 DELETE /api/v1/downloadclients/{id} staff -
+DELETE /api/v1/emby admin -
 DELETE /api/v1/indexers/{id} staff -
 DELETE /api/v1/insights/import/runs/{id}/rows admin -
 DELETE /api/v1/jellyfin admin -
@@ -134,6 +135,8 @@ GET /api/v1/downloadclients/{id}/status staff -
 GET /api/v1/downloads staff -
 GET /api/v1/downloads/disk-guard staff -
 GET /api/v1/downloads/unmanaged staff -
+GET /api/v1/emby staff -
+GET /api/v1/emby/scan staff -
 GET /api/v1/files/info staff -
 GET /api/v1/flaresolverr/status staff -
 GET /api/v1/health/system staff -
@@ -379,6 +382,8 @@ POST /api/v1/downloadclients staff -
 POST /api/v1/downloadclients/restore-bundled staff -
 POST /api/v1/downloadclients/{id}/categories staff -
 POST /api/v1/downloadclients/{id}/test staff -
+POST /api/v1/emby/scan/test staff -
+POST /api/v1/emby/test staff -
 POST /api/v1/grab staff -
 POST /api/v1/grab/preview staff -
 POST /api/v1/import/arr/preview admin -
@@ -564,6 +569,8 @@ PUT /api/v1/books/{id}/profile staff -
 PUT /api/v1/convert/settings staff -
 PUT /api/v1/downloadclients/{id} staff -
 PUT /api/v1/downloadclients/{id}/settings staff -
+PUT /api/v1/emby admin -
+PUT /api/v1/emby/scan staff -
 PUT /api/v1/indexers/prowlarr staff -
 PUT /api/v1/indexers/{id} staff -
 PUT /api/v1/insights/plex admin -

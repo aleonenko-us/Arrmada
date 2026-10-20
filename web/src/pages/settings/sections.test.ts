@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LINKS } from "../../lib/links";
-import { SEARCH_INDEX, SECTIONS, searchSettings, sectionFromPath, settingsRedirect, visibleSections } from "./sections";
+import { healthCountsBySection, SEARCH_INDEX, SECTIONS, searchSettings, sectionFromPath, settingsRedirect, visibleSections } from "./sections";
 
 const admin = visibleSections(true).map((s) => s.id);
 const manager = visibleSections(false).map((s) => s.id);
@@ -13,6 +13,30 @@ describe("visibleSections", () => {
   it("gives an admin every section, Status included", () => {
     expect(admin).toEqual(SECTIONS.map((s) => s.id));
     expect(admin).toContain("status");
+  });
+});
+
+describe("healthCountsBySection", () => {
+  it("places each health count at its fix section and keeps the full count on Status", () => {
+    const counts = healthCountsBySection([
+      { kind: "health", level: "error", link: "/settings/connections#search" },
+      { kind: "health", level: "warning", link_key: "libraryFolders" },
+      { kind: "health", level: "warning", link: "/settings/status#health" },
+      { kind: "request", level: "warning", link: "/requests" },
+    ], admin);
+    expect(counts.connections).toEqual({ count: 1, errors: 1 });
+    expect(counts.library).toEqual({ count: 1, errors: 0 });
+    expect(counts.status).toEqual({ count: 3, errors: 1 });
+  });
+
+  it("does not show counts for settings sections a manager cannot open", () => {
+    const counts = healthCountsBySection([
+      { kind: "health", level: "error", link: "/settings/system#backups" },
+      { kind: "health", level: "warning", link: "/settings/media-servers#emby-server" },
+    ], manager);
+    expect(counts.system).toBeUndefined();
+    expect(counts.status).toBeUndefined();
+    expect(counts["media-servers"]).toEqual({ count: 1, errors: 0 });
   });
 });
 

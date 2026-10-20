@@ -75,6 +75,8 @@
   --plex-ink: #1f1200;
   --jellyfin: linear-gradient(135deg, #aa5cc3, #00a4dc);
   --jellyfin-ink: #0b0614;
+  --emby: #52b54b;
+  --emby-ink: #071407;
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
   /* Native controls (the open list of a <select>, scrollbars, date pickers) follow the
      theme instead of the device's light default. */
@@ -117,6 +119,8 @@
     --plex-ink: #1f1200;
     --jellyfin: linear-gradient(135deg, #aa5cc3, #00a4dc);
     --jellyfin-ink: #0b0614;
+  --emby: #52b54b;
+  --emby-ink: #071407;
     --shadow: 0 14px 36px rgba(60, 40, 20, 0.14), 0 2px 6px rgba(60, 40, 20, 0.08);
     color-scheme: light;
   }
@@ -134,6 +138,8 @@
   --accent-text: #e0845e; --good-text: #7fb069; --avoid-text: #e0a93b; --reject-text: #e27a69;
   --plex: #e5a00d; --plex-ink: #1f1200;
   --jellyfin: linear-gradient(135deg, #aa5cc3, #00a4dc); --jellyfin-ink: #0b0614;
+  --emby: #52b54b;
+  --emby-ink: #071407;
   --shadow: 0 18px 48px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.3);
   color-scheme: dark;
 }
@@ -150,6 +156,8 @@
   --accent-text: #9e4827; --good-text: #436b33; --avoid-text: #7f5910; --reject-text: #a8392b;
   --plex: #e5a00d; --plex-ink: #1f1200;
   --jellyfin: linear-gradient(135deg, #aa5cc3, #00a4dc); --jellyfin-ink: #0b0614;
+  --emby: #52b54b;
+  --emby-ink: #071407;
   --shadow: 0 14px 36px rgba(60,40,20,.14), 0 2px 6px rgba(60,40,20,.08);
   color-scheme: light;
 }

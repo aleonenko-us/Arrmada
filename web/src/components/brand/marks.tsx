@@ -29,6 +29,16 @@ export function JellyfinMark({ size = 16, className }: MarkProps) {
   );
 }
 
+export function EmbyMark({ size = 16, className }: MarkProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" focusable="false" className={className}>
+      <path fill="currentColor" d="M5 4h14v3H8v3h9v3H8v4h11v3H5z" />
+    </svg>
+  );
+}
+
 export function ServerMark({ server, ...rest }: MarkProps & { server: MediaServerKind }) {
-  return server === "plex" ? <PlexMark {...rest} /> : <JellyfinMark {...rest} />;
+  if (server === "plex") return <PlexMark {...rest} />;
+  if (server === "jellyfin") return <JellyfinMark {...rest} />;
+  return <EmbyMark {...rest} />;
 }
