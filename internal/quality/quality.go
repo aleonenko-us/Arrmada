@@ -300,6 +300,11 @@ type Profile struct {
 	// Languages is the target's Audio language row (lang.go): base codes or LangOriginal
 	// to must/want/avoid. Empty is no language rules.
 	Languages map[string]string `json:"languages,omitempty"`
+	// MultiCountsLanguage reads a MULTi or Dual release that names no language as maybe
+	// carrying a Must language (unknown: not refused), the way some trackers label the local
+	// dub MULTi. Off — the default — a Must has to be named, or be the title's original
+	// language (lang.go). StoredProfile.MultiCountsLanguage.
+	MultiCountsLanguage bool `json:"multi_counts_language,omitempty"`
 	// PreferNetwork is the download_network_preference setting (NetworkUsenet or
 	// NetworkTorrent) when it prefers one: between a usenet and a torrent release that
 	// score the same, the preferred network ranks first (KeyNetwork). "" or NetworkBest
@@ -605,7 +610,7 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 	if !p.NoUnwanted {
 		audio = c.audioLangs()
 		ev.AudioLangs, ev.AudioLangsNote = audio.describe()
-		lv = judgeLangs(p.languageRules(c), audio)
+		lv = judgeLangs(p.languageRules(c), audio, p.mustReading(c))
 		ev.langShort, ev.langPrefCodes, ev.langUnknown = lv.short, lv.prefs, lv.unknown
 	}
 
@@ -675,10 +680,17 @@ func (e *Engine) Evaluate(p Profile, c Candidate) Evaluation {
 		return ev
 	}
 	// A language the profile requires: by the name for a release, by its probed tracks for
-	// a file on disk. A file without one no longer fits, like any other Must.
-	if len(lv.missing) > 0 && !p.noLangGate {
-		ev.reject(RejectMissingLanguage, "Missing "+langNames(lv.missing)+" audio — your profile requires it")
-		return ev
+	// a file on disk. A file without one no longer fits, like any other Must. A release on
+	// offer must also say it: one that only might carry it is refused (lv.unnamed).
+	if !p.noLangGate {
+		if len(lv.missing) > 0 {
+			ev.reject(RejectMissingLanguage, "Missing "+langNames(lv.missing)+" audio — your profile requires it")
+			return ev
+		}
+		if len(lv.unnamed) > 0 {
+			ev.reject(RejectMissingLanguage, unnamedReason(lv.unnamed, audio, r))
+			return ev
+		}
 	}
 
 	ev.QualityScore = qualityScore(r)

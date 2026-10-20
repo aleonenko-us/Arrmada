@@ -120,6 +120,20 @@ func TestLanguages(t *testing.T) {
 		{"Movie.2020.HUN.ENG.1080p.WEB-DL.x264-GRP", []string{"hu", "en"}, false},
 		{"Movie.2020.SPANiSH.ENG.1080p.WEB-DL.x264-GRP", []string{"es", "en"}, false},
 		{"Movie.2020.ITA.1080p.WEB-DL.x264-GRP", []string{"it"}, false},
+		// The spellings a Must audio language is read from (issue #58): a name must say it.
+		{"Movie.2020.MULTi.ITA.1080p.BluRay.x264-GRP", []string{"it"}, true},
+		{"Movie.2020.iTA.ENG.1080p.BluRay.x264-GRP", []string{"it", "en"}, false},
+		{"Movie.2020.ITA-ENG.1080p.BluRay.x264-GRP", []string{"it", "en"}, false},
+		{"Movie.2020.Italian.1080p.WEB-DL.x264-GRP", []string{"it"}, false},
+		{"Movie.2020.VFB.1080p.WEB-DL.x264-GRP", []string{"fr"}, false},
+		{"Movie.2020.MULTi.VF2.1080p.WEB-DL.x264-GRP", []string{"fr"}, true},
+		{"Movie.2020.FRA.ENG.1080p.WEB-DL.x264-GRP", []string{"fr", "en"}, false},
+		{"Movie.2020.DEU.1080p.WEB-DL.x264-GRP", []string{"de"}, false},
+		{"Movie.2020.NLD.1080p.WEB-DL.x264-GRP", []string{"nl"}, false},
+		{"Movie.2020.ESP.ENG.1080p.WEB-DL.x264-GRP", []string{"es", "en"}, false},
+		{"Anime.2020.JAP.ENG.1080p.BluRay.x264-GRP", []string{"ja", "en"}, false},
+		// Lower case, they stay words ("esp" and "fra" are in plenty of titles).
+		{"Movie.2020.1080p.WEB-DL.esp-GRP", nil, false},
 		// German TV dubs where an episode title would sit: alone before the technical tokens,
 		// or with a dub tag after it.
 		{"Show.S01E01.German.720p.WEB.h264-GRP", []string{"de"}, false},

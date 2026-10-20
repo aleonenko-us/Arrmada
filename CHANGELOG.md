@@ -26,6 +26,17 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Before you update
 
+- **A Must audio language now has to be in the release name** (#58). A release is grabbed for
+  a Must language only when its name says it (ITA, iTALiAN, VFF, TRUEFRENCH…), or when the
+  language is the title's original and the release names no language or is MULTi/DL/Dual
+  Audio, which always carry the original. A MULTi or Dual Audio release that doesn't name the
+  language used to count as "might have it" and was grabbed; it's now skipped, and interactive
+  search says why ("Doesn't name Italian audio…"). If your trackers label releases MULTi when
+  they carry your language (French trackers often do), turn on **MULTi releases count as
+  having a required language** under the profile's Audio language row. It's off on every
+  existing profile. Files already in your library are judged as before, so nothing is
+  downloaded again because of this.
+
 - **Missing music files are flagged, not downloaded again.** When a track file is gone on two
   checks a day apart, the album says "N track files gone from disk" and isn't searched by
   itself, like movies. Use **Search for missing tracks** on the album page, or Music → Library
@@ -274,6 +285,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 ### Fixed
 
+- Audio languages: a profile with Italian as Must no longer grabs MULTi or Dual Audio releases
+  that don't name Italian (#58). Release names that write FRA, DEU, NLD, ESP, JAP or VFB are
+  read as French, German, Dutch, Spanish, Japanese and French.
 - Library folders: a show, artist or album whose name is only dots can no longer reach
   outside its library folder. Names like "..." are still allowed.
 - Archive extraction: a refused archive no longer stops the rest of the download. Zips of RAR

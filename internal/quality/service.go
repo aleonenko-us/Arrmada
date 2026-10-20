@@ -752,6 +752,7 @@ func normalize(sp *StoredProfile) {
 		sp.Unwanted = sp.Unwanted.normalized()
 	} else {
 		sp.Unwanted = Unwanted{} // the pack is video-only
+		sp.MultiCountsLanguage = false // like the Audio language row it qualifies
 	}
 }
 

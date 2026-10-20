@@ -58,6 +58,14 @@ func TestExplainRowShowsAudioLanguages(t *testing.T) {
 		!strings.HasPrefix(no.RejectReason, "Missing German audio") {
 		t.Errorf("refused row = %+v", no)
 	}
+	// A MULTi that doesn't name German is refused (issue #58), and the row says why in
+	// plain words: the name doesn't say German.
+	multi := quality.NewDefaultEngine().Evaluate(p, quality.NewCandidate("Film.2021.MULTi.1080p.WEB-DL.x264-MUL", 6, 10).WithLanguage("en"))
+	row := explainRow(RankedRelease{Eligible: multi.Eligible, RejectReason: multi.RejectReason}, multi, false)
+	if row.Eligible || row.RejectReason != "Doesn't name German audio — your profile requires it, and a MULTi release only counts for the languages its name says" ||
+		strings.Join(row.AudioLangs, ",") != "en" || row.AudioLangsNote != "and others it doesn't name" {
+		t.Errorf("MULTi row = %+v", row)
+	}
 }
 
 // Interactive search: every eligible row behind the recommendation names what it lost on,

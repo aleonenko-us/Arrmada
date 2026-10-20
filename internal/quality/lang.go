@@ -13,9 +13,16 @@ import (
 // code or LangOriginal, which stands for the title's own original language (TMDB's
 // original_language) — so "Original + German" is one profile for every title.
 //
-//   - Must: a release whose name is known not to carry the language is refused; a file on
-//     disk known to lack it no longer fits. Each Must is needed — they are languages a
-//     file has together, not alternatives like codecs.
+//   - Must: a release on offer is grabbed only when its name says the language — names it
+//     (ITA, iTALiAN, VFF…), or the language is the title's original and the release names
+//     none or is MULTi/DL/Dual, which always carry the original (issue #58). A MULTi or
+//     Dual that names no language may carry others, but "may" isn't enough: it's refused,
+//     unless the profile's MultiCountsLanguage switch says MULTi counts (the way some
+//     trackers label the local dub), which brings back the old reading — an unnamed Must
+//     is unknown, neither refused nor credited. A file on disk known to lack the language
+//     no longer fits; one that only might lack it (an untagged track, nothing read) is left
+//     alone, so the strict reading never sends a library back to the indexers. Each Must
+//     is needed — they are languages a file has together, not alternatives like codecs.
 //   - Prefer: every preferred (or required) language a release has counts on the
 //     preferences key (ranking v2), and scores like a preferred format (classic).
 //   - Avoid: a release whose every language is avoided drops to the avoided tier. An extra
@@ -26,9 +33,11 @@ import (
 // What a release carries, by its name: an untagged release is the original language; a
 // MULTi/DL one the original plus the languages it names; DUAL / Dual Audio on a foreign
 // title the original plus English; a tagged one ("GERMAN", "iTALiAN") exactly the
-// languages it names. MULTi naming none may carry others: a Must or Prefer it doesn't name
-// is unknown — neither refused nor credited. A title whose original language isn't known,
-// with a release that names none, can't be judged, and no rule is applied to it.
+// languages it names. MULTi naming none may carry others: a Prefer it doesn't name is
+// unknown — neither credited nor counted against it — and a Must it doesn't name is refused
+// (see Must above). A title whose original language isn't known, with a release that names
+// none, can't be judged: Prefer and Avoid aren't applied to it, and a Must refuses it, since
+// nothing says the language is there. With no Must, nothing is refused for it.
 //
 // A file on disk is read by fileLangs: its probed tracks, and its name only where the name
 // states languages — never assumed from an untagged name. A file with nothing to read is
@@ -197,14 +206,31 @@ func langRules(row map[string]string, orig string) map[string]string {
 	return out
 }
 
+// mustReading is how a Must reads a set that may carry the language without saying so.
+type mustReading struct {
+	// named: a release on offer must say a Must language (see the top of the file). A Must
+	// an open set doesn't name, or every Must of a set that can't be told, is unnamed —
+	// refused — rather than unknown. False for a file on disk, which is never judged on
+	// what its name leaves out.
+	named bool
+	// multiCounts: the profile counts MULTi (an open set) as carrying its Musts. With
+	// named, only the set that can't be told at all (no language named, no original
+	// language known) is still refused.
+	multiCounts bool
+}
+
 // langVerdict is a language set judged against a title's rules.
 type langVerdict struct {
 	judged  bool     // there were rules and something to judge them by
 	missing []string // the Musts it lacks
+	// unnamed are the Musts a release on offer may carry but doesn't say (mustReading.named):
+	// a MULTi or Dual naming none of them, or a release naming no language for a title
+	// whose original language isn't known. Refused like missing, with its own reason.
+	unnamed []string
 	prefs   []string // the preferred or required languages it has
 	// unknown are the Must and Prefer languages it may or may not carry: an open set that
 	// doesn't name them (MULTi alone, an untagged track), or every rule when nothing can be
-	// told. Neither refused nor credited.
+	// told. Neither refused nor credited. A Must is only here when it isn't unnamed.
 	unknown []string
 	short   bool // a Must or a Prefer it's known to lack: it isn't the target yet
 	wants   int  // how many languages the rules prefer
@@ -212,14 +238,19 @@ type langVerdict struct {
 	avoided bool // every language it carries is avoided
 }
 
-func judgeLangs(rules map[string]string, s langSet) langVerdict {
+func judgeLangs(rules map[string]string, s langSet, mr mustReading) langVerdict {
 	var v langVerdict
 	if len(rules) == 0 {
 		return v
 	}
 	if !s.known {
 		for _, code := range sortedLangKeys(rules) {
-			if st := rules[code]; st == PrefMust || st == PrefWant {
+			switch st := rules[code]; {
+			case st == PrefMust && mr.named:
+				// Nothing says it's there: no language named, no original to read it as.
+				v.unnamed = append(v.unnamed, code)
+				v.short = true
+			case st == PrefMust || st == PrefWant:
 				v.unknown = append(v.unknown, code)
 			}
 		}
@@ -238,6 +269,10 @@ func judgeLangs(rules map[string]string, s langSet) langVerdict {
 			if st == PrefWant {
 				v.wanted++
 			}
+		case s.open && st == PrefMust && mr.named && !mr.multiCounts:
+			// A MULTi or Dual that doesn't name it: it may be there, but the name doesn't say.
+			v.unnamed = append(v.unnamed, code)
+			v.short = true
 		case s.open:
 			// It may carry it among the languages it doesn't name.
 			v.unknown = append(v.unknown, code)
@@ -322,6 +357,28 @@ func (p Profile) languageRules(c Candidate) map[string]string {
 	return langRules(p.Languages, c.titleLang())
 }
 
+// mustReading is how the profile's Musts read this candidate: a release on offer must say
+// them (unless the profile counts MULTi), a file on disk is never refused on its name's
+// silence.
+func (p Profile) mustReading(c Candidate) mustReading {
+	return mustReading{named: !p.onDisk && !c.onDisk, multiCounts: p.MultiCountsLanguage}
+}
+
+// unnamedReason is the refusal of a release on offer that doesn't say a Must language
+// (langVerdict.unnamed), in plain words: what it doesn't name, and why that isn't enough.
+func unnamedReason(codes []string, s langSet, r parser.Release) string {
+	head := "Doesn't name " + langNames(codes) + " audio — your profile requires it"
+	if !s.known {
+		// It names no language, and there's no original language to read it as.
+		return head + ", and this title's original language isn't known"
+	}
+	tag := "MULTi"
+	if r.Dual {
+		tag = "Dual Audio"
+	}
+	return head + ", and a " + tag + " release only counts for the languages its name says"
+}
+
 // LanguageFit judges a file's audio languages against the profile's language rules, the
 // way the engine reads them (fileLangs): the colour of the detail pages' language badges.
 // nil when the profile has no rules for this title, or when the file can't be judged on
@@ -334,7 +391,8 @@ func (sp StoredProfile) LanguageFit(cur CurrentFile) *langs.AudioFit {
 	if len(rules) == 0 || !cur.known() {
 		return nil
 	}
-	v := judgeLangs(rules, cur.candidate().audioLangs())
+	// A file: judged on what it's known to carry, never on what its name leaves out.
+	v := judgeLangs(rules, cur.candidate().audioLangs(), mustReading{})
 	if !v.judged {
 		return nil
 	}

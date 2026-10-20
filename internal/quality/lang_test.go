@@ -119,29 +119,34 @@ func enCand(name string, gb float64) Candidate {
 
 // Must refuses a release whose name doesn't carry the language, in both rankings, with
 // the language named in the reason.
+//
+// Before issue #58 the MULTi release here was eligible ("MULTi alone may carry German"):
+// a Must the name didn't mention was unknown, so every MULTi got through a Must, and a
+// profile requiring Italian kept grabbing English-plus-something MULTi releases. A Must now
+// has to be named (or be the original language), so the MULTi is refused with a reason that
+// says the name doesn't name German — and taken again only with the profile's
+// MultiCountsLanguage switch on (TestMustNamedTable, TestMultiCountsSwitch).
 func TestLanguageMustRefusesByName(t *testing.T) {
 	forEachRanking(t, func(t *testing.T, mode string) {
 		p := langProfile(map[string]string{"de": PrefMust})
 		d := engineIn(mode).Decide(p, []Candidate{
 			enCand("Film.2021.1080p.BluRay.x264-ENG", 12),
 			enCand("Film.2021.German.DL.1080p.WEB-DL.x264-GER", 6),
-			enCand("Film.2021.MULTi.1080p.BluRay.x264-MUL", 11), // MULTi alone may carry German
+			enCand("Film.2021.MULTi.1080p.BluRay.x264-MUL", 11), // doesn't say German
 			enCand("Film.2021.GERMAN.1080p.WEB-DL.x264-GO", 5),
 			enCand("Film.2021.iTALiAN.1080p.WEB-DL.x264-IT", 5),
 		})
-		if len(d.Eligible) != 3 || len(d.Rejected) != 2 {
-			t.Fatalf("eligible %d rejected %d, want the two German releases and the MULTi one", len(d.Eligible), len(d.Rejected))
+		if len(d.Eligible) != 2 || len(d.Rejected) != 3 {
+			t.Fatalf("eligible %d rejected %d, want only the two German releases", len(d.Eligible), len(d.Rejected))
 		}
 		for _, ev := range d.Rejected {
-			if ev.RejectCode != RejectMissingLanguage || !strings.HasPrefix(ev.RejectReason, "Missing German audio") {
-				t.Errorf("%s: %s %q", ev.Candidate.Name, ev.RejectCode, ev.RejectReason)
+			want := "Missing German audio"
+			if ev.Candidate.Name == "Film.2021.MULTi.1080p.BluRay.x264-MUL" {
+				want = "Doesn't name German audio"
 			}
-		}
-		// A MULTi that doesn't name German isn't refused, and earns no German credit: the
-		// releases that say German rank above it.
-		last := d.Eligible[2]
-		if last.Candidate.Name != "Film.2021.MULTi.1080p.BluRay.x264-MUL" || containsStr(last.Matched, "German audio") {
-			t.Errorf("MULTi ranked %+v", last)
+			if ev.RejectCode != RejectMissingLanguage || !strings.HasPrefix(ev.RejectReason, want) {
+				t.Errorf("%s: %s %q, want %q…", ev.Candidate.Name, ev.RejectCode, ev.RejectReason, want)
+			}
 		}
 		// German with the original beats German alone on nothing language-wise (both have
 		// the Must); the heavier one wins as it would without the rule.
@@ -152,8 +157,11 @@ func TestLanguageMustRefusesByName(t *testing.T) {
 }
 
 // DUAL / Dual Audio on a foreign title is the original plus English, so an English Must
-// grabs anime dual-audio releases; a MULTi that names nothing is the original and unnamed
-// others, so a French Must doesn't refuse a French film's MULTi either.
+// grabs anime dual-audio releases. A MULTi that names nothing is the original and unnamed
+// others: a French Must takes a French film's MULTi (French is its original), and — since
+// issue #58 — refuses an English film's MULTi, which used to pass as "may carry French".
+// Dual Audio on an English title names only English, so a German Must refuses it too
+// (it used to be unknown, and taken).
 func TestDualAudioAndMultiUnderAMust(t *testing.T) {
 	forEachRanking(t, func(t *testing.T, mode string) {
 		en := Profile{AllowedResolutions: []parser.Resolution{parser.Res1080p}, Languages: map[string]string{"en": PrefMust}}
@@ -163,20 +171,168 @@ func TestDualAudioAndMultiUnderAMust(t *testing.T) {
 				t.Errorf("%s: eligible %v %q matched %v langs %v", n, ev.Eligible, ev.RejectReason, ev.Matched, ev.AudioLangs)
 			}
 		}
+		// A MULTi on a Japanese title doesn't say English: refused.
 		multi := engineIn(mode).Evaluate(en, NewCandidate("Show.S01E05.1080p.WEB.x264.MULTi-GRP", 1, 50).WithLanguage("ja"))
-		if !multi.Eligible || containsStr(multi.Matched, "English audio") {
-			t.Errorf("MULTi on a Japanese title: eligible %v %q, matched %v", multi.Eligible, multi.RejectReason, multi.Matched)
+		if multi.Eligible || !strings.HasPrefix(multi.RejectReason, "Doesn't name English audio") {
+			t.Errorf("MULTi on a Japanese title: eligible %v %q", multi.Eligible, multi.RejectReason)
 		}
 		fr := Profile{Languages: map[string]string{"fr": PrefMust}}
-		if ev := engineIn(mode).Evaluate(fr, NewCandidate("Film.2021.MULTi.1080p.BluRay.x264-GRP", 8, 50).WithLanguage("en")); !ev.Eligible {
-			t.Errorf("French Must refused an English film's MULTi: %q", ev.RejectReason)
+		if ev := engineIn(mode).Evaluate(fr, NewCandidate("Film.2021.MULTi.1080p.BluRay.x264-GRP", 8, 50).WithLanguage("fr")); !ev.Eligible {
+			t.Errorf("French Must refused a French film's MULTi: %q", ev.RejectReason)
 		}
-		// Dual Audio on an English title names only English: German stays unknown.
+		if ev := engineIn(mode).Evaluate(fr, NewCandidate("Film.2021.MULTi.1080p.BluRay.x264-GRP", 8, 50).WithLanguage("en")); ev.Eligible {
+			t.Errorf("French Must took an English film's MULTi that doesn't say French")
+		}
 		de := Profile{Languages: map[string]string{"de": PrefMust}}
-		if ev := engineIn(mode).Evaluate(de, NewCandidate("Film.2021.1080p.BluRay.x264.Dual-Audio-GRP", 8, 50).WithLanguage("en")); !ev.Eligible || ev.AudioLangsNote == "" {
-			t.Errorf("Dual Audio on an English film: %+v", ev)
+		ev := engineIn(mode).Evaluate(de, NewCandidate("Film.2021.1080p.BluRay.x264.Dual-Audio-GRP", 8, 50).WithLanguage("en"))
+		if ev.Eligible || ev.RejectReason != "Doesn't name German audio — your profile requires it, and a Dual Audio release only counts for the languages its name says" {
+			t.Errorf("Dual Audio on an English film: eligible %v %q", ev.Eligible, ev.RejectReason)
+		}
+		// The row still says what it may carry.
+		if ev.AudioLangsNote == "" {
+			t.Errorf("Dual Audio on an English film lost its note: %+v", ev.AudioLangs)
 		}
 	})
+}
+
+// The Must rule, release by release (issue #58): a release passes a Must language only when
+// its name names it, or the language is the title's original and the release is untagged or
+// MULTi/DL/Dual (which always carry the original). multi is the profile's "MULTi releases
+// count" switch.
+func TestMustNamedTable(t *testing.T) {
+	cases := []struct {
+		name  string
+		orig  string // the title's original language; "" = unknown
+		row   map[string]string
+		multi bool
+		ok    bool
+		why   string // the start of the refusal
+	}{
+		// Italian Must on an English film.
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust}, false, false, "Doesn't name Italian audio — your profile requires it, and a MULTi release only counts"},
+		{"Film.2021.MULTi.ITA.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust}, false, true, ""},
+		{"Film.2021.ITA.ENG.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust}, false, true, ""},
+		{"Film.2021.iTALiAN.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust}, false, true, ""},
+		{"Film.2021.DUAL.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust}, false, false, "Doesn't name Italian audio — your profile requires it, and a Dual Audio release"},
+		{"Film.2021.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust}, false, false, "Missing Italian audio"},
+		{"Film.2021.1080p.BluRay.x264.Dual-Audio-GRP", "en", map[string]string{"it": PrefMust}, false, false, "Doesn't name Italian audio"},
+		// The issue's profile: Italian Must, Original Avoid. MULTi/DUAL refused; ITA.ENG taken.
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust, LangOriginal: PrefAvoid}, false, false, "Doesn't name Italian audio"},
+		{"Film.2021.ITA.ENG.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust, LangOriginal: PrefAvoid}, false, true, ""},
+		// The switch brings back the old reading for MULTi/Dual naming no language only.
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust}, true, true, ""},
+		{"Film.2021.DUAL.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust}, true, true, ""},
+		{"Film.2021.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust}, true, false, "Missing Italian audio"},
+		{"Film.2021.MULTi.TRUEFRENCH.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefMust}, true, false, "Missing Italian audio"},
+		// French Must on a French film: anything that carries the original passes.
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "fr", map[string]string{"fr": PrefMust}, false, true, ""},
+		{"Film.2021.1080p.BluRay.x264-GRP", "fr", map[string]string{"fr": PrefMust}, false, true, ""},
+		{"Film.2021.DUAL.1080p.BluRay.x264-GRP", "fr", map[string]string{"fr": PrefMust}, false, true, ""},
+		{"Film.2021.ENGLISH.1080p.BluRay.x264-GRP", "fr", map[string]string{"fr": PrefMust}, false, false, "Missing French audio"},
+		// French Must on an English film: MULTi only with the switch; VFF/TRUEFRENCH always.
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "en", map[string]string{"fr": PrefMust}, false, false, "Doesn't name French audio"},
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "en", map[string]string{"fr": PrefMust}, true, true, ""},
+		{"Film.2021.VFF.1080p.BluRay.x264-GRP", "en", map[string]string{"fr": PrefMust}, false, true, ""},
+		{"Film.2021.MULTi.VFF.1080p.BluRay.x264-GRP", "en", map[string]string{"fr": PrefMust}, false, true, ""},
+		{"Film.2021.MULTi.VFQ.1080p.BluRay.x264-GRP", "en", map[string]string{"fr": PrefMust}, false, true, ""},
+		{"Film.2021.TRUEFRENCH.1080p.BluRay.x264-GRP", "en", map[string]string{"fr": PrefMust}, false, true, ""},
+		// Original-language Must: untagged and MULTi carry it; a dub alone doesn't.
+		{"Film.2021.1080p.BluRay.x264-GRP", "ja", map[string]string{LangOriginal: PrefMust}, false, true, ""},
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "ja", map[string]string{LangOriginal: PrefMust}, false, true, ""},
+		{"Film.2021.DUAL.1080p.BluRay.x264-GRP", "ja", map[string]string{LangOriginal: PrefMust}, false, true, ""},
+		{"Film.2021.ENGLISH.1080p.BluRay.x264-GRP", "ja", map[string]string{LangOriginal: PrefMust}, false, false, "Missing Japanese audio"},
+		// Unknown original language: a release naming none can't satisfy a Must, switch or
+		// not; one that names it can. "Original language" resolves to nothing, so no rule.
+		{"Film.2021.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, false, false, "Doesn't name Italian audio — your profile requires it, and this title's original language isn't known"},
+		{"Film.2021.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, true, false, "Doesn't name Italian audio"},
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, false, false, "Doesn't name Italian audio — your profile requires it, and a MULTi"},
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, true, true, ""},
+		{"Film.2021.iTALiAN.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefMust}, false, true, ""},
+		{"Film.2021.1080p.BluRay.x264-GRP", "", map[string]string{LangOriginal: PrefMust}, false, true, ""},
+		// …and with no Must, nothing is refused for it.
+		{"Film.2021.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefWant, "en": PrefAvoid}, false, true, ""},
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "", map[string]string{"it": PrefWant}, false, true, ""},
+		{"Film.2021.1080p.BluRay.x264-GRP", "", nil, false, true, ""},
+		// Prefer and Avoid never refuse.
+		{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "en", map[string]string{"it": PrefWant}, false, true, ""},
+		{"Film.2021.1080p.BluRay.x264-GRP", "en", map[string]string{"en": PrefAvoid}, false, true, ""},
+	}
+	for _, tc := range cases {
+		forEachRanking(t, func(t *testing.T, mode string) {
+			p := Profile{Languages: normLanguageRow(tc.row), MultiCountsLanguage: tc.multi}
+			c := NewCandidate(tc.name, 8, 50)
+			c.OrigLanguage = tc.orig
+			ev := engineIn(mode).Evaluate(p, c)
+			if ev.Eligible != tc.ok {
+				t.Errorf("%s (orig %q, %v, multi %v): eligible %v %q, want %v", tc.name, tc.orig, tc.row, tc.multi, ev.Eligible, ev.RejectReason, tc.ok)
+				return
+			}
+			if !tc.ok && (ev.RejectCode != RejectMissingLanguage || !strings.HasPrefix(ev.RejectReason, tc.why)) {
+				t.Errorf("%s (orig %q, %v, multi %v): %s %q, want %q…", tc.name, tc.orig, tc.row, tc.multi, ev.RejectCode, ev.RejectReason, tc.why)
+			}
+		})
+	}
+}
+
+// Prefer and Avoid read a MULTi naming no language as before, switch or not: a Prefer it
+// doesn't name earns no credit and costs nothing; an Avoid never puts an open set in the
+// avoided tier, so the language it doesn't name keeps it out.
+func TestMultiPreferAvoidUnchanged(t *testing.T) {
+	forEachRanking(t, func(t *testing.T, mode string) {
+		for _, multi := range []bool{false, true} {
+			pref := Profile{Languages: map[string]string{"it": PrefWant}, MultiCountsLanguage: multi}
+			ev := engineIn(mode).Evaluate(pref, enCand("Film.2021.MULTi.1080p.BluRay.x264-GRP", 8))
+			if !ev.Eligible || containsStr(ev.Matched, "Italian audio") || !containsStr(ev.langUnknown, "it") {
+				t.Errorf("multi %v: Prefer Italian on MULTi: eligible %v matched %v unknown %v", multi, ev.Eligible, ev.Matched, ev.langUnknown)
+			}
+			avoid := Profile{Languages: map[string]string{LangOriginal: PrefAvoid}, MultiCountsLanguage: multi}
+			if ev := engineIn(mode).Evaluate(avoid, enCand("Film.2021.MULTi.1080p.BluRay.x264-GRP", 8)); !ev.Eligible || ev.TargetAvoided {
+				t.Errorf("multi %v: Avoid original put a MULTi in the avoided tier: %v", multi, ev.AvoidedFormats)
+			}
+			if ev := engineIn(mode).Evaluate(avoid, enCand("Film.2021.1080p.BluRay.x264-GRP", 8)); !ev.Eligible || !ev.TargetAvoided {
+				t.Errorf("multi %v: Avoid original on an untagged English release: eligible %v avoided %v", multi, ev.Eligible, ev.TargetAvoided)
+			}
+		}
+	})
+}
+
+// The switch only changes releases on offer. A file on disk is never refused on what its
+// name leaves out: a MULTi-named file with nothing probed is left alone under an Italian
+// Must, so the stricter reading sends nothing back to the indexers.
+func TestMustNamedLeavesFilesAlone(t *testing.T) {
+	sp := StoredProfile{MediaType: MediaMovie, Name: "it", AllowedResolutions: []string{"1080p"},
+		Ideal: &IdealFile{Language: map[string]string{"it": PrefMust}}}
+	normalize(&sp)
+	for _, name := range []string{"Film.2021.MULTi.1080p.BluRay.x264-GRP", "Film.2021.1080p.BluRay.x264.Dual-Audio-GRP"} {
+		cur := CurrentFile{Release: name, SizeGB: 8, RuntimeMin: 120, OrigLanguage: "en"}
+		if v := sp.JudgeFile(cur); !v.Eligible {
+			t.Errorf("%s on disk: refused %q", name, v.Current.RejectReason)
+		}
+		if fit := sp.LanguageFit(cur); fit != nil {
+			t.Errorf("%s on disk: badge %+v, want none (unknown)", name, fit)
+		}
+	}
+	// With nothing to go on and an unknown original language, still left alone.
+	if v := sp.JudgeFile(CurrentFile{Release: "Film.2021.1080p.BluRay.x264-GRP", SizeGB: 8, RuntimeMin: 120}); !v.Eligible {
+		t.Errorf("untagged file, unknown original: refused %q", v.Current.RejectReason)
+	}
+}
+
+// The switch round-trips through the stored profile into the engine.
+func TestMultiCountsSwitch(t *testing.T) {
+	c := enCand("Film.2021.MULTi.1080p.BluRay.x264-GRP", 8)
+	for _, on := range []bool{false, true} {
+		sp := StoredProfile{MediaType: MediaMovie, Name: "fr", AllowedResolutions: []string{"1080p"}, MultiCountsLanguage: on,
+			Ideal: &IdealFile{Language: map[string]string{"fr": PrefMust}}}
+		normalize(&sp)
+		p := sp.ToProfile()
+		if p.MultiCountsLanguage != on {
+			t.Fatalf("ToProfile dropped the switch (%v)", on)
+		}
+		if ev := sp.Engine().Evaluate(p, c); ev.Eligible != on {
+			t.Errorf("switch %v: MULTi eligible %v %q", on, ev.Eligible, ev.RejectReason)
+		}
+	}
 }
 
 // Foreign-only stands aside per release, only for one carrying a language the profile
@@ -573,6 +729,28 @@ func TestIdealLanguageRoundTripAndSummary(t *testing.T) {
 	plain, _ := s.Create(ctx, StoredProfile{MediaType: MediaMovie, Name: "plain"})
 	if got, _ := s.GetStored(ctx, "custom:"+strconv.FormatInt(plain.ID, 10)); got.Ideal != nil && len(got.Ideal.Language) > 0 {
 		t.Errorf("plain profile grew language rules: %v", got.Ideal.Language)
+	}
+	// The "MULTi releases count" switch: off unless set, saved on, saved off again.
+	if got.MultiCountsLanguage {
+		t.Error("the switch is on for a profile that never set it")
+	}
+	got.MultiCountsLanguage = true
+	if err := s.Update(ctx, saved.ID, got); err != nil {
+		t.Fatal(err)
+	}
+	ref := "custom:" + strconv.FormatInt(saved.ID, 10)
+	if back, _ := s.GetStored(ctx, ref); !back.MultiCountsLanguage {
+		t.Error("the switch didn't save")
+	}
+	if p, _ := s.Resolve(ctx, ref); !p.MultiCountsLanguage {
+		t.Error("the engine's profile doesn't carry the switch")
+	}
+	got.MultiCountsLanguage = false
+	if err := s.Update(ctx, saved.ID, got); err != nil {
+		t.Fatal(err)
+	}
+	if back, _ := s.GetStored(ctx, ref); back.MultiCountsLanguage {
+		t.Error("the switch didn't turn off")
 	}
 }
 

@@ -191,7 +191,7 @@ func detectFullDisc(t tags, languages []string, fansub bool) bool {
 // French dub variants, the Spanish regional words and the Polish dub tags. Mapped to codes
 // the language table knows; everything else is read through it.
 var sceneLanguages = map[string]string{
-	"truefrench": "fr", "vff": "fr", "vfq": "fr", "vf2": "fr", "vfi": "fr",
+	"truefrench": "fr", "vff": "fr", "vfq": "fr", "vf2": "fr", "vfi": "fr", "vfb": "fr",
 	"castellano": "es", "pldub": "pl", "dubpl": "pl",
 }
 
@@ -203,7 +203,13 @@ var languageCodes3 = map[string]bool{
 	"ita": true, "eng": true, "ger": true, "fre": true, "spa": true, "jpn": true, "kor": true, "rus": true,
 	"pol": true, "por": true, "dut": true, "cze": true, "hun": true, "tur": true, "ukr": true,
 	"chi": true, "hin": true, "swe": true, "heb": true,
+	// The ISO 639-2/T spellings some groups write instead ("FRA", "DEU", "NLD").
+	"fra": true, "deu": true, "nld": true,
 }
+
+// sceneCodes3 are three-letter audio tags that aren't ISO codes at all ("ESP" for Spanish,
+// "JAP" for Japanese). Capitals only, like languageCodes3.
+var sceneCodes3 = map[string]string{"esp": "es", "jap": "ja"}
 
 // subsWords after a language say it names the subtitles, not the audio ("German.Subbed",
 // "ENG.SUBS", "VOSTFR" is one word and never read).
@@ -250,6 +256,10 @@ func detectLanguages(t tags) (out []string, multi, dual bool) {
 		case languageCodes3[tok.lc]:
 			if sceneCased(tok.raw) {
 				code = langs.ISO1(tok.lc)
+			}
+		case sceneCodes3[tok.lc] != "":
+			if sceneCased(tok.raw) {
+				code = sceneCodes3[tok.lc]
 			}
 		case len(tok.lc) >= 4:
 			if l, ok := langs.Lookup(tok.lc); ok && langs.IsToken(tok.lc, true) {
