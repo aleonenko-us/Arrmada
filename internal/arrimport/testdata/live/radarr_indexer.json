@@ -1,0 +1,377 @@
+[
+  {
+    "id": 1,
+    "name": "NZBgeek",
+    "fields": [
+      {
+        "order": 0,
+        "name": "baseUrl",
+        "label": "baseUrl",
+        "value": "https://api.nzbgeek.info",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "apiPath",
+        "label": "apiPath",
+        "value": "/api",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "apiKey",
+        "label": "apiKey",
+        "value": "********",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "apiKey"
+      },
+      {
+        "order": 0,
+        "name": "categories",
+        "label": "categories",
+        "value": [
+          2000,
+          2030,
+          2040,
+          2045,
+          2050,
+          2060
+        ],
+        "type": "select",
+        "advanced": false,
+        "privacy": "normal"
+      }
+    ],
+    "implementationName": "Newznab",
+    "implementation": "Newznab",
+    "configContract": "NewznabSettings",
+    "infoLink": "https://wiki.servarr.com/radarr/supported#newznab",
+    "tags": [],
+    "enableRss": true,
+    "enableAutomaticSearch": true,
+    "enableInteractiveSearch": true,
+    "supportsRss": true,
+    "supportsSearch": true,
+    "protocol": "usenet",
+    "priority": 25,
+    "downloadClientId": 0
+  },
+  {
+    "id": 2,
+    "name": "TorrentGalaxy (Torznab)",
+    "fields": [
+      {
+        "order": 0,
+        "name": "baseUrl",
+        "label": "baseUrl",
+        "value": "http://jackett.lan:9117/api/v2.0/indexers/tgx/results/torznab/",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "apiPath",
+        "label": "apiPath",
+        "value": "/api",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "apiKey",
+        "label": "apiKey",
+        "value": "********",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "apiKey"
+      },
+      {
+        "order": 0,
+        "name": "categories",
+        "label": "categories",
+        "value": [
+          2000,
+          2030,
+          2040,
+          2045,
+          2050,
+          2060
+        ],
+        "type": "select",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "minimumSeeders",
+        "label": "minimumSeeders",
+        "value": 2,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "seedCriteria.seedRatio",
+        "label": "seedCriteria.seedRatio",
+        "value": 1.0,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "seedCriteria.seedTime",
+        "label": "seedCriteria.seedTime",
+        "value": 4320,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      }
+    ],
+    "implementationName": "Torznab",
+    "implementation": "Torznab",
+    "configContract": "TorznabSettings",
+    "infoLink": "https://wiki.servarr.com/radarr/supported#torznab",
+    "tags": [],
+    "enableRss": true,
+    "enableAutomaticSearch": true,
+    "enableInteractiveSearch": true,
+    "supportsRss": true,
+    "supportsSearch": true,
+    "protocol": "torrent",
+    "priority": 25,
+    "downloadClientId": 0
+  },
+  {
+    "id": 3,
+    "name": "Public Mirror",
+    "fields": [
+      {
+        "order": 0,
+        "name": "baseUrl",
+        "label": "baseUrl",
+        "value": "https://torznab.example.org/",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "apiPath",
+        "label": "apiPath",
+        "value": "/api",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "apiKey",
+        "label": "apiKey",
+        "value": "",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "apiKey"
+      },
+      {
+        "order": 0,
+        "name": "categories",
+        "label": "categories",
+        "value": [
+          2000,
+          2030,
+          2040,
+          2045,
+          2050,
+          2060
+        ],
+        "type": "select",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "minimumSeeders",
+        "label": "minimumSeeders",
+        "value": 0,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "seedCriteria.seedRatio",
+        "label": "seedCriteria.seedRatio",
+        "value": null,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "seedCriteria.seedTime",
+        "label": "seedCriteria.seedTime",
+        "value": null,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      }
+    ],
+    "implementationName": "Torznab",
+    "implementation": "Torznab",
+    "configContract": "TorznabSettings",
+    "infoLink": "https://wiki.servarr.com/radarr/supported#torznab",
+    "tags": [],
+    "enableRss": false,
+    "enableAutomaticSearch": false,
+    "enableInteractiveSearch": false,
+    "supportsRss": true,
+    "supportsSearch": true,
+    "protocol": "torrent",
+    "priority": 50,
+    "downloadClientId": 0
+  },
+  {
+    "id": 4,
+    "name": "Indexer.Synced (Prowlarr)",
+    "fields": [
+      {
+        "order": 0,
+        "name": "baseUrl",
+        "label": "baseUrl",
+        "value": "http://prowlarr:9696/4/",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "apiPath",
+        "label": "apiPath",
+        "value": "/api",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "apiKey",
+        "label": "apiKey",
+        "value": "********",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "apiKey"
+      },
+      {
+        "order": 0,
+        "name": "categories",
+        "label": "categories",
+        "value": [
+          2000,
+          2030,
+          2040,
+          2045,
+          2050,
+          2060
+        ],
+        "type": "select",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "minimumSeeders",
+        "label": "minimumSeeders",
+        "value": 1,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "seedCriteria.seedRatio",
+        "label": "seedCriteria.seedRatio",
+        "value": null,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "seedCriteria.seedTime",
+        "label": "seedCriteria.seedTime",
+        "value": null,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      }
+    ],
+    "implementationName": "Torznab",
+    "implementation": "Torznab",
+    "configContract": "TorznabSettings",
+    "infoLink": "https://wiki.servarr.com/radarr/supported#torznab",
+    "tags": [],
+    "enableRss": true,
+    "enableAutomaticSearch": true,
+    "enableInteractiveSearch": true,
+    "supportsRss": true,
+    "supportsSearch": true,
+    "protocol": "torrent",
+    "priority": 25,
+    "downloadClientId": 0
+  },
+  {
+    "id": 5,
+    "name": "FileList",
+    "fields": [
+      {
+        "order": 0,
+        "name": "baseUrl",
+        "label": "baseUrl",
+        "value": "https://filelist.io",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "username",
+        "label": "username",
+        "value": "me",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "passkey",
+        "label": "passkey",
+        "value": "********",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "apiKey"
+      }
+    ],
+    "implementationName": "FileList",
+    "implementation": "FileList",
+    "configContract": "FileListSettings",
+    "infoLink": "https://wiki.servarr.com/radarr/supported#filelist",
+    "tags": [],
+    "enableRss": true,
+    "enableAutomaticSearch": true,
+    "enableInteractiveSearch": true,
+    "supportsRss": true,
+    "supportsSearch": true,
+    "protocol": "torrent",
+    "priority": 25,
+    "downloadClientId": 0
+  }
+]
