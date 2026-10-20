@@ -22,6 +22,7 @@ import { Page } from "../../ui/Page";
 
 // The Books tab is a separate Open Library experience; its code loads only when chosen.
 const BooksDiscover = lazyPage(() => import("../../pages/BooksDiscover"), "BooksDiscover");
+const MusicDiscover = lazyPage(() => import("./MusicDiscover"), "MusicDiscover");
 // A title's sheet is its own chunk, fetched when the first title opens.
 const TitleSheet = lazyPage(() => import("./TitleSheet"), "TitleSheet");
 // The browse grid behind "See all" and the paged search results: one chunk, fetched when
@@ -33,7 +34,7 @@ const PersonSheet = lazyPage(() => import("../../pages/DiscoverPerson"), "Person
 // A collection's page ("See all" on a "Complete the …" row, or a movie's sheet).
 const CollectionSheet = lazyPage(() => import("../../pages/DiscoverCollection"), "CollectionSheet");
 
-type Tab = "discover" | "movies" | "series" | "books" | "audiobooks";
+type Tab = "discover" | "movies" | "series" | "books" | "audiobooks" | "music";
 const BASE_TABS: { key: Tab; label: string }[] = [
   { key: "discover", label: "Discover" },
   { key: "movies", label: "Movies" },
@@ -41,11 +42,13 @@ const BASE_TABS: { key: Tab; label: string }[] = [
 ];
 
 export function Discover({ chrome = true }: { chrome?: boolean }) {
-  const { user, booksEnabled, metadataReady } = useMe();
+  const { user, booksEnabled, musicEnabled, metadataReady } = useMe();
+  const canManageMusic = user?.role === "admin" || user?.role === "manager";
   // Books get their own tab at the end — a completely separate Open Library experience.
   const TABS: { key: Tab; label: string }[] = [
     ...BASE_TABS,
     ...(booksEnabled ? [{ key: "books" as Tab, label: "Books" }, { key: "audiobooks" as Tab, label: "Audiobooks" }] : []),
+    ...(musicEnabled && canManageMusic ? [{ key: "music" as Tab, label: "Music" }] : []),
   ];
   // What this session asked for, by card key, with the status the server answered: an
   // auto-approved request is already approved and searching, not waiting.
@@ -64,7 +67,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
   // `search` is the committed query that swaps the page to the full results grid (only via
   // "See all" / Enter, not per keystroke); `searchInput` is what's typed in the omnibox.
   const isBookTab = tab === "books" || tab === "audiobooks";
-  const search = isBookTab ? "" : q;
+  const search = isBookTab || tab === "music" ? "" : q;
   const bookSeed = isBookTab ? q : "";
   // ?work=<key>: one book's sheet on the Books tab (a notification's link); closing it drops the key.
   const work = isBookTab ? params.get("work") ?? "" : "";
@@ -133,7 +136,7 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
         <div className="mb-5 flex flex-col gap-2 border-b sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3" style={{ borderColor: "var(--line)" }}>
           {/* Books have their own search inside BooksDiscover — hide the movie/TV one there.
               The bell lives in the layout's top bar, on every page. */}
-          {!isBookTab && (
+          {!isBookTab && tab !== "music" && (
             <div className="flex w-full items-center justify-end gap-2 sm:order-last sm:w-auto sm:justify-start">
               {metadataReady ? (
                 <>
@@ -168,6 +171,8 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
             <Suspense fallback={<div className="py-10 text-center text-base text-ink-dim">Loading…</div>}>
               <BooksDiscover flash={toast} canRequest={canRequest} initialQuery={bookSeed} initialWork={work || undefined} onWorkClosed={closeWork} preferredFormat={tab === "audiobooks" ? "audiobook" : undefined} />
             </Suspense>
+          ) : tab === "music" ? (
+            <Suspense fallback={<div className="py-10 text-center text-base text-ink-dim">Loading…</div>}><MusicDiscover canRequest={canRequest} /></Suspense>
           ) : !metadataReady ? (
             // No TMDB key: every movie/TV feed would fail on its own and repeat the same error
             // row after row. Show the viewer's requests (they don't need TMDB) and one message
