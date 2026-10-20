@@ -486,18 +486,21 @@ func (r *Repo) WantedAlbums(ctx context.Context) ([]Album, error) {
 		JOIN artists ar ON ar.id = al.artist_id
 		WHERE al.monitored = 1 AND ar.monitored = 1 AND al.stale_since IS NULL
 		  AND NOT EXISTS (SELECT 1 FROM music_migration_notes n WHERE n.album_id = al.id AND `+openNote+`)
-		  AND NOT EXISTS (SELECT 1 FROM music_track_files f WHERE f.album_id = al.id AND f.missing_since IS NOT NULL
-		                  AND f.release_track_id IS NOT NULL)
+		  AND NOT EXISTS (SELECT 1 FROM music_track_files mf WHERE mf.album_id = al.id AND `+missingFile+`)
 		ORDER BY al.id`)
 }
+
+// missingFile says whether a track file row ("mf") is one the file check found gone from
+// disk: the one rule WantedAlbums, IncompleteWanted (the Dashboard) and the "Search for
+// missing tracks" list share.
+const missingFile = `mf.missing_since IS NOT NULL AND mf.release_track_id IS NOT NULL`
 
 // AlbumsWithMissingFiles lists the albums with a track file the file check found gone
 // from disk, for the "Search for missing tracks" bulk action. Monitoring doesn't matter:
 // the person asked.
 func (r *Repo) AlbumsWithMissingFiles(ctx context.Context) ([]Album, error) {
 	return r.albums(ctx, `
-		WHERE EXISTS (SELECT 1 FROM music_track_files f WHERE f.album_id = al.id AND f.missing_since IS NOT NULL
-		              AND f.release_track_id IS NOT NULL)
+		WHERE EXISTS (SELECT 1 FROM music_track_files mf WHERE mf.album_id = al.id AND `+missingFile+`)
 		ORDER BY al.id`)
 }
 

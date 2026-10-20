@@ -29,6 +29,7 @@ func (r *Repo) IncompleteWanted(ctx context.Context) ([]Album, error) {
 		  LEFT JOIN music_track_files f ON f.release_track_id = rt.id AND f.missing_since IS NULL
 		 WHERE al.monitored = 1 AND ar.monitored = 1 AND al.stale_since IS NULL
 		   AND NOT EXISTS (SELECT 1 FROM music_migration_notes n WHERE n.album_id = al.id AND `+openNote+`)
+		   AND NOT EXISTS (SELECT 1 FROM music_track_files mf WHERE mf.album_id = al.id AND `+missingFile+`)
 		 GROUP BY al.id
 		HAVING NOT (COUNT(rt.id) > 0
 		            AND COUNT(CASE WHEN rt.monitored = 1 AND f.id IS NOT NULL THEN 1 END)

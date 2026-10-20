@@ -92,8 +92,8 @@ func TestIncompleteWantedMatchesWantedAlbums(t *testing.T) {
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
-	if len(want) != 3 || len(ids) != len(want) {
-		t.Fatalf("grouped = %v, WantedAlbums' incomplete = %v (want the half, unlisted and missing-file albums)", ids, want)
+	if len(want) != 2 || len(ids) != len(want) {
+		t.Fatalf("grouped = %v, WantedAlbums' incomplete = %v (want the half and unlisted albums; one with a file gone from disk is never searched by itself)", ids, want)
 	}
 	for i := range want {
 		if ids[i] != want[i] {

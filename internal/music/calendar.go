@@ -28,7 +28,7 @@ func (s *Service) CalendarAlbums(ctx context.Context, start, end string) ([]Cale
 // CalendarAlbums is Service.CalendarAlbums: one statement, the artist's name and switch
 // read in the same join.
 func (r *Repo) CalendarAlbums(ctx context.Context, start, end string) ([]CalendarAlbum, error) {
-	rows, err := r.db.QueryContext(ctx, albumHead+albumCounts+`, ar.name, ar.monitored
+	rows, err := r.db.QueryContext(ctx, albumHead+albumCounts+albumMarks+`, ar.name, ar.monitored
 		  FROM albums al
 		  JOIN artists ar ON ar.id = al.artist_id
 		 WHERE ar.in_library = 1 AND al.stale_since IS NULL
