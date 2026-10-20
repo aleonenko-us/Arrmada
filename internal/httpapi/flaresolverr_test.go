@@ -49,7 +49,7 @@ func TestFlareSolverrStatusAndTest(t *testing.T) {
 	dead := httptest.NewServer(http.NotFoundHandler())
 	deadURL := dead.URL
 	dead.Close()
-	if got := test(&api{deps: Deps{FlareSolverr: flaresolverr.New(deadURL)}}); got["ok"] != false || !strings.Contains(got["detail"].(string), "isn't answering") {
+	if got := test(&api{deps: Deps{FlareSolverr: flaresolverr.New(deadURL)}}); got["ok"] != false || !strings.Contains(got["detail"].(string), "Connection refused") {
 		t.Fatalf("test dead: %+v", got)
 	}
 	if got := test(&api{}); got["ok"] != false || !strings.Contains(got["detail"].(string), "isn't set up") {

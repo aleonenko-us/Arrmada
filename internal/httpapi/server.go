@@ -1151,7 +1151,7 @@ func (a *api) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"auth_enabled":   true, // always enforced; kept in the payload for the UI/API
 		"needs_setup":    needsSetup,
 		"authenticated":  authed,
-		"plex_login":     a.deps.Settings.GetBool(r.Context(), "plex_login_enabled", false),
+		"plex_login":     a.plexLoginUsable(r.Context()),
 		"external":       isExternalRequest(r), // request came from outside the LAN → Discover-only
 		// First-run setup refused from here (outside the LAN, ARRMADA_ALLOW_REMOTE_SETUP
 		// unset): the page explains instead of offering a form that can't work.
