@@ -332,7 +332,7 @@ func (m *MusicBrainz) SearchArtists(ctx context.Context, query string) ([]Artist
 }
 
 // mbArtistInc is what an artist lookup includes. Changing it changes every artist's cache
-// key, so a migration has to move the cached answers along (0342 did, for aliases).
+// key, so a migration has to move the cached answers along (0344 did, for aliases).
 const mbArtistInc = "aliases genres"
 
 // GetArtist fetches one artist, including genres and its aliases (MUS-38). The aliases

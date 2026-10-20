@@ -1,4 +1,4 @@
--- 0343_music_scan (MUS-37): the library scan remembers what it has looked at.
+-- 0345_music_scan (MUS-37): the library scan remembers what it has looked at.
 --
 -- music_scan_dirs: one row per album folder (a disc folder's parent) the scan has judged.
 --   sig        the folder's (and its disc folders') modification time, size and inode, and

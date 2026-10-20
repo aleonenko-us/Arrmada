@@ -1,4 +1,4 @@
--- 0344_music_verify (MUS-15): the verify pass over recorded music files.
+-- 0346_music_verify (MUS-15): the verify pass over recorded music files.
 --
 -- music_track_files.missing_seen_at: the first verify pass that couldn't find the file.
 -- It is not missing yet: a file only becomes missing (missing_since, set to this time) when

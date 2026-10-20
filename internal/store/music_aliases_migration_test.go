@@ -7,7 +7,7 @@ import (
 	"testing/fstest"
 )
 
-// 0342 moves every cached artist lookup to the key the lookup now asks under
+// 0344 moves every cached artist lookup to the key the lookup now asks under
 // (inc=aliases+genres), marked due so it's refetched with its aliases; nothing is dropped,
 // and the other cached answers stay as they were.
 func TestMusicAliasesMigrationMovesArtistCache(t *testing.T) {
@@ -20,7 +20,7 @@ func TestMusicAliasesMigrationMovesArtistCache(t *testing.T) {
 	}
 	before := fstest.MapFS{}
 	for _, n := range names {
-		if n >= "0342" {
+		if n >= "0344" {
 			break
 		}
 		body, err := fs.ReadFile(all, n)
@@ -30,7 +30,7 @@ func TestMusicAliasesMigrationMovesArtistCache(t *testing.T) {
 		before[n] = &fstest.MapFile{Data: body}
 	}
 	if err := runMigrations(ctx, db, before); err != nil {
-		t.Fatalf("migrate to 0341: %v", err)
+		t.Fatalf("migrate to 0343: %v", err)
 	}
 	for _, key := range []string{
 		"artist:/artist/a74b1b7f?inc=genres",

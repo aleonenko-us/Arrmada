@@ -1,4 +1,4 @@
--- 0342_music_artist_aliases (MUS-38): an artist's other names, from MusicBrainz.
+-- 0344_music_artist_aliases (MUS-38): an artist's other names, from MusicBrainz.
 --
 -- A release named by an alias ("Utada Hikaru - First Love" for 宇多田ヒカル, an old band
 -- name, a legal name) never matched, because search, release matching and the library scan
