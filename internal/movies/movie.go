@@ -199,16 +199,20 @@ func summaryMedia(f *MovieFile) *SummaryMedia {
 // MovieExtra is the enriched TMDB metadata beyond the core fields, persisted as
 // a JSON blob so new fields don't need a migration each time.
 type MovieExtra struct {
-	Genres           []string     `json:"genres,omitempty"`
-	Studios          []string     `json:"studios,omitempty"`
-	OriginalLanguage string       `json:"original_language,omitempty"`
-	Certification    string       `json:"certification,omitempty"`
-	BackdropURL      string       `json:"backdrop_url,omitempty"`
-	ReleaseDate      string       `json:"release_date,omitempty"`
-	CollectionID     int          `json:"collection_id,omitempty"`
-	CollectionName   string       `json:"collection_name,omitempty"`
-	VoteAverage      float64      `json:"vote_average,omitempty"`
-	Cast             []CastMember `json:"cast,omitempty"`
+	Genres           []string `json:"genres,omitempty"`
+	Studios          []string `json:"studios,omitempty"`
+	OriginalLanguage string   `json:"original_language,omitempty"`
+	Certification    string   `json:"certification,omitempty"`
+	BackdropURL      string   `json:"backdrop_url,omitempty"`
+	ReleaseDate      string   `json:"release_date,omitempty"`
+	CollectionID     int      `json:"collection_id,omitempty"`
+	CollectionName   string   `json:"collection_name,omitempty"`
+	// CollectionRead says the collection fields were read from TMDB (false on records
+	// stored before Discover's "Complete the collection" rows used them, which the titles
+	// backfill fills in, one movie at a time).
+	CollectionRead bool         `json:"collection_read,omitempty"`
+	VoteAverage    float64      `json:"vote_average,omitempty"`
+	Cast           []CastMember `json:"cast,omitempty"`
 	// OriginalTitle (Latin script only) and AltTitles are the other titles the film's
 	// releases may be named by; matching accepts them as well as Title (TitleKeys).
 	// TitlesRead says they were read from TMDB — false on records stored before they

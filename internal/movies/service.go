@@ -861,6 +861,7 @@ func extraFrom(d *metadata.MovieDetails) *MovieExtra {
 		ReleaseDate:      d.ReleaseDate,
 		CollectionID:     d.CollectionID,
 		CollectionName:   d.CollectionName,
+		CollectionRead:   true,
 		VoteAverage:      d.VoteAverage,
 		OriginalTitle:    d.OriginalTitle,
 		AltTitles:        d.AltTitles,

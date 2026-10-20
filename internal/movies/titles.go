@@ -156,9 +156,10 @@ func (s *Service) backfillTitlesOnce(ctx context.Context, every time.Duration) (
 	for _, m := range all {
 		needAlt := m.TMDBID > 0 && (m.Extra == nil || !m.Extra.TitlesRead)
 		needDates := DatesDue(m, now)
+		needColl := m.TMDBID > 0 && (m.Extra == nil || !m.Extra.CollectionRead)
 		needLocal := s.titles != nil && needsLocalTitles(m, langs)
 		needDisplay := s.titles != nil && needsDisplayNames(m, display)
-		if !needAlt && !needDates && !needLocal && !needDisplay {
+		if !needAlt && !needDates && !needColl && !needLocal && !needDisplay {
 			continue
 		}
 		t := time.NewTimer(every)
@@ -168,8 +169,8 @@ func (s *Service) backfillTitlesOnce(ctx context.Context, every time.Duration) (
 			return filled, ctx.Err()
 		case <-t.C:
 		}
-		// One detail read serves the titles and the release dates.
-		if needAlt || needDates {
+		// One detail read serves the titles, the release dates and the collection.
+		if needAlt || needDates || needColl {
 			d, err := s.meta.GetMovie(ctx, m.TMDBID)
 			switch {
 			case errors.Is(err, metadata.ErrNotConfigured):
@@ -190,6 +191,11 @@ func (s *Service) backfillTitlesOnce(ctx context.Context, every time.Duration) (
 			}
 			if needDates {
 				if err := s.repo.SetReleaseDates(ctx, m.ID, d.HomeReleaseDate, d.TheatricalDate, now); err != nil {
+					return filled, err
+				}
+			}
+			if needColl {
+				if err := s.repo.SetCollection(ctx, m.ID, d.CollectionID, d.CollectionName); err != nil {
 					return filled, err
 				}
 			}
@@ -251,6 +257,16 @@ func (r *Repo) SetTitles(ctx context.Context, id int64, original string, alts []
 			CASE WHEN json_valid(extra_json) AND extra_json <> '' THEN extra_json ELSE '{}' END,
 			'$.original_title', ?, '$.alt_titles', json(?), '$.titles_read', json('true'))
 		WHERE id = ?`, original, string(b), id)
+	return err
+}
+
+// SetCollection stores the TMDB collection a movie belongs to (0 and "" for none) and
+// marks it read, leaving the rest of its extra metadata as it is.
+func (r *Repo) SetCollection(ctx context.Context, id int64, collectionID int, name string) error {
+	_, err := r.q().ExecContext(ctx, `UPDATE movies SET extra_json = json_set(
+			CASE WHEN json_valid(extra_json) AND extra_json <> '' THEN extra_json ELSE '{}' END,
+			'$.collection_id', ?, '$.collection_name', ?, '$.collection_read', json('true'))
+		WHERE id = ?`, collectionID, name, id)
 	return err
 }
 

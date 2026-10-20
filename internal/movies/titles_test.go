@@ -28,7 +28,11 @@ func (f *titlesMeta) GetMovie(_ context.Context, id int) (*metadata.MovieDetails
 	if id == f.missing {
 		return nil, metadata.ErrNotFound
 	}
-	return &metadata.MovieDetails{OriginalTitle: "Original " + itoa(id), AltTitles: []string{"Alt " + itoa(id)}}, nil
+	d := &metadata.MovieDetails{OriginalTitle: "Original " + itoa(id), AltTitles: []string{"Alt " + itoa(id)}}
+	if id == 1 {
+		d.CollectionID, d.CollectionName = 77, "One Collection"
+	}
+	return d, nil
 }
 func (f *titlesMeta) GetCollection(context.Context, int) (*metadata.Collection, error) {
 	return nil, errors.New("no collections here")
@@ -66,7 +70,7 @@ func TestBackfillAltTitles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.repo.Create(ctx, Movie{TMDBID: 4, Title: "Four", Year: 2004, Extra: &MovieExtra{TitlesRead: true,
+	if _, err := s.repo.Create(ctx, Movie{TMDBID: 4, Title: "Four", Year: 2004, Extra: &MovieExtra{TitlesRead: true, CollectionRead: true,
 		DatesRead: true, DatesReadAt: time.Now().UTC().Format(time.DateOnly)}}); err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +90,10 @@ func TestBackfillAltTitles(t *testing.T) {
 	if got.Extra == nil || !got.Extra.TitlesRead || got.Extra.OriginalTitle != "Original B" || len(got.Extra.AltTitles) != 1 ||
 		len(got.Extra.Genres) != 1 || got.Extra.Genres[0] != "Drama" {
 		t.Errorf("extra = %+v, want titles added and genres kept", got.Extra)
+	}
+	// The same read fills the collection a movie stored before it was kept belongs to.
+	if !got.Extra.CollectionRead || got.Extra.CollectionID != 77 || got.Extra.CollectionName != "One Collection" {
+		t.Errorf("collection = %d %q read=%v", got.Extra.CollectionID, got.Extra.CollectionName, got.Extra.CollectionRead)
 	}
 	if got, _ := s.repo.Get(ctx, bare.ID); got.Extra == nil || got.Extra.AltTitles[0] != "Alt C" {
 		t.Errorf("a movie without extra gets one: %+v", got.Extra)
