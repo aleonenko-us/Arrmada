@@ -618,6 +618,22 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 // SeriesEpisodeVideos), that series.EpisodeFileFilter lets through — so neither ever claims
 // or offers for deletion a file in another show's folder inside it, or another show's file.
 func (c *Coordinator) showEpisodeVideos(ctx context.Context, s series.Series, imp *library.Importer, folder string) []library.FoundVideo {
+	if folder == "" {
+		// No files recorded yet: a folder named for the show — "Title (Year)", or "Title" in
+		// a library named without years — is read only when it's provably the show's.
+		// Otherwise nothing is read.
+		for _, name := range imp.UnrecordedSeriesFolders(s.Title, s.Year) {
+			if why := c.series.NewShowFolderUnproven(ctx, s, filepath.Join(imp.TVRoot(), name)); why != "" {
+				c.log.Info("series rescan: a folder named for the show isn't provably its own — not read", "series", s.Title, "folder", name, "why", why)
+				continue
+			}
+			folder = name
+			break
+		}
+		if folder == "" {
+			return nil
+		}
+	}
 	dir, vids := imp.SeriesEpisodeVideos(folder, s.Title, s.Year)
 	if dir == "" {
 		return nil

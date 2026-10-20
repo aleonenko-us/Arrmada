@@ -1472,6 +1472,33 @@ func (im *Importer) SeriesEpisodeVideos(seriesFolder, title string, year int) (d
 	return dir, out
 }
 
+// UnrecordedSeriesFolders is, for a show with no files recorded yet, the folders under
+// the TV root its name could be spelt as — "<Title> (<Year>)" first, then "<Title>" (a
+// library named without years) — that exist, as folder names. Whether one really is the
+// show's is the caller's to prove.
+func (im *Importer) UnrecordedSeriesFolders(title string, year int) []string {
+	t := clean(title)
+	if t == "" {
+		return nil
+	}
+	var names []string
+	if year > 0 {
+		names = append(names, fmt.Sprintf("%s (%d)", t, year))
+	}
+	names = append(names, t)
+	var out []string
+	for _, n := range names {
+		dir := filepath.Join(im.tvDir(), n)
+		if insideRoot(dir, im.tvDir()) != nil {
+			continue
+		}
+		if fi, err := os.Lstat(dir); err == nil && fi.IsDir() {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // seriesLibraryDir is the show's folder under the TV root: seriesFolder, or
 // "<Title> (<Year>)" when that's empty. ok is false for anything that isn't strictly
 // inside the TV root, so a rescan never walks the root itself (and every other show in it)

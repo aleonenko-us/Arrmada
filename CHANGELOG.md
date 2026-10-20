@@ -309,7 +309,10 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   A video loose in the folder of a show kept in season folders isn't taken for an episode.
   Featurettes in Plex extras folders (Extras, Featurettes, Behind The Scenes, Deleted Scenes,
   Interviews, Scenes, Shorts, Trailers, Other) are never taken for episodes. Files the show
-  already has always count.
+  already has always count. A show with no files yet is read from a folder named for it —
+  `Title (Year)`, or `Title` in a library named without years — only when that folder is
+  provably its own: not another show's, not holding another show, and, without a year, no
+  other show of that title in the library.
 - **A link inside a show's folder keeps it from being taken for the show's alone** (#56). A
   link to another folder or to a video means the download waits in Needs you, and Move to
   folder won't move the folder.

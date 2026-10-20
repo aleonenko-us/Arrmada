@@ -267,6 +267,35 @@ func (s *Service) SeasonDirChooser(ctx context.Context, seriesID int64) func(sho
 	}
 }
 
+// NewShowFolderUnproven says why dir — a folder named for show sr, which has no files
+// recorded yet ("Title (Year)" or "Title") — can't be taken for its folder by a rescan ("" when
+// it can): it's named like a season or after a TV folder, another show in the library has
+// files in it, it holds another show's folder or a link, or — named without a year — another
+// show in the library has the same title, so whose it is can't be told.
+func (s *Service) NewShowFolderUnproven(ctx context.Context, sr Series, dir string) string {
+	j := s.dbJudge(ctx, sr.ID)
+	dir = filepath.Clean(dir)
+	if v := j.judge(dir); v.why != "" {
+		return v.why
+	}
+	if why := j.foreignChildren(dir); why != "" {
+		return why
+	}
+	if parser.Parse(filepath.Base(dir)).Year == 0 {
+		all, err := s.repo.List(ctx)
+		if err != nil {
+			return "the library's shows couldn't be read: " + err.Error()
+		}
+		key := parser.TitleKey(sr.Title)
+		for _, o := range all {
+			if o.ID != sr.ID && parser.TitleKey(o.Title) == key {
+				return fmt.Sprintf("%s has no year in its name, and %q (%d) is in the library too", dir, o.Title, o.Year)
+			}
+		}
+	}
+	return ""
+}
+
 // ErrSeasonFolderAway is an episode import refused because the season's folder, where the
 // show's other episodes of that season are, isn't there.
 var ErrSeasonFolderAway = errors.New("the season's folder isn't there")
