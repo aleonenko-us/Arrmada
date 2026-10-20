@@ -1,0 +1,203 @@
+[
+  {
+    "id": 1,
+    "name": "qBittorrent",
+    "fields": [
+      {
+        "order": 0,
+        "name": "host",
+        "label": "host",
+        "value": "qbittorrent",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "port",
+        "label": "port",
+        "value": 8080,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "useSsl",
+        "label": "useSsl",
+        "value": false,
+        "type": "checkbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "urlBase",
+        "label": "urlBase",
+        "value": "",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "username",
+        "label": "username",
+        "value": "admin",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "password",
+        "label": "password",
+        "value": "********",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "password"
+      },
+      {
+        "order": 0,
+        "name": "movieCategory",
+        "label": "movieCategory",
+        "value": "radarr",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      }
+    ],
+    "implementationName": "QBittorrent",
+    "implementation": "QBittorrent",
+    "configContract": "QBittorrentSettings",
+    "infoLink": "https://wiki.servarr.com/",
+    "tags": [],
+    "enable": true,
+    "protocol": "torrent",
+    "priority": 1,
+    "removeCompletedDownloads": true,
+    "removeFailedDownloads": true
+  },
+  {
+    "id": 2,
+    "name": "SABnzbd",
+    "fields": [
+      {
+        "order": 0,
+        "name": "host",
+        "label": "host",
+        "value": "sabnzbd.lan",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "port",
+        "label": "port",
+        "value": 8085,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "useSsl",
+        "label": "useSsl",
+        "value": true,
+        "type": "checkbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "urlBase",
+        "label": "urlBase",
+        "value": "/sab/",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "apiKey",
+        "label": "apiKey",
+        "value": "********",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "apiKey"
+      },
+      {
+        "order": 0,
+        "name": "username",
+        "label": "username",
+        "value": "",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "password",
+        "label": "password",
+        "value": "",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "password"
+      }
+    ],
+    "implementationName": "Sabnzbd",
+    "implementation": "Sabnzbd",
+    "configContract": "SabnzbdSettings",
+    "infoLink": "https://wiki.servarr.com/",
+    "tags": [],
+    "enable": true,
+    "protocol": "usenet",
+    "priority": 2,
+    "removeCompletedDownloads": true,
+    "removeFailedDownloads": true
+  },
+  {
+    "id": 3,
+    "name": "Deluge",
+    "fields": [
+      {
+        "order": 0,
+        "name": "host",
+        "label": "host",
+        "value": "deluge",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "port",
+        "label": "port",
+        "value": 8112,
+        "type": "number",
+        "advanced": false,
+        "privacy": "normal"
+      },
+      {
+        "order": 0,
+        "name": "password",
+        "label": "password",
+        "value": "********",
+        "type": "textbox",
+        "advanced": false,
+        "privacy": "password"
+      }
+    ],
+    "implementationName": "Deluge",
+    "implementation": "Deluge",
+    "configContract": "DelugeSettings",
+    "infoLink": "https://wiki.servarr.com/",
+    "tags": [],
+    "enable": false,
+    "protocol": "torrent",
+    "priority": 3,
+    "removeCompletedDownloads": true,
+    "removeFailedDownloads": true
+  }
+]

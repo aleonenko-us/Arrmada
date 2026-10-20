@@ -54,6 +54,10 @@ type Importer struct {
 	// TMDBForTVDB finds a show's TMDB id from its TVDB id, for Sonarr 3 (which has no TMDB
 	// ids) and the odd show Sonarr 4 has none for. nil = such shows can't be matched.
 	TMDBForTVDB func(ctx context.Context, tvdbID int) (int, error)
+	// Indexers and Clients are Arrmada's indexers and download clients, for bringing the
+	// app's over (setup.go); nil = that part is left out.
+	Indexers IndexerStore
+	Clients  ClientStore
 	// Stat looks at a file; nil = os.Stat.
 	Stat func(path string) (os.FileInfo, error)
 	Log  *slog.Logger
@@ -74,6 +78,11 @@ type Options struct {
 	// they'll be searched for again. Off (the default) skips them, so a wrong path mapping
 	// never turns into downloading a library the person already has.
 	ImportMissing bool `json:"import_missing"`
+	// SkipTitles leaves the films or shows out: only the indexers and download clients (when
+	// ImportSetup) come over.
+	SkipTitles bool `json:"skip_titles"`
+	// ImportSetup also brings the app's indexers and download clients over (setup.go).
+	ImportSetup bool `json:"import_setup"`
 }
 
 // Snapshot is the app's library as one Load read it.
@@ -84,6 +93,10 @@ type Snapshot struct {
 	Roots    []Root
 	Movies   []Movie
 	Series   []Series
+	// Setup is the app's indexers and download clients; nil when they couldn't be read
+	// (SetupErr says why), which never stops the titles coming over.
+	Setup    *SetupSnapshot
+	SetupErr string
 }
 
 // Media is the Arrmada library the app fills ("movie" or "series").
@@ -126,6 +139,12 @@ func Load(ctx context.Context, c *Client) (*Snapshot, error) {
 		}
 	}
 	snap.Roots = countRoots(folders, roots)
+	if snap.Setup, err = LoadSetup(ctx, c); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		snap.Setup, snap.SetupErr = nil, err.Error()
+	}
 	return snap, nil
 }
 
@@ -176,6 +195,10 @@ type Preview struct {
 	// path mapping misses.
 	NotFound  []Sample `json:"not_found"`
 	Unmatched []Sample `json:"unmatched"`
+	// Setup is what the app's indexers and download clients would become; SetupError says
+	// why it's missing when they couldn't be read.
+	Setup      *SetupPlan `json:"setup,omitempty"`
+	SetupError string     `json:"setup_error,omitempty"`
 }
 
 // maxSamples bounds the titles a preview names per list, and maxNotes the notes a result
@@ -205,6 +228,20 @@ func (imp *Importer) Preview(ctx context.Context, snap *Snapshot, opts Options, 
 	pv := Preview{App: snap.App, Media: snap.Media(), Name: snap.Status.Name(snap.App), Version: snap.Status.Version,
 		NotFound: []Sample{}, Unmatched: []Sample{}}
 	uses := map[int]int{}
+	if opts.ImportSetup {
+		pv.SetupError = snap.SetupErr
+		plan, err := imp.PlanSetup(ctx, snap, snap.Setup)
+		if err != nil {
+			return pv, err
+		}
+		pv.Setup = &plan
+	}
+	if opts.SkipTitles {
+		for _, p := range snap.Profiles {
+			pv.Profiles = append(pv.Profiles, ProfileUse{Profile: p, Suggested: SuggestProfile(p, targets)})
+		}
+		return pv, nil
+	}
 	if snap.App == Sonarr {
 		if err := imp.previewSeries(ctx, snap, opts, &pv, uses); err != nil {
 			return pv, err
@@ -513,6 +550,8 @@ type Result struct {
 	Notes []Note `json:"notes"`
 	// More is how many notes were left out past maxNotes.
 	More int `json:"more,omitempty"`
+	// Setup is what happened to the app's indexers and download clients (nil: not asked for).
+	Setup *SetupResult `json:"setup,omitempty"`
 }
 
 // Note is one title's outcome, in words.
@@ -541,6 +580,22 @@ func (imp *Importer) Run(ctx context.Context, c *Client, snap *Snapshot, opts Op
 	res := Result{App: snap.App, Media: snap.Media(), Name: snap.Status.Name(snap.App), Notes: []Note{}}
 	if progress == nil {
 		progress = func(int, int, string) {}
+	}
+	// Indexers and download clients first: they are a handful of rows, and a person who
+	// stops the (long) title import still has them.
+	if opts.ImportSetup {
+		plan, err := imp.PlanSetup(ctx, snap, snap.Setup)
+		if err != nil {
+			return res, err
+		}
+		sr, err := imp.ApplySetup(ctx, plan)
+		res.Setup = &sr
+		if err != nil {
+			return res, err
+		}
+	}
+	if opts.SkipTitles {
+		return res, nil
 	}
 	if snap.App == Sonarr {
 		return res, imp.runSeries(ctx, c, snap, opts, &res, progress)

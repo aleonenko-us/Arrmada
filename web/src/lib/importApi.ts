@@ -42,6 +42,28 @@ export interface ArrImportChoices {
   /** Left out, the preview suggests maps from the matched folders. */
   path_maps?: ArrPathMap[];
   import_missing?: boolean;
+  /** Also bring the app's indexers and download clients over (switched off when it hides a secret). */
+  import_setup?: boolean;
+  /** Leave the library out: setup only. */
+  skip_titles?: boolean;
+}
+
+export type ArrSetupAction = "add" | "exists" | "skip" | "added" | "failed";
+
+/** One indexer or download client, in the preview and in the result. */
+export interface ArrSetupItem {
+  name: string;
+  kind: string;
+  source: string;
+  address?: string;
+  action: ArrSetupAction;
+  reason?: string;
+  enabled: boolean;
+}
+
+export interface ArrSetup {
+  indexers: ArrSetupItem[];
+  clients: ArrSetupItem[];
 }
 
 export interface ArrCounts {
@@ -88,6 +110,8 @@ export interface ArrPreview {
     profiles: ArrProfileUse[];
     not_found: ArrSample[];
     unmatched: ArrSample[];
+    setup?: ArrSetup;
+    setup_error?: string;
   };
   roots: ArrRoot[];
   path_maps: ArrPathMap[];
@@ -120,6 +144,7 @@ export interface ArrResult {
   unmonitored?: number;
   notes: ArrNote[];
   more?: number;
+  setup?: ArrSetup;
 }
 
 export const arrImportApi = {

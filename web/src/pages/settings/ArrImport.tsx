@@ -5,13 +5,14 @@ import { foldersChanged, useLibraryFolders } from "../../components/FolderSelect
 import { Field } from "../../ui/Field";
 import { Switch } from "../../ui/Switch";
 import { Button, useToast } from "../../ui";
+import { Tabs, TabPanel } from "../../ui/Tabs";
 import { LINKS } from "../../lib/links";
 import { fmtBytes } from "../../lib/disposal";
 import { foldersApi, type ArrRoot, type FolderMedia, type LibraryFolder } from "../../lib/foldersApi";
-import { arrImportApi, type ArrApp, type ArrImportChoices, type ArrPathMap, type ArrPreview, type ArrResult } from "../../lib/importApi";
+import { arrImportApi, type ArrApp, type ArrImportChoices, type ArrPathMap, type ArrPreview, type ArrResult, type ArrSetup, type ArrSetupItem } from "../../lib/importApi";
 import { jobFailed, useJob } from "../../lib/useJob";
 import { FolderPicker } from "../Library";
-import { arrCountsLine, arrResultLine, notesByOutcome } from "./arrImportText";
+import { arrCountsLine, arrResultLine, notesByOutcome, setupLine } from "./arrImportText";
 
 // ArrImport brings a Radarr's or Sonarr's library over: connect, look at what would come over
 // (folders, quality profiles, where the files are), then import in the background. It only
@@ -35,6 +36,9 @@ export function ArrImport() {
   const [folders, setFolders] = useState<Record<string, number>>({});
   const [maps, setMaps] = useState<ArrPathMap[]>([]);
   const [importMissing, setImportMissing] = useState(false);
+  // What to bring over: the library, the indexers and download clients, or both.
+  const [withTitles, setWithTitles] = useState(true);
+  const [withSetup, setWithSetup] = useState(true);
   const [starting, setStarting] = useState(false);
   const [jobId, setJobId] = useState<number | null>(null);
   const [result, setResult] = useState<ArrResult | null>(null);
@@ -50,7 +54,7 @@ export function ArrImport() {
   const running = job.running || starting;
 
   const choices = (withMaps: boolean): ArrImportChoices => ({
-    profiles, folders, import_missing: importMissing, path_maps: withMaps ? maps.filter((m) => m.from.trim() || m.to.trim()) : undefined,
+    profiles, folders, import_missing: importMissing, import_setup: withSetup, skip_titles: !withTitles, path_maps: withMaps ? maps.filter((m) => m.from.trim() || m.to.trim()) : undefined,
   });
 
   // connect reads the app the first time (suggested folders, maps and profiles); check reads
@@ -94,7 +98,7 @@ export function ArrImport() {
     <Section
       id="arr-import"
       title="Import from Radarr / Sonarr"
-      subtitle="Moving from Radarr or Sonarr? Bring the library over: every title with its quality profile, what's monitored, the folder it's in and the files you already have — recorded where they are, nothing downloaded again. Nothing in Radarr or Sonarr changes, and the API key isn't kept. Tags, blocklists, history and download-client settings aren't brought over. Several Radarrs or Sonarrs? Import each in turn; a title already here is never added twice."
+      subtitle="Moving from Radarr or Sonarr? Bring the library over: every title with its quality profile, what's monitored, the folder it's in and the files you already have — recorded where they are, nothing downloaded again. Its indexers and download clients can come too, switched off where the app keeps a key or password to itself. Nothing in Radarr or Sonarr changes, and the API key isn't kept. Tags, blocklists and history aren't brought over. Several Radarrs or Sonarrs? Import each in turn; a title already here is never added twice."
     >
       <div className="flex flex-wrap gap-3">
         <Field label="App">
@@ -128,7 +132,15 @@ export function ArrImport() {
             </Note>
           )}
 
-          <Step n={1} title="Folders">
+          <Step n={1} title="What to bring over">
+            <Switch checked={withTitles} onChange={setWithTitles}>The {noun}: every title with its quality profile, folder, monitored state and the files you already have</Switch>
+            <Switch checked={withSetup} onChange={setWithSetup}>Indexers and download clients (read-only copy of their addresses; secrets are never shared, so those come over switched off)</Switch>
+            {pv.preview.setup_error && withSetup && <Note tone="warn">Couldn't read {pv.preview.name}'s indexers and download clients: {pv.preview.setup_error}</Note>}
+          </Step>
+          {withSetup && pv.preview.setup && <SetupStep n={2} setup={pv.preview.setup} name={pv.preview.name} />}
+
+          {withTitles && <>
+          <Step n={withSetup ? 3 : 2} title="Folders">
             <p className="m-0 text-sm text-ink-faint">
               Each of {pv.preview.name}'s root folders and the Arrmada folder its {noun} go to. A title whose files are found goes to the folder they're in. Rules for each folder are in <Link to="/settings/library#more-folders" style={{ color: "var(--accent-text)" }}>Settings → Library</Link>.
             </p>
@@ -143,7 +155,7 @@ export function ArrImport() {
             ))}
           </Step>
 
-          <Step n={2} title="Where the files are">
+          <Step n={withSetup ? 4 : 3} title="Where the files are">
             <p className="m-0 text-sm text-ink-faint">
               {pv.preview.name} and Arrmada may see the same folders at different paths — <span className="font-mono">/movies</span> there, <span className="font-mono">/storage/movies</span> here. Map the start of {pv.preview.name}'s paths to where they are inside Arrmada, then check again.
             </p>
@@ -165,7 +177,7 @@ export function ArrImport() {
             </Switch>
           </Step>
 
-          <Step n={3} title="Quality profiles">
+          <Step n={withSetup ? 5 : 4} title="Quality profiles">
             {pv.preview.profiles.filter((p) => p.titles > 0).map((p) => (
               <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-base">
                 <span className="min-w-0">{p.name} <span className="text-ink-faint">· {p.titles.toLocaleString()} {p.titles === 1 ? "title" : "titles"}</span></span>
@@ -177,12 +189,13 @@ export function ArrImport() {
             ))}
             {pv.preview.profiles.every((p) => p.titles === 0) && <div className="text-sm text-ink-faint">No titles to bring over.</div>}
           </Step>
+          </>}
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button variant="primary" onClick={start} busy={running} busyLabel="Importing…" disabled={!!pv.not_ready || pv.preview.counts.titles === 0}>
+            <Button variant="primary" onClick={start} busy={running} busyLabel="Importing…" disabled={(withTitles && (!!pv.not_ready || pv.preview.counts.titles === 0)) || (!withTitles && !withSetup)}>
               Import from {pv.preview.name}
             </Button>
-            <span className="text-xs text-ink-faint">Nothing is searched for now: wanted {noun} join the regular searches a few at a time.</span>
+            <span className="text-xs text-ink-faint">Nothing is deleted or changed in {pv.preview.name}, and nothing is searched for now: wanted {noun} join the regular searches a few at a time. Running this again adds only what's new.</span>
           </div>
           {running && job.job && <Progress value={job.job.progress} message={job.message} />}
         </div>
@@ -200,6 +213,46 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
       {children}
     </section>
   );
+}
+
+// SetupStep previews the app's indexers and download clients in two tabs, each row saying what
+// would happen to it and why when it can't come over.
+function SetupStep({ n, setup, name }: { n: number; setup: ArrSetup; name: string }) {
+  const [tab, setTab] = useState<"indexers" | "clients">("indexers");
+  const items: ArrSetupItem[] = tab === "indexers" ? setup.indexers : setup.clients;
+  return (
+    <Step n={n} title="Indexers and download clients">
+      <Tabs
+        tabs={[{ key: "indexers", label: "Indexers", count: setup.indexers.length }, { key: "clients", label: "Download clients", count: setup.clients.length }] as const}
+        value={tab} onChange={setTab} idPrefix="arr-setup" label={`${name} indexers and download clients`} className="mb-1 border-b"
+      />
+      <TabPanel idPrefix="arr-setup" value={tab}>
+        <p className="m-0 mb-2 text-sm text-ink-dim">{setupLine(items, false)}</p>
+        {items.length === 0 && <div className="text-sm text-ink-faint">None in {name}.</div>}
+        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+          {items.map((it, i) => (
+            <li key={it.name + i} className="rounded-lg px-3 py-2 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="font-semibold">{it.name} <span className="font-normal text-ink-faint">· {it.source}{it.address ? ` · ${it.address}` : ""}</span></span>
+                <span className="text-ink-dim">{setupActionLabel(it)}</span>
+              </div>
+              {it.reason && <div className="mt-0.5 text-ink-faint">{it.reason}</div>}
+            </li>
+          ))}
+        </ul>
+      </TabPanel>
+    </Step>
+  );
+}
+
+function setupActionLabel(it: ArrSetupItem): string {
+  switch (it.action) {
+    case "add": return it.enabled ? "Will be added" : "Will be added, switched off";
+    case "added": return it.enabled ? "Added" : "Added, switched off";
+    case "exists": return "Already in Arrmada";
+    case "failed": return "Failed";
+    default: return "Not brought over";
+  }
 }
 
 function Summary({ pv }: { pv: ArrPreview }) {
@@ -242,7 +295,14 @@ function ResultView({ r }: { r: ArrResult }) {
   return (
     <div role="status" className="flex flex-col gap-2 rounded-lg p-3 text-base" style={{ border: "1px solid var(--good)" }}>
       <div className="font-semibold">From {r.name}</div>
-      <div>{arrResultLine(r)}</div>
+      {r.total > 0 && <div>{arrResultLine(r)}</div>}
+      {r.setup && (
+        <div className="flex flex-col gap-1 text-sm">
+          <div>Indexers: {setupLine(r.setup.indexers, true)}</div>
+          <div>Download clients: {setupLine(r.setup.clients, true)}</div>
+          <div className="text-ink-faint">Add the missing keys and passwords in <Link to={LINKS.apiKeys} style={{ color: "var(--accent-text)" }}>Settings → Connections</Link>, test each one, then switch it on.</div>
+        </div>
+      )}
       {groups.map((g) => (
         <details key={g.outcome} className="text-sm text-ink-dim">
           <summary className="cursor-pointer">{g.label} ({g.notes.length.toLocaleString()})</summary>

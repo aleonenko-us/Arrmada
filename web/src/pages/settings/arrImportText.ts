@@ -1,4 +1,4 @@
-import type { ArrCounts, ArrNote, ArrResult } from "../../lib/importApi";
+import type { ArrCounts, ArrNote, ArrResult, ArrSetupItem } from "../../lib/importApi";
 
 // Plain words for the Radarr / Sonarr import card, shared with its tests.
 
@@ -52,4 +52,23 @@ const OUTCOMES: { outcome: ArrNote["outcome"]; label: string }[] = [
 // notesByOutcome groups the summary's notes, failures first, leaving out empty groups.
 export function notesByOutcome(notes: ArrNote[]): { outcome: ArrNote["outcome"]; label: string; notes: ArrNote[] }[] {
   return OUTCOMES.map((o) => ({ ...o, notes: notes.filter((x) => x.outcome === o.outcome) })).filter((g) => g.notes.length > 0);
+}
+
+export function setupCount(items: ArrSetupItem[], action: ArrSetupItem["action"]): number {
+  return items.filter((i) => i.action === action).length;
+}
+
+// setupLine says what the indexers or download clients would do (or did): "2 to add (1 switched
+// off until you add its key), 1 already in Arrmada, 1 can't be brought over".
+export function setupLine(items: ArrSetupItem[], done: boolean): string {
+  const add = setupCount(items, done ? "added" : "add");
+  const off = items.filter((i) => i.action === (done ? "added" : "add") && !i.enabled).length;
+  const parts = [`${n(add)} ${done ? "added" : "to add"}${off > 0 ? ` (${n(off)} switched off until you add what the app keeps secret)` : ""}`];
+  const exists = setupCount(items, "exists");
+  if (exists > 0) parts.push(`${n(exists)} already in Arrmada`);
+  const skip = setupCount(items, "skip");
+  if (skip > 0) parts.push(`${n(skip)} can't be brought over`);
+  const failed = setupCount(items, "failed");
+  if (failed > 0) parts.push(`${n(failed)} failed`);
+  return parts.join(", ") + ".";
 }

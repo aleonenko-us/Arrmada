@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/tristenlammi/arrmada/internal/arrimport"
+	"github.com/tristenlammi/arrmada/internal/download"
+	"github.com/tristenlammi/arrmada/internal/indexer"
 	"github.com/tristenlammi/arrmada/internal/metadata"
 	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/quality"
@@ -44,6 +46,12 @@ func fakeRadarr(t *testing.T) *httptest.Server {
 				 "movieFile":{"id":1,"movieId":1,"relativePath":"Heat (1995).mkv","path":"/arr/movies/Heat (1995)/Heat (1995).mkv","size":2048}},
 				{"id":2,"title":"Ronin","year":1998,"tmdbId":8195,"qualityProfileId":4,"monitored":true,"minimumAvailability":"released",
 				 "path":"/arr/movies/Ronin (1998)","rootFolderPath":"/arr/movies","hasFile":false}]`))
+		case "/api/v3/indexer":
+			_, _ = w.Write([]byte(`[{"id":1,"name":"NZBgeek","implementation":"Newznab","protocol":"usenet","priority":25,"enableRss":true,"enableAutomaticSearch":true,"enableInteractiveSearch":true,
+				"fields":[{"name":"baseUrl","value":"https://api.nzbgeek.example"},{"name":"apiPath","value":"/api"},{"name":"apiKey","value":"********","privacy":"apiKey"},{"name":"categories","value":[2000,2040]}]}]`))
+		case "/api/v3/downloadclient":
+			_, _ = w.Write([]byte(`[{"id":1,"name":"qBittorrent","implementation":"QBittorrent","protocol":"torrent","priority":1,"enable":true,
+				"fields":[{"name":"host","value":"qbit.example"},{"name":"port","value":8080},{"name":"useSsl","value":false},{"name":"urlBase","value":""},{"name":"username","value":"admin"},{"name":"password","value":"********","privacy":"password"}]}]`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -68,6 +76,7 @@ func (arrMeta) GetMovie(_ context.Context, id int) (*metadata.MovieDetails, erro
 func arrAPI(t *testing.T, metaReady bool) (*api, string, *fakeJobs, string) {
 	t.Helper()
 	a, st, base := foldersAPI(t)
+	a.deps.Store = st
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mv := movies.NewService(st.DB(), arrMeta{available: metaReady}, nil, filepath.Join(base, "movies"), "", nil, log)
 	mv.SetFolders(a.deps.Folders)
@@ -217,5 +226,61 @@ func TestArrImportNeedsMetadata(t *testing.T) {
 	}
 	if w := folderCall(t, a.handleArrImport, http.MethodPost, arrBody(url, arrTestKey, ""), ""); w.Code != http.StatusBadRequest || len(fj.submitted) != 0 {
 		t.Errorf("import without metadata = %d", w.Code)
+	}
+}
+
+// Setup only: indexers and download clients come over switched off (the app never shares
+// their secrets), the second run adds nothing, and no title (or TMDB key) is needed.
+func TestArrImportSetupOnly(t *testing.T) {
+	a, url, fj, _ := arrAPI(t, false)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a.deps.Indexers = indexer.NewService(a.deps.Store.DB(), log, nil)
+	a.deps.Downloads = download.NewService(a.deps.Store.DB(), log)
+	extra := `"import_setup":true,"skip_titles":true`
+
+	w := folderCall(t, a.handleArrPreview, http.MethodPost, arrBody(url, arrTestKey, extra), "")
+	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), arrTestKey) {
+		t.Fatalf("preview = %d %s", w.Code, w.Body.String())
+	}
+	var got struct {
+		Preview  arrimport.Preview `json:"preview"`
+		NotReady string            `json:"not_ready"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.NotReady != "" || got.Preview.Setup == nil || len(got.Preview.Setup.Indexers) != 1 || len(got.Preview.Setup.Clients) != 1 {
+		t.Fatalf("preview setup = %+v not_ready=%q", got.Preview.Setup, got.NotReady)
+	}
+	if list, _ := a.deps.Indexers.List(context.Background()); len(list) != 0 {
+		t.Fatal("preview added an indexer")
+	}
+	if w := folderCall(t, a.handleArrImport, http.MethodPost, arrBody(url, arrTestKey, `"skip_titles":true`), ""); w.Code != http.StatusBadRequest {
+		t.Errorf("nothing chosen = %d", w.Code)
+	}
+
+	for i := 0; i < 2; i++ {
+		fj = newFakeJobs(false)
+		a.deps.Jobs = fj
+		if w := folderCall(t, a.handleArrImport, http.MethodPost, arrBody(url, arrTestKey, extra), ""); w.Code != http.StatusAccepted {
+			t.Fatalf("import %d = %d %s", i, w.Code, w.Body.String())
+		}
+		out, err := fj.submitted[0].Fn(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res := out.(arrimport.Result)
+		want := 1 - i
+		if res.Setup == nil || arrimport.Count(res.Setup.Indexers, arrimport.ActionAdded) != want || arrimport.Count(res.Setup.Clients, arrimport.ActionAdded) != want {
+			t.Fatalf("run %d setup = %+v", i, res.Setup)
+		}
+		if res.Total != 0 {
+			t.Fatalf("titles were imported: %+v", res)
+		}
+	}
+	ixs, _ := a.deps.Indexers.List(context.Background())
+	dcs, _ := a.deps.Downloads.List(context.Background())
+	if len(ixs) != 1 || ixs[0].Enabled || len(dcs) != 1 || dcs[0].Enabled {
+		t.Fatalf("rows = %+v %+v (secrets weren't shared: they must come over off)", ixs, dcs)
 	}
 }
