@@ -286,7 +286,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   is read as living in `Show`, as v0.3.2 couldn't: new episodes go into the existing season
   folder, a new season gets its own folder inside `Show` named by your template, and
   **Refresh & rescan**, **Rename**, the duplicate check and **Move to folder** work again.
-  Shows that v0.3.2 refused this way read normally after the update, with nothing to do.
+  Shows that v0.3.2 refused for their season folders' names read normally after the update,
+  with nothing to do; one whose folder also holds another show still waits in Needs you.
+  If you started a show over as v0.3.2's notes describe, nothing changes for it.
 - **Shows kept inside a category folder stay there** (#56). A show in
   `<TV folder>/Anime/Show/` (or under a TV folder set one level too high) gets its new
   episodes in its own folder, `S01`-style season folders included, where v0.3.2 and earlier
@@ -309,11 +311,16 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 - **A link inside a show's folder keeps it from being taken for the show's alone** (#56). A
   link to another folder or to a video means the download waits in Needs you, and Move to
   folder won't move the folder.
-- **A show whose folder can't be told has a way out** (#56). Move its files by hand into a
-  folder of its own, then use **Refresh & rescan**. Each recorded file that's gone is found
-  by its name in that TV folder, as long as the name has the show's title and an episode
-  number, exactly one file has it, and no other show has that file. Nothing is followed
-  while the TV folder looks unmounted.
+- **A show whose folder can't be told has a way out** (#56). Move its files by hand out of
+  the folder no show should own (one named like a season, one other shows are in, the TV
+  folder itself) into a folder of its own, then use **Refresh & rescan**. Each such file is
+  found by its name in that TV folder, as long as the name has the show's title and an
+  episode number, exactly one file has it, no other show has that file, and it isn't in a
+  folder named for a show of another year. Nothing is changed unless the show then reads
+  as living in one sound folder holding every file found; otherwise the rescan is refused
+  and the show's records stay exactly as they were. A file gone from the show's own folder
+  is never looked for elsewhere (it's deleted, or on a share that's away), and nothing is
+  followed while the TV folder looks unmounted.
 - Library folders: a show, artist or album whose name is only dots can no longer reach
   outside its library folder. Names like "..." are still allowed.
 - Archive extraction: a refused archive no longer stops the rest of the download. Zips of RAR

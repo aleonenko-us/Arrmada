@@ -546,8 +546,12 @@ const followVisitLimit = 500_000
 // show's episode (its title and an episode number) is followed, never one like "01.mkv";
 // nothing is followed while the TV folder looks unmounted; only a regular file no other
 // show has recorded counts, and only when exactly one has that name; hidden and system
-// folders (recycle bins, thumbnails) are never looked in, nor are links followed. It
-// returns how many files it re-pointed; nothing else changes. Refresh & rescan calls it
+// folders (recycle bins, thumbnails) are never looked in, nor are links followed. Only a
+// file recorded where no show should be is looked for — one gone from the show's own
+// folder is deleted or on a share that's away — never in a folder named for another year's
+// show. Nothing is written unless, with every re-point, the show then has a sound folder
+// of its own holding every followed file: a show that would still be refused keeps its
+// records as they were. It returns how many files it re-pointed. Refresh & rescan calls it
 // for a show it would refuse, then judges the show again.
 func (s *Service) FollowMovedEpisodeFiles(ctx context.Context, seriesID int64) int {
 	paths, err := s.repo.EpisodeFilePaths(ctx, seriesID)
@@ -565,12 +569,19 @@ func (s *Service) FollowMovedEpisodeFiles(ctx context.Context, seriesID int64) i
 		}
 	}
 	roots := s.libRoots()
+	j := s.dbJudge(ctx, seriesID)
 	want := map[string][]string{} // file name -> gone recorded paths with it
 	walk := map[string]bool{}     // TV folders to look in
 	for _, p := range paths {
 		p = filepath.Clean(p)
 		if _, err := os.Lstat(p); !errors.Is(err, fs.ErrNotExist) {
 			continue // still there, or can't tell
+		}
+		// Only a file recorded where no show should be (a folder named like a season, one
+		// other shows are in, a TV folder) is followed. One gone from a sound folder of the
+		// show's is deleted or on a share that's away: it's never looked for elsewhere.
+		if home, _, _ := j.homeOf(p); home != "" {
+			continue
 		}
 		root, ok := rootOf(roots, p)
 		if !ok || !library.FolderLooksMounted(root) {
@@ -611,20 +622,60 @@ func (s *Service) FollowMovedEpisodeFiles(ctx context.Context, seriesID int64) i
 			return nil
 		})
 	}
-	moved := 0
+	// Work out every re-point first, in memory.
+	type move struct {
+		from, to string
+		size     int64
+	}
+	var moves []move
+	repl := map[string]string{}
 	for name, olds := range want {
 		if len(found[name]) != 1 || len(olds) != 1 {
 			continue // not there, or more than one: the person decides
 		}
 		to := found[name][0]
 		if s.repo.FileRecorded(ctx, to) {
-			continue
+			continue // another show's (or already this show's) file
+		}
+		// A folder named for a show of another year ("Show (2019)" when this show is from
+		// 2005) is another show's, whatever its files are called.
+		if pl := s.placeOf(roots, to, j.titles); pl.dir != "" && sr.Year > 0 {
+			if y := parser.Parse(filepath.Base(pl.dir)).Year; y > 0 && (y < sr.Year-1 || y > sr.Year+1) {
+				continue
+			}
 		}
 		fi, err := os.Stat(to)
 		if err != nil {
 			continue
 		}
-		if n, err := s.repo.RepointEpisodeFile(ctx, seriesID, olds[0], to, fi.Size()); err == nil && n > 0 {
+		moves = append(moves, move{olds[0], to, fi.Size()})
+		repl[olds[0]] = to
+	}
+	if len(moves) == 0 {
+		return 0
+	}
+	// Then judge the show as it would read with them: nothing is written unless it then has
+	// a sound folder of its own that every followed file is in. A show that would still be
+	// refused keeps its records exactly as they were.
+	after := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if to, ok := repl[filepath.Clean(p)]; ok {
+			p = to
+		}
+		after = append(after, p)
+	}
+	info := s.showFolderFrom(s.dropGoneMisplaced(after, j), j)
+	if info.Unknown || info.Path == "" {
+		return 0
+	}
+	for _, m := range moves {
+		if home, _, _ := j.homeOf(m.to); home != info.Path {
+			return 0
+		}
+	}
+	moved := 0
+	for _, m := range moves {
+		if n, err := s.repo.RepointEpisodeFile(ctx, seriesID, m.from, m.to, m.size); err == nil && n > 0 {
 			moved++
 		}
 	}
