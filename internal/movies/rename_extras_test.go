@@ -66,6 +66,43 @@ func TestRenamePassSeesWhereEarlierMoviesWent(t *testing.T) {
 	}
 }
 
+// Heat (1986)'s record points into "Heat/", but that folder is missing from disk. A
+// "{title}" scheme creates "Heat/" for Heat (1995)'s file; the folder is still Heat
+// (1986)'s by its record, so Heat (1995)'s poster and .nfo stay in the old folder.
+func TestRV2_P1_MissingTargetOfRecord(t *testing.T) {
+	f, _ := renameFixture(t, "heat.1995.old/heat.1995.1080p.bluray.mkv",
+		"heat.1995.old/poster.jpg", "heat.1995.old/movie.nfo")
+	ctx := context.Background()
+	other, err := f.svc.repo.Create(ctx, Movie{TMDBID: 99, Title: "Heat", Year: 1986, Monitored: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.repo.SetFile(ctx, other.ID, filepath.Join(f.root, "Heat", "Heat (1986).mkv")); err != nil {
+		t.Fatal(err)
+	}
+	f.svc.imp.SetNaming(schemeNaming{library.Naming{Folder: "{title}", File: "{title} ({year})"}})
+	items := okItems(t, f)
+	for _, x := range items[0].Extras {
+		if x.Kind == ExtraFolder {
+			t.Errorf("the preview moves %s into Heat/, where Heat (1986) is recorded", filepath.Base(x.From))
+		}
+	}
+	if items[0].Kept == "" {
+		t.Error("the preview should say why the old folder's files stay")
+	}
+	if _, err := f.svc.ApplyRename(ctx, items); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"poster.jpg", "movie.nfo"} {
+		if exists(filepath.Join(f.root, "Heat", n)) {
+			t.Errorf("%s went into Heat/, where Heat (1986) is recorded (file missing)", n)
+		}
+		if !exists(filepath.Join(f.root, "heat.1995.old", n)) {
+			t.Errorf("%s should have stayed in the old folder", n)
+		}
+	}
+}
+
 // renameFixture is one movie (Heat, 1995) with a single file at rel under the Movies
 // folder, and the other films given as {title, year, rel}.
 func renameFixture(t *testing.T, rel string, files ...string) (*deleteFixture, string) {

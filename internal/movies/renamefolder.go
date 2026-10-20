@@ -277,12 +277,22 @@ func filesAfter(staying []string, moves []renameMove) map[string]bool {
 }
 
 // targetReason says why the old folder's files may not go into nd, the movie's new folder
-// ("" when they may). A folder this rename creates (fresh) takes them. One that already
-// exists takes them only when it provably holds no other film: it's a real folder, not a
-// library or downloads folder nor one holding such a folder, no other film has a file
-// recorded in or under it, no video but the movie's own (own) is anywhere inside, and no
-// link elsewhere points into it.
+// ("" when they may). Whether or not it exists yet, it mustn't be a library or downloads
+// folder nor hold one, and no other film may have a file recorded in or under it — a
+// record whose folder is missing from disk counts: the film is still that folder's. A
+// folder this rename creates (fresh) then takes them. One that already exists takes them
+// only when it's also a real folder, no video but the movie's own (own) is anywhere
+// inside, and no link elsewhere points into it.
 func (s *Service) targetReason(m Movie, nd string, fresh bool, own map[string]bool, recs *renameRecords) string {
+	clean := filepath.Clean(nd)
+	for _, r := range s.protectedDirs() {
+		if strings.EqualFold(r, clean) || insideFold(r, clean) {
+			return "the new folder is, or holds, one of your library or downloads folders"
+		}
+	}
+	if o := recs.recordedInto(clean, m.ID); o != "" {
+		return "another film in your library has a file recorded in the new folder (" + relName(clean, o) + ")"
+	}
 	if fresh {
 		return ""
 	}
@@ -294,15 +304,6 @@ func (s *Service) targetReason(m Movie, nd string, fresh bool, own map[string]bo
 		return "the new folder couldn't be read"
 	case fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir():
 		return "the new folder is a link"
-	}
-	clean := filepath.Clean(nd)
-	for _, r := range s.protectedDirs() {
-		if strings.EqualFold(r, clean) || insideFold(r, clean) {
-			return "the new folder is, or holds, one of your library or downloads folders"
-		}
-	}
-	if o := recs.recordedInto(clean, m.ID); o != "" {
-		return "another film in your library has a file recorded in the new folder (" + relName(clean, o) + ")"
 	}
 	if hasVideo(clean, own) {
 		return "the new folder already holds another video"

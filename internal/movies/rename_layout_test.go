@@ -277,6 +277,16 @@ func renameCases() []renameCase {
 			gone:    []string{vid, old + "/heat.1995.1080p.bluray.en.srt"},
 		},
 		{
+			name:    "a {title} scheme into another film's recorded folder, missing from disk",
+			files:   plain,
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{vid},
+			others:  []layoutOther{{title: "Heat", year: 1986, file: "Movies/Heat/Heat (1986).mkv"}},
+			folder:  "{title}",
+			gone:    []string{vid, old + "/heat.1995.1080p.bluray.en.srt"},
+		},
+		{
 			name:    "two films with the same title and year: the other's folder is the target",
 			files:   with(plain, "Movies/Heat (1995)/Heat (1995) - Remux-2160p.mkv", "Movies/Heat (1995)/poster.jpg"),
 			title:   "Heat",
