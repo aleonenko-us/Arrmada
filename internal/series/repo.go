@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -1517,27 +1518,98 @@ func (r *Repo) EpisodeFilePath(ctx context.Context, seriesID int64, season, epis
 	return path, err
 }
 
-// AnyEpisodeFilePath returns the on-disk path of any one episode with a file for
-// the series (empty if the series has nothing on disk). Used to discover the
-// show's existing library folder so new episodes join it.
-// FolderSharedWith returns the ids of OTHER series that also store episodes in the given
-// library folder name.
-//
-// Two shows in one folder is corruption waiting to happen: their season directories merge,
-// and any episode number they share collides. "Teen Titans" and "Teen Titans Go!" are the
-// obvious pair, but any show whose folder was renamed to another's name does it.
-func (r *Repo) FolderSharedWith(ctx context.Context, seriesID int64, folder string) []int64 {
-	if folder == "" {
-		return nil
+// SeasonFilePaths is every distinct on-disk file the series' episodes of one season
+// point at.
+func (r *Repo) SeasonFilePaths(ctx context.Context, seriesID int64, season int) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT DISTINCT file_path FROM episodes WHERE series_id = ? AND season_number = ? AND has_file = 1 AND file_path <> '' ORDER BY file_path`,
+		seriesID, season)
+	if err != nil {
+		return nil, err
 	}
-	// Match the folder as a whole path segment, so "Teen Titans" doesn't match
-	// "Teen Titans Go".
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// EpisodeFilePaths is every distinct on-disk file the series' episodes point at, for
+// working out which folder the show lives in (ShowFolderOf).
+func (r *Repo) EpisodeFilePaths(ctx context.Context, seriesID int64) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT DISTINCT file_path FROM episodes WHERE series_id = ? AND has_file = 1 AND file_path <> '' ORDER BY file_path`,
+		seriesID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// SeriesFilePath is one series' episode file.
+type SeriesFilePath struct {
+	SeriesID int64
+	Path     string
+}
+
+// AllEpisodeFilePaths is every distinct (series, file) the library records, for working
+// out every show's folder in one pass (MisplacedShows).
+func (r *Repo) AllEpisodeFilePaths(ctx context.Context) ([]SeriesFilePath, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT DISTINCT series_id, file_path FROM episodes WHERE has_file = 1 AND file_path <> '' ORDER BY series_id, file_path`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SeriesFilePath
+	for rows.Next() {
+		var f SeriesFilePath
+		if err := rows.Scan(&f.SeriesID, &f.Path); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// FileRecorded reports whether any series' episode has path as its file (true on a read
+// error: the caller then leaves the file alone).
+func (r *Repo) FileRecorded(ctx context.Context, path string) bool {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM episodes WHERE has_file = 1 AND file_path = ?`, path).Scan(&n)
+	return err != nil || n > 0
+}
+
+// OtherSeriesUnder is up to limit OTHER series with an episode file inside dir.
+//
+// Two shows in one folder is corruption waiting to happen: their season folders merge, and
+// any episode number they share collides. The folder is compared as a whole path prefix,
+// so "Teen Titans" doesn't match "Teen Titans Go!" and a season folder name ("S01") only
+// matches that one folder, not every show with an S01 inside it. A read error counts as
+// shared: the caller then refuses, which is the safe answer.
+func (r *Repo) OtherSeriesUnder(ctx context.Context, seriesID int64, dir string, limit int) []int64 {
+	prefix := filepath.Clean(dir) + string(filepath.Separator)
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT DISTINCT series_id FROM episodes
-		 WHERE series_id != ? AND has_file = 1 AND file_path LIKE '%/' || ? || '/%'`,
-		seriesID, folder)
+		 WHERE series_id <> ?1 AND has_file = 1 AND substr(file_path, 1, length(?2)) = ?2 LIMIT ?3`,
+		seriesID, prefix, limit)
 	if err != nil {
-		return nil
+		return []int64{0}
 	}
 	defer rows.Close()
 	var out []int64
@@ -1547,18 +1619,10 @@ func (r *Repo) FolderSharedWith(ctx context.Context, seriesID int64, folder stri
 			out = append(out, id)
 		}
 	}
-	return out
-}
-
-func (r *Repo) AnyEpisodeFilePath(ctx context.Context, seriesID int64) (string, error) {
-	var path string
-	err := r.db.QueryRowContext(ctx,
-		`SELECT file_path FROM episodes WHERE series_id = ? AND has_file = 1 AND file_path <> '' LIMIT 1`,
-		seriesID).Scan(&path)
-	if err == sql.ErrNoRows {
-		return "", nil
+	if rows.Err() != nil && len(out) == 0 {
+		return []int64{0}
 	}
-	return path, err
+	return out
 }
 
 // SetQualityProfile changes a series' quality profile. Moving to another profile ends

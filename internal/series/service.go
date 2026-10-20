@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -32,6 +31,9 @@ type SceneMapper interface {
 
 // Service is the Series module's application logic.
 type Service struct {
+	// folderPaths caches FolderPath answers (folderPathEntry by series id).
+	folderPaths sync.Map
+
 	repo   *Repo
 	meta   metadata.SeriesProvider
 	root   string        // library root, for delete-with-files and library scan (see libRoot)
@@ -73,6 +75,13 @@ type Service struct {
 	displayPolicy func() displaytitle.Policy
 	// displaySync runs one SyncDisplayTitles pass at a time.
 	displaySync sync.Mutex
+
+	// seasonFolder also counts the configured season folder template's names as season
+	// folders (nil = only the common names); see showfolder.go.
+	seasonFolder func(name string) bool
+	// fileGone reports a recorded file that's no longer on disk (nil = os.Stat says
+	// so). Tests that record paths without making files swap it.
+	fileGone func(path string) bool
 }
 
 // SetLibraryChanged installs who hears that a show folder's files changed through a
@@ -282,7 +291,7 @@ func (s *Service) DeleteEpisodeFile(ctx context.Context, seriesID int64, season,
 		return err
 	}
 	if path != "" {
-		s.changed(ShowFolder(path))
+		s.changed(s.ShowFolderFor(path))
 	}
 	detail := fmt.Sprintf("S%02dE%02d file deleted", season, episode)
 	if len(subFailed) > 0 {
@@ -1634,8 +1643,15 @@ func (s *Service) Delete(ctx context.Context, id int64, deleteFiles bool) (Delet
 		sum.Moved = append(sum.Moved, filepath.Base(video))
 		sum.Bytes += size
 		s.fileRemoved(video)
-		dirs[filepath.Dir(video)] = true               // season folder
-		dirs[filepath.Dir(filepath.Dir(video))] = true // series folder
+		dirs[filepath.Dir(video)] = true // season folder
+		// The show's folder, never anything above it: the folder above a flat show's is
+		// its category (or the TV folder). Above a season folder only when that's named
+		// "Season N" or "Specials" — the show folders every release has removed; above an
+		// "S01" the folder stays, as in v0.3.2, even when it's empty.
+		if show := s.ShowFolderFor(video); show != "" && (show == filepath.Dir(video) ||
+			(show == filepath.Dir(filepath.Dir(video)) && reStdSeasonDir.MatchString(filepath.Base(filepath.Dir(video))))) {
+			dirs[show] = true // series folder
+		}
 		for _, sub := range subs {
 			if _, err := library.RemoveToBin(bin, sub); err != nil {
 				sum.Failed = append(sum.Failed, filepath.Base(sub))
@@ -1653,7 +1669,7 @@ func (s *Service) Delete(ctx context.Context, id int64, deleteFiles bool) (Delet
 	// Plex drops what went, even when the delete stopped partway.
 	shows := map[string]bool{}
 	for _, v := range movedVideos {
-		shows[ShowFolder(v)] = true
+		shows[s.ShowFolderFor(v)] = true
 	}
 	for d := range shows {
 		s.changed(d)
@@ -1703,6 +1719,11 @@ func (s *Service) pruneEmptyDirs(dirs map[string]bool) {
 	}
 	sort.Slice(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
 	for _, d := range ordered {
+		// A symlinked folder (a category on another disk) is never removed: os.Remove
+		// unlinks a symlink however full the folder it points at is.
+		if fi, err := os.Lstat(d); err != nil || fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
+			continue
+		}
 		_ = os.Remove(d) // only succeeds when empty
 	}
 }
@@ -1731,53 +1752,46 @@ func (s *Service) EpisodeFilePath(ctx context.Context, seriesID int64, season, e
 	return s.repo.EpisodeFilePath(ctx, seriesID, season, episode)
 }
 
-// ExistingFolderName returns the name of the series' existing library folder,
-// derived from any episode already on disk ("" if the series has no files yet).
-// New episodes are routed into this folder so they don't spawn a duplicate under
-// a differently-named "<Title> (<Year>)" path.
+// ExistingFolderName returns the name of the series' library folder (ShowFolderOf), ""
+// when it has no files yet — or none in a sound folder, which importers must check for
+// first (ShowFolderOf's Unknown). New episodes are routed into this folder so they don't
+// spawn a duplicate under a differently-named "<Title> (<Year>)" path; ImportDir is the
+// folder it sits in.
 func (s *Service) ExistingFolderName(ctx context.Context, seriesID int64) string {
-	path, err := s.repo.AnyEpisodeFilePath(ctx, seriesID)
-	if err != nil || path == "" {
-		return ""
+	if p := s.ShowFolderOf(ctx, seriesID).Path; p != "" {
+		return filepath.Base(p)
 	}
-	// Usually path = <root>/<Series Folder>/Season NN/<file> and the series folder is
-	// two up — but only when the parent actually IS a season folder. A library storing
-	// files directly under <root>/<Show>/ used to walk two levels up to the TV ROOT
-	// itself, so every later grab imported into <root>/<rootname>/Season N/… — a bogus
-	// nested library folder.
-	return filepath.Base(ShowFolder(path))
+	return ""
 }
 
-// FolderPath is the full path of the show's library folder — the folder above a season
-// folder, or the episode's own folder in a flat layout — taken from any episode on disk
-// ("" when the show has no files).
+// FolderPath is the full path of the show's library folder (ShowFolderOf), "" when the
+// show has no files or none in a folder of its own.
+//
+// The media servers' links and the requests' ready check ask it for every show, often:
+// the answer is cached while the show's recorded files stay the same, for folderPathTTL,
+// so they don't keep a sleeping array awake.
 func (s *Service) FolderPath(ctx context.Context, seriesID int64) string {
-	path, err := s.repo.AnyEpisodeFilePath(ctx, seriesID)
-	if err != nil || path == "" {
+	paths, err := s.repo.EpisodeFilePaths(ctx, seriesID)
+	if err != nil || len(paths) == 0 {
 		return ""
 	}
-	return ShowFolder(path)
-}
-
-// ShowFolder is the show folder an episode file lives in: two levels up when its folder
-// is a season folder ("Season 04", "Specials"), one level up otherwise.
-func ShowFolder(episodePath string) string {
-	parent := filepath.Dir(episodePath)
-	if isSeasonFolder(filepath.Base(parent)) {
-		return filepath.Dir(parent)
+	key := strings.Join(paths, "\x00")
+	if v, ok := s.folderPaths.Load(seriesID); ok {
+		if e := v.(folderPathEntry); e.key == key && time.Since(e.at) < folderPathTTL {
+			return e.path
+		}
 	}
-	return parent
+	p := s.ShowFolderOf(ctx, seriesID).Path
+	s.folderPaths.Store(seriesID, folderPathEntry{key: key, path: p, at: time.Now()})
+	return p
 }
 
-// reSeasonFolder matches the folder names episode files are stored under inside a
-// show's folder ("Season 4", "Season 04", "Specials").
-var reSeasonFolder = regexp.MustCompile(`(?i)^(season[ ._-]?\d+|specials)$`)
+// folderPathTTL is how long a FolderPath answer is reused while the show's files are unchanged.
+const folderPathTTL = 30 * time.Minute
 
-func isSeasonFolder(name string) bool { return reSeasonFolder.MatchString(name) }
-
-// FolderSharedWith returns other series storing episodes in the same library folder.
-func (s *Service) FolderSharedWith(ctx context.Context, seriesID int64, folder string) []int64 {
-	return s.repo.FolderSharedWith(ctx, seriesID, folder)
+type folderPathEntry struct {
+	key, path string
+	at        time.Time
 }
 
 // Events returns a series' activity timeline, newest first.
@@ -1854,6 +1868,13 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 			if !e.IsDir() || e.Name() == "" || library.SkipScanDir(e.Name()) {
 				continue // series live in per-show folders; skip the recycle bins and other hidden ones
 			}
+			if s.seasonLike(e.Name()) {
+				// A folder named like a season ("S13", "Stagione 2") right in the TV folder
+				// isn't a show: it's where imports were misplaced before #56 was fixed, and
+				// matching it by name would add its files to whatever show is called that.
+				s.log.Info("series scan: skipped a folder named like a season — not a show", "folder", filepath.Join(root, e.Name()))
+				continue
+			}
 			shows = append(shows, showDir{root, e})
 		}
 	}
@@ -1915,7 +1936,7 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 		// Once matched, the show is added and its episode files marked as one step, even if
 		// the scan is stopped meanwhile: a show added without its files would be skipped by
 		// every later scan (it's "already in the library") and never get them.
-		if err := s.importSeriesFolder(context.WithoutCancel(ctx), videos, match.TMDBID); err != nil {
+		if err := s.importSeriesFolder(context.WithoutCancel(ctx), folder, videos, match.TMDBID); err != nil {
 			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year})
 			continue
 		}
@@ -1943,7 +1964,10 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 
 // importSeriesFolder adds a series by TMDB id (unmonitored, unset profile — an
 // adopted library must not auto-upgrade) and marks its episode files present.
-func (s *Service) importSeriesFolder(ctx context.Context, videos []library.FoundVideo, tmdbID int) error {
+//
+// Only the files a rescan would read are marked (EpisodeFileFilter, without Plex extras
+// folders): never another show's folder inside dir, nor a file named as another show's.
+func (s *Service) importSeriesFolder(ctx context.Context, dir string, videos []library.FoundVideo, tmdbID int) error {
 	// The show belongs to the TV folder its files were found in, whatever the rules say.
 	var folderID *int64
 	if s.folders != nil && len(videos) > 0 {
@@ -1954,8 +1978,15 @@ func (s *Service) importSeriesFolder(ctx context.Context, videos []library.Found
 	if err != nil {
 		return err
 	}
+	keep := func(string) bool { return true }
+	if full, err := s.Get(ctx, added.ID); err == nil {
+		keep = s.EpisodeFileFilter(ctx, full, dir)
+	}
 	marked := 0
 	for _, v := range videos {
+		if !keep(v.Path) || library.InExtrasFolder(dir, v.Path) {
+			continue
+		}
 		p := parser.Parse(filepath.Base(v.Path))
 		// ResolveEpisodes handles multi-episode files, and — for anime — absolute
 		// numbering and the per-cour positional fallback.
@@ -1986,7 +2017,7 @@ func (s *Service) ImportFolderAs(ctx context.Context, rootOverride, folder strin
 	if len(videos) == 0 {
 		return fmt.Errorf("no episode files found in %q", folder)
 	}
-	if err := s.importSeriesFolder(ctx, videos, tmdbID); err != nil {
+	if err := s.importSeriesFolder(ctx, filepath.Join(root, folder), videos, tmdbID); err != nil {
 		return err
 	}
 	s.dropUnmatched(root, folder)

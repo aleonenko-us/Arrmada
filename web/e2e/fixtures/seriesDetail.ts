@@ -1,4 +1,5 @@
 import type { AudioLang, Episode, Job, MovieEvent, SearchAttempt, Season, Series, SeriesNumbering } from "../../src/lib/api";
+import type { MisplacedItem, MisplacedPlan } from "../../src/lib/seriesApi";
 import type { MockRoute } from "./routes";
 import { NOW, day } from "./clock";
 import { person } from "./discover";
@@ -7,7 +8,8 @@ import { person } from "./discover";
 // finished season, a season with gaps, a season still airing (one episode downloading, the
 // next one in eleven days) and Specials. Show 2 is a long anime season (130 episodes, the
 // last 30 missing) for paging. Show 3 is a standard show with a pending numbering change;
-// show 4 a clean standard one. (The shared review fixture holds a download for show 1.)
+// show 4 a clean standard one, except for two files an import misplaced (#56). (The shared
+// review fixture holds a download for show 1.)
 
 const still = (s: number, e: number) => `https://image.tmdb.org/t/p/w1280/e2e-still-${s}-${e}.jpg`;
 
@@ -131,6 +133,22 @@ export const searchJob: Job = {
 
 const id = (params: string[]) => Number(params[0]);
 
+// Show 4 has two episode files an import put in /tv/S01/Season 1 before #56 was fixed: one
+// goes back into the show's S01 folder, and one is a lower-quality copy of an episode the
+// show's folder already has.
+export const misplaced: Record<number, MisplacedPlan> = {
+  4: {
+    show_folder: "/tv/Anchor Point",
+    items: [
+      { from: "/tv/S01/Season 1/Anchor Point - S01E02.mkv", to: "/tv/Anchor Point/S01/Anchor Point - S01E02.mkv", season: 1, episode: 2, action: "move", note: "/tv/S01 is named like a season folder" },
+      {
+        from: "/tv/S01/Season 1/Anchor Point - S01E03 - 720p.mkv", season: 1, episode: 3, action: "recycle", existing: "/tv/Anchor Point/S01/Anchor Point - S01E03 - 1080p.mkv",
+        note: "A better copy is already in the show's folder (Anchor Point - S01E03 - 1080p.mkv); this lower-quality one goes to the recycle bin.",
+      },
+    ],
+  },
+};
+
 // routes answers every call the series page makes for the shows above.
 export function routes(): MockRoute[] {
   return [
@@ -143,6 +161,14 @@ export function routes(): MockRoute[] {
     { method: "GET", path: /^\/api\/v1\/series\/(\d+)\/scene-map$/, body: { overrides: [] } },
     { method: "GET", path: /^\/api\/v1\/series\/(\d+)\/numbering$/, respond: ({ params }) => numbering[id(params)] ?? { source: "tmdb", pending: null } },
     { method: "GET", path: /^\/api\/v1\/series\/(\d+)\/rename$/, body: { items: [], matches: true } },
+    { method: "GET", path: /^\/api\/v1\/series\/(\d+)\/misplaced$/, respond: ({ params }) => misplaced[id(params)] ?? { show_folder: "", items: [] } },
+    {
+      method: "POST", path: /^\/api\/v1\/series\/(\d+)\/misplaced$/,
+      respond: ({ body }) => {
+        const items = (body as { items?: MisplacedItem[] })?.items ?? [];
+        return { moved: items.filter((it) => it.action === "move").length, recycled: items.filter((it) => it.action === "recycle").length, skipped: [], removed_folders: ["/tv/S01/Season 1"] };
+      },
+    },
     // The profile picker names the show's profile before the list arrives.
     { method: "GET", path: /^\/api\/v1\/quality\/profiles\/([\w-]+)$/, respond: ({ params }) => ({ key: params[0], name: "HD 1080p" }) },
     // Where a deleted episode file goes (the delete confirm says so).

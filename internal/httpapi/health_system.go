@@ -191,6 +191,18 @@ func (a *api) registerHealthChecks(reg *health.Registry) {
 		reg.Register(health.MusicFilesCheck(a.deps.Automation.MusicFilesWarning))
 	}
 
+	// TV episode files outside their show's folder (#56): from the database only.
+	if a.deps.Series != nil {
+		reg.Register(health.MisplacedEpisodesCheck(func(ctx context.Context) ([]health.MisplacedShow, error) {
+			shows, err := a.deps.Series.MisplacedShows(ctx)
+			out := make([]health.MisplacedShow, 0, len(shows))
+			for _, s := range shows {
+				out = append(out, health.MisplacedShow{SeriesID: s.SeriesID, Title: s.Title, Files: s.Files, NoFolder: s.NoFolder})
+			}
+			return out, err
+		}))
+	}
+
 	if a.deps.Recycle != nil {
 		reg.Register(health.RecycleDriveCheck(func() []health.RecycleBinProblem {
 			var out []health.RecycleBinProblem

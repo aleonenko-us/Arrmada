@@ -524,7 +524,20 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 	// Before anything reads as missing: a file an interrupted rename left under its
 	// temporary name would otherwise be cleared below and downloaded again.
 	c.restoreRenameTemps(s)
-	folder := c.series.ExistingFolderName(ctx, seriesID) // "" → importer derives the name
+	// Never walk a folder other shows' files are in: every file there that parses to one
+	// of this show's episode numbers would be claimed as its own.
+	imp, folder, ferr := c.seriesPlacement(ctx, s) // folder "" → importer derives the name
+	// The way out for a show whose folder can't be told: files moved by hand into a folder
+	// of its own are followed there, then the show is judged again.
+	if ferr != nil && c.series.FollowMovedEpisodeFiles(ctx, seriesID) > 0 {
+		if s, err = c.series.Get(ctx, seriesID); err != nil {
+			return err
+		}
+		imp, folder, ferr = c.seriesPlacement(ctx, s)
+	}
+	if ferr != nil {
+		return &RescanRefusedError{Reason: ferr.Error(), Cause: ferr}
+	}
 
 	// Group by resolved episode first, rather than marking as we walk. Several files on
 	// disk can claim the same episode — three copies of every Solo Leveling season 2
@@ -533,7 +546,7 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 	// others' paths, and reported nothing: the extra copies became invisible to Arrmada
 	// while still filling the disk and showing up as duplicates in Plex.
 	byEpisode := map[[2]int][]library.FoundVideo{}
-	for _, v := range c.tvImp(ctx, s).SeriesLibraryVideos(folder, s.Title, s.Year) {
+	for _, v := range c.showEpisodeVideos(ctx, s, imp, folder) {
 		// Run each file through the full resolver: SxxExx, multi-episode, and — for anime
 		// — absolute ("S2 29") and per-cour numbering all map onto the metadata's episodes.
 		for _, ref := range c.series.ResolveEpisodes(ctx, seriesID, parser.Parse(filepath.Base(v.Path))) {
@@ -562,7 +575,7 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 		}
 	}
 	if len(gone) > 0 {
-		if reason := rescanRefusal(c.tvImp(ctx, s).TVRoot(), s.Title, gone, recorded); reason != "" {
+		if reason := rescanRefusal(imp.TVRoot(), s.Title, gone, recorded, c.series.ShowFolderFor); reason != "" {
 			c.log.Warn("series rescan: the files' folders don't look mounted — nothing was changed",
 				"series", s.Title, "would_clear", len(gone), "reason", reason)
 			return &RescanRefusedError{Reason: reason}
@@ -600,9 +613,69 @@ func (c *Coordinator) RescanSeries(ctx context.Context, seriesID int64) error {
 	return nil
 }
 
+// showEpisodeVideos is the show's episode videos for a rescan or the duplicate check, which
+// read exactly the same files: those in its folder, minus Plex extras folders' (library.
+// SeriesEpisodeVideos), that series.EpisodeFileFilter lets through — so neither ever claims
+// or offers for deletion a file in another show's folder inside it, or another show's file.
+func (c *Coordinator) showEpisodeVideos(ctx context.Context, s series.Series, imp *library.Importer, folder string) []library.FoundVideo {
+	if folder == "" {
+		// No files recorded yet: only the exact "<Title> (<Year>)" folder right in the TV
+		// folder is read, and only when it's provably the show's own (series.
+		// NoFilesFolderUnproven). Never a year-less "<Title>": it may be a namesake's (the UK
+		// "The Office" beside the US one). Otherwise nothing is read; a hand import gives the
+		// show its files.
+		name := library.YearFolderName(s.Title, s.Year)
+		if name == "" {
+			return nil
+		}
+		if why := c.series.NoFilesFolderUnproven(ctx, s, filepath.Join(imp.TVRoot(), name)); why != "" {
+			c.log.Info("series rescan: the show's \"Title (Year)\" folder isn't provably its own — not read", "series", s.Title, "folder", name, "why", why)
+			return nil
+		}
+		folder = name
+	}
+	dir, vids := imp.SeriesEpisodeVideos(folder, s.Title, s.Year)
+	if dir == "" {
+		return nil
+	}
+	keep := c.series.EpisodeFileFilter(ctx, s, dir)
+	// A show kept in season folders doesn't keep episodes loose in its folder: a video there
+	// it hasn't recorded ("Show - S01E01 - Pilot (Unaired).mkv") is something else, never
+	// claimed nor offered for deletion. A flat show (or one with no files yet) reads them.
+	recorded, loose := 0, false
+	for _, sn := range s.Seasons {
+		for _, e := range sn.Episodes {
+			if e.HasFile && e.FilePath != "" {
+				recorded++
+				loose = loose || filepath.Dir(filepath.Clean(e.FilePath)) == filepath.Clean(dir)
+			}
+		}
+	}
+	seasonsOnly := recorded > 0 && !loose
+	out := vids[:0:0]
+	for _, v := range vids {
+		if !keep(v.Path) {
+			continue
+		}
+		if seasonsOnly && filepath.Dir(filepath.Clean(v.Path)) == filepath.Clean(dir) {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
 // RescanRefusedError is a series rescan that changed nothing because the folders its
 // files live in didn't look mounted. Reason is written for the person who started it.
-type RescanRefusedError struct{ Reason string }
+type RescanRefusedError struct {
+	Reason string
+	// Cause is why, when it was something other than a folder looking unmounted (a
+	// series.ShowFolderError: the show's folder can't be told).
+	Cause error
+}
+
+// Unwrap is the refusal's cause, if any.
+func (e *RescanRefusedError) Unwrap() error { return e.Cause }
 
 func (e *RescanRefusedError) Error() string { return e.Reason }
 
@@ -614,7 +687,7 @@ func (e *RescanRefusedError) Error() string { return e.Reason }
 // a show vanishing at once is refused too: that's what a missing disk looks like far
 // more often than a deliberate deletion, and clearing them all would download the whole
 // show again.
-func rescanRefusal(root, title string, gone []series.Episode, recorded int) string {
+func rescanRefusal(root, title string, gone []series.Episode, recorded int, showFolder func(string) string) string {
 	root = strings.TrimSpace(root)
 	inRoot := false
 	var shows []string
@@ -627,7 +700,7 @@ func rescanRefusal(root, title string, gone []series.Episode, recorded int) stri
 		if root != "" && pathguard.Under(p, root) {
 			inRoot = true
 		}
-		if dir := series.ShowFolder(p); !seen[dir] {
+		if dir := showFolder(p); dir != "" && !seen[dir] {
 			seen[dir] = true
 			shows = append(shows, dir)
 		}
@@ -708,6 +781,9 @@ func (c *Coordinator) ManualImportSeries(ctx context.Context, seriesID int64, pa
 	// still has gaps, so when a fix changes what WOULD have imported, pointing manual
 	// import at the folder is what applies it.
 	if fi, statErr := os.Stat(path); statErr == nil && fi.IsDir() {
+		if _, _, ferr := c.seriesPlacement(ctx, s); ferr != nil {
+			return ferr
+		}
 		placedRefs, matched, unresolved, importFailed := c.importSeriesInto(ctx, s, path, forceAll)
 		placed := len(placedRefs)
 		if matched == 0 {
@@ -729,14 +805,17 @@ func (c *Coordinator) ManualImportSeries(ctx context.Context, seriesID int64, pa
 		return nil
 	}
 
-	folder := c.series.ExistingFolderName(ctx, seriesID)
-	ei, ok, err := c.tvImp(ctx, s).ImportEpisodeInto(folder, s.Title, s.Year, path)
+	imp, folder, ferr := c.seriesPlacement(ctx, s)
+	if ferr != nil {
+		return ferr
+	}
+	ei, ok, err := imp.ImportEpisodeInto(folder, s.Title, s.Year, path)
 	if err != nil {
 		return err
 	}
 	if !ok {
 		// Anime file numbered absolutely (no SxxExx) — resolve + place by absolute number.
-		if s.IsAnime() && len(c.importAbsoluteEpisode(ctx, s, folder, path)) > 0 {
+		if s.IsAnime() && len(c.importAbsoluteEpisode(ctx, s, imp, folder, path)) > 0 {
 			return nil
 		}
 		return fmt.Errorf("couldn't detect a season/episode from that filename")
@@ -832,10 +911,27 @@ func (c *Coordinator) SeriesDuplicates(ctx context.Context, seriesID int64) ([]D
 	if err != nil {
 		return nil, err
 	}
-	folder := c.series.ExistingFolderName(ctx, seriesID)
+	imp, folder, ferr := c.seriesPlacement(ctx, s)
+	if ferr != nil {
+		return nil, ferr
+	}
 
+	// Offered for deletion: only a file the show recorded, or one whose name says it's the
+	// show's — never one a rescan reads on the benefit of the doubt ("Other Show - S01E01"
+	// in the show's own Season 1).
+	recorded := map[string]bool{}
+	for _, sn := range s.Seasons {
+		for _, e := range sn.Episodes {
+			if e.HasFile && e.FilePath != "" {
+				recorded[filepath.Clean(e.FilePath)] = true
+			}
+		}
+	}
 	byEpisode := map[[2]int][]library.FoundVideo{}
-	for _, v := range c.tvImp(ctx, s).SeriesLibraryVideos(folder, s.Title, s.Year) {
+	for _, v := range c.showEpisodeVideos(ctx, s, imp, folder) {
+		if !recorded[filepath.Clean(v.Path)] && !series.NameFitsShow(filepath.Base(v.Path), s) {
+			continue
+		}
 		for _, ref := range c.series.ResolveEpisodes(ctx, seriesID, parser.Parse(filepath.Base(v.Path))) {
 			key := [2]int{ref.Season, ref.Episode}
 			byEpisode[key] = append(byEpisode[key], v)

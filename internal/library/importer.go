@@ -585,6 +585,43 @@ type Importer struct {
 	seriesIDsFn func(seriesTitle string, year int) SeriesIDs
 	// copyReport hears this import's copies (Using); nil for every other importer.
 	copyReport CopyReport
+	// seasonDirs picks the season folder an episode import goes into (WithSeasonDirs);
+	// nil = the scheme's, joining an existing one.
+	seasonDirs SeasonDirChooser
+}
+
+// SeasonDirChooser is the season folder an episode of season goes into inside the show
+// folder showDir, given the folder the scheme would use (def): def itself, another folder,
+// or an error that refuses the import.
+type SeasonDirChooser func(showDir string, season int, def string) (string, error)
+
+// WithSeasonDirs is a copy of the importer whose episode imports put each episode in the
+// season folder choose picks.
+func (im *Importer) WithSeasonDirs(choose SeasonDirChooser) *Importer {
+	if im == nil {
+		return im
+	}
+	c := *im
+	c.seasonDirs = choose
+	return &c
+}
+
+// importTarget is episodeTargetIn for an import (never a rename): the scheme's path, with
+// its season folder replaced by the chooser's when one is set.
+func (im *Importer) importTarget(seriesFolder, title string, year, season, episode int, rel parser.Release, ext string) (string, error) {
+	target := im.episodeTargetIn(seriesFolder, title, year, season, episode, rel, ext, false)
+	if im.seasonDirs == nil {
+		return target, nil
+	}
+	def := filepath.Dir(target)
+	dir, err := im.seasonDirs(filepath.Dir(def), season, def)
+	if err != nil {
+		return "", err
+	}
+	if dir == "" {
+		dir = def
+	}
+	return filepath.Join(dir, filepath.Base(target)), nil
 }
 
 // RootFuncs resolve each library folder at the moment it's needed. They're read on every
@@ -1047,6 +1084,10 @@ type FoundVideo struct {
 	Size int64
 }
 
+// MinEpisodeVideoSize is the smallest video FindVideos takes for an episode or film:
+// anything smaller is a sample, a theme or a stub.
+const MinEpisodeVideoSize = 50 << 20
+
 // FindVideos returns every video file at contentPath larger than 50 MB (skipping
 // samples/extras). Used to import a season/multi-season pack — many files at once.
 func FindVideos(contentPath string) ([]FoundVideo, error) {
@@ -1082,7 +1123,7 @@ func FindVideosCtx(ctx context.Context, contentPath string, maxResults, maxVisit
 			return nil
 		}
 		fi, e := d.Info()
-		if e != nil || fi.Size() < 50<<20 {
+		if e != nil || fi.Size() < MinEpisodeVideoSize {
 			return nil
 		}
 		if isSampleName(p) {
@@ -1166,7 +1207,10 @@ func (im *Importer) ImportEpisodeIntoWith(seriesFolder, seriesTitle string, year
 	if err := im.checkRoot(im.tvDir()); err != nil {
 		return nil, false, err
 	}
-	target := im.episodeTargetIn(seriesFolder, seriesTitle, year, rel.Season, ep, rel, ext, false)
+	target, err := im.importTarget(seriesFolder, seriesTitle, year, rel.Season, ep, rel, ext)
+	if err != nil {
+		return nil, false, err
+	}
 	if err := insideRoot(target, im.tvDir()); err != nil {
 		return nil, false, err
 	}
@@ -1207,7 +1251,10 @@ func (im *Importer) ImportEpisodeAs(seriesFolder, seriesTitle string, year, seas
 	if err := im.checkRoot(im.tvDir()); err != nil {
 		return nil, false, err
 	}
-	target := im.episodeTargetIn(seriesFolder, seriesTitle, year, season, episode, rel, ext, false)
+	target, err := im.importTarget(seriesFolder, seriesTitle, year, season, episode, rel, ext)
+	if err != nil {
+		return nil, false, err
+	}
 	if err := insideRoot(target, im.tvDir()); err != nil {
 		return nil, false, err
 	}
@@ -1399,6 +1446,36 @@ func (im *Importer) SeriesLibraryVideos(seriesFolder, title string, year int) []
 	return vids
 }
 
+// SeriesEpisodeVideos is SeriesLibraryVideos without the files in a Plex local-extras
+// folder anywhere in the show's folder (Extras, Featurettes, Behind The Scenes…): a
+// featurette called "Show - S01E01 - Behind the Scenes" is never an episode. Rescans and
+// the duplicate check read a show's episodes through it. dir is the folder it walked (""
+// when none).
+func (im *Importer) SeriesEpisodeVideos(seriesFolder, title string, year int) (dir string, vids []FoundVideo) {
+	dir, ok := im.seriesLibraryDir(seriesFolder, title, year)
+	if !ok {
+		return "", nil
+	}
+	found, _ := FindVideos(dir)
+	out := found[:0:0]
+	for _, v := range found {
+		if !InExtrasFolder(dir, v.Path) {
+			out = append(out, v)
+		}
+	}
+	return dir, out
+}
+
+// YearFolderName is "<Title> (<Year>)" as a show folder's name ("" without a title or year):
+// the one folder a show with no files yet may be read from.
+func YearFolderName(title string, year int) string {
+	t := clean(title)
+	if t == "" || year <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s (%d)", t, year)
+}
+
 // seriesLibraryDir is the show's folder under the TV root: seriesFolder, or
 // "<Title> (<Year>)" when that's empty. ok is false for anything that isn't strictly
 // inside the TV root, so a rescan never walks the root itself (and every other show in it)
@@ -1463,14 +1540,7 @@ func (im *Importer) episodeTargetIn(seriesFolder, title string, year, season, ep
 		ids = im.seriesIDs(title, year)
 	}
 	if folder == "" {
-		// A new series folder: the scheme, with the show's ids when the template asks for
-		// them. An existing folder (seriesFolder) is always reused as it is.
-		folder = renderName(seriesFolderFormat(sn.Folder, ids), map[string]string{
-			"title": t, "year": yearToken(year),
-		})
-		if folder == "" {
-			folder = t
-		}
+		folder = newSeriesFolderName(sn, ids, t, year)
 	}
 
 	epPart := fmt.Sprintf("S%02dE%02d", season, episode)
@@ -1504,9 +1574,41 @@ func (im *Importer) episodeTargetIn(seriesFolder, title string, year, season, ep
 	canonical := im.seasonFolderName(sn.SeasonFolder, season, t, year)
 	seasonSub := canonical
 	if !canonicalSeason {
-		seasonSub = seasonDirName(seriesDir, season, canonical)
+		seasonSub = seasonDirNameBy(seriesDir, season, canonical, parseSeasonDir)
 	}
 	return filepath.Join(seriesDir, seasonSub, clean(file)+ext)
+}
+
+// newSeriesFolderName is a new series folder's name: the scheme, with the show's ids when
+// the template asks for them. An existing folder is always reused as it is instead.
+func newSeriesFolderName(sn SeriesNaming, ids SeriesIDs, t string, year int) string {
+	folder := renderName(seriesFolderFormat(sn.Folder, ids), map[string]string{
+		"title": t, "year": yearToken(year),
+	})
+	if folder == "" {
+		folder = t
+	}
+	return folder
+}
+
+// SeriesFolderPath is the show folder episodes go into: seriesFolder under the TV folder,
+// or the scheme's new folder for the show when seriesFolder is "" — the folder every
+// episode target (episodeTargetIn) is built under. Read-only.
+func (im *Importer) SeriesFolderPath(seriesFolder, title string, year int) string {
+	folder := clean(seriesFolder)
+	if folder == "" {
+		sn := im.seriesNamingScheme()
+		t := cleanTitleLoose(title)
+		if t == "" {
+			t = "Unknown"
+		}
+		var ids SeriesIDs
+		if hasIDToken(sn.Folder) {
+			ids = im.seriesIDs(title, year)
+		}
+		folder = newSeriesFolderName(sn, ids, t, year)
+	}
+	return filepath.Join(im.tvDir(), folder)
 }
 
 // seasonFolderName renders the season folder from the scheme. Season 0 is always
@@ -1530,11 +1632,16 @@ func (im *Importer) seasonFolderName(format string, season int, title string, ye
 // seasonDirName returns the season directory to place an episode in. READ-ONLY:
 // deriving a path must never mutate the disk as a side effect (a rename here fired
 // on every target computation, including previews). If the show already has a
-// directory for that season — under any spelling ("Season 04" vs "Season 4") — its
-// actual name is reused so imports never spawn a duplicate; otherwise the canonical
-// name from the scheme is returned. Normalizing legacy spellings is the explicit
-// SeriesRename flow's job.
+// directory for that season — under any spelling ("Season 04" vs "Season 4", "S04",
+// "Stagione 4") — its actual name is reused so imports never spawn a parallel folder;
+// otherwise the canonical name from the scheme is returned. Normalizing legacy
+// spellings is the explicit SeriesRename flow's job.
 func seasonDirName(seriesDir string, season int, canonical string) string {
+	return seasonDirNameBy(seriesDir, season, canonical, parseSeasonDir)
+}
+
+// seasonDirNameBy is seasonDirName reading folder names with parse.
+func seasonDirNameBy(seriesDir string, season int, canonical string, parse func(string) (int, bool)) string {
 	entries, err := os.ReadDir(seriesDir)
 	if err != nil {
 		return canonical
@@ -1544,7 +1651,7 @@ func seasonDirName(seriesDir string, season int, canonical string) string {
 		if !e.IsDir() {
 			continue
 		}
-		n, ok := parseSeasonDir(e.Name())
+		n, ok := parse(e.Name())
 		if !ok || n != season {
 			continue
 		}
@@ -1561,18 +1668,47 @@ func seasonDirName(seriesDir string, season int, canonical string) string {
 	return canonical
 }
 
-// reSeasonDir matches "Season 1", "Season 01", "S1", "S01" (any zero-padding).
+// SeasonDirIn is the season folder an episode of season goes into inside the show folder
+// showDir: the folder the show already has for that season, under whatever name it has
+// ("S13", "Stagione 13"), else the scheme's name. Read-only.
+func (im *Importer) SeasonDirIn(showDir, title string, year, season int) string {
+	canonical := im.seasonFolderName(im.seriesNamingScheme().SeasonFolder, season, cleanTitleLoose(title), year)
+	return seasonDirNameBy(showDir, season, canonical, im.plainSeasonNumber)
+}
+
+// plainSeasonNumber is seasonNumberOf without the folders that only look like a season:
+// one with a tail ("Season 1 (Extras)", "Series 1 (Behind the scenes)") or a lone "Special".
+func (im *Importer) plainSeasonNumber(name string) (int, bool) {
+	name = strings.TrimSpace(name)
+	if strings.ContainsAny(name, "([{") || strings.EqualFold(name, "special") {
+		return 0, false
+	}
+	return im.seasonNumberOf(name)
+}
+
+// reSeasonDir matches "Season 1", "Season 01", "S1", "S01" (any zero-padding): the season
+// folders an import joins, as v0.3.1 had them.
 var reSeasonDir = regexp.MustCompile(`(?i)^s(?:eason)?\s*0*(\d+)$`)
 
-// parseSeasonDir extracts a season number from a directory name ("Specials" → 0).
+// reSeasonDirPunct is "Season.01", "Season_01", "Season-01": the same, spelt with
+// punctuation, which an import also joins rather than making a "Season 1" beside it.
+var reSeasonDirPunct = regexp.MustCompile(`(?i)^season[._-]0*(\d+)$`)
+
+// parseSeasonDir extracts a season number from a directory name ("Specials" → 0), for
+// choosing the existing season folder an import joins. Deliberately narrow: a folder with a
+// tail ("Season 1 (Extras)", "Series 1 (Behind the scenes)") or in another language is
+// left alone — the wider SeasonFolderNumber only recognises season folders when working
+// out a show's folder.
 func parseSeasonDir(name string) (int, bool) {
 	name = strings.TrimSpace(name)
 	if strings.EqualFold(name, "specials") {
 		return 0, true
 	}
-	if m := reSeasonDir.FindStringSubmatch(name); m != nil {
-		if n, err := strconv.Atoi(m[1]); err == nil {
-			return n, true
+	for _, re := range []*regexp.Regexp{reSeasonDir, reSeasonDirPunct} {
+		if m := re.FindStringSubmatch(name); m != nil {
+			if n, err := strconv.Atoi(m[1]); err == nil {
+				return n, true
+			}
 		}
 	}
 	return 0, false
@@ -1844,6 +1980,9 @@ func findMediaFile(contentPath string) (string, int64, error) {
 func isVideo(p string) bool {
 	return videoExts[strings.ToLower(filepath.Ext(p))]
 }
+
+// IsVideoFile reports whether p has a video file's extension.
+func IsVideoFile(p string) bool { return isVideo(p) }
 
 // isSampleName reports whether a file is a sample clip. "sample" must appear as a
 // whole token (bounded by the separators in a filename), NOT merely as a substring —

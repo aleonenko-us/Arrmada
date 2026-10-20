@@ -683,7 +683,10 @@ func main() {
 		return seriesSvc.EpisodeTitleByName(context.Background(), seriesTitle, year, season, episode)
 	})
 	bookImporter.SetSeriesNaming(prefs) // user-configurable series folder / season / episode formats
-	bookImporter.SetBookNaming(prefs)   // user-configurable audiobook and ebook folder / file names
+	// Folders that season template names are season folders, never a show's own folder,
+	// when working out which folder a show lives in (#56).
+	seriesSvc.SetSeasonFolderMatcher(bookImporter.IsSeasonFolderName)
+	bookImporter.SetBookNaming(prefs) // user-configurable audiobook and ebook folder / file names
 	// A new series folder can carry the show's ids ("Show (2022) {tvdb-12345}", the Plex
 	// recommended scheme); existing folders are reused as they are.
 	bookImporter.SetSeriesIDsFunc(func(seriesTitle string, year int) library.SeriesIDs {
@@ -1501,7 +1504,7 @@ func main() {
 	// download on its way in would land in the old folder half-way, so a title with one
 	// in flight waits (fail closed: an unreadable check refuses too).
 	folderMover := &libfolders.Mover{
-		DB: st.DB(), Folders: libFolders, Bin: bins, Scan: media.Request, ShowFolder: series.ShowFolder,
+		DB: st.DB(), Folders: libFolders, Bin: bins, Scan: media.Request, ShowFolders: seriesSvc.ShowFoldersOf, Unclear: seriesSvc.MoveBlocked,
 		Hold: coordinator.HoldSearches, // no search grabs into the old folder half-way
 		// A film's folder moves whole only when it is provably the film's own.
 		OwnFolder: movieSvc.MoveFolderCheck,

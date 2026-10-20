@@ -175,7 +175,10 @@ func (c *Coordinator) ApplyReviewMap(ctx context.Context, p ReviewMapPlan) (int,
 	}
 	// A copy across drives reports its bytes to ctx's ImportProgress.
 	ctx = withCopyAccounting(ctx, r)
-	folder := c.series.ExistingFolderName(ctx, s.ID)
+	imp, folder, ferr := c.seriesPlacement(ctx, s)
+	if ferr != nil {
+		return 0, fmt.Errorf("%w: %w", ErrNothingToImport, ferr)
+	}
 	releaseName := filepath.Base(r.ContentPath)
 	release := parser.Parse(releaseName)
 	var placed []series.EpisodeRef
@@ -188,7 +191,7 @@ func (c *Coordinator) ApplyReviewMap(ctx context.Context, p ReviewMapPlan) (int,
 		if parser.Parse(sourceName).Resolution == "" && release.Resolution != "" {
 			sourceName = releaseName // the pack names the quality once, on its folder
 		}
-		ei, ok, err := c.tvImp(ctx, s).ImportEpisodeAs(folder, s.Title, s.Year, f.season, f.episodes[0], f.path)
+		ei, ok, err := imp.ImportEpisodeAs(folder, s.Title, s.Year, f.season, f.episodes[0], f.path)
 		if err != nil || !ok {
 			if err == nil {
 				err = errors.New("empty file")

@@ -44,9 +44,12 @@ func (f *fixture) mover(t *testing.T, bin string) (*Mover, *scans) {
 	t.Helper()
 	sc := &scans{}
 	return &Mover{
-		DB: f.st.DB(), Folders: f.svc, Bin: library.SingleBin(bin), Scan: sc.add, ShowFolder: showFolder,
+		DB: f.st.DB(), Folders: f.svc, Bin: library.SingleBin(bin), Scan: sc.add,
+		ShowFolders: func(context.Context, int64) func(string) string { return showFolder },
 		// Every film folder here is its own; the movies package's real rules
 		// (MoveFolderCheck) are tested there, against these moves (move_layout_test.go).
+		// Shows' Unclear is left nil here (permissive); series.MoveBlocked is tested in the
+		// automation package.
 		OwnFolder: func(context.Context, int64, string) string { return "" },
 		Log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}, sc
@@ -268,6 +271,170 @@ func TestMoveShowFolder(t *testing.T) {
 	}
 	if len(sc.dirs) == 0 || !strings.HasPrefix(sc.dirs[0], "show:") {
 		t.Errorf("scans = %v, want show scans", sc.dirs)
+	}
+}
+
+// Each kind is judged by its own hook only: a show's move asks Unclear (and never the
+// films' OwnFolder), a film's move asks OwnFolder (and never Unclear); and each one's
+// refusal stops its own kind's move.
+func TestMoveHooksApplyToTheirOwnKind(t *testing.T) {
+	setup := func(t *testing.T) (*fixture, *Mover, *int, *int, Folder, Folder) {
+		f := newFixture(t)
+		anime := f.add(t, MediaSeries, "anime", RuleAnime)
+		kids := f.add(t, MediaMovie, "kids", RuleKids)
+		e1 := writeFile(t, filepath.Join(f.tv, "Frieren (2023)", "Season 01", "Frieren - S01E01.mkv"), "e1")
+		db := f.st.DB()
+		if _, err := db.Exec(`INSERT INTO series (id, tmdb_id, title) VALUES (1, 209867, 'Frieren')`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO episodes (series_id, season_number, episode_number, has_file, file_path) VALUES (1, 1, 1, 1, ?)`, e1); err != nil {
+			t.Fatal(err)
+		}
+		filmFixture(t, f)
+		m, _ := f.mover(t, filepath.Join(f.base, "bin"))
+		unclear, own := 0, 0
+		m.Unclear = func(context.Context, int64) string { unclear++; return "" }
+		m.OwnFolder = func(context.Context, int64, string) string { own++; return "" }
+		return f, m, &unclear, &own, anime, kids
+	}
+	t.Run("a show asks Unclear only", func(t *testing.T) {
+		_, m, unclear, own, anime, _ := setup(t)
+		if _, err := m.Move(context.Background(), MediaSeries, 1, anime.ID, nil); err != nil {
+			t.Fatal(err)
+		}
+		if *unclear == 0 || *own != 0 {
+			t.Errorf("Unclear asked %d times, OwnFolder %d; want only Unclear", *unclear, *own)
+		}
+	})
+	t.Run("a film asks OwnFolder only", func(t *testing.T) {
+		_, m, unclear, own, _, kids := setup(t)
+		if _, err := m.Move(context.Background(), MediaMovie, 1, kids.ID, nil); err != nil {
+			t.Fatal(err)
+		}
+		if *own == 0 || *unclear != 0 {
+			t.Errorf("OwnFolder asked %d times, Unclear %d; want only OwnFolder", *own, *unclear)
+		}
+	})
+	t.Run("Unclear refuses a show", func(t *testing.T) {
+		f, m, _, _, anime, _ := setup(t)
+		m.Unclear = func(context.Context, int64) string { return "its folder holds another show's episode" }
+		if _, err := m.Move(context.Background(), MediaSeries, 1, anime.ID, nil); !errors.Is(err, ErrBadPath) {
+			t.Fatalf("move = %v, want refused", err)
+		}
+		readFile(t, filepath.Join(f.tv, "Frieren (2023)", "Season 01", "Frieren - S01E01.mkv"))
+	})
+}
+
+// A show with files the #56 bug put in <TV>/S13/Season 12 isn't moved: the folder named
+// like a season would be carried to the new library folder as it is.
+func TestMoveRefusesASeasonNamedShowFolder(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	anime := f.add(t, MediaSeries, "anime", RuleAnime)
+	own := writeFile(t, filepath.Join(f.tv, "Frieren", "S01", "Frieren - S01E01.mkv"), "e1")
+	lost := writeFile(t, filepath.Join(f.tv, "S13", "Season 12", "Frieren - S12E01.mkv"), "e2")
+	db := f.st.DB()
+	if _, err := db.Exec(`INSERT INTO series (id, tmdb_id, title) VALUES (1, 209867, 'Frieren')`); err != nil {
+		t.Fatal(err)
+	}
+	for i, p := range []string{own, lost} {
+		if _, err := db.Exec(`INSERT INTO episodes (series_id, season_number, episode_number, has_file, file_path) VALUES (1, ?, 1, 1, ?)`, i+1, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m, _ := f.mover(t, filepath.Join(f.base, "bin"))
+	if _, err := m.Move(ctx, MediaSeries, 1, anime.ID, nil); !errors.Is(err, ErrBadPath) || !strings.Contains(err.Error(), "named like a season") {
+		t.Fatalf("move = %v, want refused", err)
+	}
+	readFile(t, own)
+	readFile(t, lost)
+}
+
+// A folder holding other shows' folders — a category folder like /tv/Kids, with a show
+// Arrmada doesn't track beside this one — is never moved whole.
+func TestMoveRefusesAFolderOfShows(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	anime := f.add(t, MediaSeries, "anime", RuleAnime)
+	kids := filepath.Join(f.tv, "Kids")
+	ep := writeFile(t, filepath.Join(kids, "Bluey", "Bluey - S01E01.mkv"), "e1")
+	untracked := writeFile(t, filepath.Join(kids, "Peppa", "Season 1", "Peppa - S01E01.mkv"), "p1")
+	db := f.st.DB()
+	if _, err := db.Exec(`INSERT INTO series (id, tmdb_id, title) VALUES (1, 82728, 'Bluey')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO episodes (series_id, season_number, episode_number, has_file, file_path) VALUES (1, 1, 1, 1, ?)`, ep); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := f.mover(t, filepath.Join(f.base, "bin"))
+	// Whatever reads the show's folder as the category folder, the move is refused.
+	m.ShowFolders = func(context.Context, int64) func(string) string { return func(string) string { return kids } }
+	if _, err := m.Move(ctx, MediaSeries, 1, anime.ID, nil); !errors.Is(err, ErrBadPath) || !strings.Contains(err.Error(), "more than one show") {
+		t.Fatalf("move = %v, want refused", err)
+	}
+	readFile(t, ep)
+	readFile(t, untracked)
+
+	// Two flat show folders side by side count the same.
+	if err := os.RemoveAll(filepath.Join(kids, "Peppa")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(kids, "Paw Patrol", "Paw Patrol - S01E01.mkv"), "pp")
+	if _, err := m.Move(ctx, MediaSeries, 1, anime.ID, nil); !errors.Is(err, ErrBadPath) {
+		t.Fatalf("move with two flat show folders = %v, want refused", err)
+	}
+	readFile(t, ep)
+}
+
+// A show folder holding a link — to another show's folder or season, or to a video — is
+// never moved whole: the link would be carried along. A link to a poster doesn't count.
+func TestMoveRefusesAFolderHoldingALink(t *testing.T) {
+	for _, c := range []struct {
+		name, link string
+		target     func(t *testing.T, base string) string
+		refused    bool
+	}{
+		{"linked show folder", "Star Trek TNG", func(t *testing.T, base string) string {
+			writeFile(t, filepath.Join(base, "elsewhere", "TNG", "Season 1", "TNG - S01E01.mkv"), "x")
+			return filepath.Join(base, "elsewhere", "TNG")
+		}, true},
+		{"linked season folder", "S03", func(t *testing.T, base string) string {
+			writeFile(t, filepath.Join(base, "elsewhere", "Season 3", "Other - S03E01.mkv"), "x")
+			return filepath.Join(base, "elsewhere", "Season 3")
+		}, true},
+		{"linked video", "Other - S01E01.mkv", func(t *testing.T, base string) string {
+			return writeFile(t, filepath.Join(base, "elsewhere", "Other - S01E01.mkv"), "x")
+		}, true},
+		{"linked poster", "poster.jpg", func(t *testing.T, base string) string {
+			return writeFile(t, filepath.Join(base, "elsewhere", "poster.jpg"), "x")
+		}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			ctx := context.Background()
+			anime := f.add(t, MediaSeries, "anime", RuleAnime)
+			show := filepath.Join(f.tv, "Star Trek")
+			ep := writeFile(t, filepath.Join(show, "S01", "Star Trek - S01E01.mkv"), "e1")
+			if err := os.Symlink(c.target(t, f.base), filepath.Join(show, c.link)); err != nil {
+				t.Skipf("no symlinks here: %v", err)
+			}
+			db := f.st.DB()
+			if _, err := db.Exec(`INSERT INTO series (id, tmdb_id, title) VALUES (1, 253, 'Star Trek')`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO episodes (series_id, season_number, episode_number, has_file, file_path) VALUES (1, 1, 1, 1, ?)`, ep); err != nil {
+				t.Fatal(err)
+			}
+			m, _ := f.mover(t, filepath.Join(f.base, "bin"))
+			m.ShowFolders = func(context.Context, int64) func(string) string { return func(string) string { return show } }
+			_, err := m.Move(ctx, MediaSeries, 1, anime.ID, nil)
+			if refused := errors.Is(err, ErrBadPath) && strings.Contains(err.Error(), "is a link"); refused != c.refused {
+				t.Fatalf("move = %v, want refused=%v", err, c.refused)
+			}
+			if c.refused {
+				readFile(t, ep)
+			}
+		})
 	}
 }
 

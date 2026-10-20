@@ -653,6 +653,10 @@ func (a *api) registerRoutes(mux *router) {
 	mux.HandleFunc("DELETE /api/v1/series/{id}/numbering/pending", a.requireRole(auth.RoleManager, a.handleDismissSeriesNumbering))
 	mux.HandleFunc("GET /api/v1/series/{id}/rename", a.requireRole(auth.RoleManager, a.handleSeriesRenamePreview))
 	mux.HandleFunc("POST /api/v1/series/{id}/rename", a.requireRole(auth.RoleManager, a.handleSeriesRename))
+	// Episode files outside the show's folder (#56): a preview, then putting back exactly
+	// the previewed files.
+	mux.HandleFunc("GET /api/v1/series/{id}/misplaced", a.requireRole(auth.RoleManager, a.handleSeriesMisplaced))
+	mux.HandleFunc("POST /api/v1/series/{id}/misplaced", a.requireRole(auth.RoleManager, a.handleSeriesMisplacedApply))
 	mux.HandleFunc("GET /api/v1/series/{id}", a.requireRole(auth.RoleManager, a.handleGetSeries))
 	mux.HandleFunc("GET /api/v1/series/{id}/watch-stats", a.requireRole(auth.RoleManager, a.handleSeriesWatchStats))
 	mux.HandleFunc("GET /api/v1/series/{id}/downloads", a.requireRole(auth.RoleManager, a.handleSeriesDownloads))

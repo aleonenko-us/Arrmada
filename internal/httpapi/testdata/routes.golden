@@ -272,6 +272,7 @@ GET /api/v1/series/{id}/downloads staff -
 GET /api/v1/series/{id}/duplicates staff -
 GET /api/v1/series/{id}/history staff -
 GET /api/v1/series/{id}/manualimport staff -
+GET /api/v1/series/{id}/misplaced staff -
 GET /api/v1/series/{id}/numbering staff -
 GET /api/v1/series/{id}/releases staff -
 GET /api/v1/series/{id}/rename staff -
@@ -504,6 +505,7 @@ POST /api/v1/series/{id}/blocklist staff -
 POST /api/v1/series/{id}/grab staff -
 POST /api/v1/series/{id}/grabtorrent staff -
 POST /api/v1/series/{id}/manualimport staff -
+POST /api/v1/series/{id}/misplaced staff -
 POST /api/v1/series/{id}/move staff -
 POST /api/v1/series/{id}/numbering/apply staff -
 POST /api/v1/series/{id}/refresh staff -

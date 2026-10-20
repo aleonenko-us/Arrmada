@@ -105,8 +105,13 @@ type Mover struct {
 	// them go again), so nothing is grabbed into the old folder half-way. ok is false
 	// while a search of it is already running. nil = no hold.
 	Hold func(media string, id int64) (release func(), ok bool)
-	// ShowFolder is the show folder an episode file lives in (series.ShowFolder).
-	ShowFolder func(episodePath string) string
+	// ShowFolders answers, for a show, the show folder each of its episode files lives in
+	// (series.Service.ShowFoldersOf; "" for a file loose in a library folder).
+	ShowFolders func(ctx context.Context, seriesID int64) func(episodePath string) string
+	// Unclear says why a show's folder may not move ("" when it may): its folder can't be
+	// told, or it holds an episode that isn't the show's (series.Service.MoveBlocked). Shows
+	// only; films are judged by OwnFolder.
+	Unclear func(ctx context.Context, seriesID int64) string
 	// OwnFolder says why film id's folder dir may not move whole ("" when it may): it must
 	// be provably the film's own (movies.Service.MoveFolderCheck), since a move carries
 	// everything in it. Films only; a nil one refuses every film (fail closed).
@@ -498,10 +503,23 @@ func (m *Mover) ownCheck(ctx context.Context, t title, dir string) error {
 // before a single file moves.
 func (m *Mover) plan(ctx context.Context, t title, dest Folder) ([]movePlan, error) {
 	dirs := map[string]int{}
+	// A show whose folder can't be told — the import would refuse it — is never moved: its
+	// folder may be a category holding other shows.
+	if t.media == MediaSeries && m.Unclear != nil {
+		if why := m.Unclear(ctx, t.id); why != "" {
+			return nil, fmt.Errorf("%w: can't tell which folder %s lives in: %s", ErrBadPath, t.name, why)
+		}
+	}
+	var showFolder func(string) string
+	if t.media == MediaSeries && m.ShowFolders != nil {
+		showFolder = m.ShowFolders(ctx, t.id)
+	}
 	for _, f := range t.files {
 		dir := filepath.Dir(f)
-		if t.media == MediaSeries && m.ShowFolder != nil {
-			dir = m.ShowFolder(f)
+		if showFolder != nil {
+			if show := showFolder(f); show != "" {
+				dir = show
+			}
 		}
 		dirs[filepath.Clean(dir)]++
 	}
@@ -542,6 +560,22 @@ func (m *Mover) plan(ctx context.Context, t title, dest Folder) ([]movePlan, err
 		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
 			return nil, fmt.Errorf("%w: can't place %s under %s", ErrBadPath, dir, dest.Path)
 		}
+		// A show's files in a folder named like a season right inside the library folder
+		// (<TV>/S13/…) were put there by mistake (#56): moving that folder along would carry
+		// the mistake to the new library folder.
+		if t.media == MediaSeries && rel == filepath.Base(dir) {
+			if _, season := library.SeasonFolderNumber(rel); season {
+				return nil, fmt.Errorf("%w: some of %s's files are in %s, a folder named like a season — put them back into the show's folder first (the show's page offers to)", ErrBadPath, t.name, dir)
+			}
+		}
+		// A folder holding other shows' folders is a category folder (/tv/Anime), not the
+		// show's own: moving it would take every show in it along, the ones Arrmada doesn't
+		// track included.
+		if t.media == MediaSeries {
+			if why := holdsOtherShows(dir); why != "" {
+				return nil, fmt.Errorf("%w: %s looks like it holds more than one show (%s), so Arrmada won't move it — give %s a folder of its own first", ErrBadPath, dir, why, t.name)
+			}
+		}
 		if other, err := m.sharedWith(ctx, t, dir); err != nil {
 			return nil, err
 		} else if other != "" {
@@ -565,6 +599,46 @@ func (m *Mover) plan(ctx context.Context, t title, dest Folder) ([]movePlan, err
 		out = append(out, movePlan{from: dir, to: to, root: dest.Path, staging: stagingPath(dest.Path, rel), files: dirs[dir]})
 	}
 	return out, nil
+}
+
+// holdsOtherShows says why dir looks like a folder of shows rather than one show ("" when
+// it doesn't): a subfolder that isn't a season folder but has season folders of its own,
+// or two or more subfolders that aren't season, specials or extras folders. A show whose
+// season folders have names Arrmada doesn't know ("Book 1", "Book 2") is refused too; that
+// is the safe way to be wrong. A folder that can't be read says nothing.
+func holdsOtherShows(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	var others []string
+	for _, e := range entries {
+		// A link may lead to another show's folder or files: moving the folder would carry
+		// it along.
+		if e.Type()&os.ModeSymlink != 0 && library.LinkMayHoldVideo(filepath.Join(dir, e.Name())) {
+			return fmt.Sprintf("%q in it is a link", e.Name())
+		}
+		if !e.IsDir() || library.SkipScanDir(e.Name()) || strings.HasPrefix(e.Name(), ".") || library.LooksLikeSeasonFolder(e.Name()) {
+			continue
+		}
+		others = append(others, e.Name())
+		sub, err := os.ReadDir(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		for _, s := range sub {
+			if s.IsDir() {
+				if _, season := library.SeasonFolderNumber(s.Name()); season {
+					return fmt.Sprintf("%s has season folders of its own", e.Name())
+				}
+			}
+		}
+	}
+	if len(others) >= 2 {
+		sort.Strings(others)
+		return fmt.Sprintf("%s and %s", others[0], others[1])
+	}
+	return ""
 }
 
 // isRoot reports whether dir is one of the library's folders, and its label.
