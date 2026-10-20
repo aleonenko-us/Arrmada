@@ -216,6 +216,16 @@ type MovieExtra struct {
 	OriginalTitle string   `json:"original_title,omitempty"`
 	AltTitles     []string `json:"alt_titles,omitempty"`
 	TitlesRead    bool     `json:"titles_read,omitempty"`
+	// HomeReleaseDate is the earliest digital, physical or TV release in any country and
+	// TheatricalDate the earliest cinema release (YYYY-MM-DD, "" when TMDB doesn't say):
+	// before the home release a WEB-DL or BluRay can't be real, so a grab refuses one
+	// (releasedates.go). DatesRead says they were read from TMDB — false on records stored
+	// before they were kept, which the titles backfill fills in — and DatesReadAt the day
+	// they were, so dates still settling are read again (DatesDue).
+	HomeReleaseDate string `json:"home_release_date,omitempty"`
+	TheatricalDate  string `json:"theatrical_date,omitempty"`
+	DatesRead       bool   `json:"dates_read,omitempty"`
+	DatesReadAt     string `json:"dates_read_at,omitempty"`
 	// LocalTitles are the film's translated titles in the languages Settings → Library →
 	// "Also match titles in" names, for matching folders and downloads named in the
 	// household's language (localtitles.go). LocalLangs are the languages (ISO 639-1)

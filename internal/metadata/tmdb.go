@@ -603,7 +603,67 @@ type tmdbReleaseDates struct {
 	Country      string `json:"iso_3166_1"`
 	ReleaseDates []struct {
 		Certification string `json:"certification"`
+		// Type is TMDB's release type (tmdbReleasePremiere…tmdbReleaseTV) and ReleaseDate
+		// its day, as an ISO timestamp ("2026-03-12T00:00:00.000Z").
+		Type        int    `json:"type"`
+		ReleaseDate string `json:"release_date"`
 	} `json:"release_dates"`
+}
+
+// TMDB's release types.
+const (
+	tmdbReleasePremiere        = 1
+	tmdbReleaseTheatricalLimit = 2
+	tmdbReleaseTheatrical      = 3
+	tmdbReleaseDigital         = 4
+	tmdbReleasePhysical        = 5
+	tmdbReleaseTV              = 6
+)
+
+// releaseWindow reads a film's per-country release dates into the two days a grab needs
+// (YYYY-MM-DD, "" when TMDB has none): home, the earliest digital, physical or TV release
+// anywhere — before it, a real WEB-DL or BluRay can't exist yet — and theatrical, the
+// earliest cinema release (limited or wide), or the premiere when no cinema date is listed.
+// The earliest anywhere, not the US date: a copy leaks from whichever country sells it first.
+func releaseWindow(results []tmdbReleaseDates) (home, theatrical string) {
+	premiere := ""
+	earliest := func(cur, day string) string {
+		if cur == "" || day < cur {
+			return day
+		}
+		return cur
+	}
+	for _, r := range results {
+		for _, rd := range r.ReleaseDates {
+			day := isoDay(rd.ReleaseDate)
+			if day == "" {
+				continue
+			}
+			switch rd.Type {
+			case tmdbReleaseDigital, tmdbReleasePhysical, tmdbReleaseTV:
+				home = earliest(home, day)
+			case tmdbReleaseTheatricalLimit, tmdbReleaseTheatrical:
+				theatrical = earliest(theatrical, day)
+			case tmdbReleasePremiere:
+				premiere = earliest(premiere, day)
+			}
+		}
+	}
+	if theatrical == "" {
+		theatrical = premiere
+	}
+	return home, theatrical
+}
+
+// isoDay is the YYYY-MM-DD day of a TMDB timestamp, "" when it doesn't start with one.
+func isoDay(ts string) string {
+	if len(ts) < 10 {
+		return ""
+	}
+	if _, err := time.Parse("2006-01-02", ts[:10]); err != nil {
+		return ""
+	}
+	return ts[:10]
 }
 
 func (m tmdbMovie) toResult() MovieResult {
@@ -663,6 +723,7 @@ func parseTMDBMovie(body []byte) (*MovieDetails, error) {
 		d.CollectionName = m.BelongsToCollection.Name
 	}
 	d.Certification = usCertification(m.ReleaseDates.Results)
+	d.HomeReleaseDate, d.TheatricalDate = releaseWindow(m.ReleaseDates.Results)
 	d.OriginalTitle, d.AltTitles = movieAltTitles(m)
 	for _, c := range m.Credits.Cast {
 		if len(d.Cast) >= maxCast {

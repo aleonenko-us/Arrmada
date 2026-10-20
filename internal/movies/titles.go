@@ -108,13 +108,15 @@ func TitleMatches(keys []string, m Movie, title string, year int) bool {
 // BackfillAltTitles reads the original and alternative titles of every movie stored before
 // they were kept (Extra.TitlesRead unset), the translated titles of every movie not yet
 // read for all the "Also match titles in" languages (needsLocalTitles), and the display
-// names the "Show titles as" setting needs (needsDisplayNames), one movie per every so a
+// names the "Show titles as" setting needs (needsDisplayNames), and the release dates of
+// every movie not yet read or still settling (DatesDue, from the same detail read as the
+// alternative titles), one movie per every so a
 // large library never bursts TMDB, and returns how many it filled. It stops
 // when none are left, when TMDB isn't configured (the next start tries again), or when ctx
 // ends. A movie TMDB can't answer right now is left for the next start; one TMDB no longer
 // has is marked read. New movies and Refresh fill the titles themselves.
 //
-// It runs at start and again whenever the languages or the display setting change. One pass runs at a time: a
+// It runs at start, daily (for the dates), and again whenever the languages or the display setting change. One pass runs at a time: a
 // call while one is running asks it to go round once more (the languages it read may be
 // out of date) and returns at once with 0.
 func (s *Service) BackfillAltTitles(ctx context.Context, every time.Duration) (int, error) {
@@ -149,12 +151,14 @@ func (s *Service) backfillTitlesOnce(ctx context.Context, every time.Duration) (
 	}
 	langs := s.localLangs()
 	display := s.policy()
+	now := time.Now()
 	filled := 0
 	for _, m := range all {
 		needAlt := m.TMDBID > 0 && (m.Extra == nil || !m.Extra.TitlesRead)
+		needDates := DatesDue(m, now)
 		needLocal := s.titles != nil && needsLocalTitles(m, langs)
 		needDisplay := s.titles != nil && needsDisplayNames(m, display)
-		if !needAlt && !needLocal && !needDisplay {
+		if !needAlt && !needDates && !needLocal && !needDisplay {
 			continue
 		}
 		t := time.NewTimer(every)
@@ -164,7 +168,8 @@ func (s *Service) backfillTitlesOnce(ctx context.Context, every time.Duration) (
 			return filled, ctx.Err()
 		case <-t.C:
 		}
-		if needAlt {
+		// One detail read serves the titles and the release dates.
+		if needAlt || needDates {
 			d, err := s.meta.GetMovie(ctx, m.TMDBID)
 			switch {
 			case errors.Is(err, metadata.ErrNotConfigured):
@@ -178,8 +183,15 @@ func (s *Service) backfillTitlesOnce(ctx context.Context, every time.Duration) (
 				s.log.Debug("movies: couldn't read alternative titles; trying again next start", "movie", m.Title, "err", err)
 				continue
 			}
-			if err := s.repo.SetTitles(ctx, m.ID, d.OriginalTitle, d.AltTitles); err != nil {
-				return filled, err
+			if needAlt {
+				if err := s.repo.SetTitles(ctx, m.ID, d.OriginalTitle, d.AltTitles); err != nil {
+					return filled, err
+				}
+			}
+			if needDates {
+				if err := s.repo.SetReleaseDates(ctx, m.ID, d.HomeReleaseDate, d.TheatricalDate, now); err != nil {
+					return filled, err
+				}
 			}
 		}
 		if needLocal {

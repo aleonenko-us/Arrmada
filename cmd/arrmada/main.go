@@ -831,6 +831,13 @@ func main() {
 		_, err := movieSvc.CheckMissingFiles(ctx)
 		return err
 	}, scheduler.Label("Check for missing movie files"), scheduler.Description("Marks movies whose file has vanished from disk as File missing. Never deletes or searches; if the movies folder looks unmounted it marks nothing and raises a health warning."))
+	// Read release dates again while they're settling: TMDB often learns a film's digital
+	// date only weeks into its cinema run, and a grab refuses a "WEB-DL" from before it.
+	// The same throttled pass as the startup titles backfill (it skips whatever is current).
+	sched.Register("movie-release-dates", 24*time.Hour, false, func(ctx context.Context) error {
+		_, err := movieSvc.BackfillAltTitles(ctx, 2*time.Second)
+		return err
+	}, scheduler.Label("Update movie release dates"), scheduler.Description("Reads the cinema and home release dates of recent movies again from TMDB, so a copy labelled WEB-DL before the film is out at home is refused."))
 	// Fail over stalled downloads: replace, then remove, after the profile's (or the global
 	// default) timeout with no progress.
 	sched.Register("detect-stalled", 2*time.Minute, false, func(ctx context.Context) error {

@@ -130,6 +130,11 @@ type MovieDetails struct {
 	// not); AltTitles the other titles its releases may be named by (movieAltTitles).
 	OriginalTitle string   `json:"original_title,omitempty"`
 	AltTitles     []string `json:"alt_titles,omitempty"`
+	// HomeReleaseDate is the earliest digital, physical or TV release in any country and
+	// TheatricalDate the earliest cinema release (the premiere when none is listed), both
+	// YYYY-MM-DD and "" when TMDB doesn't say (releaseWindow).
+	HomeReleaseDate string `json:"home_release_date,omitempty"`
+	TheatricalDate  string `json:"theatrical_date,omitempty"`
 }
 
 // CastMember is one billed actor. ID is their TMDB person id (0 in records stored before

@@ -66,7 +66,8 @@ func TestBackfillAltTitles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.repo.Create(ctx, Movie{TMDBID: 4, Title: "Four", Year: 2004, Extra: &MovieExtra{TitlesRead: true}}); err != nil {
+	if _, err := s.repo.Create(ctx, Movie{TMDBID: 4, Title: "Four", Year: 2004, Extra: &MovieExtra{TitlesRead: true,
+		DatesRead: true, DatesReadAt: time.Now().UTC().Format(time.DateOnly)}}); err != nil {
 		t.Fatal(err)
 	}
 
