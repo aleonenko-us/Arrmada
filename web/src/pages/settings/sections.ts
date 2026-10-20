@@ -1,6 +1,7 @@
 // The Settings hub's map: which sections exist, who sees them, where every control lives
 // (for the search box) and where an old link should land. Kept free of components so it
 // can be tested on its own; pages/Settings.tsx pairs each id with the component it renders.
+import { fixLink } from "../../lib/links";
 
 export type SectionId = "library" | "media" | "connections" | "downloads" | "subtitles" | "convert" | "alerts" | "media-servers" | "audiobook-server" | "users" | "import" | "system" | "status";
 
@@ -46,6 +47,40 @@ export const DEFAULT_SECTION: SectionId = "library";
 
 export function visibleSections(admin: boolean): SettingsSection[] {
   return SECTIONS.filter((s) => admin || !s.adminOnly);
+}
+
+export interface SettingsHealthCount {
+  count: number;
+  errors: number;
+}
+
+// Put each health finding's badge beside the settings section where its fix link lands.
+// The Status section remains the complete list, so it shows the overall number too.
+export function healthCountsBySection(
+  items: readonly { kind: string; level: string; link?: string; link_key?: string }[],
+  visible: readonly string[],
+): Partial<Record<SectionId, SettingsHealthCount>> {
+  const health = items.filter((item) => item.kind === "health");
+  const counts: Partial<Record<SectionId, SettingsHealthCount>> = {};
+  const add = (id: SectionId, level: string) => {
+    const count = counts[id] ?? { count: 0, errors: 0 };
+    count.count++;
+    if (level === "error") count.errors++;
+    counts[id] = count;
+  };
+
+  if (visible.includes("status") && health.length > 0) {
+    counts.status = { count: health.length, errors: health.filter((item) => item.level === "error").length };
+  }
+  for (const item of health) {
+    const target = fixLink(item);
+    if (!target) continue;
+    const section = sectionFromPath(target.split(/[?#]/, 1)[0]);
+    if (visible.includes(section) && section !== "status" && SECTIONS.some((s) => s.id === section)) {
+      add(section as SectionId, item.level);
+    }
+  }
+  return counts;
 }
 
 export interface SearchEntry {

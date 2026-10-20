@@ -4,7 +4,7 @@ import { PageHeader } from "../components/PageHeader";
 import { inputStyle } from "../components/settings/ui";
 import { useMe, isAdmin } from "../lib/me";
 import { SettingsProvider, useSettingsStore } from "../lib/useSettings";
-import { searchSettings, sectionFromPath, settingsRedirect, visibleSections, type SearchEntry, type SectionId } from "./settings/sections";
+import { healthCountsBySection, searchSettings, sectionFromPath, settingsRedirect, visibleSections, type SearchEntry, type SectionId } from "./settings/sections";
 import { LibrarySettings } from "./settings/LibrarySettings";
 import { NamingSettings } from "./settings/Naming";
 import { DownloadsSettings } from "./settings/DownloadsSettings";
@@ -20,6 +20,7 @@ import { ConvertSettings } from "./settings/ConvertSettings";
 import { AudiobookServerSettings } from "./settings/AudiobookServer";
 import { Page } from "../ui/Page";
 import { openPalette, paletteShortcut } from "../lib/paletteOpen";
+import { useAttention } from "../lib/useAttention";
 
 // How long a deep link keeps its card in view while the section's cards load (see below).
 const SETTLE_MS = 3000;
@@ -58,6 +59,8 @@ function SettingsHub() {
   const { user } = useMe();
   const sections = visibleSections(isAdmin(user));
   const ids = sections.map((s) => s.id);
+  const attention = useAttention();
+  const sectionHealth = healthCountsBySection(attention?.items ?? [], ids);
   const { pathname, search, hash } = useLocation();
   const navigate = useNavigate();
   const { s, error } = useSettingsStore();
@@ -154,14 +157,20 @@ function SettingsHub() {
             className="rounded-lg px-3 py-2 text-base lg:hidden"
             style={inputStyle}
           >
-            {sections.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+            {sections.map((x) => {
+              const count = sectionHealth[x.id]?.count ?? 0;
+              return <option key={x.id} value={x.id}>{count ? `${x.label} (${count})` : x.label}</option>;
+            })}
           </select>
           <nav aria-label="Settings sections" className="hidden flex-col gap-0.5 lg:flex">
-            {sections.map((x) => (
+            {sections.map((x) => {
+              const badge = sectionHealth[x.id];
+              return (
               <NavLink
                 key={x.id}
                 to={`/settings/${x.id}`}
-                className="rounded-[9px] px-2.5 py-2 text-md transition-colors"
+                aria-label={badge ? `${x.label}, ${badge.count} health ${badge.errors ? "error" : "warning"}${badge.count === 1 ? "" : "s"}` : undefined}
+                className="flex items-center gap-2 rounded-[9px] px-2.5 py-2 text-md transition-colors"
                 style={({ isActive }) =>
                   isActive
                     ? { background: "var(--accent-soft)", color: "var(--accent-text)", fontWeight: 600 }
@@ -169,8 +178,10 @@ function SettingsHub() {
                 }
               >
                 {x.label}
+                {badge && <span className="ml-auto min-w-[18px] rounded-full px-1.5 py-px text-center font-mono text-xs font-semibold" style={{ background: badge.errors ? "var(--reject-soft)" : "var(--avoid-soft)", color: badge.errors ? "var(--reject-text)" : "var(--avoid-text)" }} title={`${badge.count} health finding${badge.count === 1 ? "" : "s"}`}>{badge.count > 99 ? "99+" : badge.count}</span>}
               </NavLink>
-            ))}
+              );
+            })}
           </nav>
         </aside>
 
