@@ -5,8 +5,10 @@ There are two ways to run Arrmada on Unraid:
 - **The Community Apps template** (this page). One container, managed from Unraid's Docker
   page like any other app, with **qBittorrent and FlareSolverr built in**: Arrmada starts
   them, connects to them and keeps their settings in step, so there's no download client to
-  set up. Already have your own qBittorrent, SABnzbd or FlareSolverr? Switch the built-in
-  ones off and use yours.
+  set up. Already have your own qBittorrent or FlareSolverr? Switch the built-in one off and
+  use yours. A **SABnzbd** (for Usenet) and a **Prowlarr** are in the container too, but
+  they're off until you switch them on ([below](#the-built-in-sabnzbd-and-prowlarr)); your
+  own SABnzbd or Prowlarr works just as well.
 - **The Compose install** ([Install](install.md)). The same app with qBittorrent and
   FlareSolverr as containers of their own, through the Docker Compose Manager plugin, plus
   the optional Prowlarr and SABnzbd. Its folders are lines in the stack's `.env`
@@ -30,7 +32,8 @@ a share called `data`:
 │   ├── tv
 │   ├── ebooks
 │   └── audiobooks
-├── downloads         ← the built-in qBittorrent saves here (or torrents/, your choice)
+├── downloads         ← the built-in qBittorrent saves here (or torrents/, your choice);
+│   └── usenet        ← and the built-in SABnzbd, if you switch it on
 └── usenet            ← SABnzbd, if you use your own
 ```
 
@@ -40,7 +43,8 @@ copy to land on the same disk. When they don't, the import copies instead and th
 on one disk helps.
 
 > ⚠ Never point anything at `/data` inside the container except appdata. That's where
-> Arrmada keeps its database (and the built-in qBittorrent its settings).
+> Arrmada keeps its database (and the built-in qBittorrent, SABnzbd and Prowlarr their
+> settings).
 
 ### The disk guard and your cache pool
 
@@ -84,14 +88,18 @@ pausing or resuming rather than measuring the array again. More in
    | Web UI port | 7880 | The web page. Not 7878, because Radarr usually has that |
    | Torrent port (TCP) and (UDP) | 56881 | The built-in qBittorrent's incoming port. Forward it on your router (TCP and UDP) to seed well |
    | Audiobook server port | 13379 | For listening apps (Lissen and others). Off until you switch it on in the app |
-   | App data | `/mnt/user/appdata/arrmada` | The database, its backups and settings, and the built-in qBittorrent's (`/data` inside) |
+   | App data | `/mnt/user/appdata/arrmada` | The database, its backups and settings, and the built-in apps' settings (`/data` inside) |
    | Media and downloads | — | Your share, at `/storage` inside |
    | qBittorrent web UI port *(more settings)* | 8091 | Optional: qBittorrent's own page, if you want to look inside it |
+   | SABnzbd web UI port *(more settings)* | 8085 | The built-in SABnzbd's page, once it's switched on: where your Usenet provider goes |
+   | Prowlarr web UI port *(more settings)* | 9697 | The built-in Prowlarr's page, once it's switched on: where your indexers go. Not 9696, so it stays clear of a Prowlarr you already run |
    | Transcode folder *(more settings)* | — | Optional scratch space for Convert. A cache pool is better than the array (`/mnt/cache/transcode`) |
    | Built-in qBittorrent / FlareSolverr *(more settings)* | true | `false` to use your own instead ([below](#using-your-own-download-client-or-flaresolverr)) |
+   | Built-in SABnzbd / Prowlarr *(more settings)* | false | `true` to run them ([below](#the-built-in-sabnzbd-and-prowlarr)) |
    | Torrent port setting *(more settings)* | 56881 | The port qBittorrent listens on: always the same number as the torrent port entries |
    | qBittorrent web UI host port *(more settings)* | 8091 | The same number as the qBittorrent web UI port, so Arrmada links the right page |
-   | PUID / PGID *(more settings)* | 99 / 100 | Unraid's `nobody:users`, which own your shares. The built-in qBittorrent runs as them too |
+   | SABnzbd / Prowlarr web UI host port *(more settings)* | 8085 / 9697 | The same numbers as their web UI ports, so Arrmada links the right pages |
+   | PUID / PGID *(more settings)* | 99 / 100 | Unraid's `nobody:users`, which own your shares. The built-in qBittorrent, SABnzbd and Prowlarr run as them too |
    | Starting library / downloads folder *(more settings)* | `/storage`, `/storage/downloads` | Only used until you pick the folders in the app |
    | FlareSolverr URL *(more settings)* | — | Blank uses the built-in one. Your own FlareSolverr's address if you switched that off |
 
@@ -105,7 +113,9 @@ template: you enter them in the app.
 has it: pick another number. For the torrent port, change it in **all three places** (both
 sides of the TCP entry, both sides of the UDP entry, and **Torrent port setting**):
 qBittorrent tells other peers the port it listens on and can't know about a different
-number on the server side.
+number on the server side. The SABnzbd and Prowlarr ports are taken from the server even
+while those two are switched off: if 8085 or 9697 is already in use, change the number on
+the server side (and in the matching host port setting).
 
 ## Install before it's listed
 
@@ -159,6 +169,51 @@ browser opens tracker pages). The container log shows their output with `[qbitto
 Unraid servers are x86-64, which has both. (The all-in-one image's 64-bit ARM build has no
 FlareSolverr, because the Chromium it needs is x86-64 only; it says so in the log.)
 
+## The built-in SABnzbd and Prowlarr
+
+The container also has a **SABnzbd** (for Usenet) and a **Prowlarr** (one place to keep
+your indexers), the same ones the Compose install adds with `--with-sabnzbd` and
+`--with-prowlarr`. They're off unless you switch them on: edit Arrmada, switch on **Show
+more settings**, set **Built-in SABnzbd** and/or **Built-in Prowlarr** to `true`, and
+**Apply**. (A blank field counts as off.) Like qBittorrent, they run as PUID/PGID, keep their
+settings in appdata (`sabnzbd/` and `prowlarr/`), and show up in the container log with
+`[sabnzbd]` and `[prowlarr]` in front.
+
+**SABnzbd** needs your own Usenet provider (a paid account) and Newznab indexers;
+without both it has nothing to download.
+
+- Arrmada connects to it by itself within a minute: it shows up in **Settings →
+  Connections** as *SABnzbd (bundled)*, with Arrmada's categories already in it.
+- Add your provider on SABnzbd's own page, `http://<server>:8085` (its card links there)
+  → **Config → Servers**. It asks for a login: choose **Show its login** on the SABnzbd
+  card (admins only).
+- Its downloads go to `usenet/incomplete` and `usenet/complete` in your Downloads folder,
+  on your media share, so a finished download is moved into the library on the same drive
+  rather than copied. Leave the folders SABnzbd shows as they are; Arrmada moves them with
+  your Downloads folder.
+- Open its page by the server's IP address. By name (`http://tower:8085`) it may say
+  "hostname verification failed" until you add that name in SABnzbd → Config → Special →
+  `host_whitelist`.
+- Switched back to `false`, it stops, and its client in Settings → Connections is switched
+  off with it, so nothing new is sent there. Its settings and queue stay in appdata: set it
+  to `true` again and both come back.
+
+**Prowlarr** is set up in its own page, `http://<server>:9697`:
+
+1. On the first visit it asks you to choose a login for it.
+2. Add your indexers there (**Indexers → Add Indexer**).
+3. Copy its API key (**Settings → General**), then in Arrmada open **Settings →
+   Connections → Prowlarr**: the address is already filled in. Paste the key and choose
+   **Sync now**. From then on Arrmada syncs every hour.
+
+Arrmada treats it as its own, so it gives it the built-in FlareSolverr for trackers behind
+Cloudflare. Switched back to `false`, it stops; its settings stay in appdata. If you'd rather
+keep your own Prowlarr, leave the built-in one off and put your Prowlarr's address in the
+same place in Arrmada.
+
+Both are in the ARM build too. They make the image about 230 MB larger on disk (about
+90 MB more to download), whether or not you switch them on.
+
 ## Using your own download client or FlareSolverr
 
 Edit Arrmada, switch on **Show more settings**, and set **Built-in qBittorrent** (or
@@ -170,6 +225,9 @@ Edit Arrmada, switch on **Show more settings**, and set **Built-in qBittorrent**
   torrent port entries if you like. Then add your own client (next section).
 - **FlareSolverr off:** put your own FlareSolverr's address in **FlareSolverr URL**, or in
   Settings → Connections → FlareSolverr, for example `http://192.168.1.10:8191`.
+
+The built-in SABnzbd and Prowlarr are off already unless you switched them on; your own
+are added the same way as below.
 
 ### Connecting your own download client
 
@@ -221,7 +279,8 @@ has the steps, and how to see which encoders Arrmada found.
 ## Updating
 
 The template runs `ghcr.io/tristenlammi/arrmada:stable-aio`, the latest published release
-with qBittorrent and FlareSolverr built in. When a new one is out, Arrmada's **Settings →
+with qBittorrent and FlareSolverr built in (and the optional SABnzbd and Prowlarr, from the
+release whose changelog lists them). When a new one is out, Arrmada's **Settings →
 Status → Updates** says so, and Unraid's Docker tab shows **update ready** after **Check for
 Updates** (it can take a few minutes longer than the Updates card, while the all-in-one
 image is built). Click it (or **Update All**) to pull the new image; the CA Auto Update
@@ -242,10 +301,31 @@ wrong with that. To switch to the built-in qBittorrent and FlareSolverr, edit Ar
 **Repository** to `ghcr.io/tristenlammi/arrmada:stable-aio`, and add the two torrent ports
 (`56881`, TCP and UDP); or keep your own client and set **Built-in qBittorrent** to `false`.
 
+**Installed before the built-in SABnzbd and Prowlarr?** Your container keeps the template it
+was installed with, so it has no switches for them; the update itself changes nothing, and
+both stay off. To switch one on, edit Arrmada and use **Add another Path, Port, Variable,
+Label or Device** for each line:
+
+| Type | Name | Container side | Value |
+|---|---|---|---|
+| Variable | Built-in SABnzbd | Key `ARRMADA_BUNDLE_SABNZBD` | `true` |
+| Port | SABnzbd web UI port | Container port `8085` (TCP) | Host port `8085` |
+| Variable | SABnzbd web UI host port | Key `ARRMADA_SABNZBD_HOST_PORT` | `8085` |
+| Variable | Built-in Prowlarr | Key `ARRMADA_BUNDLE_PROWLARR` | `true` |
+| Port | Prowlarr web UI port | Container port `9696` (TCP) | Host port `9697` |
+| Variable | Prowlarr web UI host port | Key `ARRMADA_PROWLARR_HOST_PORT` | `9697` |
+
 ## Troubleshooting
 
 - **The container won't start: "port is already allocated".** Something else has that host
   port. Edit Arrmada and change it ([A port that's taken](#install-from-community-apps)).
+  That includes the SABnzbd (8085) and Prowlarr (9697) ports, which are taken even while
+  those two are switched off.
+- **SABnzbd's page says "hostname verification failed".** Open it by the server's IP
+  address, or add the name you use to SABnzbd → Config → Special → `host_whitelist`.
+- **SABnzbd or Prowlarr doesn't start.** The container log says why on its `[sabnzbd]` or
+  `[prowlarr]` lines; `[aio]` says which built-in apps are switched on. A value other than
+  `true` or `false` in their switches leaves them off, and the log says so.
 - **Torrents download but hardly upload.** The torrent port isn't reachable from outside:
   forward it (TCP and UDP) on your router to the Unraid server, and check the number is the
   same in all three places.

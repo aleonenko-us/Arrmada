@@ -398,7 +398,7 @@ it needs two things Arrmada can't give you: **your own Usenet provider** (a paid
 the news servers the files come from) and **Newznab indexers** (the sites that list what's
 on Usenet). Without both, Usenet adds nothing.
 
-There are two ways to have SABnzbd.
+There are two ways to have SABnzbd: the bundled one, or your own.
 
 **The bundled one.** `install.sh --with-sabnzbd` (on a new install, or later on the one you
 have) runs SABnzbd beside Arrmada and Arrmada connects to it by itself, usually within a
@@ -422,6 +422,14 @@ just `arrmada-sabnzbd`; add your server's name there to use that instead.
 Removed in Arrmada, the bundled SABnzbd stays removed (even after a restart) until **Restore
 bundled SABnzbd** in Settings → Connections. To stop running it at all, take `sabnzbd` out of
 `COMPOSE_PROFILES` in `.env` and run `docker compose rm -sf arrmada-sabnzbd`.
+
+**On Unraid, the template's built-in one.** The Unraid template's container has the same
+SABnzbd inside it, off until you set **Built-in SABnzbd** to `true` (Show more settings).
+Arrmada connects to it the same way, and its page is on the **SABnzbd web UI port** (8085).
+Its settings live in `sabnzbd/` in Arrmada's appdata; its downloads go under `usenet/` in
+your Downloads folder, on your media share. Set the switch back to `false` and its client
+in Settings → Connections is switched off with it (its settings are kept for next time).
+[Arrmada on Unraid](unraid.md#the-built-in-sabnzbd-and-prowlarr) has the details.
 
 **Your own SABnzbd.** In Settings → Connections → **+ Add client**, pick SABnzbd and give
 its address (as Arrmada's container reaches it) and its **full API key** (SABnzbd → Config →
