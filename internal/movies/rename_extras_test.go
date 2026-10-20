@@ -2,16 +2,76 @@ package movies
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tristenlammi/arrmada/internal/library"
 )
+
+// One pass renaming two films into the same new folder (a "{title}" scheme): the first
+// takes its poster into the folder it creates; the second finds the first recorded there
+// now and leaves its poster where it was, though the preview (made before either moved)
+// listed it.
+func TestRenamePassSeesWhereEarlierMoviesWent(t *testing.T) {
+	f := newDeleteFixture(t, filepath.Join(t.TempDir(), "bin"))
+	clearFixtureFolder(t, f)
+	f.svc.imp.SetNaming(schemeNaming{library.Naming{Folder: "{title}", File: library.DefaultMovieFile}})
+	ctx := context.Background()
+	if err := f.svc.repo.ClearVersionFile(ctx, f.vid); err != nil {
+		t.Fatal(err)
+	}
+	a := writeBody(t, filepath.Join(f.root, "heat.1995.old", "heat.1995.1080p.bluray.mkv"), "film")
+	writeBody(t, filepath.Join(f.root, "heat.1995.old", "poster.jpg"), "1995")
+	if err := f.svc.repo.SetFile(ctx, f.id, a); err != nil {
+		t.Fatal(err)
+	}
+	other, err := f.svc.repo.Create(ctx, Movie{TMDBID: 9861, Title: "Heat", Year: 1986, Monitored: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := writeBody(t, filepath.Join(f.root, "heat.1986.old", "heat.1986.720p.hdtv.mkv"), "film")
+	writeBody(t, filepath.Join(f.root, "heat.1986.old", "poster.jpg"), "1986")
+	if err := f.svc.repo.SetFile(ctx, other.ID, b); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := f.svc.RenamePlan(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var todo []RenameItem
+	for _, it := range plan {
+		if it.Status == RenameOK {
+			if len(it.Extras) != 1 {
+				t.Fatalf("%s: extras = %+v, want its poster listed", it.Current, it.Extras)
+			}
+			todo = append(todo, it)
+		}
+	}
+	if len(todo) != 2 {
+		t.Fatalf("plan = %+v, want two clean renames", plan)
+	}
+	if _, err := f.svc.ApplyRename(ctx, todo); err != nil {
+		t.Fatal(err)
+	}
+	// Whichever went first took its poster; the other's stayed in its old folder.
+	first := readBody(t, filepath.Join(f.root, "Heat", "poster.jpg"))
+	second := map[string]string{"1995": "heat.1986.old", "1986": "heat.1995.old"}[first]
+	if second == "" {
+		t.Fatalf("Heat/poster.jpg = %q, want one film's poster", first)
+	}
+	if got := readBody(t, filepath.Join(f.root, second, "poster.jpg")); got == first {
+		t.Errorf("the second film's poster = %q, want its own left in its old folder", got)
+	}
+}
 
 // renameFixture is one movie (Heat, 1995) with a single file at rel under the Movies
 // folder, and the other films given as {title, year, rel}.
 func renameFixture(t *testing.T, rel string, files ...string) (*deleteFixture, string) {
 	t.Helper()
 	f := newDeleteFixture(t, filepath.Join(t.TempDir(), "bin"))
+	clearFixtureFolder(t, f)
 	ctx := context.Background()
 	main := writeBody(t, filepath.Join(f.root, filepath.FromSlash(rel)), "film")
 	for _, x := range files {
@@ -24,6 +84,21 @@ func renameFixture(t *testing.T, rel string, files ...string) (*deleteFixture, s
 		t.Fatal(err)
 	}
 	return f, main
+}
+
+// clearFixtureFolder removes the delete fixture's own "Heat (1995)" folder: the rename
+// tests' films move into it, and its videos (no longer recorded) would keep any folder
+// files out of it.
+func clearFixtureFolder(t *testing.T, f *deleteFixture) {
+	t.Helper()
+	for _, p := range append([]string{f.main, f.extra, f.extraSub}, f.subs...) {
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(filepath.Dir(f.main)); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func okItems(t *testing.T, f *deleteFixture) []RenameItem {

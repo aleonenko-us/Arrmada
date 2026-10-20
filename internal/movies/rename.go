@@ -84,6 +84,7 @@ const libraryPlanThreshold = 50
 // per file, one per proposed name. Ids that aren't in the library are skipped.
 func (s *Service) RenamePlan(ctx context.Context, ids []int64) ([]RenameItem, error) {
 	var out []RenameItem
+	recs := s.newRenameRecords(ctx) // one for the whole plan: each record is read and resolved once
 	if len(ids) == 0 || len(ids) > libraryPlanThreshold {
 		byMovie, all, err := s.LibraryVersionRows(ctx)
 		if err != nil {
@@ -93,7 +94,6 @@ func (s *Service) RenamePlan(ctx context.Context, ids []int64) ([]RenameItem, er
 		for _, id := range ids {
 			want[id] = true
 		}
-		others := s.libraryOthers(ctx)
 		for _, m := range all {
 			if len(ids) > 0 && !want[m.ID] {
 				continue
@@ -101,7 +101,7 @@ func (s *Service) RenamePlan(ctx context.Context, ids []int64) ([]RenameItem, er
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			out = append(out, s.planMovie(m, byMovie[m.ID], others(m.ID))...)
+			out = append(out, s.planMovie(m, byMovie[m.ID], recs)...)
 		}
 		return out, nil
 	}
@@ -113,7 +113,7 @@ func (s *Service) RenamePlan(ctx context.Context, ids []int64) ([]RenameItem, er
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, s.planMovie(m, versions, s.othersOfMovie(ctx, id))...)
+		out = append(out, s.planMovie(m, versions, recs)...)
 	}
 	return out, nil
 }
@@ -134,9 +134,9 @@ func (s *Service) trackRows(ctx context.Context, id int64) (Movie, []Version, er
 }
 
 // planMovie plans one movie's tracks. A file two tracks both record is planned once,
-// under the first; applying it repoints both. others reads the library's other films'
-// records, only when there is a clean rename (planExtras).
-func (s *Service) planMovie(m Movie, versions []Version, others othersFunc) []RenameItem {
+// under the first; applying it repoints both. recs are the pass's records of every film,
+// read only when there is a clean rename (planExtras).
+func (s *Service) planMovie(m Movie, versions []Version, recs *renameRecords) []RenameItem {
 	owned := map[string]int64{} // every file this movie's tracks record → its first track
 	for _, v := range versions {
 		if v.HasFile && v.FilePath != "" {
@@ -167,7 +167,7 @@ func (s *Service) planMovie(m Movie, versions []Version, others othersFunc) []Re
 		}
 		items = append(items, it)
 	}
-	s.planExtras(m, versions, items, others)
+	s.planExtras(m, versions, items, recs)
 	return items
 }
 
@@ -278,6 +278,15 @@ func PlanToken(items []RenameItem) string {
 // record changes in one transaction with its movie.changed row, so Convert, Subtitles and
 // a Plex scan follow the new name.
 func (s *Service) ApplyRename(ctx context.Context, items []RenameItem) ([]RenameResult, error) {
+	return s.ApplyRenameEach(ctx, items, nil)
+}
+
+// ApplyRenameEach is ApplyRename, calling after (when set) with each movie's results as it
+// finishes. One pass reads the library's records once and keeps them current as it moves
+// files, so a later movie sees where an earlier one went. A cancelled ctx stops it between
+// movies, never in the middle of one's files.
+func (s *Service) ApplyRenameEach(ctx context.Context, items []RenameItem, after func(movieID int64, res []RenameResult)) ([]RenameResult, error) {
+	recs := s.newRenameRecords(ctx)
 	var order []int64
 	byMovie := map[int64][]RenameItem{}
 	for _, it := range items {
@@ -291,8 +300,11 @@ func (s *Service) ApplyRename(ctx context.Context, items []RenameItem) ([]Rename
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
-		res, err := s.applyMovieRename(ctx, id, byMovie[id])
+		res, err := s.applyMovieRename(ctx, id, byMovie[id], recs)
 		out = append(out, res...)
+		if after != nil {
+			after(id, res)
+		}
 		if err != nil {
 			return out, err
 		}
@@ -300,7 +312,7 @@ func (s *Service) ApplyRename(ctx context.Context, items []RenameItem) ([]Rename
 	return out, nil
 }
 
-func (s *Service) applyMovieRename(ctx context.Context, id int64, asked []RenameItem) ([]RenameResult, error) {
+func (s *Service) applyMovieRename(ctx context.Context, id int64, asked []RenameItem, recs *renameRecords) ([]RenameResult, error) {
 	skip := func(it RenameItem, reason string) RenameResult {
 		return RenameResult{MovieID: it.MovieID, VersionID: it.VersionID, Label: it.Label, From: it.Current, To: it.Proposed, Reason: reason}
 	}
@@ -316,7 +328,7 @@ func (s *Service) applyMovieRename(ctx context.Context, id int64, asked []Rename
 		return nil, err
 	}
 	fresh := map[int64]RenameItem{}
-	for _, it := range s.planMovie(m, versions, s.othersOfMovie(ctx, id)) {
+	for _, it := range s.planMovie(m, versions, recs) {
 		fresh[it.VersionID] = it
 	}
 	// Only what the preview listed may move with a file, and only while the fresh plan
@@ -342,6 +354,14 @@ func (s *Service) applyMovieRename(ctx context.Context, id int64, asked []Rename
 		}
 	}
 
+	// Which new folders this rename creates, looked at before anything moves.
+	created := map[string]bool{}
+	for _, it := range moves {
+		nd := filepath.Dir(it.Proposed)
+		if _, err := os.Lstat(nd); errors.Is(err, fs.ErrNotExist) {
+			created[nd] = true
+		}
+	}
 	moved := 0
 	left := map[string][]renameMove{} // old folder → the files that left it
 	var dirs []string
@@ -350,6 +370,7 @@ func (s *Service) applyMovieRename(ctx context.Context, id int64, asked []Rename
 		out = append(out, r)
 		if ok {
 			moved++
+			recs.moved(m.ID, it.Current, it.Proposed)
 			if od := filepath.Dir(it.Current); od != filepath.Dir(it.Proposed) {
 				if _, seen := left[od]; !seen {
 					dirs = append(dirs, od)
@@ -358,8 +379,10 @@ func (s *Service) applyMovieRename(ctx context.Context, id int64, asked []Rename
 			}
 		}
 	}
+	// The tracks have moved and their records are written: the folder files follow (or
+	// stay) whatever happens to ctx now, so a cancelled job never strands them half way.
 	for _, od := range dirs {
-		s.leaveFolder(ctx, m, versions, od, left[od], allowed)
+		s.leaveFolder(m, versions, od, left[od], recs, created[filepath.Dir(left[od][0].to)], allowed)
 	}
 	if moved > 0 {
 		s.log.Info("movie renamed", "movie_id", id, "files", moved)

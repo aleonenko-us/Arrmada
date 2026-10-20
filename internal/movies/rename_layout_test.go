@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/tristenlammi/arrmada/internal/eventbus"
+	"github.com/tristenlammi/arrmada/internal/library"
 	"github.com/tristenlammi/arrmada/internal/store"
 )
 
@@ -41,6 +42,15 @@ type renameCase struct {
 	// be provably so ("" when it isn't), the one place the fix may take more than before.
 	gone []string
 	own  string
+	// folder is the naming scheme's folder template ("" = the default).
+	folder string
+}
+
+// renameOutcome is what a rename did: the paths that left their place and the ones that
+// arrived (relative, sorted).
+type renameOutcome struct {
+	Gone    []string `json:"gone"`
+	Arrived []string `json:"arrived"`
 }
 
 func renameCases() []renameCase {
@@ -247,6 +257,52 @@ func renameCases() []renameCase {
 			own: "Movies/heat.1995.1080p|Movies/heat.1995.2160p",
 		},
 		{
+			name:    "a {title} scheme sends the film into another film's recorded folder",
+			files:   with(plain, "Movies/Heat/Heat - Bluray-1080p.mkv", "Movies/Heat/poster.jpg", "Movies/Heat/movie.nfo"),
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{vid},
+			others:  []layoutOther{{title: "Heat", year: 1986, file: "Movies/Heat/Heat - Bluray-1080p.mkv"}},
+			folder:  "{title}",
+			gone:    []string{vid, old + "/heat.1995.1080p.bluray.en.srt"},
+		},
+		{
+			name:    "a {title} scheme into another film's recorded folder whose file is missing",
+			files:   with(plain, "Movies/Heat/movie.nfo"),
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{vid},
+			others:  []layoutOther{{title: "Heat", year: 1986, file: "Movies/Heat/Heat - Bluray-1080p.mkv"}},
+			folder:  "{title}",
+			gone:    []string{vid, old + "/heat.1995.1080p.bluray.en.srt"},
+		},
+		{
+			name:    "two films with the same title and year: the other's folder is the target",
+			files:   with(plain, "Movies/Heat (1995)/Heat (1995) - Remux-2160p.mkv", "Movies/Heat (1995)/poster.jpg"),
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{vid},
+			others:  []layoutOther{{title: "Heat", year: 1995, file: "Movies/Heat (1995)/Heat (1995) - Remux-2160p.mkv"}},
+			gone:    []string{vid, old + "/heat.1995.1080p.bluray.en.srt"},
+		},
+		{
+			name:    "the target folder exists and holds an untracked video",
+			files:   with(plain, "Movies/Heat (1995)/sample.mkv"),
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{vid},
+			gone:    []string{vid, old + "/heat.1995.1080p.bluray.en.srt"},
+		},
+		{
+			name:    "the target folder exists and holds no film",
+			files:   with(plain, "Movies/Heat (1995)/.keep"),
+			title:   "Heat",
+			year:    1995,
+			tracked: []string{vid},
+			gone:    with(plain, old, old+"/extrafanart"),
+			own:     old,
+		},
+		{
 			name:    "another version of the movie is recorded in the folder, its file missing",
 			files:   []string{vid, old + "/poster.jpg", old + "/movie.nfo"},
 			title:   "Heat",
@@ -261,13 +317,13 @@ func renameCases() []renameCase {
 // preview says moves, the case's assertions and the comparison with the old behaviour.
 var (
 	renameLayoutPreview func(t *testing.T, items []RenameItem) []string
-	renameLayoutCheck   func(t *testing.T, c renameCase, gone, preview []string, items []RenameItem)
-	renameLayoutReport  func(t *testing.T, cases []renameCase, gone map[string][]string)
+	renameLayoutCheck   func(t *testing.T, c renameCase, out renameOutcome, preview []string, items []RenameItem)
+	renameLayoutReport  func(t *testing.T, cases []renameCase, outs map[string]renameOutcome)
 )
 
 // runRenameCase builds the case's folders, renames the movie, and returns what left its
 // place (relative, sorted), what the preview listed (nil before the fix) and the plan.
-func runRenameCase(t *testing.T, c renameCase) (gone, preview []string, items []RenameItem) {
+func runRenameCase(t *testing.T, c renameCase) (out renameOutcome, preview []string, items []RenameItem) {
 	t.Helper()
 	top := t.TempDir()
 	abs := func(rel string) string { return filepath.Join(top, filepath.FromSlash(rel)) }
@@ -292,6 +348,9 @@ func runRenameCase(t *testing.T, c renameCase) (gone, preview []string, items []
 	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := NewService(st.DB(), nil, nil, abs("Movies"), filepath.Join(t.TempDir(), "bin"), eventbus.New(log), log)
+	if c.folder != "" {
+		svc.imp.SetNaming(schemeNaming{library.Naming{Folder: c.folder, File: library.DefaultMovieFile}})
+	}
 	if len(c.protected) > 0 {
 		var prot []string
 		for _, p := range c.protected {
@@ -382,26 +441,35 @@ func runRenameCase(t *testing.T, c renameCase) (gone, preview []string, items []
 	after := snapshotTree(t, top)
 	for p := range before {
 		if !after[p] {
-			gone = append(gone, p)
+			out.Gone = append(out.Gone, p)
 		}
 	}
-	sort.Strings(gone)
-	if gone == nil {
-		gone = []string{}
+	for p := range after {
+		if !before[p] {
+			out.Arrived = append(out.Arrived, p)
+		}
 	}
-	return gone, preview, todo
+	sort.Strings(out.Gone)
+	sort.Strings(out.Arrived)
+	if out.Gone == nil {
+		out.Gone = []string{}
+	}
+	if out.Arrived == nil {
+		out.Arrived = []string{}
+	}
+	return out, preview, todo
 }
 
 // TestRenameLayoutMatrix renames a movie in each layout and records exactly what left.
 func TestRenameLayoutMatrix(t *testing.T) {
 	cases := renameCases()
-	results := map[string][]string{}
+	results := map[string]renameOutcome{}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			gone, preview, items := runRenameCase(t, c)
-			results[c.name] = gone
+			out, preview, items := runRenameCase(t, c)
+			results[c.name] = out
 			if renameLayoutCheck != nil {
-				renameLayoutCheck(t, c, gone, preview, items)
+				renameLayoutCheck(t, c, out, preview, items)
 			}
 		})
 	}

@@ -1,7 +1,6 @@
 package movies
 
 import (
-	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -25,7 +24,12 @@ import (
 //     on the way to it or inside it, no other video anywhere in it, no other film's
 //     record in it (links resolved), no link from elsewhere into it, and every leftover
 //     a known sidecar named generically or for this movie. One named for the old file
-//     ("Old Name.nfo", "Old Name-poster.jpg") takes the new file's name.
+//     ("Old Name.nfo", "Old Name-poster.jpg") takes the new file's name. They go only
+//     into a folder this rename creates, or one that provably holds no other film (no
+//     other film's record in or under it, no other video at any depth, no link into it,
+//     not a library or downloads folder): a "{title}" scheme can send Heat (1995) into
+//     "Heat", Heat (1986)'s folder, and its poster and .nfo there would be taken for
+//     that film's.
 //
 // Anything else stays exactly where it is (RenameItem.Kept says why). The old folder is
 // removed only when it ends up empty, only with os.Remove, and never when it is a link,
@@ -44,61 +48,13 @@ type RenameExtra struct {
 	To   string `json:"to"`
 }
 
-// othersFunc returns every file recorded for the library's other films (on disk or not),
-// read at most once per plan.
-type othersFunc func() ([]string, error)
-
-func memoOthers(fn func() ([]string, error)) othersFunc {
-	var (
-		done bool
-		out  []string
-		err  error
-	)
-	return func() ([]string, error) {
-		if !done {
-			out, err = fn()
-			done = true
-		}
-		return out, err
-	}
-}
-
-// othersOfMovie reads the other films' records for movie id from the database.
-func (s *Service) othersOfMovie(ctx context.Context, id int64) othersFunc {
-	return memoOthers(func() ([]string, error) { return s.repo.OtherRecordedPaths(ctx, id) })
-}
-
-// libraryOthers reads every recorded file once and hands each movie the others'.
-func (s *Service) libraryOthers(ctx context.Context) func(id int64) othersFunc {
-	var rows []recordedPath
-	all := memoOthers(func() ([]string, error) {
-		var err error
-		rows, err = s.repo.RecordedPaths(ctx)
-		return nil, err
-	})
-	return func(id int64) othersFunc {
-		return memoOthers(func() ([]string, error) {
-			if _, err := all(); err != nil {
-				return nil, err
-			}
-			out := make([]string, 0, len(rows))
-			for _, r := range rows {
-				if r.movieID != id {
-					out = append(out, r.path)
-				}
-			}
-			return out, nil
-		})
-	}
-}
-
 // renameMove is one track file leaving a folder: where it was and where it goes.
 type renameMove struct{ from, to string }
 
 // planExtras fills in what moves with each clean item of one movie's plan: its paired
 // subtitles, and the leftovers of every folder the movie leaves (on the first item
 // leaving that folder), or why they stay.
-func (s *Service) planExtras(m Movie, versions []Version, items []RenameItem, others othersFunc) {
+func (s *Service) planExtras(m Movie, versions []Version, items []RenameItem, recs *renameRecords) {
 	var moving []int
 	for i := range items {
 		if items[i].Status == RenameOK {
@@ -108,7 +64,7 @@ func (s *Service) planExtras(m Movie, versions []Version, items []RenameItem, ot
 	if len(moving) == 0 {
 		return
 	}
-	oth, oerr := others()
+	oerr := recs.ensure()
 	claimed := map[string]bool{} // every name something in this plan moves to
 	planned := map[string]bool{} // every file this plan moves (clean paths)
 	for _, i := range moving {
@@ -117,7 +73,7 @@ func (s *Service) planExtras(m Movie, versions []Version, items []RenameItem, ot
 	}
 	for _, i := range moving {
 		it := &items[i]
-		it.Extras = s.planSubs(it.Current, it.Proposed, ownOtherFiles(versions, it.Current), oth, oerr, claimed, planned)
+		it.Extras = s.planSubs(it.Current, it.Proposed, ownOtherFiles(versions, it.Current), recs.othersIn(filepath.Dir(it.Current), m.ID), oerr, claimed, planned)
 	}
 	byDir := map[string][]int{}
 	var dirs []string
@@ -138,7 +94,9 @@ func (s *Service) planExtras(m Movie, versions []Version, items []RenameItem, ot
 			moves = append(moves, renameMove{items[i].Current, items[i].Proposed})
 		}
 		staying := stayingFiles(versions, moves)
-		extras, kept := s.planLeave(m, od, moves, staying, oth, oerr, planned, claimed)
+		_, err := os.Lstat(filepath.Dir(moves[0].to))
+		fresh := errors.Is(err, fs.ErrNotExist)
+		extras, kept := s.planLeave(m, od, moves, staying, recs, fresh, planned, claimed)
 		first := &items[byDir[od][0]]
 		first.Extras = append(first.Extras, extras...)
 		first.Kept = kept
@@ -213,10 +171,11 @@ func free(to string, claimed map[string]bool) bool {
 }
 
 // planLeave decides what of folder od's other files follow the movie's tracks (moves) to
-// their new folder: every one of them when od is provably the movie's own, none otherwise
+// their new folder: every one of them when od is provably the movie's own and the new
+// folder is fresh (created by this rename) or provably holds no other film, none otherwise
 // (kept says why, "" when there's nothing else in od). staying are the movie's recorded
 // files that don't move; planned are the files the plan already moves.
-func (s *Service) planLeave(m Movie, od string, moves []renameMove, staying, others []string, oerr error, planned, claimed map[string]bool) ([]RenameExtra, string) {
+func (s *Service) planLeave(m Movie, od string, moves []renameMove, staying []string, recs *renameRecords, fresh bool, planned, claimed map[string]bool) ([]RenameExtra, string) {
 	entries, err := os.ReadDir(od)
 	if err != nil {
 		return nil, ""
@@ -254,7 +213,10 @@ func (s *Service) planLeave(m Movie, od string, moves []renameMove, staying, oth
 	if reason := s.ownFolder(m, od); reason != "" {
 		return nil, reason
 	}
-	if o := recordedInto(od, staying); o != "" {
+	if recs.ensure() != nil {
+		return nil, "the library's other films couldn't be checked"
+	}
+	if o := recs.anyInto(od, staying); o != "" {
 		return nil, "another of this movie's files stays in it (" + relName(od, o) + ")"
 	}
 	tracked := map[string]bool{}
@@ -270,13 +232,16 @@ func (s *Service) planLeave(m Movie, od string, moves []renameMove, staying, oth
 	if reason != "" {
 		return nil, reason
 	}
-	if oerr != nil {
+	if recs.ensure() != nil {
 		return nil, "the library's other films couldn't be checked"
 	}
-	if o := recordedInto(od, others); o != "" {
+	if reason := s.targetReason(m, nd, fresh, filesAfter(staying, moves), recs); reason != "" {
+		return nil, reason
+	}
+	if o := recs.recordedInto(od, m.ID); o != "" {
 		return nil, "another film in your library has a file recorded in it (" + relName(od, o) + ")"
 	}
-	if link := s.aliasInto(od); link != "" {
+	if link := s.aliasInto(recs.probe, od); link != "" {
 		return nil, "another folder links into it (" + filepath.Base(link) + ")"
 	}
 	var out []RenameExtra
@@ -296,6 +261,56 @@ func (s *Service) planLeave(m Movie, od string, moves []renameMove, staying, oth
 		out = append(out, RenameExtra{Kind: ExtraFolder, From: x, To: to})
 	}
 	return out, ""
+}
+
+// versions is every file of the movie once moves are done: the ones that stay and where
+// the moved ones go (clean paths).
+func filesAfter(staying []string, moves []renameMove) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range staying {
+		out[filepath.Clean(p)] = true
+	}
+	for _, mv := range moves {
+		out[filepath.Clean(mv.to)] = true
+	}
+	return out
+}
+
+// targetReason says why the old folder's files may not go into nd, the movie's new folder
+// ("" when they may). A folder this rename creates (fresh) takes them. One that already
+// exists takes them only when it provably holds no other film: it's a real folder, not a
+// library or downloads folder nor one holding such a folder, no other film has a file
+// recorded in or under it, no video but the movie's own (own) is anywhere inside, and no
+// link elsewhere points into it.
+func (s *Service) targetReason(m Movie, nd string, fresh bool, own map[string]bool, recs *renameRecords) string {
+	if fresh {
+		return ""
+	}
+	fi, err := os.Lstat(nd)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "" // still not there: the move creates it
+	case err != nil:
+		return "the new folder couldn't be read"
+	case fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir():
+		return "the new folder is a link"
+	}
+	clean := filepath.Clean(nd)
+	for _, r := range s.protectedDirs() {
+		if strings.EqualFold(r, clean) || insideFold(r, clean) {
+			return "the new folder is, or holds, one of your library or downloads folders"
+		}
+	}
+	if o := recs.recordedInto(clean, m.ID); o != "" {
+		return "another film in your library has a file recorded in the new folder (" + relName(clean, o) + ")"
+	}
+	if hasVideo(clean, own) {
+		return "the new folder already holds another video"
+	}
+	if link := s.aliasInto(recs.probe, clean); link != "" {
+		return "another folder links into the new folder (" + filepath.Base(link) + ")"
+	}
+	return ""
 }
 
 // baseRename is a moved file's name without extension, before and after.
@@ -358,14 +373,16 @@ func (s *Service) moveSubs(extras []RenameExtra, allowed map[string]bool) []Rena
 	return moved
 }
 
-// leaveFolder finishes a rename that moved tracks (moves) out of folder od. The folder is
-// looked at again now that they've gone — another film's record, a new video or unknown
-// file, a link: every leftover stays — and only leftovers both the preview (allowed) and
-// this fresh look list move. The folder and its emptied extras subfolders are removed
-// once empty, never when one is a link or a library or downloads folder.
-func (s *Service) leaveFolder(ctx context.Context, m Movie, versions []Version, od string, moves []renameMove, allowed map[string]bool) {
-	others, oerr := s.repo.OtherRecordedPaths(ctx, m.ID)
-	extras, kept := s.planLeave(m, od, moves, stayingFiles(versions, moves), others, oerr, map[string]bool{}, map[string]bool{})
+// leaveFolder finishes a rename that moved tracks (moves) out of folder od. The folder and
+// the new one are looked at again now that they've gone — another film's record (the
+// pass's records, with what it moved so far), a new video or unknown file, a link: every
+// leftover stays — and only leftovers both the preview (allowed) and this look list move.
+// fresh says whether the new folder didn't exist before the tracks moved. The folder and
+// its emptied extras subfolders are removed once empty, never when one is a link or a
+// library or downloads folder. It never stops part way for a cancelled job: the tracks
+// have moved and their records are written.
+func (s *Service) leaveFolder(m Movie, vs []Version, od string, moves []renameMove, recs *renameRecords, fresh bool, allowed map[string]bool) {
+	extras, kept := s.planLeave(m, od, moves, stayingFiles(vs, moves), recs, fresh, map[string]bool{}, map[string]bool{})
 	if kept != "" {
 		s.log.Info("movie rename: the old folder's other files stay", "dir", od, "why", kept)
 	}

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -27,8 +29,9 @@ func init() {
 		}
 		return out
 	}
-	renameLayoutCheck = func(t *testing.T, c renameCase, gone, preview []string, items []RenameItem) {
+	renameLayoutCheck = func(t *testing.T, c renameCase, out renameOutcome, preview []string, items []RenameItem) {
 		t.Helper()
+		gone := out.Gone
 		want := append([]string{}, c.gone...)
 		sort.Strings(want)
 		if strings.Join(gone, "\n") != strings.Join(want, "\n") {
@@ -49,13 +52,45 @@ func init() {
 				t.Errorf("removed folder %s, which held nothing the preview listed", p)
 			}
 		}
+		// Arrivals: every file that arrived is one the preview named as a destination, and
+		// nothing but the film's video and subtitles lands in a folder another film has a
+		// record in (present or not).
+		var tos []string
+		for _, it := range items {
+			tos = append(tos, filepath.ToSlash(it.Proposed))
+			for _, x := range it.Extras {
+				tos = append(tos, filepath.ToSlash(x.To))
+			}
+		}
+		for _, a := range out.Arrived {
+			if goneDir(out.Arrived, a) {
+				continue
+			}
+			listed := false
+			for _, to := range tos {
+				if strings.HasSuffix(to, "/"+a) {
+					listed = true
+				}
+			}
+			if !listed {
+				t.Errorf("%s arrived, which the preview didn't name", a)
+			}
+			if isAnyVideo(a) || subtitleLeftover[strings.ToLower(path.Ext(a))] {
+				continue
+			}
+			for _, o := range c.others {
+				if strings.HasPrefix(o.file, path.Dir(a)+"/") {
+					t.Errorf("%s arrived in a folder %s %d has a file recorded in", a, o.title, o.year)
+				}
+			}
+		}
 		for _, it := range items {
 			if it.Kept != "" {
 				t.Logf("%s: other files stay: %s", it.Label, it.Kept)
 			}
 		}
 	}
-	renameLayoutReport = func(t *testing.T, cases []renameCase, gone map[string][]string) {
+	renameLayoutReport = func(t *testing.T, cases []renameCase, outs map[string]renameOutcome) {
 		t.Helper()
 		basePath := os.Getenv("ARRMADA_RENAME_LAYOUT_BASELINE")
 		if basePath == "" {
@@ -65,19 +100,19 @@ func init() {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var base map[string][]string
+		var base map[string]renameOutcome
 		if err := json.Unmarshal(b, &base); err != nil {
 			t.Fatal(err)
 		}
 		var table strings.Builder
-		table.WriteString("| Case | main (cf05a0de) took away | This branch took away | Verdict |\n|---|---|---|---|\n")
+		table.WriteString("| Case | main (cf05a0de) took away | This branch took away | Verdict | main: arrived | This branch: arrived |\n|---|---|---|---|---|---|\n")
 		for _, c := range cases {
-			old, ok := base[c.name]
+			ob, ok := base[c.name]
 			if !ok {
 				t.Errorf("%s: missing from main's dump", c.name)
 				continue
 			}
-			now := gone[c.name]
+			old, now := ob.Gone, outs[c.name].Gone
 			more, less := layoutMinus(now, old), layoutMinus(old, now)
 			for _, p := range more {
 				if !insideOwn(p, c.own) {
@@ -93,7 +128,7 @@ func init() {
 			case len(less) > 0:
 				verdict = "less: keeps " + strings.Join(less, ", ")
 			}
-			fmt.Fprintf(&table, "| %s | %s | %s | %s |\n", c.name, layoutShort(old), layoutShort(now), verdict)
+			fmt.Fprintf(&table, "| %s | %s | %s | %s | %s | %s |\n", c.name, layoutShort(old), layoutShort(now), verdict, layoutShort(ob.Arrived), layoutShort(outs[c.name].Arrived))
 		}
 		t.Log("\n" + table.String())
 		if out := os.Getenv("ARRMADA_RENAME_LAYOUT_TABLE"); out != "" {

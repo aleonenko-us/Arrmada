@@ -361,7 +361,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   Now a movie takes its artwork and `.nfo` files only from a folder that is clearly its
   own. That means a folder named for the movie, holding no other video, with no other
   film's file recorded in it, no links, and only files Arrmada recognises. Files named for
-  the old file name get the new name. Anything else stays where it is, and the rename
+  the old file name get the new name. They go only into a new folder, or one that holds no
+  other film: with a naming scheme like "{title}", Heat (1995)'s poster no longer lands in
+  the "Heat" folder of Heat (1986). Anything else stays where it is, and the rename
   preview lists every file that moves and says why the others stay. A subtitle that
   belongs to another film's file is no longer taken along. A folder that is a link, or one
   of your library or downloads folders, is never removed.
