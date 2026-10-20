@@ -1641,7 +1641,9 @@ func (s *Service) Delete(ctx context.Context, id int64, deleteFiles bool) (Delet
 		sum.Bytes += size
 		s.fileRemoved(video)
 		dirs[filepath.Dir(video)] = true // season folder
-		if show := s.ShowFolderFor(video); show != "" {
+		// The show's folder, never anything above it: the folder above a flat show's is
+		// its category (or the TV folder).
+		if show := s.ShowFolderFor(video); show != "" && (show == filepath.Dir(video) || show == filepath.Dir(filepath.Dir(video))) {
 			dirs[show] = true // series folder
 		}
 		for _, sub := range subs {
@@ -1711,6 +1713,11 @@ func (s *Service) pruneEmptyDirs(dirs map[string]bool) {
 	}
 	sort.Slice(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
 	for _, d := range ordered {
+		// A symlinked folder (a category on another disk) is never removed: os.Remove
+		// unlinks a symlink however full the folder it points at is.
+		if fi, err := os.Lstat(d); err != nil || fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
+			continue
+		}
 		_ = os.Remove(d) // only succeeds when empty
 	}
 }

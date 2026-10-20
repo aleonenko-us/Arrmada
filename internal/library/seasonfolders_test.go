@@ -49,6 +49,10 @@ func TestSeasonFolderTemplate(t *testing.T) {
 	if im.IsSeasonFolderName("The Pitt") || im.IsSeasonFolderName("Extras") {
 		t.Error("a show name read as a season folder")
 	}
+	im.SetSeriesNaming(fixedSeriesNaming{SeriesNaming{SeasonFolder: "{title} - {season}"}})
+	if im.IsSeasonFolderName("Show - 2005") || !im.IsSeasonFolderName("Show - 2") {
+		t.Error(`"{title} - {season}": a year read as a season, or a season missed`)
+	}
 	im.SetSeriesNaming(fixedSeriesNaming{SeriesNaming{SeasonFolder: "{season}"}})
 	if im.IsSeasonFolderName("1992") {
 		t.Error(`with a "{season}" template, the show "1992" was read as a season folder`)

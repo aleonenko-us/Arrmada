@@ -117,6 +117,7 @@ func (im *Importer) IsSeasonFolderName(name string) bool {
 	if strings.Trim(strings.TrimSpace(name), "0123456789") == "" {
 		return false
 	}
-	_, ok := im.seasonNumberOf(name)
-	return ok
+	// Nor is a year: under a "{title} - {season}" template, "Show - 2005" is a show.
+	n, ok := im.seasonNumberOf(name)
+	return ok && n < 1900
 }
