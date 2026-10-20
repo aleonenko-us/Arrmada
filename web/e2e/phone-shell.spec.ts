@@ -72,6 +72,9 @@ test.describe("requester at 375px", () => {
 
   test("nothing hides behind the bar: the page's end scrolls clear of it", async ({ page, api }) => {
     await open(page, "/me", api);
+    // The page's sections render after its data loads: under a busy machine the measuring
+    // used to run first and find no section at all.
+    await expect(page.locator("main section").last()).toBeVisible();
     const gap = await page.evaluate(() => {
       const main = document.querySelector("main")!;
       main.scrollTop = main.scrollHeight;
