@@ -17,18 +17,16 @@ import (
 // of lstat calls per record: tens of thousands on a large library, each a round trip on a
 // network share, which can take the delete dialog's preview past a proxy's timeout.
 //
-// linkProbe gives the very same answers for one pass of those checks, looking at each
+// linkProbe gives the very same answers for one pass of those checks, resolving each
 // folder once instead of each file:
 //   - pathguard.Resolve(p), when p's last part isn't a link, is its folder's resolution
-//     with that part joined back — whether the part exists or not (Resolve rejoins a
-//     missing tail), and nothing exists under a path that doesn't. So each folder is
-//     resolved once, from its own folder's resolution, and only a link (or something that
-//     couldn't be looked at) is resolved in full, as before. A library with no links on
-//     its paths is never resolved link by link at all.
-//   - Whether a folder or file is a link is learnt once per path, from one listing of
-//     its folder when that folder holds more than one path the pass asks about, else
-//     from one Lstat. A name the listing doesn't show exactly is Lstat'd: the listing
-//     never stands in for "missing".
+//     with that part joined back; when it's missing below a folder resolved this way,
+//     too (Resolve rejoins a missing tail), and nothing exists under it. So each folder
+//     is resolved once, from its own folder's resolution, and only a link, a part that
+//     couldn't be looked at, or a missing part below a link is resolved in full, as
+//     before. A library with no links on its paths is never resolved link by link.
+//   - Whether a part is a link is learnt with one Lstat per distinct path, never from a
+//     folder listing's entry types.
 //   - Everything is remembered for the pass only. A probe is made for one plan (the
 //     preview's, or the delete's) and a fresh one for the re-check right before
 //     leftovers move, so nothing seen earlier hides a change made since. Nothing is kept
@@ -61,7 +59,6 @@ type linkProbe struct {
 	fast   bool     // resolve folder by folder (not on Windows)
 	others []string // every file recorded for other films
 
-	children map[string]int // folder → distinct recorded paths (or their folders) directly in it
 	kinds    map[string]entryKind
 	lists    map[string]*dirList
 	resolved map[string]resolution
@@ -80,7 +77,6 @@ const (
 
 type dirList struct {
 	entries []fs.DirEntry
-	modes   map[string]fs.FileMode
 	err     error
 }
 
@@ -88,6 +84,7 @@ type resolution struct {
 	path    string
 	err     error
 	missing bool // nothing is there (known only for paths resolved folder by folder)
+	full    bool // resolved in full by pathguard.Resolve
 }
 
 type linkTarget struct {
@@ -102,35 +99,18 @@ func newLinkProbe(others []string) *linkProbe {
 }
 
 func newLinkProbeFS(fsys probeFS, others []string) *linkProbe {
-	p := &linkProbe{
+	return &linkProbe{
 		fs: fsys,
 		// Windows' EvalSymlinks rewrites names (case, short names) and treats junctions
 		// and mount points its own way: resolve every path in full there, as before
 		// (each still only once per pass).
 		fast:     runtime.GOOS != "windows",
 		others:   others,
-		children: map[string]int{},
 		kinds:    map[string]entryKind{},
 		lists:    map[string]*dirList{},
 		resolved: map[string]resolution{},
 		links:    map[string]linkTarget{},
 	}
-	seen := map[string]bool{}
-	for _, o := range others {
-		if !filepath.IsAbs(o) {
-			continue
-		}
-		for q := filepath.Clean(o); !seen[q]; {
-			seen[q] = true
-			parent := filepath.Dir(q)
-			if parent == q {
-				break
-			}
-			p.children[parent]++
-			q = parent
-		}
-	}
-	return p
 }
 
 // recordedInto is recordedInto (deletefolder.go) over the probe's records.
@@ -213,7 +193,14 @@ func (p *linkProbe) resolvePath(o string) (string, error) {
 }
 
 // resolveClean resolves c, a clean absolute path, from its folder's resolution: c's
-// last part joined back on when it's missing or isn't a link, in full otherwise.
+// last part joined back on when it isn't a link (or is missing below a folder resolved
+// folder by folder), in full otherwise.
+//
+// A missing part below a folder that was itself resolved in full is resolved in full
+// too, and so is everything below it. Resolve follows a link that doesn't lead anywhere
+// by its written target, cleaned as text ("Gone/../Coll" is "Coll" even with Gone
+// missing), while Lstat walks the disk and finds nothing there: only Resolve can say
+// what such a path resolves to.
 func (p *linkProbe) resolveClean(c string) resolution {
 	if r, ok := p.resolved[c]; ok {
 		return r
@@ -228,11 +215,17 @@ func (p *linkProbe) resolveClean(c string) resolution {
 		case pr.err != nil:
 			full = true // it fails too; Resolve says how
 		case pr.missing:
-			r = resolution{path: join, missing: true} // nothing exists under a path that doesn't
+			// Nothing exists under a path that doesn't, and pr was resolved folder by
+			// folder down from real folders, so Resolve rejoins c's name the same way.
+			r = resolution{path: join, missing: true}
 		default:
 			switch p.kindOf(c) {
 			case kindMissing:
-				r = resolution{path: join, missing: true}
+				if pr.full {
+					full = true
+				} else {
+					r = resolution{path: join, missing: true}
+				}
 			case kindDir, kindFile:
 				r = resolution{path: join}
 			default: // a link, or it couldn't be looked at
@@ -241,39 +234,30 @@ func (p *linkProbe) resolveClean(c string) resolution {
 		}
 	}
 	if full {
-		r = resolution{}
+		r = resolution{full: true}
 		r.path, r.err = p.fs.resolve(c)
 	}
 	p.resolved[c] = r
 	return r
 }
 
-// kindOf is what path is, as Lstat sees it. When its folder holds more than one path the
-// pass asks about, that folder is listed once and the listing answers; a name it doesn't
-// show exactly (another case on a case-insensitive share, or one that came since) is
-// Lstat'd.
+// kindOf is what path is, as Lstat sees it, looked at once per pass. Always Lstat: a
+// folder listing's entry types aren't trusted (some FUSE and SMB filesystems report a
+// link as a folder), and a folder that can be listed but not entered must fail here as
+// it fails Resolve.
 func (p *linkProbe) kindOf(path string) entryKind {
 	if k, ok := p.kinds[path]; ok {
 		return k
 	}
 	var k entryKind
-	if parent := filepath.Dir(path); parent != path && p.children[parent] > 1 {
-		if l := p.list(parent); l.err == nil {
-			if m, ok := l.modes[filepath.Base(path)]; ok {
-				k = kindOfMode(m)
-			}
-		}
-	}
-	if k == 0 {
-		fi, err := p.fs.lstat(path)
-		switch {
-		case err == nil:
-			k = kindOfMode(fi.Mode())
-		case errors.Is(err, fs.ErrNotExist):
-			k = kindMissing
-		default:
-			k = kindErr
-		}
+	fi, err := p.fs.lstat(path)
+	switch {
+	case err == nil:
+		k = kindOfMode(fi.Mode())
+	case errors.Is(err, fs.ErrNotExist):
+		k = kindMissing
+	default:
+		k = kindErr
 	}
 	p.kinds[path] = k
 	return k
@@ -290,19 +274,14 @@ func kindOfMode(m fs.FileMode) entryKind {
 	}
 }
 
-// list reads dir once per pass. A listing that failed part way counts as failed.
+// list reads dir once per pass, for aliasInto (which reads entry types from it exactly as
+// it always did). A listing that failed part way counts as failed.
 func (p *linkProbe) list(dir string) *dirList {
 	if l, ok := p.lists[dir]; ok {
 		return l
 	}
 	entries, err := p.fs.readDir(dir)
 	l := &dirList{entries: entries, err: err}
-	if err == nil {
-		l.modes = make(map[string]fs.FileMode, len(entries))
-		for _, e := range entries {
-			l.modes[e.Name()] = e.Type()
-		}
-	}
 	p.lists[dir] = l
 	return l
 }

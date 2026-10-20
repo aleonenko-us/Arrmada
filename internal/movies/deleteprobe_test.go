@@ -236,35 +236,32 @@ func probeLibrary(t testing.TB, top string, folders, files, missing int) (record
 	return records, heat
 }
 
-// A pass looks at each folder once, not each file: ten times the files per folder
-// costs no more calls, and only the root is resolved in full. (A file missing
-// from a folder that exists is still Lstat'd on its own: a listing never stands in for
-// "missing".)
-func TestLinkProbeCallsScaleWithFolders(t *testing.T) {
+// A pass looks at each path once: one Lstat per distinct folder or file on the records'
+// paths (never a listing), and only the root resolved in full, however many records
+// share a folder. The old full resolve Lstat'd every folder above every record again.
+func TestLinkProbeLooksAtEachPathOnce(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("every path is resolved in full on Windows")
 	}
-	calls := func(folders, files int) countingFS {
-		records, heat := probeLibrary(t, t.TempDir(), folders, files, 1)
+	for _, files := range []int{1, 20, 200} {
+		records, heat := probeLibrary(t, t.TempDir(), 10, files, 1)
+		distinct := map[string]bool{}
+		for _, r := range append([]string{heat}, records...) {
+			for q := r; filepath.Dir(q) != q; q = filepath.Dir(q) {
+				distinct[q] = true
+			}
+		}
 		var c countingFS
 		if o := newLinkProbeFS(c.fs(), records).recordedInto(heat); o != "" {
 			t.Fatalf("%s counted as in Heat's folder", o)
 		}
-		return c
-	}
-	few, many, more := calls(10, 20), calls(10, 200), calls(20, 20)
-	if few.total() != many.total() {
-		t.Errorf("10 folders: %d calls for 20 files each, %d for 200 each (%+v vs %+v)", few.total(), many.total(), few, many)
-	}
-	if few.resolve != 1 || many.resolve != 1 { // the root, once
-		t.Errorf("link-free records resolved in full: %d, %d", few.resolve, many.resolve)
-	}
-	// Each folder adds one listing; the folders above are looked at once.
-	if d := more.total() - few.total(); d != 10 {
-		t.Errorf("10 more folders cost %d more calls, want 10 (%+v vs %+v)", d, more, few)
-	}
-	if few.total() > 10+strings.Count(filepath.ToSlash(t.TempDir()), "/")+4 {
-		t.Errorf("%d calls for 10 folders: %+v", few.total(), few)
+		if c.resolve != 1 || c.readDir != 0 {
+			t.Errorf("%d files per folder: %d full resolves, %d listings (want 1, 0)", files, c.resolve, c.readDir)
+		}
+		// The missing folder's files aren't looked at: nothing is under a missing folder.
+		if want := len(distinct) - files; c.lstat != want {
+			t.Errorf("%d files per folder: %d Lstat calls, want %d (one per distinct path)", files, c.lstat, want)
+		}
 	}
 }
 
