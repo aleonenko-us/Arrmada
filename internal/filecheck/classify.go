@@ -43,6 +43,9 @@ const (
 	// CamTolerance is the grab rule's tolerance (quality.NotOutYetTolerance): a grab within
 	// this of the home release may be a genuine early leak.
 	CamTolerance = 3 * 24 * time.Hour
+	// CinemaOnlyFor is the grab rule's quality.CinemaOnlyFor: with no home date known, a
+	// home-labelled copy grabbed this soon after cinemas is judged a cam.
+	CinemaOnlyFor = 60 * 24 * time.Hour
 	// ShortFraction: a file under this share of the known runtime is cut short.
 	ShortFraction = 0.5
 	// minRuntimeForShort: the runtime must be known and at least this long to judge a
@@ -75,12 +78,13 @@ type Input struct {
 	// languages (Convert's "keep audio"; English when empty).
 	OrigLanguage string
 	Wanted       []string
-	// Home is a movie's home release (zero unknown) and GrabbedAt when the file was
-	// grabbed (or, failing that, written); CamOK says its profile accepts cams, so nothing
-	// is flagged as one.
-	Home      time.Time
-	GrabbedAt time.Time
-	CamOK     bool
+	// Home is a movie's home release and Theatrical its cinema release (zero unknown),
+	// GrabbedAt when the file was grabbed (or, failing that, written); CamOK says its
+	// profile accepts cams, so nothing is flagged as one.
+	Home       time.Time
+	Theatrical time.Time
+	GrabbedAt  time.Time
+	CamOK      bool
 }
 
 // Finding is one problem with a file: its code and the words for it ("the file has no
@@ -197,11 +201,18 @@ func suspectedCam(in Input) (Finding, bool) {
 	if src == parser.SourceCAM {
 		return Finding{CodeSuspectedCam, "probably a cam — the release says so in its name"}, true
 	}
-	if in.Kind != KindMovie || in.Home.IsZero() || in.GrabbedAt.IsZero() || !homeSource(src) {
+	if in.Kind != KindMovie || in.GrabbedAt.IsZero() || !homeSource(src) {
 		return Finding{}, false
 	}
-	if early := in.Home.Sub(in.GrabbedAt); early > CamTolerance {
-		return Finding{CodeSuspectedCam, "probably a cam — grabbed " + span(early) + " before it was out at home"}, true
+	if !in.Home.IsZero() {
+		if early := in.Home.Sub(in.GrabbedAt); early > CamTolerance {
+			return Finding{CodeSuspectedCam, "probably a cam — grabbed " + span(early) + " before it was out at home"}, true
+		}
+		return Finding{}, false
+	}
+	// No home date known: judged by the cinema release, as the grab rule is.
+	if !in.Theatrical.IsZero() && in.GrabbedAt.Before(in.Theatrical.Add(CinemaOnlyFor)) {
+		return Finding{CodeSuspectedCam, "probably a cam — grabbed while it was only in cinemas"}, true
 	}
 	return Finding{}, false
 }

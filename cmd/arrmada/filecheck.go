@@ -92,11 +92,12 @@ func (l fileCheckLibrary) movieFiles(ctx context.Context, m movies.Movie, vs []m
 	if m.Year > 0 {
 		title = fmt.Sprintf("%s (%d)", title, m.Year)
 	}
-	var home time.Time
+	var home, cinema time.Time
 	lang := ""
 	if m.Extra != nil {
 		if m.Extra.DatesRead {
 			home = movies.ReleaseDay(m.Extra.HomeReleaseDate)
+			cinema = movies.ReleaseDay(m.Extra.TheatricalDate)
 		}
 		lang = m.Extra.OriginalLanguage
 	}
@@ -107,7 +108,7 @@ func (l fileCheckLibrary) movieFiles(ctx context.Context, m movies.Movie, vs []m
 		}
 		out = append(out, filecheck.File{Kind: filecheck.KindMovie, MediaID: m.ID, VersionID: v.ID, OwnerID: m.ID,
 			Title: title, Path: v.FilePath, Release: v.SourceRelease, RuntimeMin: m.Runtime, OrigLanguage: lang,
-			Home: home, CamOK: cam(ctx, v.QualityProfile, quality.MediaMovie)})
+			Home: home, Theatrical: cinema, CamOK: cam(ctx, v.QualityProfile, quality.MediaMovie)})
 	}
 	return out
 }

@@ -16,9 +16,10 @@ const (
 	// before the listed date, or TMDB a day out across time zones.
 	NotOutYetTolerance = 3 * 24 * time.Hour
 	// CinemaOnlyFor is how long after its cinema release a film with no home date known is
-	// still treated as cinema-only. Almost no film reaches home sooner, and TMDB is often
-	// slow to list the digital date.
-	CinemaOnlyFor = 30 * 24 * time.Hour
+	// still treated as cinema-only. Studios list the digital date well before it, so a
+	// film that has none this long after cinemas is usually not out at home; Resident
+	// Evil (2026) had cinema dates only when a relabelled cam turned up 33 days in.
+	CinemaOnlyFor = 60 * 24 * time.Hour
 )
 
 // ReleaseWindow is what a grab knows about when a movie came out (WithReleaseWindow).

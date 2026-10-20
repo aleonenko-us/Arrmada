@@ -33,6 +33,7 @@ type File struct {
 	RuntimeMin   int
 	OrigLanguage string
 	Home         time.Time // a movie's home release (zero unknown)
+	Theatrical   time.Time // a movie's cinema release (zero unknown)
 	CamOK        bool      // its profile accepts cams
 }
 
@@ -125,11 +126,11 @@ func (s *Service) Check(ctx context.Context, f File, force bool) (bool, error) {
 		return false, ctx.Err() // a probe cut short by shutdown says nothing about the file
 	}
 	in := Input{Kind: f.Kind, Release: f.Release, Filename: filepath.Base(f.Path), RuntimeMin: f.RuntimeMin,
-		OrigLanguage: f.OrigLanguage, Home: f.Home, CamOK: f.CamOK}
+		OrigLanguage: f.OrigLanguage, Home: f.Home, Theatrical: f.Theatrical, CamOK: f.CamOK}
 	if s.wanted != nil {
 		in.Wanted = s.wanted(ctx)
 	}
-	if f.Kind == KindMovie && !f.Home.IsZero() {
+	if f.Kind == KindMovie && (!f.Home.IsZero() || !f.Theatrical.IsZero()) {
 		// When it was grabbed; failing that, when the file was written, which for a
 		// download is about when it arrived.
 		in.GrabbedAt = s.repo.grabbedAt(ctx, f.MediaID, f.VersionID, f.Release)

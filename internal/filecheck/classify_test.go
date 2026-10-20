@@ -47,6 +47,10 @@ func TestClassify(t *testing.T) {
 			Probe{AudioLangs: []string{"eng"}, DurationSec: 7000}, "", ""},
 		{"filename stands in for the release", Input{Kind: KindMovie, Filename: "Resident Evil (2026) - WEBDL-1080p.mkv", Home: home, GrabbedAt: home.Add(-10 * 24 * time.Hour)},
 			Probe{AudioLangs: []string{"eng"}, DurationSec: 7000}, CodeSuspectedCam, "probably a cam — grabbed 10 days before"},
+		{"no home date, grabbed 33 days after cinemas", Input{Kind: KindMovie, Release: "Resident Evil 2026 1080p WEB DL AAC x264 rothebehap", Theatrical: home, GrabbedAt: home.Add(33 * 24 * time.Hour)},
+			Probe{AudioLangs: []string{"eng"}, DurationSec: 7000}, CodeSuspectedCam, "probably a cam — grabbed while it was only in cinemas"},
+		{"no home date, grabbed long after cinemas", Input{Kind: KindMovie, Release: "Resident.Evil.2026.1080p.WEB-DL.x264-GRP", Theatrical: home, GrabbedAt: home.Add(90 * 24 * time.Hour)},
+			Probe{AudioLangs: []string{"eng"}, DurationSec: 7000}, "", ""},
 		{"episodes aren't judged by home release", Input{Kind: KindEpisode, Release: "Show.S01E01.1080p.WEB-DL.x264-GRP", Home: home, GrabbedAt: home.Add(-30 * 24 * time.Hour)},
 			Probe{AudioLangs: []string{"eng"}, DurationSec: 3000}, "", ""},
 	}
