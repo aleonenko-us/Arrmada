@@ -69,6 +69,24 @@ export function versionBadge(version: string, commit: string, update?: UpdateSta
 // its channel says (the latest release, or main compiled there).
 export const INSTALL_LINE = "curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.sh | sh";
 
+// How to turn on the Update now button: the installer's --with-updater option, which adds the
+// updater container (the one thing on the server that gets Docker's socket, so it is opt-in).
+// An install whose files are older than the updater says to update first.
+export const UPDATER_SETUP_LINE = `${INSTALL_LINE} -s -- --with-updater`;
+export const UPDATER_SETUP_TEXT =
+  "Want an Update now button here? Run this once on the server. It adds a small updater container that is the only thing given Docker's socket (root on the server), so it's off unless you ask. If it says the files are older, run the install line above first, then this again.";
+
+// updateOffer says whether the card shows Update now: a newer release is on offer for an
+// install that follows the releases, and the updater is set up.
+export function canUpdateNow(u: UpdateStatus): boolean {
+  return u.enabled && u.available && u.apply === "ready" && (u.channel === "release" || u.channel === "build");
+}
+
+// offerSetup says whether the card offers the updater's setup line instead.
+export function offerUpdaterSetup(u: UpdateStatus): boolean {
+  return u.enabled && u.available && u.apply === "needs_setup" && (u.channel === "release" || u.channel === "build");
+}
+
 // The words for a container Unraid's own Docker manager runs (Community Apps or the
 // template): Unraid pulls the new image itself, and the install line would set up a second,
 // Compose install beside it.
@@ -82,6 +100,8 @@ export function updateHint(u: UpdateStatus): { text: string; command?: string } 
     const offered = u.available || (u.channel === "main" && (u.behind ?? 0) > 0);
     return offered ? { text: UNRAID_UPDATE } : null;
   }
+  // With the updater set up the Update now button does this; no command to run by hand.
+  if ((u.channel === "release" || u.channel === "build") && u.available && u.apply === "ready") return null;
   if (u.channel === "release" && u.available) {
     return {
       text: "To update, run the install line again on the server; it backs up the database first. Installed with just the compose file: docker compose pull && docker compose up -d.",
