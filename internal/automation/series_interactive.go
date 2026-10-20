@@ -623,11 +623,28 @@ func (c *Coordinator) showEpisodeVideos(ctx context.Context, s series.Series, im
 		return nil
 	}
 	keep := c.series.EpisodeFileFilter(ctx, s, dir)
+	// A show kept in season folders doesn't keep episodes loose in its folder: a video there
+	// it hasn't recorded ("Show - S01E01 - Pilot (Unaired).mkv") is something else, never
+	// claimed nor offered for deletion. A flat show (or one with no files yet) reads them.
+	recorded, loose := 0, false
+	for _, sn := range s.Seasons {
+		for _, e := range sn.Episodes {
+			if e.HasFile && e.FilePath != "" {
+				recorded++
+				loose = loose || filepath.Dir(filepath.Clean(e.FilePath)) == filepath.Clean(dir)
+			}
+		}
+	}
+	seasonsOnly := recorded > 0 && !loose
 	out := vids[:0:0]
 	for _, v := range vids {
-		if keep(v.Path) {
-			out = append(out, v)
+		if !keep(v.Path) {
+			continue
 		}
+		if seasonsOnly && filepath.Dir(filepath.Clean(v.Path)) == filepath.Clean(dir) {
+			continue
+		}
+		out = append(out, v)
 	}
 	return out
 }

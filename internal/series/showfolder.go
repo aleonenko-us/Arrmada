@@ -533,7 +533,9 @@ const followVisitLimit = 500_000
 // FollowMovedEpisodeFiles is the way out for a show whose folder can't be told: once its
 // files are moved by hand into a folder of its own — out of a folder named like a season,
 // a folder another show is in, or anywhere — each recorded file that's gone is re-pointed
-// at the one file of the same name now in that TV folder. Only a regular file no other
+// at the one file of the same name now in that TV folder. Only a name that says it is this
+// show's episode (its title and an episode number) is followed, never one like "01.mkv";
+// nothing is followed while the TV folder looks unmounted; only a regular file no other
 // show has recorded counts, and only when exactly one has that name; hidden and system
 // folders (recycle bins, thumbnails) are never looked in, nor are links followed. It
 // returns how many files it re-pointed; nothing else changes. Refresh & rescan calls it
@@ -542,6 +544,16 @@ func (s *Service) FollowMovedEpisodeFiles(ctx context.Context, seriesID int64) i
 	paths, err := s.repo.EpisodeFilePaths(ctx, seriesID)
 	if err != nil {
 		return 0
+	}
+	sr, err := s.Get(ctx, seriesID)
+	if err != nil {
+		return 0
+	}
+	titles := map[string]bool{}
+	for _, t := range []string{sr.Title, sr.DisplayTitle, sr.TitleOverride} {
+		if k := parser.TitleKey(t); k != "" {
+			titles[k] = true
+		}
 	}
 	roots := s.libRoots()
 	want := map[string][]string{} // file name -> gone recorded paths with it
@@ -552,7 +564,14 @@ func (s *Service) FollowMovedEpisodeFiles(ctx context.Context, seriesID int64) i
 			continue // still there, or can't tell
 		}
 		root, ok := rootOf(roots, p)
-		if !ok {
+		if !ok || !library.FolderLooksMounted(root) {
+			continue // a TV folder that's down: nothing is gone, nothing is followed
+		}
+		// Only a name that says it's this show's episode is looked for: "01.mkv" or
+		// "Episode 1.mkv" could be anyone's.
+		rel := parser.Parse(filepath.Base(p))
+		key := parser.TitleKey(rel.Title)
+		if len(rel.Episodes) == 0 || key == "" || !(titles[key] || FitRelease(rel, sr).OK) {
 			continue
 		}
 		want[filepath.Base(p)] = append(want[filepath.Base(p)], p)

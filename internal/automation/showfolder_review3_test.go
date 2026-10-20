@@ -121,13 +121,55 @@ func TestRevCRescanStillFindsReleaseAndDiscFolders(t *testing.T) {
 		{1, 2, "Show/Season 1/Disc 1/Show - S01E02.mkv"},
 		{1, 3, "Show/Season 1/Show.S01E03.1080p.WEB-DL-GRP/Show.S01E03.1080p.WEB-DL-GRP.mkv"},
 		{2, 1, "Show/Show.S02.1080p.WEB-DL-GRP/Show.S02E01.1080p.WEB-DL-GRP.mkv"},
-		{1, 4, "Show/Show - S01E04.mkv"},
 		{1, 5, "Show/S01/Show - S01E05.mkv"},
 	} {
 		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, want.s, want.e); cur.Path != filepath.Join(tv, filepath.FromSlash(want.rel)) {
 			t.Errorf("after rescan S%02dE%02d = %q, want %s", want.s, want.e, cur.Path, want.rel)
 		}
 	}
+	// A show kept in season folders doesn't keep episodes loose in its folder: a video
+	// there is something else, never claimed nor offered as a duplicate.
+	if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 4); cur.Path != "" {
+		t.Errorf("rescan claimed the loose %s", cur.Path)
+	}
+}
+
+// A flat show (its files right in its folder) is still read there.
+func TestRevCRescanReadsAFlatShow(t *testing.T) {
+	h, tv := rbSetup(t, []rbFile{
+		{rel: "Show/Show - S01E01.mkv", tracked: [2]int{1, 1}},
+		{rel: "Show/Show - S01E02.mkv"},
+	})
+	if err := h.c.RescanSeries(h.ctx, h.seriesID); err != nil {
+		t.Fatalf("rescan: %v", err)
+	}
+	if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 2); cur.Path != filepath.Join(tv, "Show", "Show - S01E02.mkv") {
+		t.Errorf("after rescan S01E02 = %q", cur.Path)
+	}
+}
+
+// (ops6-st-loose-video) A video loose in a show kept in season folders, named like one of
+// its episodes, is never offered as a duplicate to delete.
+func TestRevCLooseVideoInASeasonFolderedShow(t *testing.T) {
+	h, tv := rbSetup(t, []rbFile{
+		{rel: "Star Trek/S01/Show - S01E01.mkv", tracked: [2]int{1, 1}},
+		{rel: "Star Trek/S01/Show - S01E02.mkv", tracked: [2]int{1, 2}},
+		{rel: "Star Trek/Show - S01E01 - Pilot (Unaired).mkv"},
+	})
+	loose := filepath.Join(tv, "Star Trek", "Show - S01E01 - Pilot (Unaired).mkv")
+	if rcDupPaths(t, h)[loose] {
+		t.Error("the duplicate check lists the loose video")
+	}
+	if err := h.c.DeleteSeriesDuplicate(h.ctx, h.seriesID, loose); err == nil {
+		t.Error("deleting the loose video as a duplicate was allowed")
+	}
+	if err := h.c.RescanSeries(h.ctx, h.seriesID); err != nil {
+		t.Fatalf("rescan: %v", err)
+	}
+	if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1); cur.Path != filepath.Join(tv, "Star Trek", "S01", "Show - S01E01.mkv") {
+		t.Errorf("after rescan S01E01 = %q", cur.Path)
+	}
+	rbExists(t, tv, "Star Trek/Show - S01E01 - Pilot (Unaired).mkv")
 }
 
 // Another show inside the show's folder — hidden, under a folder named like an extras
@@ -261,6 +303,46 @@ func TestRevCRescanFollowsFilesMovedOutOfAnUnclearFolder(t *testing.T) {
 		if p := h.c.series.FolderPath(h.ctx, h.seriesID); p != filepath.Join(tv, "Real Folder") {
 			t.Errorf("FolderPath = %q", p)
 		}
+	})
+	t.Run("never a generic name", func(t *testing.T) {
+		h, tv := rbSetup(t, []rbFile{
+			{rel: "Kids/S01/01.mkv", tracked: [2]int{1, 1}, missing: true},
+			{rel: "Kids/Season 1/01.mkv"},
+			{rel: "Kids/Bluey/Season 1/Bluey - S01E01.mkv"},
+		})
+		if err := h.c.RescanSeries(h.ctx, h.seriesID); err == nil {
+			t.Log("rescan ran")
+		}
+		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1); cur.Path != filepath.Join(tv, "Kids", "S01", "01.mkv") && cur.Path != "" {
+			t.Errorf("S01E01 = %q: followed a generic name", cur.Path)
+		}
+		if _, err := h.c.series.Delete(h.ctx, h.seriesID, true); err != nil {
+			t.Logf("delete: %v", err)
+		}
+		rbExists(t, tv, "Kids/Season 1/01.mkv", "Kids/Bluey/Season 1/Bluey - S01E01.mkv")
+	})
+	t.Run("never another tracked show's file", func(t *testing.T) {
+		h, tv := rbSetup(t, []rbFile{
+			{rel: "Shared/S01/Show - S01E01.mkv", tracked: [2]int{1, 1}, missing: true},
+			{rel: "Shared/S01/Show - S01E02.mkv", tracked: [2]int{1, 2}},
+		})
+		res, err := h.c.db.Exec(`INSERT INTO series (tmdb_id, title, monitored) VALUES (99, 'Other', 1)`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		oid, _ := res.LastInsertId()
+		other := filepath.Join(tv, "Shared", "Season 1", "Show - S01E01.mkv")
+		sparseFile(t, other, 60<<20)
+		mustExec(t, h.c, `INSERT OR IGNORE INTO seasons (series_id, season_number, monitored) VALUES (?, 1, 1)`, oid)
+		mustExec(t, h.c, `INSERT OR IGNORE INTO episodes (series_id, season_number, episode_number, air_date, monitored, has_file, file_path) VALUES (?, 1, 1, '2020-01-01', 1, 1, ?)`, oid, other)
+		_ = h.c.RescanSeries(h.ctx, h.seriesID)
+		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1); cur.Path == other {
+			t.Error("followed into another show's recorded file")
+		}
+		if _, err := h.c.series.Delete(h.ctx, h.seriesID, true); err != nil {
+			t.Logf("delete: %v", err)
+		}
+		rbExists(t, tv, "Shared/Season 1/Show - S01E01.mkv")
 	})
 	t.Run("never a file another show has, nor one of two", func(t *testing.T) {
 		h, tv := rbSetup(t, []rbFile{
