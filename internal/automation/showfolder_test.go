@@ -158,6 +158,37 @@ func TestImportIntoAShowInsideACategoryFolder(t *testing.T) {
 	noDir(t, filepath.Join(tv, "Anime", "Season 1"), "the import went into the category folder")
 }
 
+// A flat show inside a category under another name (romaji) imports into its own folder
+// when its files carry that name, and is held for Review when nothing ties the folder to
+// the show — never into the category folder.
+func TestImportFlatShowInsideACategory(t *testing.T) {
+	t.Run("files named like the folder", func(t *testing.T) {
+		h := newLifecycleHarness(t)
+		tv := h.c.imp.TVRoot()
+		own := filepath.Join(tv, "Anime", "Sousou no Show")
+		setEpisodeFile(t, h.c, h.seriesID, 1, 1, libFile(t, filepath.Join(own, "Sousou no Show - S01E01.mkv")), "Show.S01E01")
+		const name = "Show.S01E02.1080p.WEB-DL-GRP"
+		dl := h.download(t, name, name+".mkv")
+		s, _ := h.c.series.Get(h.ctx, h.seriesID)
+		if placed, _, _, failed := h.c.importSeriesInto(h.ctx, s, dl, forceAll); failed != 0 || len(placed) != 1 {
+			t.Fatalf("placed %v failed %d", placed, failed)
+		}
+		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 2); filepath.Dir(filepath.Dir(cur.Path)) != own {
+			t.Errorf("S01E02 at %s, want inside %s", cur.Path, own)
+		}
+		noDir(t, filepath.Join(tv, "Anime", "Season 1"), "the import went into the category folder")
+	})
+	t.Run("nothing ties the folder to the show", func(t *testing.T) {
+		h := newLifecycleHarness(t)
+		tv := h.c.imp.TVRoot()
+		setEpisodeFile(t, h.c, h.seriesID, 1, 1, libFile(t, filepath.Join(tv, "Anime", "Sousou no Show", "Show - S01E01.mkv")), "Show.S01E01")
+		s, _ := h.c.series.Get(h.ctx, h.seriesID)
+		if _, _, err := h.c.seriesPlacement(h.ctx, s); !errors.Is(err, series.ErrNoShowFolder) {
+			t.Fatalf("placement = %v, want refused", err)
+		}
+	})
+}
+
 // Moving a misplaced file back by hand and rescanning is enough: the rescan finds it in
 // the show's folder, and the next import goes there.
 func TestRescanAfterMovingMisplacedFileBackByHand(t *testing.T) {

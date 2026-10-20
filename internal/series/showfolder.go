@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -79,87 +80,82 @@ func rootOf(roots []string, path string) (string, bool) {
 	return best, best != ""
 }
 
-// folderCandidates are the folders that may be the show folder of the episode file at
-// path, best first:
-//
-//   - inside a TV folder, the first folder below it that holds the file — what the show's
-//     folder is in every library laid out <TV folder>/<Show>/…;
-//   - then the second folder below it, and the folder above the file's season folder (or
-//     its own folder) when that's deeper still — for shows grouped one level down
-//     (<TV folder>/TV Shows/<Show>/S01/…, a TV folder set one level too high, or
-//     <TV folder>/Anime/<Show>/…), used only when the folder above turns out to hold
-//     several shows;
-//   - outside every TV folder, that folder-name guess alone.
-//
-// A file loose in a TV folder has none.
-func (s *Service) folderCandidates(roots []string, path string) []string {
+// filePlace is where an episode file sits, read from the folders around it.
+type filePlace struct {
+	root string // the TV folder holding it ("" when it's under none)
+	// dir is the deepest folder holding the file that isn't a season, disc or release
+	// folder: the show's folder in every ordinary layout. "" for a file loose in a TV
+	// folder.
+	dir string
+	// structural: dir was reached by stepping out of a season, disc or release folder, so
+	// it is the show's folder, however deep it is (/tv/Anime/Frieren/Season 1/…).
+	structural bool
+}
+
+// reDiscFolder is a disc folder inside a season folder ("Disc 1", "CD2").
+var reDiscFolder = regexp.MustCompile(`(?i)^(?:disc|disk|cd|dvd|bd)[ ._-]*\d{1,2}$`)
+
+// releaseLike reports whether a folder is a download's own folder (a season or episode
+// tag, a stated resolution) or a disc folder: something inside a show's folder.
+func releaseLike(name string) bool {
+	if reDiscFolder.MatchString(name) {
+		return true
+	}
+	r := parser.Parse(name)
+	return r.Season > 0 || len(r.Episodes) > 0 || r.StatedResolution() != parser.ResUnknown
+}
+
+// placeOf reads where the episode file at path sits. Inside a TV folder it steps out of up
+// to two season, disc or release folders (Show/Season 1/Show.S01E01.1080p/…), never into
+// the TV folder itself. Outside every TV folder it's the folder-name guess (ShowFolder).
+func (s *Service) placeOf(roots []string, path string) filePlace {
 	path = filepath.Clean(path)
-	dir := filepath.Dir(path)
-	guess := dir
-	if s.insideShow(filepath.Base(dir)) {
-		guess = filepath.Dir(dir)
-	}
 	root, ok := rootOf(roots, path)
 	if !ok {
+		guess := filepath.Dir(path)
+		if s.insideShow(filepath.Base(guess)) {
+			guess = filepath.Dir(guess)
+		}
 		if guess == "" || guess == "." || guess == filepath.Dir(guess) {
-			return nil
+			return filePlace{}
 		}
-		return []string{guess}
+		return filePlace{dir: guess}
 	}
-	rel, err := filepath.Rel(root, dir)
-	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
-		return nil // loose in the TV folder
+	dir := filepath.Dir(path)
+	if !libfolders.StrictlyUnder(dir, root) {
+		return filePlace{root: root} // loose in the TV folder
 	}
-	parts := strings.Split(rel, string(filepath.Separator))
-	first := filepath.Join(root, parts[0])
-	out := []string{first}
-	if len(parts) > 1 {
-		out = append(out, filepath.Join(first, parts[1]))
+	structural, season := false, false
+	for step := 0; step < 2; step++ {
+		up := filepath.Dir(dir)
+		if !libfolders.StrictlyUnder(up, root) {
+			break // never step out into the TV folder itself
+		}
+		name := filepath.Base(dir)
+		inSeason := s.insideShow(name)
+		if season && inSeason {
+			break // one season folder only: <TV>/S13/Season 12 is S13's, not <TV>'s
+		}
+		if !inSeason && !releaseLike(name) {
+			break
+		}
+		dir, structural, season = up, true, season || inSeason
 	}
-	if last := out[len(out)-1]; libfolders.StrictlyUnder(guess, last) {
-		out = append(out, guess)
-	}
-	return out
+	return filePlace{root: root, dir: dir, structural: structural}
 }
 
-// structuralDir is the folder above the file's season folder, when the file sits in one
-// (or in a release folder inside one) below a TV folder: /tv/Anime/Frieren/Season 1/… is
-// Frieren's, whatever else /tv/Anime holds. ok is false when there's no recognised season
-// folder, or the folder above it is the TV folder itself.
-func (s *Service) structuralDir(roots []string, path string) (string, bool) {
-	root, ok := rootOf(roots, path)
-	if !ok {
-		return "", false
-	}
-	dir := filepath.Dir(filepath.Clean(path))
-	for i := 0; i < 2 && libfolders.StrictlyUnder(dir, root); i++ {
-		if s.insideShow(filepath.Base(dir)) {
-			show := filepath.Dir(dir)
-			return show, libfolders.StrictlyUnder(show, root)
-		}
-		dir = filepath.Dir(dir) // a release folder inside the season folder
-	}
-	return "", false
+// firstLevel reports whether dir sits right inside root.
+func firstLevel(dir, root string) bool {
+	return root != "" && filepath.Clean(filepath.Dir(dir)) == filepath.Clean(root)
 }
 
-// ShowFolderFor is the show folder the episode file at path is in: the folder above its
-// season folder when it's in one, else the first folder below the TV folder holding it, or
-// the folder-name guess (ShowFolder) for a file under none. It says where the file IS —
-// whether that's a sound folder for the show is ShowFolderOf's question. "" for a file
-// loose in a TV folder.
+// ShowFolderFor is the folder the episode file at path is in, for a show: the deepest
+// folder holding it that isn't a season, disc or release folder, or the folder-name guess
+// (ShowFolder) for a file under no TV folder. It says where the file IS — whether that's a
+// sound folder for the show is ShowFolderOf's question, and it never names a folder above
+// the one holding the files. "" for a file loose in a TV folder.
 func (s *Service) ShowFolderFor(path string) string {
-	roots := s.libRoots()
-	if dir, ok := s.structuralDir(roots, path); ok {
-		return dir
-	}
-	c := s.folderCandidates(roots, path)
-	if len(c) == 0 {
-		if _, inRoot := rootOf(roots, path); inRoot {
-			return ""
-		}
-		return ShowFolder(path)
-	}
-	return c[0]
+	return s.placeOf(s.libRoots(), path).dir
 }
 
 // ShowFoldersOf answers, for each episode file of show seriesID, the folder of the show it
@@ -259,14 +255,15 @@ func (j *folderJudge) verdict(dir string) folderVerdict {
 	return folderVerdict{dir: dir}
 }
 
-// named reports whether a folder is named after the show (its year or tags aside).
-func (j *folderJudge) named(dir string) bool {
-	if len(j.titles) == 0 {
+// named reports whether a folder is named after the show (a bracketed year or tag aside),
+// or after what the file in it calls the show (fileKey, a parser.TitleKey). A release
+// folder ("Frieren.S01.1080p.WEB") doesn't count, however its title reads.
+func (j *folderJudge) named(dir, fileKey string) bool {
+	k := parser.TitleKey(filepath.Base(dir))
+	if k == "" {
 		return false
 	}
-	// The whole name, a bracketed year or tag aside ("Frieren (2023)"): a release folder
-	// ("Frieren.S01.1080p.WEB") doesn't count, however its title reads.
-	return j.titles[parser.TitleKey(filepath.Base(dir))]
+	return j.titles[k] || (fileKey != "" && k == fileKey)
 }
 
 // dbJudge judges folders for one show against the database.
@@ -305,50 +302,47 @@ func (s *Service) describeSeries(ctx context.Context, ids []int64) string {
 	return strings.Join(names, " and ")
 }
 
-// containerShows is how many other shows' files make a first-level folder a container of
-// shows (a TV folder set one level too high) rather than one show stored twice.
-const containerShows = 2
+// unsoundUnsure: a folder deeper than the first below the TV folder, holding the show's
+// files directly (or in folders with names Arrmada doesn't know as seasons), that can't be
+// told apart from a show folder with odd season folders: /tv/Anime/Sousou no Frieren/ is
+// Frieren's folder in a category, /tv/Avatar/Book 1 Water/ a season folder in Avatar's.
+const unsoundUnsure = "unsure"
 
 // homeOf is the sound folder the file at path belongs to ("" when none), the verdict on
-// the deepest folder that was turned down (zero when none was), and whether the file is in
-// a folder at all (false: loose in a TV folder).
+// the folder that was turned down (zero when none was), and whether the file is in a
+// folder at all (false: loose in a TV folder).
 //
-// In order:
-//   - the folder above the file's season folder, when that's sound: /tv/Anime/Frieren/
-//     Season 1/… is Frieren's however many shows /tv/Anime holds;
-//   - a deeper folder named after the show, for a show stored flat inside a category
-//     folder (/tv/Anime/Frieren/…);
-//   - the first folder below the TV folder, and a deeper one only standing in for one that
-//     holds several shows. One other show there is the same show stored twice ("Teen
-//     Titans" and "Teen Titans Go!"), and picking a folder inside it would be a guess.
+// It never names a folder above the one holding the file unless that is proven to be the
+// show's: the file's own folder is the show's when it's right inside the TV folder, when
+// it was reached by stepping out of a season, disc or release folder, or when it's named
+// after the show (or after what the file calls it). Anything else is unsure and turned
+// down — a guess at the category folder put a show's next season into /tv/Anime/Season 1.
 func (j *folderJudge) homeOf(path string) (string, folderVerdict, bool) {
-	cands := j.svc.folderCandidates(j.roots, path)
-	if len(cands) > 0 {
-		if dir, ok := j.svc.structuralDir(j.roots, path); ok && dir != cands[0] {
-			if v := j.judge(dir); v.why == "" {
-				return dir, folderVerdict{}, true
-			}
-		}
-		for i := 1; i < len(cands) && !j.named(cands[0]); i++ {
-			if j.named(cands[i]) {
-				if v := j.judge(cands[i]); v.why == "" {
-					return cands[i], folderVerdict{}, true
-				}
+	pl := j.svc.placeOf(j.roots, path)
+	if pl.dir == "" {
+		return "", folderVerdict{}, false
+	}
+	proven := pl.root == "" || pl.structural || firstLevel(pl.dir, pl.root)
+	dir := pl.dir
+	if !proven {
+		// A folder named after the show: the file's own, or one above it below the TV
+		// folder ("Avatar (2005)/Book 1 Water").
+		fileKey := parser.TitleKey(parser.Parse(filepath.Base(path)).Title)
+		for d := pl.dir; libfolders.StrictlyUnder(d, pl.root); d = filepath.Dir(d) {
+			if j.named(d, fileKey) {
+				dir, proven = d, true
+				break
 			}
 		}
 	}
-	var turnedDown folderVerdict // the deepest folder turned down: the most telling reason
-	for _, dir := range cands {
-		v := j.judge(dir)
-		if v.why == "" {
-			return dir, turnedDown, true
-		}
-		turnedDown = v
-		if v.kind != unsoundShared || v.others < containerShows {
-			break
-		}
+	if !proven {
+		return "", folderVerdict{dir: pl.dir, kind: unsoundUnsure,
+			why: fmt.Sprintf("%s could be the show's folder or a folder inside it", pl.dir)}, true
 	}
-	return "", turnedDown, len(cands) > 0
+	if v := j.judge(dir); v.why != "" {
+		return "", v, true
+	}
+	return dir, folderVerdict{}, true
 }
 
 // showFolderFrom is ShowFolderOf for a show's files, judged by j.
@@ -358,22 +352,56 @@ func (s *Service) showFolderFrom(paths []string, j *folderJudge) ShowFolderInfo 
 		return info
 	}
 	counts := map[string]int{}
-	shared := map[string]int{} // files in folders other shows' files are in too
-	sharedWhy := map[string]string{}
+	// Files in folders that are probably the show's but can't be used: other shows' files
+	// are there too, or it can't be told whether the folder is the show's (unsure).
+	held := map[string]int{}
+	heldWhy := map[string]string{}
+	unsure := map[string][]string{} // unsure folders by the folder above them
 	var whys []string
 	placed := false // any file in a folder below a TV folder (or outside them)
 	for _, p := range paths {
 		home, first, inFolder := j.homeOf(p)
 		placed = placed || inFolder
-		if home != "" {
+		switch {
+		case home != "":
 			counts[home]++
-		} else if first.why != "" {
+		case first.kind == unsoundUnsure:
+			up := filepath.Dir(first.dir)
+			unsure[up] = append(unsure[up], first.dir)
+			held[first.dir]++
+			heldWhy[first.dir] = first.why
+		case first.why != "":
 			whys = append(whys, first.why)
 			if first.kind == unsoundShared {
-				shared[first.dir]++
-				sharedWhy[first.dir] = first.why
+				held[first.dir]++
+				heldWhy[first.dir] = first.why
 			}
 		}
+	}
+	// A show's files spread over two or more such folders side by side are in one show's
+	// season folders ("Book 1 Water", "Book 2 Earth"), never in two shows: the folder
+	// above them is the show's.
+	for up, dirs := range unsure {
+		distinct := map[string]bool{}
+		for _, d := range dirs {
+			distinct[d] = true
+		}
+		if len(distinct) < 2 {
+			continue
+		}
+		if _, inRoot := rootOf(j.roots, up); !inRoot {
+			continue // the TV folder itself, or outside them all
+		}
+		if v := j.judge(up); v.why != "" {
+			continue
+		}
+		counts[up] += len(dirs)
+		for d := range distinct {
+			delete(held, d)
+		}
+	}
+	for d := range held {
+		whys = append(whys, heldWhy[d])
 	}
 	if len(counts) == 0 {
 		if !placed {
@@ -397,11 +425,11 @@ func (s *Service) showFolderFrom(paths []string, j *folderJudge) ShowFolderInfo 
 		return dirs[i] < dirs[k]
 	})
 	// A stray folder holding a few of the show's files never wins over a folder holding
-	// more of them that another show's files are in too: that one is probably the show's
-	// real folder, and which show owns it is the person's call.
-	for dir, n := range shared {
+	// more of them that another show's files are in too, or that can't be told to be the
+	// show's: that one is probably the show's real folder, and the person decides.
+	for dir, n := range held {
 		if n > counts[dirs[0]] {
-			info.Unknown, info.sharedMost, info.Why = true, true, sharedWhy[dir]
+			info.Unknown, info.sharedMost, info.Why = true, true, heldWhy[dir]
 			return info
 		}
 	}
@@ -466,6 +494,9 @@ func (s *Service) misplacedFrom(info ShowFolderInfo, paths []string, j *folderJu
 		home, first, inFolder := j.homeOf(p)
 		if home != "" || !inFolder || first.why == "" {
 			continue // in a sound folder (a second one is the owner's business), or loose
+		}
+		if first.kind == unsoundUnsure {
+			continue // may well be the show's own folder: not "misplaced"
 		}
 		if first.kind == unsoundShared && info.Path == "" {
 			continue // two shows in one ordinary folder, and nowhere better to put either

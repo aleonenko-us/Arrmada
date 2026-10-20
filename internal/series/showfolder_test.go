@@ -384,6 +384,70 @@ func TestShowFolderOfNestedLayouts(t *testing.T) {
 	})
 }
 
+// A folder holding the show's files directly, deeper than the first below the TV folder,
+// is the show's only when that's proven — named after the show or after what its files
+// call it, or one of several such folders side by side — and otherwise the show's folder
+// is unknown. It is never the category folder above it.
+func TestShowFolderOfFlatInsideACategory(t *testing.T) {
+	ctx := context.Background()
+	t.Run("romaji folder, files named alike", func(t *testing.T) {
+		f := newFolderFixture(t, "/tv")
+		id := f.show("Frieren", "/tv/Anime/Sousou no Frieren/Sousou no Frieren - S01E01.mkv")
+		f.show("Lost", "/tv/Anime/Lost/Season 1/Lost - S01E01.mkv")
+		if info := f.svc.ShowFolderOf(ctx, id); info.Path != filepath.FromSlash("/tv/Anime/Sousou no Frieren") {
+			t.Fatalf("ShowFolderOf = %+v", info)
+		}
+	})
+	t.Run("TV folder too high, romaji folder", func(t *testing.T) {
+		f := newFolderFixture(t, "/media")
+		id := f.show("Frieren", "/media/TV/Sousou no Frieren/Sousou no Frieren - S01E01.mkv")
+		if info := f.svc.ShowFolderOf(ctx, id); info.Path != filepath.FromSlash("/media/TV/Sousou no Frieren") {
+			t.Fatalf("ShowFolderOf = %+v", info)
+		}
+	})
+	t.Run("nothing says which folder: refused", func(t *testing.T) {
+		f := newFolderFixture(t, "/tv")
+		id := f.show("Frieren", "/tv/Anime/Sousou no Frieren/Frieren - S01E01.mkv")
+		info := f.svc.ShowFolderOf(ctx, id)
+		if !info.Unknown || info.Path != "" {
+			t.Fatalf("ShowFolderOf = %+v, want unknown", info)
+		}
+		if _, m, _ := f.svc.MisplacedFiles(ctx, id); len(m) != 0 {
+			t.Errorf("misplaced = %+v, want none", m)
+		}
+		if got := f.svc.ShowFolderFor(filepath.FromSlash("/tv/Anime/Sousou no Frieren/Frieren - S01E01.mkv")); got != filepath.FromSlash("/tv/Anime/Sousou no Frieren") {
+			t.Errorf("ShowFolderFor = %s, never the category", got)
+		}
+	})
+	t.Run("odd season folders side by side", func(t *testing.T) {
+		f := newFolderFixture(t, "/tv")
+		id := f.show("Avatar The Last Airbender",
+			"/tv/Cartoons/Avatar/Book 1 Water/ATLA - S01E01.mkv",
+			"/tv/Cartoons/Avatar/Book 2 Earth/ATLA - S02E01.mkv")
+		if info := f.svc.ShowFolderOf(ctx, id); info.Path != filepath.FromSlash("/tv/Cartoons/Avatar") {
+			t.Fatalf("ShowFolderOf = %+v", info)
+		}
+	})
+	t.Run("one odd season folder: refused", func(t *testing.T) {
+		f := newFolderFixture(t, "/tv")
+		id := f.show("Avatar The Last Airbender", "/tv/Cartoons/Avatar/Book 1 Water/ATLA - S01E01.mkv")
+		if info := f.svc.ShowFolderOf(ctx, id); !info.Unknown {
+			t.Fatalf("ShowFolderOf = %+v, want unknown", info)
+		}
+	})
+	t.Run("release folder and disc folder", func(t *testing.T) {
+		f := newFolderFixture(t, "/tv")
+		a := f.show("Show", "/tv/Anime/Some Show/Some.Show.S01.1080p.WEB/Some.Show.S01E01.mkv")
+		b := f.show("The Wire", "/tv/The Wire (2002)/Season 01/Disc 1/The Wire - S01E01.mkv")
+		if info := f.svc.ShowFolderOf(ctx, a); info.Path != filepath.FromSlash("/tv/Anime/Some Show") {
+			t.Errorf("release folder: %+v", info)
+		}
+		if info := f.svc.ShowFolderOf(ctx, b); info.Path != filepath.FromSlash("/tv/The Wire (2002)") {
+			t.Errorf("disc folder: %+v", info)
+		}
+	})
+}
+
 // A stray folder with one of the show's files doesn't outvote the folder holding most of
 // them just because another show's files are there too: the show's folder is unknown, and
 // none of its files are listed as misplaced.
