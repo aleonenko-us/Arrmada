@@ -190,6 +190,7 @@ func TestApplyRenameKeepsSourceReleaseAndMedia(t *testing.T) {
 // emptied old folder, instead of leaving an orphan folder holding them.
 func TestApplyRenameMovesNFOAndArtwork(t *testing.T) {
 	f := newDeleteFixture(t, filepath.Join(t.TempDir(), "bin"))
+	clearFixtureFolder(t, f)
 	ctx := context.Background()
 	oldDir := filepath.Join(f.root, "heat.1995.old")
 	main := writeBody(t, filepath.Join(oldDir, "heat.1995.1080p.bluray.mkv"), "film")

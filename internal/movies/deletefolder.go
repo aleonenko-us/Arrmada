@@ -13,7 +13,6 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/libfolders"
 	"github.com/tristenlammi/arrmada/internal/library"
-	"github.com/tristenlammi/arrmada/internal/pathguard"
 )
 
 // This file decides what "delete the movie with its files" removes besides the tracked
@@ -176,8 +175,10 @@ func (s *Service) purgePlanFor(ctx context.Context, m Movie, files []movieFile, 
 		}
 		return ordered[i] < ordered[j]
 	})
+	// One probe for the whole plan: each folder and record is looked at once.
+	probe := newLinkProbe(pc.others)
 	for _, d := range ordered {
-		plan.folders = append(plan.folders, s.planFolder(pc, d))
+		plan.folders = append(plan.folders, s.planFolder(pc, probe, d))
 	}
 	plan.pc = pc
 	return plan
@@ -212,73 +213,23 @@ func pairsWithOther(sub, video string, others []string) bool {
 // the missing rest joined back), so a record made through an alias of the folder
 // ("movies/HeatAlias/…" where HeatAlias links to "movies/Heat (1995)") still counts, even
 // with its file missing. A record or folder that can't be resolved counts too: refuse
-// rather than guess.
+// rather than guess. A pass that asks more than once shares a linkProbe instead.
 func recordedInto(dir string, others []string) string {
-	clean := filepath.Clean(dir)
-	inside := func(p, d string) bool {
-		p, d = strings.ToLower(filepath.Clean(p)), strings.ToLower(filepath.Clean(d))
-		return p == d || strings.HasPrefix(p, d+string(filepath.Separator))
-	}
-	realDir, derr := pathguard.Resolve(clean)
-	for _, o := range others {
-		if inside(o, clean) {
-			return o
-		}
-		if derr != nil {
-			return o
-		}
-		ro, err := pathguard.Resolve(o)
-		if err != nil || inside(ro, realDir) {
-			return o
-		}
-	}
-	return ""
+	return newLinkProbe(others).recordedInto(dir)
 }
 
 // aliasInto returns a symlink that points at dir or into it ("" when none is found).
 // It looks where an alias of a movie folder would sit — directly in each Movies folder
 // and beside dir — without walking the whole library. A link that can't be resolved
-// counts: refuse rather than guess.
-func (s *Service) aliasInto(dir string) string {
-	realDir, err := pathguard.Resolve(dir)
-	if err != nil {
-		return dir
-	}
-	look := append(s.allRoots(), filepath.Dir(dir))
-	seen := map[string]bool{}
-	for _, d := range look {
-		if seen[d] {
-			continue
-		}
-		seen[d] = true
-		entries, err := os.ReadDir(d)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if e.Type()&fs.ModeSymlink == 0 {
-				continue
-			}
-			link := filepath.Join(d, e.Name())
-			target, err := filepath.EvalSymlinks(link)
-			if err != nil {
-				if _, lerr := os.Readlink(link); lerr != nil {
-					return link
-				}
-				continue // dangling: it points at nothing that exists, so not into dir
-			}
-			t, r := strings.ToLower(target), strings.ToLower(realDir)
-			if t == r || strings.HasPrefix(t, r+string(filepath.Separator)) {
-				return link
-			}
-		}
-	}
-	return ""
+// counts: refuse rather than guess. p is the pass's probe (what it has read is reused).
+func (s *Service) aliasInto(p *linkProbe, dir string) string {
+	return p.aliasInto(dir, s.allRoots())
 }
 
 // planFolder decides what happens to dir, a folder holding some of the movie's tracked
 // files, once they and their subtitles (planned) have gone.
-func (s *Service) planFolder(pc purgeCtx, dir string) purgeFolder {
+// probe is the plan's (newLinkProbe over pc.others).
+func (s *Service) planFolder(pc purgeCtx, probe *linkProbe, dir string) purgeFolder {
 	f := purgeFolder{dir: dir}
 	if !s.prunable(dir) {
 		if fi, err := os.Lstat(dir); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
@@ -310,7 +261,7 @@ func (s *Service) planFolder(pc purgeCtx, dir string) purgeFolder {
 		f.kept = "the library's other films couldn't be checked"
 		return f
 	}
-	if o := recordedInto(dir, pc.others); o != "" {
+	if o := probe.recordedInto(dir); o != "" {
 		rel, err := filepath.Rel(dir, o)
 		if err != nil {
 			rel = filepath.Base(o)
@@ -318,7 +269,7 @@ func (s *Service) planFolder(pc purgeCtx, dir string) purgeFolder {
 		f.kept = "another film in your library has a file recorded in it (" + filepath.ToSlash(rel) + ")"
 		return f
 	}
-	if link := s.aliasInto(dir); link != "" {
+	if link := s.aliasInto(probe, dir); link != "" {
 		f.kept = "another folder links into it (" + filepath.Base(link) + ")"
 		return f
 	}
@@ -354,10 +305,12 @@ func (s *Service) recheckFolder(ctx context.Context, pc purgeCtx, f purgeFolder)
 	if err != nil {
 		return "the library's other films couldn't be checked"
 	}
-	if o := recordedInto(f.dir, others); o != "" {
+	// A fresh probe: nothing the plan saw stands in for a look now.
+	probe := newLinkProbe(others)
+	if o := probe.recordedInto(f.dir); o != "" {
 		return "another film has a file recorded in it now"
 	}
-	if link := s.aliasInto(f.dir); link != "" {
+	if link := s.aliasInto(probe, f.dir); link != "" {
 		return "another folder links into it now"
 	}
 	if off, reason := s.binOff(); off {

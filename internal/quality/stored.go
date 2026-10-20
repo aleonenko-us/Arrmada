@@ -51,6 +51,12 @@ type StoredProfile struct {
 	// AllowPreRelease lets a movie/series profile grab cams, telesyncs, screeners and the
 	// like. Off — the default — refuses them.
 	AllowPreRelease bool `json:"allow_prerelease"`
+	// MultiCountsLanguage is the Audio language row's switch: a MULTi or Dual release that
+	// names no language counts as maybe carrying a Must language, as some trackers (French
+	// ones especially) label releases that carry the local dub. Off — the default, and what
+	// every profile saved before it reads as — a Must has to be named in the release, or be
+	// the title's original language (lang.go). Movie and series profiles only.
+	MultiCountsLanguage bool `json:"multi_counts_language"`
 	// Ideal is the profile's target file (ideal.go): what's grabbed, how releases rank and
 	// what the library check judges against. nil = not set up. On save, a missing target
 	// is read from the scores, while an empty one clears it.
@@ -125,6 +131,8 @@ func (sp StoredProfile) ToProfile() Profile {
 		NoUnwanted: sp.MediaType != MediaMovie && sp.MediaType != MediaSeries,
 		GroupTiers: sp.groupTiers(),
 		Languages:  sp.languages(),
+		// Only meaningful beside a Must language, which only video profiles have.
+		MultiCountsLanguage: sp.MultiCountsLanguage,
 	}
 }
 

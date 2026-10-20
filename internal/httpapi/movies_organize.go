@@ -162,20 +162,14 @@ func (a *api) handleOrganizeApply(w http.ResponseWriter, r *http.Request) {
 // counted, never forced.
 func (a *api) organize(ctx context.Context, p *jobs.Progress, todo []movies.RenameItem) (organizeSummary, error) {
 	sum := organizeSummary{Total: len(todo)}
-	var order []int64
-	byMovie := map[int64][]movies.RenameItem{}
+	asked := map[int64]int{}
 	for _, it := range todo {
-		if _, ok := byMovie[it.MovieID]; !ok {
-			order = append(order, it.MovieID)
-		}
-		byMovie[it.MovieID] = append(byMovie[it.MovieID], it)
+		asked[it.MovieID]++
 	}
 	done := 0
-	for _, id := range order {
-		if err := ctx.Err(); err != nil {
-			return sum, err
-		}
-		res, err := a.deps.Movies.ApplyRename(ctx, byMovie[id])
+	// One pass for the whole job: the library's records are read and resolved once, not
+	// again for every movie. It stops between movies when the job is cancelled.
+	_, err := a.deps.Movies.ApplyRenameEach(ctx, todo, func(id int64, res []movies.RenameResult) {
 		for _, r := range res {
 			if r.Renamed {
 				sum.Renamed++
@@ -183,13 +177,13 @@ func (a *api) organize(ctx context.Context, p *jobs.Progress, todo []movies.Rena
 				sum.Skipped++
 			}
 		}
-		if err != nil {
-			return sum, err
-		}
-		done += len(byMovie[id])
-		if sum.Total > 0 {
+		done += asked[id]
+		if sum.Total > 0 && done < sum.Total {
 			p.Set(float64(done)/float64(sum.Total), organizeMessage(sum, done))
 		}
+	})
+	if err != nil {
+		return sum, err
 	}
 	p.Set(1, organizeMessage(sum, done))
 	return sum, nil

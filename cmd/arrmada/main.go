@@ -1506,7 +1506,9 @@ func main() {
 	folderMover := &libfolders.Mover{
 		DB: st.DB(), Folders: libFolders, Bin: bins, Scan: media.Request, ShowFolders: seriesSvc.ShowFoldersOf, Unclear: seriesSvc.MoveBlocked,
 		Hold: coordinator.HoldSearches, // no search grabs into the old folder half-way
-		Log:  modLog(log, "import"),
+		// A film's folder moves whole only when it is provably the film's own.
+		OwnFolder: movieSvc.MoveFolderCheck,
+		Log:       modLog(log, "import"),
 		Busy: func(ctx context.Context, lib string, id int64) string {
 			acqs, err := coordinator.Active(ctx, lib, id)
 			if err != nil {

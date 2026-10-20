@@ -108,15 +108,20 @@ type Mover struct {
 	// ShowFolders answers, for a show, the show folder each of its episode files lives in
 	// (series.Service.ShowFoldersOf; "" for a file loose in a library folder).
 	ShowFolders func(ctx context.Context, seriesID int64) func(episodePath string) string
-	// Unclear says why a show's folder can't be told ("" when it can) — the same check the
-	// import makes (series.Service.FolderUnclear). Such a show is never moved.
+	// Unclear says why a show's folder may not move ("" when it may): its folder can't be
+	// told, or it holds an episode that isn't the show's (series.Service.MoveBlocked). Shows
+	// only; films are judged by OwnFolder.
 	Unclear func(ctx context.Context, seriesID int64) string
-	Log     *slog.Logger
+	// OwnFolder says why film id's folder dir may not move whole ("" when it may): it must
+	// be provably the film's own (movies.Service.MoveFolderCheck), since a move carries
+	// everything in it. Films only; a nil one refuses every film (fail closed).
+	OwnFolder func(ctx context.Context, id int64, dir string) string
+	Log       *slog.Logger
 
 	// mu runs moves one at a time, so a leftover staging copy is never a live one.
 	mu sync.Mutex
-	// rename is os.Rename; tests make it fail with EXDEV to take the copy path.
-	rename func(oldpath, newpath string) error
+	// Rename is os.Rename when nil; tests make it fail with EXDEV to take the copy path.
+	Rename func(oldpath, newpath string) error
 	// free is the free space on the drive holding a folder (diskspace.Of); tests fake it.
 	free func(path string) (uint64, bool)
 }
@@ -156,8 +161,17 @@ type title struct {
 	files    []string
 }
 
-// Move moves title id of library media to folder to (0 = the default folder).
+// Move moves title id of library media to folder to (0 = the default folder), without a
+// preview to keep to (the API without one): it moves what a fresh plan allows.
 func (m *Mover) Move(ctx context.Context, media string, id, to int64, p Progress) (MoveResult, error) {
+	return m.MoveShown(ctx, media, id, to, nil, p)
+}
+
+// MoveShown is Move bound to the preview the caller was shown (Preview): shown lists
+// every file it said would move, by full path. A folder holding anything else by the time
+// it moves (a file that turned up since) doesn't move, so the move never exceeds the
+// preview. nil shown = no preview to keep to.
+func (m *Mover) MoveShown(ctx context.Context, media string, id, to int64, shown []string, p Progress) (MoveResult, error) {
 	report := func(pct float64, msg string) {
 		if p != nil {
 			p.Set(pct, msg)
@@ -213,6 +227,15 @@ func (m *Mover) Move(ctx context.Context, media string, id, to int64, p Progress
 	if err != nil {
 		return res, err
 	}
+	if shown != nil {
+		set := make(map[string]bool, len(shown))
+		for _, s := range shown {
+			set[filepath.Clean(s)] = true
+		}
+		for i := range plans {
+			plans[i].shown = set
+		}
+	}
 	kind := "movie"
 	if media == MediaSeries {
 		kind = "show"
@@ -225,6 +248,13 @@ func (m *Mover) Move(ctx context.Context, media string, id, to int64, p Progress
 		base := 0.05 + 0.9*float64(i)/float64(len(plans))
 		span := 0.9 / float64(len(plans))
 		report(base, "Moving "+filepath.Base(pl.from))
+		// Looked at again right before it goes: an earlier folder's move took a while, and
+		// something not the film's may have landed in this one since.
+		if i > 0 {
+			if err := m.ownCheck(ctx, t, pl.from); err != nil {
+				return res, fmt.Errorf("moved %d of %d folders, then: %w", len(res.Moved), len(plans), err)
+			}
+		}
 		md, n, late, err := m.moveDir(ctx, t.media, to, pl, func(f float64, msg string) { report(base+span*f, msg) })
 		res.Paths += n
 		if late > 0 {
@@ -265,6 +295,87 @@ func (m *Mover) Move(ctx context.Context, media string, id, to int64, p Progress
 		m.Log.Info("library folders: moved a title", "media", media, "id", id, "title", t.name, "to", dest.Path, "folders", len(res.Moved), "method", res.Method)
 	}
 	return res, nil
+}
+
+// MovePreview is what moving a title to a folder would do, for the dialog: every folder
+// that moves whole with every file in it, or why nothing would move.
+type MovePreview struct {
+	Folder  string       `json:"folder"`            // the destination folder's label
+	Moves   []PreviewDir `json:"moves"`             // the folders that would move
+	Refused string       `json:"refused,omitempty"` // why it wouldn't move ("" when it would)
+}
+
+// PreviewDir is one folder a move would carry, whole.
+type PreviewDir struct {
+	From  string   `json:"from"`
+	To    string   `json:"to"`
+	Files []string `json:"files"` // every file in it, by full path, sorted
+	Bytes int64    `json:"bytes"`
+}
+
+// Preview works out what Move would do now, moving nothing: the same plan, and the same
+// refusals (a download on its way in, a folder that isn't provably the film's own). Its
+// file list is what MoveShown keeps to.
+func (m *Mover) Preview(ctx context.Context, media string, id, to int64) (MovePreview, error) {
+	if !ValidMedia(media) {
+		return MovePreview{}, ErrBadMedia
+	}
+	dest, ok := m.Folders.Get(ctx, media, to)
+	if !ok {
+		return MovePreview{}, ErrNotFound
+	}
+	out := MovePreview{Folder: dest.Label, Moves: []PreviewDir{}}
+	if strings.TrimSpace(dest.Path) == "" {
+		out.Refused = "the " + dest.Label + " folder isn't set"
+		return out, nil
+	}
+	t, err := m.load(ctx, media, id)
+	if err != nil {
+		return out, err
+	}
+	if m.Busy != nil {
+		if why := m.Busy(ctx, media, id); why != "" {
+			out.Refused = why
+			return out, nil
+		}
+	}
+	if why, err := m.convertOpen(ctx, t); err != nil {
+		return out, err
+	} else if why != "" {
+		out.Refused = why
+		return out, nil
+	}
+	if fi, err := os.Stat(dest.Path); err != nil || !fi.IsDir() {
+		out.Refused = dest.Path + " isn't there (is it mounted?)"
+		return out, nil
+	}
+	plans, err := m.plan(ctx, t, dest)
+	if err != nil {
+		if errors.Is(err, ErrBadPath) || errors.Is(err, ErrBusy) {
+			out.Refused = plainMoveError(err)
+			return out, nil
+		}
+		return out, err
+	}
+	for _, pl := range plans {
+		d := PreviewDir{From: pl.from, To: pl.to, Files: []string{}}
+		for rel, size := range manifest(pl.from) {
+			d.Files = append(d.Files, filepath.Join(pl.from, rel))
+			d.Bytes += size
+		}
+		sort.Strings(d.Files)
+		out.Moves = append(out.Moves, d)
+	}
+	return out, nil
+}
+
+// plainMoveError drops a sentinel's own wording from a refusal ("invalid folder: …").
+func plainMoveError(err error) string {
+	msg := err.Error()
+	for _, s := range []error{ErrBadPath, ErrBusy} {
+		msg = strings.TrimPrefix(msg, s.Error()+": ")
+	}
+	return msg
 }
 
 // load reads the title and every library file it has.
@@ -339,6 +450,50 @@ type movePlan struct {
 	root     string // the destination library folder
 	staging  string // where a copy onto another drive is built (stagingPath)
 	files    int
+	shown    map[string]bool // every file the preview listed (clean full paths); nil = no preview
+}
+
+// beyondShown names a file in files (paths inside pl.from, as manifest gives them) that
+// the preview didn't list ("" when it listed every one, or there was no preview).
+func (pl movePlan) beyondShown(files map[string]int64) string {
+	if pl.shown == nil {
+		return ""
+	}
+	var extra []string
+	for rel := range files {
+		if !pl.shown[filepath.Clean(filepath.Join(pl.from, rel))] {
+			extra = append(extra, rel)
+		}
+	}
+	if len(extra) == 0 {
+		return ""
+	}
+	sort.Strings(extra)
+	return filepath.ToSlash(extra[0])
+}
+
+// ownCheck refuses a film folder that isn't provably the film's own (Mover.OwnFolder): a
+// move carries everything in the folder, so anything not the film's would go with it.
+//
+// Arrmada refuses rather than carving the film's files out into a new folder of their
+// own. Refusing moves nothing, so it can't put anything in the wrong place; carving out
+// would split a shared folder by guesswork (which subtitles and art are this film's),
+// leave the film's art and metadata behind, and — onto another drive — retire files out
+// of a folder that isn't the film's. Organize (rename) already gives a film a folder of
+// its own, where the naming scheme and the film's files are known; then it moves whole.
+func (m *Mover) ownCheck(ctx context.Context, t title, dir string) error {
+	if t.media != MediaMovie {
+		return nil
+	}
+	why := "Arrmada couldn't check what's in it"
+	if m.OwnFolder != nil {
+		why = m.OwnFolder(ctx, t.id, dir)
+	}
+	if why == "" {
+		return nil
+	}
+	return fmt.Errorf("%w: %s stays where it is — its folder %s isn't provably its own (%s), and a move takes everything in the folder. Give it a folder of its own first (Organize renames it into one), then move it",
+		ErrBadPath, t.name, filepath.Base(dir), why)
 }
 
 // plan works out which folders move: each folder holding the title's files (for a show,
@@ -425,6 +580,9 @@ func (m *Mover) plan(ctx context.Context, t title, dest Folder) ([]movePlan, err
 			return nil, err
 		} else if other != "" {
 			return nil, fmt.Errorf("%w: %s also holds files of %s — move or tidy that first", ErrBusy, dir, other)
+		}
+		if err := m.ownCheck(ctx, t, dir); err != nil {
+			return nil, err
 		}
 		to := filepath.Join(dest.Path, rel)
 		if _, err := os.Lstat(to); err == nil {
@@ -518,10 +676,13 @@ func (m *Mover) sharedWith(ctx context.Context, t title, dir string) (string, er
 // (they're left where they are).
 func (m *Mover) moveDir(ctx context.Context, media string, destID int64, pl movePlan, report func(float64, string)) (MovedDir, int64, int, error) {
 	md := MovedDir{From: pl.from, To: pl.to, Files: pl.files}
+	if extra := pl.beyondShown(manifest(pl.from)); extra != "" {
+		return md, 0, 0, notShown(pl, extra)
+	}
 	if err := os.MkdirAll(filepath.Dir(pl.to), 0o775); err != nil {
 		return md, 0, 0, fmt.Errorf("couldn't make %s: %w", filepath.Dir(pl.to), err)
 	}
-	rename := m.rename
+	rename := m.Rename
 	if rename == nil {
 		rename = os.Rename
 	}
@@ -573,6 +734,10 @@ func (m *Mover) moveDir(ctx context.Context, media string, destID int64, pl move
 	if !sameTree(manifest(pl.from), copied) {
 		discard()
 		return md, 0, 0, fmt.Errorf("%w: files in %s changed while they were being copied — nothing was moved; try again", ErrBusy, filepath.Base(pl.from))
+	}
+	if extra := pl.beyondShown(copied); extra != "" {
+		discard()
+		return md, 0, 0, notShown(pl, extra)
 	}
 	if err := rename(pl.staging, pl.to); err != nil {
 		discard()
@@ -743,9 +908,41 @@ func (m *Mover) retireCopied(dir string, copied map[string]int64) (left, late in
 	}
 	sort.Slice(dirs, func(i, j int) bool { return len(dirs[i]) > len(dirs[j]) })
 	for _, d := range dirs {
-		_ = os.Remove(d) // only empty folders go
+		if m.prunable(d) {
+			_ = os.Remove(d) // only empty folders go
+		}
 	}
 	return left, late
+}
+
+// notShown is a folder holding a file the preview didn't list: it doesn't move.
+func notShown(pl movePlan, extra string) error {
+	return fmt.Errorf("%w: %s now holds %s, which the preview didn't list — nothing in it was moved; open Move again to see what it holds now",
+		ErrBusy, filepath.Base(pl.from), extra)
+}
+
+// prunable reports whether an emptied original folder may be removed: a real folder (not
+// a link — removing a link unlinks it however full its target is) that isn't a library
+// folder or a downloads folder of either library.
+func (m *Mover) prunable(dir string) bool {
+	fi, err := os.Lstat(dir)
+	if err != nil || fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir() {
+		return false
+	}
+	if m.Folders == nil {
+		return true
+	}
+	ctx := context.Background()
+	for _, media := range []string{MediaMovie, MediaSeries} {
+		for _, f := range m.Folders.List(ctx, media) {
+			for _, p := range []string{f.Path, f.Downloads} {
+				if strings.TrimSpace(p) != "" && strings.EqualFold(filepath.Clean(p), filepath.Clean(dir)) {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // assign records the title's new folder and a timeline event, while that folder exists.

@@ -440,6 +440,7 @@ POST /api/v1/movies/{id}/file/forget staff -
 POST /api/v1/movies/{id}/grabtorrent staff -
 POST /api/v1/movies/{id}/manualimport staff -
 POST /api/v1/movies/{id}/move staff -
+POST /api/v1/movies/{id}/move/preview staff -
 POST /api/v1/movies/{id}/refresh staff -
 POST /api/v1/movies/{id}/regrab staff -
 POST /api/v1/movies/{id}/rename staff -

@@ -6,6 +6,14 @@ import { req, type JobRef, type MediaRequest } from "./api";
 // the staff pages that use them, never with a requester's first load.
 
 export type FolderMedia = "movie" | "series";
+
+/** A film's move, before it runs: the move never takes more than files lists. */
+export interface MovePreview {
+  folder: string;
+  moves: { from: string; to: string; files: string[]; bytes: number }[];
+  /** Why nothing would move ("" or absent when it would). */
+  refused?: string;
+}
 export type FolderRule = "" | "animation" | "anime" | "kids";
 
 export interface LibraryFolder {
@@ -90,8 +98,11 @@ export const foldersApi = {
   setDownloads: (media: FolderMedia, id: number, path: string) =>
     req<{ folder: LibraryFolder; warning?: string }>("/api/v1/system/library/folders/downloads", { method: "PUT", body: JSON.stringify({ media, id, path }) }),
   /** Moves the title's files to the folder: a job to follow. */
-  move: (media: FolderMedia, id: number, folderId: number) =>
-    req<JobRef & { folder?: string }>(`/api/v1/${media === "movie" ? "movies" : "series"}/${id}/move`, { method: "POST", body: JSON.stringify({ folder_id: folderId }) }),
+  move: (media: FolderMedia, id: number, folderId: number, files?: string[]) =>
+    req<JobRef & { folder?: string }>(`/api/v1/${media === "movie" ? "movies" : "series"}/${id}/move`, { method: "POST", body: JSON.stringify(files ? { folder_id: folderId, files } : { folder_id: folderId }) }),
+  /** What moving a film would do, moving nothing: each folder that moves whole with every file in it, or why it won't. */
+  previewMove: (id: number, folderId: number) =>
+    req<MovePreview>(`/api/v1/movies/${id}/move/preview`, { method: "POST", body: JSON.stringify({ folder_id: folderId }) }),
   /** The needs-review manual pick, from the library folder the scan found it in. */
   importFolder: (media: FolderMedia, folder: string, tmdbId: number, root?: string) =>
     req<{ status: string }>(`/api/v1/${media === "movie" ? "movies" : "series"}/import`, { method: "POST", body: JSON.stringify({ folder, tmdb_id: tmdbId, root }) }),

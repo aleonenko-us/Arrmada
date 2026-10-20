@@ -30,7 +30,7 @@ export const REASON_LABELS: Record<string, string> = {
   seeders: "with too few seeders",
   rejected_term: "containing a rejected term",
   missing_required: "missing a required format",
-  missing_language: "missing an audio language you require",
+  missing_language: "not naming an audio language you require",
   min_format_score: "below your minimum format score",
   unwanted: "unwanted (disc images, 3D, extras…)",
 };

@@ -46,7 +46,12 @@ func (f *fixture) mover(t *testing.T, bin string) (*Mover, *scans) {
 	return &Mover{
 		DB: f.st.DB(), Folders: f.svc, Bin: library.SingleBin(bin), Scan: sc.add,
 		ShowFolders: func(context.Context, int64) func(string) string { return showFolder },
-		Log:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		// Every film folder here is its own; the movies package's real rules
+		// (MoveFolderCheck) are tested there, against these moves (move_layout_test.go).
+		// Shows' Unclear is left nil here (permissive); series.MoveBlocked is tested in the
+		// automation package.
+		OwnFolder: func(context.Context, int64, string) string { return "" },
+		Log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}, sc
 }
 
@@ -169,7 +174,7 @@ func TestMoveCopiesAcrossFilesystems(t *testing.T) {
 	m, _ := f.mover(t, bin)
 	// The title folder's own rename fails like a rename between two mounts does; the
 	// copy's rename into place (same drive) is real.
-	m.rename = func(oldpath, newpath string) error {
+	m.Rename = func(oldpath, newpath string) error {
 		if oldpath == src {
 			return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: syscall.EXDEV}
 		}
@@ -207,7 +212,7 @@ func TestMoveCopyFailureLeavesTheOriginals(t *testing.T) {
 	kids := f.add(t, MediaMovie, "kids", RuleKids)
 	src := filmFixture(t, f)
 	m, _ := f.mover(t, filepath.Join(f.base, "bin"))
-	m.rename = func(oldpath, newpath string) error {
+	m.Rename = func(oldpath, newpath string) error {
 		if oldpath == src {
 			return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: syscall.EXDEV}
 		}
@@ -267,6 +272,57 @@ func TestMoveShowFolder(t *testing.T) {
 	if len(sc.dirs) == 0 || !strings.HasPrefix(sc.dirs[0], "show:") {
 		t.Errorf("scans = %v, want show scans", sc.dirs)
 	}
+}
+
+// Each kind is judged by its own hook only: a show's move asks Unclear (and never the
+// films' OwnFolder), a film's move asks OwnFolder (and never Unclear); and each one's
+// refusal stops its own kind's move.
+func TestMoveHooksApplyToTheirOwnKind(t *testing.T) {
+	setup := func(t *testing.T) (*fixture, *Mover, *int, *int, Folder, Folder) {
+		f := newFixture(t)
+		anime := f.add(t, MediaSeries, "anime", RuleAnime)
+		kids := f.add(t, MediaMovie, "kids", RuleKids)
+		e1 := writeFile(t, filepath.Join(f.tv, "Frieren (2023)", "Season 01", "Frieren - S01E01.mkv"), "e1")
+		db := f.st.DB()
+		if _, err := db.Exec(`INSERT INTO series (id, tmdb_id, title) VALUES (1, 209867, 'Frieren')`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO episodes (series_id, season_number, episode_number, has_file, file_path) VALUES (1, 1, 1, 1, ?)`, e1); err != nil {
+			t.Fatal(err)
+		}
+		filmFixture(t, f)
+		m, _ := f.mover(t, filepath.Join(f.base, "bin"))
+		unclear, own := 0, 0
+		m.Unclear = func(context.Context, int64) string { unclear++; return "" }
+		m.OwnFolder = func(context.Context, int64, string) string { own++; return "" }
+		return f, m, &unclear, &own, anime, kids
+	}
+	t.Run("a show asks Unclear only", func(t *testing.T) {
+		_, m, unclear, own, anime, _ := setup(t)
+		if _, err := m.Move(context.Background(), MediaSeries, 1, anime.ID, nil); err != nil {
+			t.Fatal(err)
+		}
+		if *unclear == 0 || *own != 0 {
+			t.Errorf("Unclear asked %d times, OwnFolder %d; want only Unclear", *unclear, *own)
+		}
+	})
+	t.Run("a film asks OwnFolder only", func(t *testing.T) {
+		_, m, unclear, own, _, kids := setup(t)
+		if _, err := m.Move(context.Background(), MediaMovie, 1, kids.ID, nil); err != nil {
+			t.Fatal(err)
+		}
+		if *own == 0 || *unclear != 0 {
+			t.Errorf("OwnFolder asked %d times, Unclear %d; want only OwnFolder", *own, *unclear)
+		}
+	})
+	t.Run("Unclear refuses a show", func(t *testing.T) {
+		f, m, _, _, anime, _ := setup(t)
+		m.Unclear = func(context.Context, int64) string { return "its folder holds another show's episode" }
+		if _, err := m.Move(context.Background(), MediaSeries, 1, anime.ID, nil); !errors.Is(err, ErrBadPath) {
+			t.Fatalf("move = %v, want refused", err)
+		}
+		readFile(t, filepath.Join(f.tv, "Frieren (2023)", "Season 01", "Frieren - S01E01.mkv"))
+	})
 }
 
 // A show with files the #56 bug put in <TV>/S13/Season 12 isn't moved: the folder named

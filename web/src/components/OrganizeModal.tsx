@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError, type MovieRenameItem, type OrganizePreview, type OrganizeSummary } from "../lib/api";
 import { jobFailed, useJob } from "../lib/useJob";
 import { Button, Modal, useConfirm } from "../ui";
-import { pathTail } from "./MovieRenameModal";
+import { pathTail, RenameExtras } from "./MovieRenameModal";
 
 const PAGE = 200;
 const plural = (n: number, one: string, many = one + "s") => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -140,6 +140,7 @@ export function OrganizeModal({ ids, onClose, onDone }: { ids?: number[]; onClos
                   </div>
                   <div className="break-all font-mono text-xs text-ink-faint" title={it.current}>{pathTail(it.current)}</div>
                   <div className="break-all font-mono text-xs" title={it.proposed} style={{ color: it.status === "conflict" ? "var(--reject-text)" : "var(--ink)" }}>→ {pathTail(it.proposed)}</div>
+                  <RenameExtras it={it} />
                   {it.status === "conflict" && <div className="mt-0.5 text-xs" style={{ color: "var(--reject-text)" }}>Won't be renamed: {it.reason}</div>}
                 </div>
               ))}
