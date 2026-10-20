@@ -1,6 +1,7 @@
 // Package aio is the Unraid all-in-one image's side of the bundled qBittorrent and
-// FlareSolverr: the small supervisor that runs them next to Arrmada in one container
-// (cmd/arrmada-aio), and the qBittorrent login it sets up on first start. The plain image
+// FlareSolverr, and the optional Prowlarr and SABnzbd: the small supervisor that runs them
+// next to Arrmada in one container (cmd/arrmada-aio), and the qBittorrent login and
+// SABnzbd config it sets up on first start. The plain image
 // and the Compose install never run the supervisor; there each companion is its own
 // container. The Compose install does keep its qBittorrent's login the same way (Login,
 // NewLogin, SaveLogin, ReadLogin), in Arrmada's data folder.

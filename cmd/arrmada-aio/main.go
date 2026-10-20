@@ -1,9 +1,10 @@
 //go:build linux
 
 // Command arrmada-aio starts the Unraid all-in-one image: Arrmada, plus the bundled
-// qBittorrent and FlareSolverr unless they're switched off, in one container. It runs as
-// root behind tini (PID 1, which reaps orphaned processes and passes the stop signal on),
-// sets up qBittorrent's first config, and supervises the three (internal/aio).
+// qBittorrent and FlareSolverr unless they're switched off, and the optional Prowlarr and
+// SABnzbd when they're switched on, in one container. It runs as root behind tini (PID 1,
+// which reaps orphaned processes and passes the stop signal on), sets up qBittorrent's and
+// SABnzbd's first configs, and supervises them all (internal/aio).
 //
 // The plain image doesn't contain it: there the entrypoint runs Arrmada directly, and
 // the Compose install runs each companion in a container of its own.
@@ -75,6 +76,28 @@ func prepare(o aio.Options) error {
 		// After a PUID/PGID change the old owner's files would be unwritable.
 		if err := aio.ChownTree(profile, o.UID, o.GID); err != nil {
 			return fmt.Errorf("qBittorrent folder: %w", err)
+		}
+	}
+	if o.Prowlarr {
+		// Prowlarr writes its own first config.xml (and its API key) when it starts.
+		if err := os.MkdirAll(o.ProwlarrDir(), 0o750); err != nil {
+			return err
+		}
+		if err := aio.ChownTree(o.ProwlarrDir(), o.UID, o.GID); err != nil {
+			return fmt.Errorf("the Prowlarr folder: %w", err)
+		}
+	}
+	if o.SABnzbd {
+		host, _ := os.Hostname()
+		seeded, err := aio.SeedSABnzbd(aio.SABSeedOptions{Config: o.SABnzbdConfig(), Downloads: o.Downloads, Hostname: host, UID: o.UID, GID: o.GID})
+		if err != nil {
+			return fmt.Errorf("the SABnzbd config: %w", err)
+		}
+		if seeded {
+			fmt.Printf("[aio] SABnzbd: first start, wrote its config with an API key and a login for its page (shown to admins in Settings → Connections)\n")
+		}
+		if err := aio.ChownTree(o.SABnzbdDir(), o.UID, o.GID); err != nil {
+			return fmt.Errorf("the SABnzbd folder: %w", err)
 		}
 	}
 	if o.FlareSolverr {

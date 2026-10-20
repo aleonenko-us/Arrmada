@@ -425,14 +425,16 @@ LABEL org.arrmada.version="${VERSION}" org.arrmada.commit="${COMMIT}"
 # The Unraid all-in-one variant (--target aio; published as x.y.z-aio, x.y-aio, stable-aio)
 # ==========================================================================================
 #
-# An Unraid template is one container, so the template's image carries Arrmada's two
+# An Unraid template is one container, so the template's image carries Arrmada's
 # companions inside it: qBittorrent and FlareSolverr, each switched off with a template
-# variable. It is the plain image above plus these stages, built FROM it, so it runs the
-# exact same Arrmada. The plain image and the Compose install don't change: nothing below
-# is in them, and a build without --target still ends on the plain image (the last line).
+# variable, and the optional Prowlarr and SABnzbd (the Compose install's --with-prowlarr
+# and --with-sabnzbd), each switched on with one. It is the plain image above plus these
+# stages, built FROM it, so it runs the exact same Arrmada. The plain image and the Compose
+# install don't change: nothing below is in them, and a build without --target still ends
+# on the plain image (the last line).
 #
-# cmd/arrmada-aio supervises the three processes behind tini (docs/unraid.md says how).
-# arm64 gets qBittorrent only: FlareSolverr's Chromium is published for x86-64 Linux alone.
+# cmd/arrmada-aio supervises the processes behind tini (docs/unraid.md says how). arm64
+# gets all but FlareSolverr: its Chromium is published for x86-64 Linux alone.
 
 # qBittorrent: the static qbittorrent-nox build (no Qt or Boost to install, one file),
 # the same 5.2.3 the Compose bundle pins, with libtorrent 2.0. Checked against the SHA-256
@@ -451,6 +453,87 @@ RUN set -eux; \
     wget -qO /qbittorrent-nox "https://github.com/userdocs/qbittorrent-nox-static/releases/download/${QBITTORRENT_RELEASE}/${ARCH}-qbittorrent-nox"; \
     echo "${SHA}  /qbittorrent-nox" | sha256sum -c -; \
     chmod 755 /qbittorrent-nox
+
+# Prowlarr (optional, switched on in the template): its self-contained .NET build for
+# Linux, the same 2.6.5 the Compose bundle pins, checked against the SHA-256 GitHub records
+# for each release asset. Only downloaded and unpacked here, so it runs on the build
+# machine's platform. Its updater (Prowlarr.Update, a second copy of the .NET runtime) and
+# the web UI's source maps are left out; package_info says updates come with the image,
+# as in Prowlarr's other Docker images, so it never tries to update itself.
+FROM --platform=$BUILDPLATFORM alpine:3.20 AS aio-prowlarr
+ARG PROWLARR_VERSION=2.6.5.5623
+ARG PROWLARR_SHA256_AMD64=c0824e9f0e9c79e085882f6143041be5c2cde0519baa59e9477d9e4dcbe1b5e3
+ARG PROWLARR_SHA256_ARM64=6552ac286d8a1213f99779daac685cc283d69fa6ad3144d811af0289ee5f5656
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) ARCH=x64; SHA=${PROWLARR_SHA256_AMD64} ;; \
+        arm64) ARCH=arm64; SHA=${PROWLARR_SHA256_ARM64} ;; \
+        *) echo "no Prowlarr for ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    wget -qO /tmp/prowlarr.tar.gz "https://github.com/Prowlarr/Prowlarr/releases/download/v${PROWLARR_VERSION}/Prowlarr.master.${PROWLARR_VERSION}.linux-core-${ARCH}.tar.gz"; \
+    echo "${SHA}  /tmp/prowlarr.tar.gz" | sha256sum -c -; \
+    mkdir -p /opt/prowlarr; \
+    tar -xzf /tmp/prowlarr.tar.gz -C /tmp; \
+    mv /tmp/Prowlarr /opt/prowlarr/bin; \
+    # The .NET tracing hook needs LTTng, which isn't installed; .NET runs without it.
+    rm -rf /tmp/prowlarr.tar.gz /opt/prowlarr/bin/Prowlarr.Update /opt/prowlarr/bin/libcoreclrtraceptprovider.so; \
+    find /opt/prowlarr/bin/UI -name '*.map' -delete; \
+    printf 'UpdateMethod=docker\nBranch=master\nPackageVersion=%s\nPackageAuthor=[Arrmada](https://github.com/tristenlammi/Arrmada)\n' \
+        "${PROWLARR_VERSION}" > /opt/prowlarr/package_info; \
+    chown -R root:root /opt/prowlarr; \
+    chmod -R u=rwX,go=rX /opt/prowlarr; \
+    chmod 755 /opt/prowlarr/bin/Prowlarr
+
+# SABnzbd (optional, switched on in the template): its source release, the same 5.1.3 the
+# Compose bundle pins, checked by SHA-256, with its Python packages pinned by hash in a
+# virtualenv on the runtime's own Python (docker/aio/sabnzbd-requirements.txt). Every
+# package is a prebuilt wheel but sgmllib3k, which PyPI has only as source: pure Python,
+# built here against the setuptools pinned in that file (installed first, from its own
+# lines there), never one pip would fetch unchecked. pip and setuptools, the source's
+# tests and its translation sources are left out.
+# par2cmdline-turbo (the repair tool SABnzbd prefers, as in the Compose bundle's SABnzbd)
+# is its static Linux release, checked by SHA-256. unrar and 7-Zip come from Ubuntu, in
+# the final stage.
+FROM ubuntu:24.04 AS aio-sabnzbd
+ARG SABNZBD_VERSION=5.1.3
+ARG SABNZBD_SHA256=12a01e30ce166297a375ffc3a761f98bf7d93260e040391497f643f8a3525fed
+ARG PAR2TURBO_VERSION=1.5.0
+ARG PAR2TURBO_SHA256_AMD64=5a9f64386813456693c2ea1fb7649436fe7544bbdf97fd73b3483dfcc8aca464
+ARG PAR2TURBO_SHA256_ARM64=3afb2f0b319fc4e6353c6d4261994757cbe3189f968a72420b4ba1d63f9c9a70
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl unzip python3 python3-venv && rm -rf /var/lib/apt/lists/*
+COPY docker/aio/sabnzbd-requirements.txt /tmp/requirements.txt
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) PAR2SHA=${PAR2TURBO_SHA256_AMD64} ;; \
+        arm64) PAR2SHA=${PAR2TURBO_SHA256_ARM64} ;; \
+        *) echo "no par2cmdline-turbo for ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/sab.tar.gz "https://github.com/sabnzbd/sabnzbd/releases/download/${SABNZBD_VERSION}/SABnzbd-${SABNZBD_VERSION}-src.tar.gz"; \
+    echo "${SABNZBD_SHA256}  /tmp/sab.tar.gz" | sha256sum -c -; \
+    mkdir -p /opt/sabnzbd/app; \
+    tar -xzf /tmp/sab.tar.gz --strip-components=1 --no-same-owner -C /opt/sabnzbd/app; \
+    rm -rf /tmp/sab.tar.gz /opt/sabnzbd/app/tests /opt/sabnzbd/app/po; \
+    python3 -m venv /opt/sabnzbd/venv; \
+    pip=/opt/sabnzbd/venv/bin/pip; \
+    sed -n '/^setuptools==/,/[^\\]$/p' /tmp/requirements.txt > /tmp/setuptools.txt; \
+    grep -q -- '--hash=sha256:' /tmp/setuptools.txt; \
+    $pip install --no-cache-dir --require-hashes --only-binary :all: -r /tmp/setuptools.txt; \
+    $pip install --no-cache-dir --require-hashes --only-binary :all: --no-binary sgmllib3k --no-build-isolation \
+        -r /tmp/requirements.txt; \
+    # Nothing imports setuptools once that's built (zc.lockfile still lists it, from
+    # before namespace packages needed no help), so it goes with pip.
+    $pip uninstall -y setuptools; \
+    $pip uninstall -y pip; \
+    /opt/sabnzbd/venv/bin/python -m compileall -q /opt/sabnzbd/app; \
+    curl -fsSL -o /tmp/par2.zip "https://github.com/animetosho/par2cmdline-turbo/releases/download/v${PAR2TURBO_VERSION}/par2cmdline-turbo-${PAR2TURBO_VERSION}-linux-${TARGETARCH}.zip"; \
+    echo "${PAR2SHA}  /tmp/par2.zip" | sha256sum -c -; \
+    unzip -q /tmp/par2.zip par2 -d /usr/local/bin; \
+    chmod 755 /usr/local/bin/par2; \
+    rm -f /tmp/par2.zip /tmp/requirements.txt /tmp/setuptools.txt; \
+    chown -R root:root /opt/sabnzbd
 
 # The supervisor: standard library only, so it builds from its own two folders, on the
 # build machine's platform (Go cross-compiles it, like arrmada), without the web UI.
@@ -537,19 +620,46 @@ FROM arrmada AS aio-arm64
 
 FROM aio-${TARGETARCH} AS aio
 # tini is PID 1: it passes the stop signal to the supervisor and reaps the processes
-# Chromium leaves behind.
+# Chromium leaves behind. unrar and 7-Zip (7za) are what SABnzbd unpacks with. unrar is
+# non-free but freely redistributable (its licence: /usr/share/doc/unrar/copyright;
+# THIRD_PARTY_NOTICES.md), from Ubuntu's multiverse component, which ubuntu:24.04's own
+# apt sources already list: nothing is added to them here. libicu74 is .NET's
+# globalisation library for Prowlarr; the plain image has it already on amd64, and it's
+# named so a change there can't take it away quietly. Held as for FlareSolverr above, so
+# none of the plain image's packages moves.
 RUN dpkg-query -W -f='${binary:Package}\n' | xargs apt-mark hold >/dev/null && \
-    apt-get update && apt-get install -y --no-install-recommends --no-upgrade tini && \
+    apt-get update && apt-get install -y --no-install-recommends --no-upgrade \
+        tini unrar 7zip libicu74 && \
     apt-mark showhold | xargs -r apt-mark unhold >/dev/null && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=aio-qbittorrent /qbittorrent-nox /usr/local/bin/qbittorrent-nox
+COPY --from=aio-prowlarr /opt/prowlarr /opt/prowlarr
+COPY --from=aio-sabnzbd /opt/sabnzbd /opt/sabnzbd
+COPY --from=aio-sabnzbd /usr/local/bin/par2 /usr/local/bin/par2
 COPY --from=aio-supervisor /out/arrmada-aio /usr/local/bin/arrmada-aio
-RUN qbittorrent-nox --version
-# Both companions run unless the template switches them off.
+# Fail the build, not the first download, over a missing library or package: qBittorrent
+# and SABnzbd say their versions (SABnzbd only after loading its code and packages, the
+# compiled ones included), SABnzbd's tools answer, and Prowlarr and its .NET libraries
+# find every library they link (and the ICU .NET loads by itself).
+RUN qbittorrent-nox --version && \
+    /opt/sabnzbd/venv/bin/python -c 'import sabctools, Cheetah.Template, cryptography, cherrypy, feedparser, configobj, guessit, orjson, zc.lockfile; print("sabctools", sabctools.__version__)' && \
+    cd /opt/sabnzbd/app && /opt/sabnzbd/venv/bin/python SABnzbd.py --version && cd / && \
+    par2 -V | grep -q par2cmdline-turbo && \
+    unrar | grep -q UNRAR && \
+    7za | grep -q 7-Zip && \
+    for f in /opt/prowlarr/bin/Prowlarr /opt/prowlarr/bin/*.so; do \
+        if ldd "$f" | grep "not found"; then echo "$f is missing shared libraries" >&2; exit 1; fi; \
+    done && \
+    ldconfig -p | grep -q 'libicuuc.so.74 '
+# qBittorrent and FlareSolverr run unless the template switches them off; Prowlarr and
+# SABnzbd only when it switches them on.
 ENV ARRMADA_BUNDLE_QBITTORRENT=true \
-    ARRMADA_BUNDLE_FLARESOLVERR=true
-# 8080: qBittorrent's web UI. The incoming torrent port is the template's ARRMADA_QBIT_PORT.
-EXPOSE 8080
+    ARRMADA_BUNDLE_FLARESOLVERR=true \
+    ARRMADA_BUNDLE_PROWLARR=false \
+    ARRMADA_BUNDLE_SABNZBD=false
+# 8080: qBittorrent's web UI; 9696: Prowlarr's; 8085: SABnzbd's. The incoming torrent port
+# is the template's ARRMADA_QBIT_PORT.
+EXPOSE 8080 9696 8085
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/arrmada-aio"]
 LABEL org.arrmada.variant="aio"
 
