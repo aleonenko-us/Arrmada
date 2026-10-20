@@ -216,8 +216,9 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   and Move to folder won't move the folder.
 - **A show whose folder can't be told has a way out** (#56 follow-up). Move its files by hand
   into a folder of its own, then use **Refresh & rescan**. Each recorded file that's gone is
-  found by its name in that TV folder, as long as exactly one file has the name and no other
-  show has it. The show then reads normally again.
+  found by its name in that TV folder, as long as the name has the show's title and an
+  episode number, exactly one file has it, and no other show has that file. Nothing is
+  followed while the TV folder looks unmounted. The show then reads normally again.
 - **Music (Preview) writes proper tags and follows your naming.** Each import is copied into a
   hidden staging folder, given clean tags (every artist, MusicBrainz IDs, compilation flag,
   embedded cover plus `cover.jpg`), checked so the audio is unchanged, then moved into place in one
@@ -288,34 +289,56 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   1. Look directly inside each TV folder for folders named like a season (`S01`, `S13`,
      `Stagione 2`…). The files in them are named after their show.
   2. Move each file into its show's own season folder. If that episode is already there,
-     keep the copy you want and delete the other.
-  3. Rename that show's season folders to `Season 01`, `Season 02`… (see below), then use
-     **Refresh & rescan** on the show's page. Delete the season-named folders in the TV
-     folder once they're empty.
-  4. If every file of a show was moved, delete the show in Arrmada **keeping its files**,
-     put the files back, and add it again with a library scan.
+     keep the copy you want and delete the other. Delete the season-named folders in the
+     TV folder once they're empty.
+  3. Arrmada still has the moved files where they were. For each show you moved files
+     into, follow **Starting a show over** below, if it applies to that show.
+
 - **Shows whose season folders aren't named "Season N" are handled carefully now.** For a
   show stored like `The Pitt/S01/`, `Gomorra/Stagione 1/` or `Taskmaster/Series 1/`
   (or with your own season folder template's names), Arrmada no longer guesses the show's
   folder:
   - a new episode of a season you already have goes into that season's folder, next to
-    the season's other episodes — as long as all of them are in that one folder and it
-    holds nothing but the show's own files;
+    the season's other episodes — as long as all of them are in that one folder, it isn't
+    right inside the TV folder, and it holds nothing but the show's own files;
   - a new season, or anything unclear, waits in Activity → Needs you;
   - **Refresh & rescan**, **Rename**, the duplicate check and **Move to folder** are
-    refused for these shows. **Refresh all** lists them separately.
+    refused for these shows, and change nothing. **Refresh all** lists them separately.
 
-  To lift all that, rename the show's season folders to `Season 01`, `Season 02`… (and
-  `Specials`), then use **Refresh & rescan** on the show's page.
+  You can keep such a show as it is. To have it handled like any other show, start it
+  over (below) — but only when its season folders are inside the show's own folder right
+  in the TV folder (`<TV folder>/The Pitt/S01/`). When they sit directly inside a category
+  or franchise folder (`<TV folder>/Kids/S01/`, `<TV folder>/Star Trek/S01/` next to other
+  shows), or the show is inside one (`<TV folder>/Kids/The Pitt/S01/`), don't rename
+  anything: keep the show as it is.
+
+- **Shows whose own folder is named like a season** (`Special`, `Series 7 (2001)`,
+  `S1 (2020)`), and episodes loose in the TV folder, are refused the same way. Renaming
+  their season folders doesn't help. Rename the show's own folder so it doesn't read like a
+  season (or move loose episodes into a folder named after the show), then start the show
+  over (below) without the renaming step.
+
+- **Starting a show over.** For a show whose own folder is right inside a TV folder:
+  1. Delete the show in Arrmada, leaving **Also delete files from disk** unticked. Its
+     files stay where they are.
+  2. Rename its season folders to `Season 01`, `Season 02`… (and `Specials`).
+  3. On the Series page, use **Scan library**. The show is added back with its files.
+
+  It comes back with searching off and no quality profile: turn searching on and pick its
+  profile again. Its history in Arrmada starts over. New episodes then go into its
+  `Season 01`, `Season 02`… folders. The library scan only looks at the folders right
+  inside a TV folder, so this doesn't work for a show inside a category folder.
 
 ### Fixed
 
 - **TV episodes no longer import into a folder named like a season** (#56). Arrmada never
   takes a folder named like a season (`S01`, `Stagione 1`, `Saison 1`, `Staffel 1`,
   `Temporada 1`, `Series 1`…) for a show's own folder, and never makes one in the TV folder.
-  Every other show imports exactly where v0.3.1 put it, except that an existing
-  `Season.01`-style season folder (a dot, dash or underscore for the space) is now joined
-  rather than doubled by a new `Season 1`.
+  A show stored as `Show/Season 1/` or `Show/` imports exactly where v0.3.1 put it, except
+  that an existing `Season.01`-style season folder (a dot, dash or underscore for the
+  space) is now joined rather than doubled by a new `Season 1`. Shows whose season folders
+  or own folder read like a season, and episodes loose in the TV folder, are handled as
+  described under Before you update.
 - **An upgrade no longer makes a second folder for a show** whose season folders are named
   `S01` (for example by an `S{season00}` season folder template). This was the other half of
   #56, seen with The Pitt.
