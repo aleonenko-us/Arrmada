@@ -317,6 +317,8 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   pointed to.
 - Movies: deleting a movie no longer takes a subtitle named for another film in the same
   folder whose video is missing ("Movie.Directors.Cut.en.srt" beside "Movie.mkv").
+- Movies: deleting a movie on a large library over a network share no longer takes tens of
+  seconds, which could make the delete dialog time out behind a reverse proxy.
 - Library folders: a show, artist or album whose name is only dots can no longer reach
   outside its library folder. Names like "..." are still allowed.
 - Archive extraction: a refused archive no longer stops the rest of the download. Zips of RAR
