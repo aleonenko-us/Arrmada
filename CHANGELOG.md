@@ -355,6 +355,16 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   that don't name Italian (#58). Release names that write FRA, DEU, NLD, ESP, JAP or VFB (in
   capitals, outside an episode title) are read as French, German, Dutch, Spanish, Japanese
   and French.
+- Movies: renaming a movie (Rename files or Organize) took the artwork from the folder it
+  sat in, even when that folder wasn't the movie's own. A film sitting loose in a franchise
+  or collection folder carried the collection's `folder.jpg` and `poster.jpg` off with it.
+  Now a movie takes its artwork and `.nfo` files only from a folder that is clearly its
+  own. That means a folder named for the movie, holding no other video, with no other
+  film's file recorded in it, no links, and only files Arrmada recognises. Files named for
+  the old file name get the new name. Anything else stays where it is, and the rename
+  preview lists every file that moves and says why the others stay. A subtitle that
+  belongs to another film's file is no longer taken along. A folder that is a link, or one
+  of your library or downloads folders, is never removed.
 - Library folders: a show, artist or album whose name is only dots can no longer reach
   outside its library folder. Names like "..." are still allowed.
 - Archive extraction: a refused archive no longer stops the rest of the download. Zips of RAR

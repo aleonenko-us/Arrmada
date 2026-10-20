@@ -1604,6 +1604,10 @@ export interface MovieRenameItem {
   proposed: string;
   status: "ok" | "same" | "conflict" | "missing";
   reason?: string;
+  // Everything else that moves with the file (an ok item only): its subtitles and, when it
+  // leaves the movie's own folder, that folder's metadata and artwork. Nothing else moves.
+  extras?: { kind: "subtitle" | "folder"; from: string; to: string }[];
+  kept?: string; // why the old folder's other files stay where they are
 }
 // What applying one item did.
 export interface MovieRenameResult {

@@ -581,6 +581,34 @@ func scanVersion(row interface{ Scan(...any) error }) (Version, int64, error) {
 	return v, movieID, err
 }
 
+// recordedPath is one file recorded for a movie (default track or extra version).
+type recordedPath struct {
+	movieID int64
+	path    string
+}
+
+// RecordedPaths lists every file path recorded for any movie, with its movie, in one
+// query: OtherRecordedPaths for a whole-library pass (Organize), filtered per movie.
+func (r *Repo) RecordedPaths(ctx context.Context) ([]recordedPath, error) {
+	rows, err := r.q().QueryContext(ctx, `
+		SELECT id, movie_file_path FROM movies WHERE movie_file_path != ''
+		UNION ALL
+		SELECT movie_id, file_path FROM movie_versions WHERE file_path != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []recordedPath
+	for rows.Next() {
+		var rp recordedPath
+		if err := rows.Scan(&rp.movieID, &rp.path); err != nil {
+			return nil, err
+		}
+		out = append(out, rp)
+	}
+	return out, rows.Err()
+}
+
 // OtherRecordedPaths lists every file path recorded for any movie but id — default tracks
 // and extra versions, whether the file is on disk or not. A movie delete reads it so a
 // folder another film's record points into is never emptied.

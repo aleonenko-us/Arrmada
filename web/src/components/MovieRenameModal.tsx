@@ -9,6 +9,20 @@ export function pathTail(p: string): string {
   return parts.slice(-2).join("/");
 }
 
+// RenameExtras lists what moves along with a planned file, and why the old folder's other
+// files stay: the rename moves exactly what the preview shows.
+export function RenameExtras({ it }: { it: MovieRenameItem }) {
+  if (it.status !== "ok" || (!it.extras?.length && !it.kept)) return null;
+  return (
+    <span className="mt-0.5 block text-xs text-ink-dim">
+      {it.extras?.map((x) => (
+        <span key={x.from} className="block break-all font-mono" title={`${x.from} → ${x.to}`}>+ {pathTail(x.from)} → {pathTail(x.to)}</span>
+      ))}
+      {it.kept && <span className="block">Other files in the old folder stay: {it.kept}</span>}
+    </span>
+  );
+}
+
 const STATUS_NOTE: Record<MovieRenameItem["status"], string> = {
   ok: "",
   same: "Already named correctly",
@@ -104,6 +118,7 @@ export function MovieRenameModal({ movieId, title, onClose, onRenamed }: { movie
                   {it.status !== "same" && it.status !== "missing" && (
                     <span className="block break-all font-mono text-xs" title={it.proposed} style={{ color: ok ? "var(--ink)" : "var(--reject-text)" }}>→ {pathTail(it.proposed)}</span>
                   )}
+                  <RenameExtras it={it} />
                   {!ok && (
                     <span className="mt-0.5 block text-xs" style={{ color: it.status === "same" ? "var(--good-text)" : "var(--reject-text)" }}>
                       {STATUS_NOTE[it.status]}{it.reason ? `: ${it.reason}` : ""}

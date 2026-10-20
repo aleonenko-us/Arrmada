@@ -55,6 +55,13 @@ type RenameItem struct {
 	Proposed  string `json:"proposed"`
 	Status    string `json:"status"`
 	Reason    string `json:"reason,omitempty"`
+	// Extras are the other files that move with this one (an "ok" item only): its paired
+	// subtitles and, on the first item leaving a folder that is provably the movie's own,
+	// that folder's metadata and artwork. Applying moves no more than this list.
+	Extras []RenameExtra `json:"extras,omitempty"`
+	// Kept says why the old folder's other files stay where they are, when the file
+	// leaves a folder that holds more than the movie's files and subtitles.
+	Kept string `json:"kept,omitempty"`
 }
 
 // RenameResult is what applying one planned item did.
@@ -86,6 +93,7 @@ func (s *Service) RenamePlan(ctx context.Context, ids []int64) ([]RenameItem, er
 		for _, id := range ids {
 			want[id] = true
 		}
+		others := s.libraryOthers(ctx)
 		for _, m := range all {
 			if len(ids) > 0 && !want[m.ID] {
 				continue
@@ -93,7 +101,7 @@ func (s *Service) RenamePlan(ctx context.Context, ids []int64) ([]RenameItem, er
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			out = append(out, s.planMovie(m, byMovie[m.ID])...)
+			out = append(out, s.planMovie(m, byMovie[m.ID], others(m.ID))...)
 		}
 		return out, nil
 	}
@@ -105,7 +113,7 @@ func (s *Service) RenamePlan(ctx context.Context, ids []int64) ([]RenameItem, er
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, s.planMovie(m, versions)...)
+		out = append(out, s.planMovie(m, versions, s.othersOfMovie(ctx, id))...)
 	}
 	return out, nil
 }
@@ -126,8 +134,9 @@ func (s *Service) trackRows(ctx context.Context, id int64) (Movie, []Version, er
 }
 
 // planMovie plans one movie's tracks. A file two tracks both record is planned once,
-// under the first; applying it repoints both.
-func (s *Service) planMovie(m Movie, versions []Version) []RenameItem {
+// under the first; applying it repoints both. others reads the library's other films'
+// records, only when there is a clean rename (planExtras).
+func (s *Service) planMovie(m Movie, versions []Version, others othersFunc) []RenameItem {
 	owned := map[string]int64{} // every file this movie's tracks record → its first track
 	for _, v := range versions {
 		if v.HasFile && v.FilePath != "" {
@@ -158,6 +167,7 @@ func (s *Service) planMovie(m Movie, versions []Version) []RenameItem {
 		}
 		items = append(items, it)
 	}
+	s.planExtras(m, versions, items, others)
 	return items
 }
 
@@ -241,13 +251,17 @@ func renameSource(v Version, fi os.FileInfo) library.RenameSource {
 	return src
 }
 
-// PlanToken fingerprints the renames a plan would make, so applying it can tell whether
-// the library changed since the preview it was asked from.
+// PlanToken fingerprints the renames a plan would make, and every file moving with them,
+// so applying it can tell whether the library changed since the preview it was asked from.
 func PlanToken(items []RenameItem) string {
 	var lines []string
 	for _, it := range items {
 		if it.Status == RenameOK {
-			lines = append(lines, strings.Join([]string{strconv.FormatInt(it.MovieID, 10), strconv.FormatInt(it.VersionID, 10), it.Current, it.Proposed}, "\x00"))
+			parts := []string{strconv.FormatInt(it.MovieID, 10), strconv.FormatInt(it.VersionID, 10), it.Current, it.Proposed}
+			for _, x := range it.Extras {
+				parts = append(parts, x.Kind, x.From, x.To)
+			}
+			lines = append(lines, strings.Join(parts, "\x00"))
 		}
 	}
 	sort.Strings(lines)
@@ -258,8 +272,9 @@ func PlanToken(items []RenameItem) string {
 // ApplyRename carries out planned renames. Each movie's plan is read again first: an item
 // whose file or proposed name changed since it was planned, or that is no longer a clean
 // move, is left alone and reported. Files move without ever replacing another file
-// (library.Importer.Move), take their subtitles along, and — when the folder changes —
-// the movie.nfo and artwork too; the emptied old folder is removed. Every moved track's
+// (library.Importer.Move) and take along what the item's Extras list — its subtitles and,
+// leaving the movie's own folder, that folder's metadata and artwork — when the fresh plan
+// still lists it (renamefolder.go); an emptied old folder is removed. Every moved track's
 // record changes in one transaction with its movie.changed row, so Convert, Subtitles and
 // a Plex scan follow the new name.
 func (s *Service) ApplyRename(ctx context.Context, items []RenameItem) ([]RenameResult, error) {
@@ -301,8 +316,16 @@ func (s *Service) applyMovieRename(ctx context.Context, id int64, asked []Rename
 		return nil, err
 	}
 	fresh := map[int64]RenameItem{}
-	for _, it := range s.planMovie(m, versions) {
+	for _, it := range s.planMovie(m, versions, s.othersOfMovie(ctx, id)) {
 		fresh[it.VersionID] = it
+	}
+	// Only what the preview listed may move with a file, and only while the fresh plan
+	// still lists it too.
+	allowed := map[string]bool{}
+	for _, it := range asked {
+		for _, x := range it.Extras {
+			allowed[extraKey(x)] = true
+		}
 	}
 	var moves []RenameItem
 	for _, it := range asked {
@@ -320,19 +343,23 @@ func (s *Service) applyMovieRename(ctx context.Context, id int64, asked []Rename
 	}
 
 	moved := 0
-	oldDirs := map[string]string{} // old folder → new folder, for folders this rename left
+	left := map[string][]renameMove{} // old folder → the files that left it
+	var dirs []string
 	for _, it := range moves {
-		r, ok := s.moveTrackFile(ctx, m, versions, it)
+		r, ok := s.moveTrackFile(ctx, m, versions, it, allowed)
 		out = append(out, r)
 		if ok {
 			moved++
-			if od, nd := filepath.Dir(it.Current), filepath.Dir(it.Proposed); od != nd {
-				oldDirs[od] = nd
+			if od := filepath.Dir(it.Current); od != filepath.Dir(it.Proposed) {
+				if _, seen := left[od]; !seen {
+					dirs = append(dirs, od)
+				}
+				left[od] = append(left[od], renameMove{it.Current, it.Proposed})
 			}
 		}
 	}
-	for od, nd := range oldDirs {
-		s.leaveOldFolder(od, nd)
+	for _, od := range dirs {
+		s.leaveFolder(ctx, m, versions, od, left[od], allowed)
 	}
 	if moved > 0 {
 		s.log.Info("movie renamed", "movie_id", id, "files", moved)
@@ -343,7 +370,7 @@ func (s *Service) applyMovieRename(ctx context.Context, id int64, asked []Rename
 // moveTrackFile moves one planned file and repoints every track recording it. If the
 // record can't be written the file is put back, so the record and the disk never
 // disagree.
-func (s *Service) moveTrackFile(ctx context.Context, m Movie, versions []Version, it RenameItem) (RenameResult, bool) {
+func (s *Service) moveTrackFile(ctx context.Context, m Movie, versions []Version, it RenameItem, allowed map[string]bool) (RenameResult, bool) {
 	res := RenameResult{MovieID: m.ID, VersionID: it.VersionID, Label: it.Label, From: it.Current, To: it.Proposed}
 	if err := s.imp.Move(it.Current, it.Proposed); err != nil {
 		if errors.Is(err, library.ErrTargetExists) {
@@ -353,7 +380,7 @@ func (s *Service) moveTrackFile(ctx context.Context, m Movie, versions []Version
 		}
 		return res, false
 	}
-	s.imp.MoveEpisodeSubs(it.Current, it.Proposed)
+	subs := s.moveSubs(it.Extras, allowed)
 
 	// The tracks that follow this file, with their cached facts moved along (read before
 	// the transaction: a stale cache means a probe, and that can take seconds).
@@ -400,7 +427,9 @@ func (s *Service) moveTrackFile(ctx context.Context, m Movie, versions []Version
 	})
 	if err != nil {
 		if berr := s.imp.Move(it.Proposed, it.Current); berr == nil {
-			s.imp.MoveEpisodeSubs(it.Proposed, it.Current)
+			for _, x := range subs {
+				_ = s.imp.Move(x.To, x.From)
+			}
 			res.Reason = "couldn't record the new name, so the file was put back: " + err.Error()
 		} else {
 			s.log.Error("movie rename: the record couldn't be written and the file couldn't be put back — the movie points at the old name",
@@ -414,42 +443,6 @@ func (s *Service) moveTrackFile(ctx context.Context, m Movie, versions []Version
 	}
 	res.Renamed = true
 	return res, true
-}
-
-// folderSidecars are the files a movie folder holds for the film as a whole — the
-// metadata and artwork Arrmada (and Kodi/Jellyfin tools) write — which follow the film to
-// its new folder. Anything else stays where it is.
-var folderSidecars = []string{
-	"movie.nfo", "poster.jpg", "fanart.jpg", "folder.jpg", "backdrop.jpg", "landscape.jpg",
-	"banner.jpg", "clearlogo.png", "logo.png", "disc.png",
-}
-
-// leaveOldFolder finishes a rename that moved a film out of oldDir: once no video is left
-// there, the film's metadata and artwork follow it (never replacing what newDir already
-// has) and the emptied folder is removed. The library root itself is never removed.
-func (s *Service) leaveOldFolder(oldDir, newDir string) {
-	if s.isRoot(oldDir) {
-		return // a file that sat in a library folder itself: its neighbours aren't this film's
-	}
-	entries, err := os.ReadDir(oldDir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if !e.IsDir() && isVideoFile(e.Name()) {
-			return // another track (or an untracked video) still lives here
-		}
-	}
-	for _, name := range folderSidecars {
-		from := filepath.Join(oldDir, name)
-		if _, err := os.Lstat(from); err != nil {
-			continue
-		}
-		if err := s.imp.Move(from, filepath.Join(newDir, name)); err != nil {
-			s.log.Info("movie rename: left a folder file behind", "file", from, "err", err)
-		}
-	}
-	s.imp.RemoveDirIfEmpty(oldDir)
 }
 
 // Rename applies every clean rename for one movie (the plan's "ok" items). It returns
