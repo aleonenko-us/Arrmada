@@ -49,6 +49,9 @@ var (
 	FixIssues = &Fix{Path: "/requests?tab=issues", Label: "Issues"}
 	// The Subtitles Overview's needs-attention board. No LINKS key, for the same reason.
 	FixSubtitles = &Fix{Path: "/subtitles", Label: "Subtitles"}
+	// Library files that look wrong inside (the file check): their section of Needs you,
+	// with Find a better copy and Ignore on each. No LINKS key, for the same reason.
+	FixFileChecks = &Fix{Path: "/activity/needs-you#file-checks", Label: "Needs you"}
 )
 
 // connectionsPath is Settings → Connections, where every integration has a card.

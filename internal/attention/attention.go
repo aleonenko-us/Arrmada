@@ -38,6 +38,9 @@ const (
 	KindConvert  = "convert"   // conversions stuck waiting for disk space (one per reason)
 	KindIssue    = "issue"     // a problem a requester reported that is still open
 	KindSubs     = "subtitles" // subtitles parked on something only a person can fix (one per reason)
+	// KindFileCheck: a library file that looks wrong inside — no sound, silence, the wrong
+	// language, a probable cam, damaged (one per finding, filecheck.go).
+	KindFileCheck = "filecheck"
 )
 
 // Levels, the same words the health registry uses.
@@ -75,6 +78,9 @@ type Item struct {
 	// offers "Try another release" only for those.
 	Hash    string `json:"hash,omitempty"`
 	Grabbed bool   `json:"grabbed,omitempty"`
+	// ID is the record a filecheck item is about (its finding), for its Find a better copy
+	// and Ignore; 0 otherwise.
+	ID int64 `json:"id,omitempty"`
 }
 
 // Counts is how much needs attention, by what the sidebar badges show.
@@ -86,9 +92,10 @@ type Counts struct {
 	Searches     int `json:"searches"`  // titles whose searches keep coming up empty
 	Health       int `json:"health"`    // health findings, any level
 	HealthErrors int `json:"health_errors"`
-	Convert      int `json:"convert"`   // reasons conversions are stuck
-	Issues       int `json:"issues"`    // reported problems still open or being fixed
-	Subtitles    int `json:"subtitles"` // file languages waiting on a login, a model or a whisper fix
+	Convert      int `json:"convert"`     // reasons conversions are stuck
+	Issues       int `json:"issues"`      // reported problems still open or being fixed
+	Subtitles    int `json:"subtitles"`   // file languages waiting on a login, a model or a whisper fix
+	FileChecks   int `json:"file_checks"` // library files that look wrong inside
 	Total        int `json:"total"`
 }
 
@@ -408,7 +415,7 @@ func (s *Service) build(items []Item, now time.Time) (snap *Snapshot, all []Item
 // kindOrder is the order kinds are listed in: what blocks something first.
 var kindOrder = map[string]int{
 	KindHealth: 0, KindRequest: 1, KindReview: 2, KindImport: 3, KindDownload: 4,
-	KindWrongCat: 5, KindStalled: 6, KindConvert: 7, KindSearch: 8, KindIssue: 9, KindSubs: 10,
+	KindWrongCat: 5, KindStalled: 6, KindConvert: 7, KindSearch: 8, KindIssue: 9, KindSubs: 10, KindFileCheck: 11,
 }
 
 // sortItems: errors first, then by kind, then oldest first.
@@ -452,6 +459,8 @@ func countItems(items []Item) Counts {
 			c.Issues += n
 		case KindSubs:
 			c.Subtitles += n
+		case KindFileCheck:
+			c.FileChecks += n
 		case KindHealth:
 			c.Health += n
 			if it.Level == LevelError {
@@ -459,7 +468,7 @@ func countItems(items []Item) Counts {
 			}
 		}
 	}
-	c.Total = c.Requests + c.Reviews + c.Downloads + c.Imports + c.Searches + c.Health + c.Convert + c.Issues + c.Subtitles
+	c.Total = c.Requests + c.Reviews + c.Downloads + c.Imports + c.Searches + c.Health + c.Convert + c.Issues + c.Subtitles + c.FileChecks
 	return c
 }
 
@@ -532,6 +541,8 @@ func groupTitle(kind string, n int) string {
 		return num + pick(" reported problem is open", " reported problems are open")
 	case KindSubs:
 		return num + pick(" subtitle is waiting on you", " subtitles are waiting on you")
+	case KindFileCheck:
+		return num + pick(" file looks wrong inside", " files look wrong inside")
 	}
 	return num + " items"
 }

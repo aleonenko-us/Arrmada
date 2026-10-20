@@ -9,7 +9,9 @@ import (
 
 	"github.com/tristenlammi/arrmada/internal/audioserver"
 	"github.com/tristenlammi/arrmada/internal/convert"
+	"github.com/tristenlammi/arrmada/internal/filecheck"
 	"github.com/tristenlammi/arrmada/internal/issues"
+	"github.com/tristenlammi/arrmada/internal/movies"
 	"github.com/tristenlammi/arrmada/internal/outbox"
 	"github.com/tristenlammi/arrmada/internal/requests"
 	"github.com/tristenlammi/arrmada/internal/safego"
@@ -39,6 +41,9 @@ type importConsumers struct {
 	plexIndexStale func()
 	// issues resolves a reported problem being fixed when the new file for it lands.
 	issues *issues.Service
+	// fileCheck looks inside each imported file (no sound, silence, a cam with a false
+	// label) and replaces a bad copy when that's on.
+	fileCheck *filecheck.Service
 }
 
 // register adds every consumer. It must run before anything can import — the scheduler's
@@ -65,6 +70,10 @@ func (c importConsumers) register(box *outbox.Outbox) {
 	}))
 	box.Register(outbox.TopicMovieImported, "subtitles", decode(func(ctx context.Context, p outbox.MovieImported) error {
 		c.subtitles.OnMovieImported(ctx, p.MovieID)
+		return nil
+	}))
+	box.Register(outbox.TopicMovieImported, "filecheck", decode(func(_ context.Context, p outbox.MovieImported) error {
+		c.checkFiles(fmt.Sprintf("file check: movie %d", p.MovieID), func(ctx context.Context) error { return c.fileCheck.CheckMovie(ctx, p.MovieID) })
 		return nil
 	}))
 
@@ -100,6 +109,10 @@ func (c importConsumers) register(box *outbox.Outbox) {
 			eps = append(eps, series.EpisodeRef{Season: e.Season, Episode: e.Episode})
 		}
 		c.subtitles.OnSeriesImported(ctx, p.SeriesID, eps)
+		return nil
+	}))
+	box.Register(outbox.TopicSeriesImported, "filecheck", decode(func(_ context.Context, p outbox.SeriesImported) error {
+		c.checkFiles(fmt.Sprintf("file check: series %d", p.SeriesID), func(ctx context.Context) error { return c.fileCheck.CheckSeries(ctx, p.SeriesID) })
 		return nil
 	}))
 
@@ -148,6 +161,21 @@ func (c importConsumers) registerPlex(box *outbox.Outbox) {
 		c.indexStale()
 		return nil
 	}))
+}
+
+// checkFiles runs a file check of what an import placed in the run group, with the app's
+// own context: probing and sampling a film's sound takes a while at idle priority, and the
+// outbox runs one row at a time, so it must not hold up the rows behind it. A check lost
+// to a restart is caught by the nightly pass (the file is new to it).
+func (c importConsumers) checkFiles(name string, fn func(ctx context.Context) error) {
+	if c.fileCheck == nil || c.grp == nil {
+		return
+	}
+	c.grp.Go(name, func(ctx context.Context) {
+		if err := fn(ctx); err != nil && ctx.Err() == nil && !errors.Is(err, movies.ErrNotFound) && !errors.Is(err, series.ErrNotFound) {
+			c.fileCheck.Log().Warn("file check: couldn't check an imported file", "check", name, "err", err)
+		}
+	})
 }
 
 func (c importConsumers) indexStale() {

@@ -41,6 +41,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/displaytitle"
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/eventbus"
+	"github.com/tristenlammi/arrmada/internal/filecheck"
 	"github.com/tristenlammi/arrmada/internal/flaresolverr"
 	"github.com/tristenlammi/arrmada/internal/geoip"
 	"github.com/tristenlammi/arrmada/internal/health"
@@ -1453,6 +1454,22 @@ func main() {
 	// registers the checks built from its deps.
 	healthReg := health.NewRegistry(bus, log)
 
+	// The file check looks inside library files for what a release name can't promise:
+	// sound, sound that isn't silence, a language the household watches in, a copy that
+	// isn't a relabelled cam. Every import is checked (an outbox consumer), the whole
+	// library nightly (only files that changed), and a bad copy is replaced automatically
+	// when "Replace bad copies automatically" is on (the HTTP layer wires the replace).
+	// The household's languages are Convert's "keep audio" ones, as the Unwanted pack's.
+	fileCheckSvc := filecheck.New(st.DB(), fileCheckLibrary{movies: movieSvc, series: seriesSvc, quality: qualitySvc},
+		filecheck.FFmpeg{}, settingsSvc, convertSvc.AudioLanguages, modLog(log, "filecheck"))
+	sched.Register("file-checks", 24*time.Hour, false, func(ctx context.Context) error {
+		res, err := fileCheckSvc.Pass(ctx, false)
+		if err == nil && res.Checked > 0 {
+			log.Info("file check: checked library files", "checked", res.Checked, "files", res.Files)
+		}
+		return err
+	}, scheduler.Label("Check library files"), scheduler.Description("Looks inside new or changed movie and episode files for no sound, silence, the wrong language, a damaged file or a probable cam, at idle priority. Bad copies are replaced when that's switched on."))
+
 	// The Needs-you feed: one snapshot of everything waiting on a person, refreshed every
 	// 30 seconds and a second after anything it reports on changes. The sidebar badges and
 	// the Dashboard card read it from memory, however many tabs are open.
@@ -1466,6 +1483,7 @@ func main() {
 		attention.Convert(convertSvc),
 		attention.Issues(issuesSvc),
 		attention.Subtitles(subtitlesSvc),
+		attention.FileChecks(fileCheckSvc),
 		attention.Searches(
 			func(ctx context.Context) (int, error) {
 				return movieSvc.CountSearchStuck(ctx, attention.SearchStuckAfter)
@@ -1488,6 +1506,7 @@ func main() {
 	coordinator.SetAttentionKick(needsYou.Kick)
 	requestsSvc.SetAttentionKick(needsYou.Kick)
 	issuesSvc.SetAttentionKick(needsYou.Kick)
+	fileCheckSvc.SetAttentionKick(needsYou.Kick)
 	grp.Loop("attention: refresh on change", needsYou.Run)
 	sched.Register("attention-refresh", 30*time.Second, true, needsYou.Refresh,
 		scheduler.Label("Update the Needs-you list"),
@@ -1504,6 +1523,7 @@ func main() {
 		// With scans switched off nothing calls OnRefreshed; the server's own watcher adds
 		// the file in its own time, so look again a few minutes after the import.
 		plexIndexStale: media.IndexStaleAfterImport,
+		fileCheck:      fileCheckSvc,
 	}.register(box)
 	grp.Loop("outbox: dispatcher", box.Run)
 	// Alert deliveries are each connection's log on the Alerts page: a month of it.
@@ -1631,6 +1651,7 @@ func main() {
 		Scheduler: sched,
 		Jobs:      jobRunner,
 		Attention: needsYou,
+		FileCheck: fileCheckSvc,
 		PlexScan:  plexScanner,
 		PlexLinks: insightsSvc,
 		// Jellyfin's connection card, its library updates, and every server together.

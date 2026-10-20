@@ -28,7 +28,7 @@ type Entry struct {
 // Modules are the module tags main hands out, for the Logs page's filter. Keep in step
 // with the log.With("module", …) calls in cmd/arrmada.
 var Modules = []string{
-	"api", "audioserver", "automation", "books", "convert", "download", "import",
+	"api", "audioserver", "automation", "books", "convert", "download", "filecheck", "import",
 	"indexer", "insights", "jellyfin", "emby", "movies", "music", "notify", "requests", "scheduler",
 	"series", "subtitles",
 }

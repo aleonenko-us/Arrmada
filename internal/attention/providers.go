@@ -18,17 +18,18 @@ import (
 // groupLinks is where a group's "see them" link goes, by kind. Health has none of its own:
 // each finding links to its own fix, and the group to the Status page.
 var groupLinks = map[string]*health.Fix{
-	KindRequest:  health.FixRequests,
-	KindReview:   health.FixReview,
-	KindDownload: health.FixDownloadProblems,
-	KindStalled:  health.FixDownloadProblems,
-	KindImport:   health.FixImportProblems,
-	KindWrongCat: health.FixWrongCategory,
-	KindSearch:   health.FixDownloadsSearching,
-	KindHealth:   health.FixStatus,
-	KindConvert:  health.FixConvertProblems,
-	KindIssue:    health.FixIssues,
-	KindSubs:     health.FixSubtitles,
+	KindRequest:   health.FixRequests,
+	KindReview:    health.FixReview,
+	KindDownload:  health.FixDownloadProblems,
+	KindStalled:   health.FixDownloadProblems,
+	KindImport:    health.FixImportProblems,
+	KindWrongCat:  health.FixWrongCategory,
+	KindSearch:    health.FixDownloadsSearching,
+	KindHealth:    health.FixStatus,
+	KindConvert:   health.FixConvertProblems,
+	KindIssue:     health.FixIssues,
+	KindSubs:      health.FixSubtitles,
+	KindFileCheck: health.FixFileChecks,
 }
 
 func linkTo(it *Item, f *health.Fix) {

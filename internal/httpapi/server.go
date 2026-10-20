@@ -26,6 +26,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/embysvc"
 	"github.com/tristenlammi/arrmada/internal/eventbus"
+	"github.com/tristenlammi/arrmada/internal/filecheck"
 	"github.com/tristenlammi/arrmada/internal/flaresolverr"
 	"github.com/tristenlammi/arrmada/internal/health"
 	"github.com/tristenlammi/arrmada/internal/indexer"
@@ -156,6 +157,10 @@ type Deps struct {
 	// Attention is the Needs-you feed: GET /attention serves its snapshot (the services
 	// whose changes it reports kick its refresh themselves). nil = an empty, stale answer.
 	Attention *attention.Service
+	// FileCheck looks inside library files (internal/filecheck): its findings, Find a
+	// better copy, Ignore, a check on demand and "Replace bad copies automatically". nil
+	// in tests that don't need it.
+	FileCheck *filecheck.Service
 	// PlexScan tells Plex which folder changed; the Plex settings card reads and edits
 	// its toggle and path mappings. nil = the card's routes answer 503.
 	PlexScan *plexscan.Scanner
@@ -249,6 +254,11 @@ func New(d Deps) *http.Server {
 	if d.Automation != nil {
 		d.Automation.SetMusicRescan(a.musicScanFollowUp)
 	}
+	// A bad copy the file check finds is replaced through the same blocklist and search
+	// queue as Find a better copy (filecheck.go).
+	if d.FileCheck != nil {
+		d.FileCheck.SetReplacer(a.replaceBadCopy)
+	}
 
 	// Chain: recover → authenticate (resolves the user) → external gate (LAN vs
 	// outside) → log → gzip for larger JSON → routes.
@@ -278,6 +288,14 @@ func (a *api) registerRoutes(mux *router) {
 	// The Needs-you snapshot behind the sidebar badges and the Dashboard card: staff only
 	// (a requester's shell shows none of these counts), served from memory.
 	mux.HandleFunc("GET /api/v1/attention", a.requireRole(auth.RoleManager, a.handleAttention))
+	// The file check: what it found inside library files, and what to do about each.
+	mux.HandleFunc("GET /api/v1/file-checks", a.requireRole(auth.RoleManager, a.handleFileChecks))
+	mux.HandleFunc("POST /api/v1/file-checks/run", a.requireRole(auth.RoleManager, a.handleFileCheckRun))
+	mux.HandleFunc("PUT /api/v1/file-checks/settings", a.requireRole(auth.RoleManager, a.handleFileCheckSettings))
+	mux.HandleFunc("POST /api/v1/file-checks/{id}/replace", a.requireRole(auth.RoleManager, a.handleFileCheckReplace))
+	mux.HandleFunc("POST /api/v1/file-checks/{id}/dismiss", a.requireRole(auth.RoleManager, a.handleFileCheckDismiss))
+	mux.HandleFunc("GET /api/v1/movies/{id}/file-checks", a.requireRole(auth.RoleManager, a.handleMovieFileChecks))
+	mux.HandleFunc("GET /api/v1/series/{id}/file-checks", a.requireRole(auth.RoleManager, a.handleSeriesFileChecks))
 
 	// App preferences. API keys are the owner's credentials for outside services, so
 	// only an admin sees or changes them. Managers keep the settings they need day to
