@@ -1995,6 +1995,21 @@ export interface UpdateStatus {
   problem?: string;
   /** "unraid": Unraid's own Docker manager runs this container, so it updates from Unraid's Docker page. */
   host?: "unraid";
+  /**
+   * ready: the updater container is set up, so Update now works; needs_setup: it isn't (run the
+   * install line with --with-updater once); absent: this container is updated some other way.
+   */
+  apply?: "ready" | "needs_setup";
+  /** The automatic-updates setting (off unless an admin turned it on). */
+  auto_update?: boolean;
+}
+
+/** How an update started with Update now is going, as the updater container reports it. */
+export interface UpdateProgress {
+  state: "idle" | "running" | "done" | "failed";
+  started_at: string;
+  /** The end of update.sh's output. */
+  log: string;
 }
 
 /**

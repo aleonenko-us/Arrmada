@@ -297,6 +297,7 @@ GET /api/v1/system/pending-restart staff -
 GET /api/v1/system/status admin -
 GET /api/v1/system/support-bundle admin -
 GET /api/v1/system/tasks staff -
+GET /api/v1/system/update/progress admin -
 GET /api/v1/system/widget-key admin -
 GET /api/v1/users admin -
 GET /api/v1/users/api-keys admin -
@@ -526,6 +527,7 @@ POST /api/v1/system/library/folders admin -
 POST /api/v1/system/restart admin -
 POST /api/v1/system/tasks/{name}/run admin -
 POST /api/v1/system/update-check admin -
+POST /api/v1/system/update/apply admin -
 POST /api/v1/system/widget-key admin -
 POST /api/v1/users admin -
 POST /api/v1/users/{id}/2fa/reset admin -
@@ -595,4 +597,5 @@ PUT /api/v1/system/library/folders/downloads admin -
 PUT /api/v1/system/library/folders/order admin -
 PUT /api/v1/system/library/folders/{id} admin -
 PUT /api/v1/system/update-check admin -
+PUT /api/v1/system/update/auto admin -
 PUT /api/v1/users/{id} admin -

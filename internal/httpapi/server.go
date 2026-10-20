@@ -51,6 +51,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/store"
 	"github.com/tristenlammi/arrmada/internal/subtitles"
 	"github.com/tristenlammi/arrmada/internal/updatecheck"
+	"github.com/tristenlammi/arrmada/internal/updater"
 	"github.com/tristenlammi/arrmada/internal/webui"
 )
 
@@ -133,6 +134,9 @@ type Deps struct {
 	// Updates is the "Update available" check on System → Status. nil = Status says
 	// nothing about updates and its routes answer 503.
 	Updates *updatecheck.Checker
+	// Updater asks the optional updater container to run the update. nil = it isn't set
+	// up: Status offers the install line instead and the update routes answer 409.
+	Updater *updater.Client
 	// Health holds the background health checks; New registers the ones built from these
 	// deps, and /health/system serves its cached results. nil = an empty, healthy report.
 	Health *health.Registry
@@ -304,6 +308,11 @@ func (a *api) registerRoutes(mux *router) {
 	// Its "Update available" check: switch it on or off, or check now (CFG-29).
 	mux.HandleFunc("PUT /api/v1/system/update-check", a.requireRole(auth.RoleAdmin, a.handleSetUpdateCheck))
 	mux.HandleFunc("POST /api/v1/system/update-check", a.requireRole(auth.RoleAdmin, a.handleUpdateCheckNow))
+	// Update now, how it is going, and the automatic-updates switch. They need the
+	// optional updater container (internal/updater); without it they answer 409.
+	mux.HandleFunc("POST /api/v1/system/update/apply", a.requireRole(auth.RoleAdmin, a.handleUpdateApply))
+	mux.HandleFunc("GET /api/v1/system/update/progress", a.requireRole(auth.RoleAdmin, a.handleUpdateProgress))
+	mux.HandleFunc("PUT /api/v1/system/update/auto", a.requireRole(auth.RoleAdmin, a.handleSetAutoUpdate))
 	// The dashboard widget (widget.go): counts for gethomepage.dev, opened only by the
 	// install's widget key (checked in the handler, so the route is public in the table).
 	// LAN-only like the rest. Making, showing and turning off that key is admin-only.

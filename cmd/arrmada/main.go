@@ -73,6 +73,7 @@ import (
 	"github.com/tristenlammi/arrmada/internal/store"
 	"github.com/tristenlammi/arrmada/internal/subtitles"
 	"github.com/tristenlammi/arrmada/internal/updatecheck"
+	"github.com/tristenlammi/arrmada/internal/updater"
 	"github.com/tristenlammi/arrmada/internal/xem"
 )
 
@@ -1305,6 +1306,36 @@ func main() {
 	})
 	sched.Register("update-check", updatecheck.Interval, true, updates.Run,
 		scheduler.Label("Check for updates"), scheduler.Description("Asks GitHub every 12 hours whether a newer Arrmada release is out. Switch it off on Settings → Status."))
+	// Update now and the optional automatic updates: the app never touches Docker, it asks
+	// the updater container (nil unless install.sh --with-updater set it up).
+	updaterClient := updater.FromEnv(os.Getenv)
+	sched.Register("auto-update", updater.Interval, false, func(ctx context.Context) error {
+		ok, why := updater.AutoDecision(updater.AutoInput{
+			Enabled:    settingsSvc.GetBool(ctx, updater.KeyAutoEnabled, false),
+			Configured: updaterClient.Available(),
+			Status:     updates.Status(ctx),
+			LastTag:    settingsSvc.Get(ctx, updater.KeyAutoLastTag, ""),
+			Now:        time.Now(),
+		})
+		if !ok {
+			log.Debug("automatic update: not now", "why", why)
+			return nil
+		}
+		tag := updates.Status(ctx).Latest.Tag
+		if err := updaterClient.Apply(ctx); err != nil {
+			if errors.Is(err, updater.ErrBusy) {
+				return nil // one is running already
+			}
+			return fmt.Errorf("automatic update to %s: %w", tag, err)
+		}
+		// Remembered once it has started, so a release that fails to install isn't started
+		// again every half hour; the next release is a new try.
+		if err := settingsSvc.Set(ctx, updater.KeyAutoLastTag, tag); err != nil {
+			log.Warn("automatic update: couldn't remember the release it started", "err", err)
+		}
+		log.Info("automatic update: started", "from", buildinfo.Version, "to", tag)
+		return nil
+	}, scheduler.Label("Install updates automatically"), scheduler.Description("When automatic updates are on (Settings → Status), installs a new release at night, a day after it is published."))
 
 	// Audiobook server: listening apps (Lissen and other Audiobookshelf clients) connect to
 	// its own port. Off until an admin switches it on in Settings → Book server.
@@ -1530,6 +1561,7 @@ func main() {
 		RunGroup:  grp,
 		Backups:   backupSvc,
 		Updates:   updates,
+		Updater:   updaterClient,
 		Health:    healthReg,
 		Scheduler: sched,
 		Jobs:      jobRunner,
