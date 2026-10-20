@@ -193,23 +193,32 @@ without both it has nothing to download.
   your Downloads folder.
 - Open its page by the server's IP address. By name (`http://tower:8085`) it may say
   "hostname verification failed" until you add that name in SABnzbd → Config → Special →
-  `host_whitelist`.
+  `host_whitelist`. The only name it starts with is the container's own, which Unraid
+  changes whenever it recreates the container (an update, or an edit in the Docker tab), so
+  use the IP, or add the name you use there.
 - Switched back to `false`, it stops, and its client in Settings → Connections is switched
   off with it, so nothing new is sent there. Its settings and queue stay in appdata: set it
   to `true` again and both come back.
 
 **Prowlarr** is set up in its own page, `http://<server>:9697`:
 
-1. On the first visit it asks you to choose a login for it.
+1. On the first visit it asks you to choose a login for it. Do that straight after
+   switching it on: until you have, its page is open to anyone on your network (as with
+   the Compose install's Prowlarr).
 2. Add your indexers there (**Indexers → Add Indexer**).
 3. Copy its API key (**Settings → General**), then in Arrmada open **Settings →
    Connections → Prowlarr**: the address is already filled in. Paste the key and choose
    **Sync now**. From then on Arrmada syncs every hour.
 
 Arrmada treats it as its own, so it gives it the built-in FlareSolverr for trackers behind
-Cloudflare. Switched back to `false`, it stops; its settings stay in appdata. If you'd rather
-keep your own Prowlarr, leave the built-in one off and put your Prowlarr's address in the
-same place in Arrmada.
+Cloudflare. Switched back to `false`, it stops; its settings stay in appdata. Arrmada,
+though, keeps what it had: the saved address (`http://127.0.0.1:9696`) and key in Settings →
+Connections → Prowlarr, and the indexers it synced (named `Prowlarr · …`). The hourly sync
+then fails each time, and those indexers fail and back off. So when you switch it off for good, switch off
+or delete those indexers in Settings → Connections, and point the Prowlarr card at your own
+Prowlarr (its address and API key, then **Sync now**) if you use one. If you'd rather keep
+your own Prowlarr from the start, leave the built-in one off and put your Prowlarr's
+address in the same place in Arrmada.
 
 Both are in the ARM build too. They make the image about 220 MB larger on disk (about
 85 MB more to download), whether or not you switch them on.
