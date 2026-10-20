@@ -65,7 +65,7 @@ test.describe("admin", () => {
     await expect(what.getByText("/media/movies/The Cartographer (2021)/poster.jpg")).toBeVisible();
     await dialog.getByRole("button", { name: "Move", exact: true }).click();
     await expect(dialog.getByText("The Cartographer moved to Kids")).toBeVisible();
-    const calls = api.callsTo("POST", "/api/v1/movies/1/move");
+    const calls = api.callsTo("POST", "/api/v1/movies/1/move").filter((c) => c.path === "/api/v1/movies/1/move");
     expect(calls).toHaveLength(1);
     expect(calls[0].body).toEqual({ folder_id: 3, files: [
       "/media/movies/The Cartographer (2021)/The Cartographer (2021).mkv", "/media/movies/The Cartographer (2021)/poster.jpg",
@@ -84,7 +84,7 @@ test.describe("admin", () => {
     const dialog = page.getByRole("dialog", { name: "Move to another folder" });
     await expect(dialog.getByText(/Nothing will move: .*another video is inside it \(Atlas\.mkv\)/)).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Move", exact: true })).toBeDisabled();
-    expect(api.callsTo("POST", "/api/v1/movies/1/move")).toHaveLength(0);
+    expect(api.callsTo("POST", "/api/v1/movies/1/move").filter((c) => c.path === "/api/v1/movies/1/move")).toHaveLength(0);
   });
 
   test("the add dialog preselects the folder the rules pick and adds there", async ({ page, api }) => {
