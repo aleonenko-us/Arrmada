@@ -354,11 +354,13 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   files** (#56). They read exactly the same files: those right in the show's folder, in its
   season folders (and disc or download folders inside them), or in its own download
   folders. They never read a folder inside it that holds another show, whether hidden,
-  nested deep, or under a folder called Other or Bonus. In a folder that's provably the
-  show's own, an episode is the show's however it's named (`Shingeki no Kyojin`, `Frieren`,
+  nested deep, or under a folder called Other or Bonus. In a show folder right in a TV
+  folder that's provably the show's own, an episode right in it or in a `Season N` folder is
+  the show's however it's named (`Shingeki no Kyojin`, `Frieren`,
   `Top Gear 2023 S33E01`) unless its name says it's another show in your library
   (`Bluey - S01E02.mkv`, or `The Office (2001) - …` beside the 2005 show) — that one is never
-  claimed, nor offered as a duplicate to delete. The duplicate check offers for deletion
+  claimed, nor offered as a duplicate to delete. Elsewhere (`S01`-style season folders, a
+  show inside a category) a file's name must fit the show. The duplicate check offers for deletion
   only files the show has recorded or whose name says they're the show's. A file whose
   name has no title
   (`S01E01.mkv`, `01.mkv`) counts only in a folder where the show already has files. A
@@ -368,8 +370,8 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   already has always count. A show with no files yet reads only its own `Title (Year)`
   folder right in a TV folder, and only when that's provably its own — never a year-less
   `Title`, which may be a namesake's. Adding a show with **Scan library** marks only the
-  files a rescan would read. A theme song, trailer or sample loose in a show's folder is
-  ignored.
+  files a rescan would read. A theme song, trailer or sample loose in a show's folder, and a
+  media server's `backdrops` or `theme-music` folder, are ignored.
 - **A link inside a show's folder keeps it from being taken for the show's alone** (#56). A
   link to another folder or to a video means the download waits in Needs you, and Move to
   folder won't move the folder.

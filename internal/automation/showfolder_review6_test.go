@@ -187,6 +187,76 @@ func TestRevFDuplicatesOfferOnlyTheShowsNamedFiles(t *testing.T) {
 	rbExists(t, tv, "Star Trek/Season 1/Other Show - S01E01.mkv")
 }
 
+// An untracked show's episode in the show's own season 2 folder. Where v0.3.3 read nothing
+// (an "S02"-style show, a show in a category) or the name has no title, it survives a
+// rescan, a rename, an import of S02E01 and a delete with files; in an ordinary
+// "Title (Year)/Season 2" it's read as v0.3.3 read it.
+func TestRevFOtherShowsEpisodeInTheShowsSeasonFolder(t *testing.T) {
+	for _, c := range []struct {
+		s1, s2, name string
+		survives     bool
+	}{
+		{"Show (2010)/Season 1", "Show (2010)/Season 2", "Other Show - S02E01.mkv", false},
+		{"Show/S01", "Show/S02", "Other Show - S02E01.mkv", true},
+		{"Anime/Show/Season 1", "Anime/Show/Season 2", "Other Show - S02E01.mkv", true},
+		{"Show (2010)/Season 1", "Show (2010)/Season 2", "S02E01.mkv", true},
+	} {
+		t.Run(strings.ReplaceAll(c.s2+"|"+c.name, "/", "|"), func(t *testing.T) {
+			other := c.s2 + "/" + c.name
+			h, tv := rbSetup(t, []rbFile{
+				{rel: c.s1 + "/Show - S01E01.mkv", tracked: [2]int{1, 1}},
+				{rel: other},
+			})
+			mustExec(t, h.c, `UPDATE series SET year = 2010 WHERE id = ?`, h.seriesID)
+			rcEpisodes(t, h, [2]int{2, 1})
+			otherPath := filepath.Join(tv, filepath.FromSlash(other))
+			_ = h.c.RescanSeries(h.ctx, h.seriesID)
+			attached := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 2, 1).Path == otherPath
+			if c.survives && attached {
+				t.Errorf("rescan attached %s", other)
+			}
+			if _, err := h.c.SeriesRename(h.ctx, h.seriesID, nil); err != nil {
+				t.Logf("rename: %v", err)
+			}
+			const rel = "Show.S02E01.1080p.WEB-DL-GRP"
+			dl := h.download(t, rel, rel+".mkv")
+			s, _ := h.c.series.Get(h.ctx, h.seriesID)
+			h.c.importSeriesInto(h.ctx, s, dl, forceAll)
+			if _, err := h.c.series.Delete(h.ctx, h.seriesID, true); err != nil {
+				t.Logf("delete: %v", err)
+			}
+			if c.survives {
+				rbExists(t, tv, other)
+			}
+		})
+	}
+}
+
+// A media server's backdrop or theme folder (Jellyfin "backdrops/theme.mkv") never keeps
+// an ordinary show from its folder; one holding an episode-named video does.
+func TestRevFBackdropsFolder(t *testing.T) {
+	for _, c := range []struct {
+		rel     string
+		refused bool
+	}{
+		{"Show (2010)/backdrops/theme.mkv", false},
+		{"Show (2010)/theme-music/theme.mp4", false},
+		{"Show (2010)/backdrops/Other Show - S01E01.mkv", true},
+	} {
+		t.Run(strings.ReplaceAll(c.rel, "/", "|"), func(t *testing.T) {
+			h, _ := rbSetup(t, []rbFile{
+				{rel: "Show (2010)/Season 1/Show - S01E01.mkv", tracked: [2]int{1, 1}},
+				{rel: c.rel},
+			})
+			s, _ := h.c.series.Get(h.ctx, h.seriesID)
+			_, _, err := h.c.seriesPlacement(h.ctx, s)
+			if refused := err != nil; refused != c.refused {
+				t.Errorf("placement = %v, want refused=%v", err, c.refused)
+			}
+		})
+	}
+}
+
 // M: a show in <TV>/Kids/S01 beside an untracked flat show folder, a loose video of
 // another show, or a show in season folders: its folder can't be told, so Move to folder
 // refuses, and nothing of the other show's moves.

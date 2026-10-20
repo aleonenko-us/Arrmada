@@ -207,6 +207,12 @@ func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir stri
 			recordedDirs[filepath.Dir(filepath.Clean(p))] = true
 		}
 	}
+	root, inRoot := rootOf(j.roots, showDir+string(filepath.Separator)+"x")
+	firstLevelShow := inRoot && filepath.Dir(showDir) == root
+	stdPlace := func(path string) bool {
+		d := filepath.Dir(path)
+		return firstLevelShow && (d == showDir || (filepath.Dir(d) == showDir && reStdSeasonDir.MatchString(filepath.Base(d))))
+	}
 	proven, provenKnown := false, false
 	provenDir := func() bool {
 		if !provenKnown {
@@ -235,7 +241,10 @@ func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir stri
 		// name positively says it's another library show's: romaji, short or tagged names
 		// ("Shingeki no Kyojin", "Frieren", "Top Gear 2023 S33E01") are the show's own files.
 		// Elsewhere the name must fit the show.
-		if len(rel.Episodes) > 0 && provenDir() {
+		// Only where every release read it too: a show folder right in a TV folder, the
+		// file right in it or in a "Season N"/"Specials" folder. An "S01"-style or category
+		// layout keeps the strict fit (v0.3.3 read nothing there).
+		if len(rel.Episodes) > 0 && stdPlace(path) && provenDir() {
 			return !j.conflicts(rel)
 		}
 		return fitsShow(rel, sr)
@@ -584,6 +593,10 @@ func (j *folderJudge) foreignChildren(dir string) string {
 			}
 			continue
 		}
+		// Jellyfin's / Kodi's backdrop and theme folders hold theme videos, not episodes.
+		if reThemeFolder.MatchString(n) && !holdsEpisodeVideo(filepath.Join(dir, n)) {
+			continue
+		}
 		if j.svc.insideShow(n) || reDiscFolder.MatchString(n) || episodeRelease(n, j.titles) {
 			continue
 		}
@@ -660,6 +673,28 @@ func (j *folderJudge) otherShows() []Series {
 // episode or link. Inside it, an episode's name only has to not conflict (see conflicts).
 func (j *folderJudge) proven(dir string) bool {
 	return j.judge(filepath.Clean(dir)).why == "" && j.foreignChildren(filepath.Clean(dir)) == ""
+}
+
+// reThemeFolder is a media server's theme or backdrop folder inside a show's ("backdrops",
+// "theme-music", "theme-videos").
+var reThemeFolder = regexp.MustCompile(`(?i)^(?:backdrops?|theme[ ._-]?(?:music|videos?|songs?)|themes?)$`)
+
+// holdsEpisodeVideo reports whether dir holds, at any depth, a video named like an episode
+// (S01E05, 1x05). An unreadable folder counts.
+func holdsEpisodeVideo(dir string) bool {
+	found := false
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			found = true
+			return filepath.SkipAll
+		}
+		if !d.IsDir() && library.IsVideoFile(d.Name()) && len(parser.Parse(d.Name()).Episodes) > 0 {
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found || err != nil
 }
 
 // isRecorded reports whether path is one of the show's recorded files.
