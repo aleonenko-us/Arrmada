@@ -124,10 +124,11 @@ function RequestPoster({ rq, staff, queueKnown = true, onOpen }: { rq: MediaRequ
         </span>
         {/* Who asked for it — staff only, since staff see everyone's requests and "whose is
             this?" is the first question. Along the bottom, the full width of the poster, so the
-            name reads whole; only a very long one truncates. */}
+            name reads whole; only a very long one truncates. Always high enough to clear the
+            progress bar, so every card's chip sits at the same height. */}
         {staff && rq.requested_by_name && (
           <span
-            className={`absolute left-1.5 z-10 flex max-w-[calc(100%-12px)] items-center gap-1 rounded-full py-[2px] pl-[2px] pr-1.5 ${showBar ? "bottom-3" : "bottom-1.5"}`}
+            className="absolute bottom-3 left-1.5 z-10 flex max-w-[calc(100%-12px)] items-center gap-1 rounded-full py-[2px] pl-[2px] pr-1.5"
             style={{ background: POSTER_CHIP_BG, border: "1px solid rgba(255,255,255,.18)" }}
             title={`Requested by ${rq.requested_by_name}`}
           >
