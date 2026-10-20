@@ -345,7 +345,7 @@ function YearRange({ from, to, onChange }: { from: string; to: string; onChange:
     <input
       aria-label={label}
       inputMode="numeric"
-      placeholder={label === "From year" ? "From" : "To"}
+      placeholder={label === "From year" ? "From year" : "To year"}
       value={v}
       maxLength={4}
       onChange={(e) => setV(e.target.value.replace(/\D/g, ""))}
