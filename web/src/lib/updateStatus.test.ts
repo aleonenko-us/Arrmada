@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UpdateStatus } from "./api";
-import { INSTALL_LINE, noteBlocks, UNRAID_UPDATE, updateHeadline, updateHint, versionBadge } from "./updateStatus";
+import { canUpdateNow, INSTALL_LINE, noteBlocks, offerUpdaterSetup, UNRAID_UPDATE, UPDATER_SETUP_LINE, updateHeadline, updateHint, versionBadge } from "./updateStatus";
 
 const base: UpdateStatus = {
   enabled: true, current: "v1.2.0", channel: "release", checked_at: "2026-10-13T09:00:00Z",
@@ -126,5 +126,32 @@ describe("versionBadge", () => {
     expect(versionBadge("v0.2.0", "c9d20ec", { ...u, checked_at: null }).update).toBe(false);
     const main: UpdateStatus = { ...base, channel: "main", current: "2026.10.15", available: false, behind: null };
     expect(versionBadge("2026.10.15", "c9d20ec", main)).toEqual({ label: "main · c9d20ec", update: false, title: "Arrmada main · c9d20ec" });
+  });
+});
+
+describe("Update now and the updater setup", () => {
+  it("offers Update now only when a release is on offer and the updater is set up", () => {
+    expect(canUpdateNow({ ...base, apply: "ready" })).toBe(true);
+    expect(canUpdateNow({ ...base, apply: "ready", channel: "build" })).toBe(true);
+    expect(canUpdateNow({ ...base, apply: "needs_setup" })).toBe(false);
+    expect(canUpdateNow(base)).toBe(false); // Unraid or an older server: no apply
+    expect(canUpdateNow({ ...base, apply: "ready", available: false })).toBe(false);
+    expect(canUpdateNow({ ...base, apply: "ready", enabled: false })).toBe(false);
+    // An install that follows main is never updated from the button.
+    expect(canUpdateNow({ ...base, apply: "ready", channel: "main", behind: 3, available: false })).toBe(false);
+  });
+
+  it("offers the setup line instead when the updater isn't there", () => {
+    expect(offerUpdaterSetup({ ...base, apply: "needs_setup" })).toBe(true);
+    expect(offerUpdaterSetup({ ...base, apply: "ready" })).toBe(false);
+    expect(offerUpdaterSetup({ ...base, apply: "needs_setup", available: false })).toBe(false);
+    expect(offerUpdaterSetup({ ...base, channel: "main", apply: "needs_setup", behind: 2, available: false })).toBe(false);
+    expect(UPDATER_SETUP_LINE).toBe(`${INSTALL_LINE} -s -- --with-updater`);
+  });
+
+  it("drops the run-it-by-hand command once the button does the job", () => {
+    expect(updateHint({ ...base, apply: "ready" })).toBeNull();
+    expect(updateHint({ ...base, apply: "ready", channel: "build" })).toBeNull();
+    expect(updateHint({ ...base, apply: "needs_setup" })?.command).toBe(INSTALL_LINE);
   });
 });

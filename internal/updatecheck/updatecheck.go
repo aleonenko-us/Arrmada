@@ -123,6 +123,14 @@ type Status struct {
 	// Host is HostUnraid when Unraid's Docker manager runs this container, which updates
 	// it from its Docker page; "" = updated with the install line or Compose.
 	Host string `json:"host,omitempty"`
+	// Apply says whether the app can install the update itself, for the API to fill in
+	// (the check knows nothing of the updater): "ready" = the updater container is set up,
+	// so Update now works; "needs_setup" = it isn't, and the install line (or
+	// install.sh --with-updater, once) is how; "" = this container is updated some other
+	// way (Host).
+	Apply string `json:"apply,omitempty"`
+	// AutoUpdate is the automatic-updates setting, also filled in by the API.
+	AutoUpdate bool `json:"auto_update"`
 }
 
 // Options configures a Checker. Only Version, Commit and Enabled are needed in

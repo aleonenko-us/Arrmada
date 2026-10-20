@@ -19,6 +19,37 @@ sh /mnt/user/appdata/arrmada/update.sh      # wherever Arrmada is installed
 ./update.sh                                 # from inside the folder (git checkouts too)
 ```
 
+## One-click updates (optional)
+
+Settings → Status → Updates can install a new release for you: an **Update to vX.Y.Z** button,
+and an **Install updates automatically** switch. It does exactly what the install line does:
+backs up the database, brings the release, restarts the app, and goes back to the version it
+had if the new one doesn't start. The page follows it and reloads into the new version.
+
+It is off until you ask for it, because it needs one thing the app never has: access to Docker.
+Arrmada itself never touches Docker. A small separate container (`arrmada-updater`) holds
+Docker's socket, which is root on the server, and does nothing but run `update.sh` when the app
+asks. It publishes no port: the app reaches it on the private Compose network with a random
+token that `install.sh` writes to `.env`. Turn it on once, on the server:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.sh | sh -s -- --with-updater
+```
+
+If it says the install's files are older than the updater, run the plain install line first (it
+updates), then this one again. To turn it off, remove `updater` from `COMPOSE_PROFILES` in
+`.env` and run `docker compose rm -sf arrmada-updater`.
+
+**Automatic updates** are a separate switch, off by default, and only available with the
+updater. When on, Arrmada installs a new release between 2 and 6 am (the server's time), at
+least a day after it was published, so a release that is pulled or fixed quickly never reaches
+you on its own. It only follows published releases, never `main`, and it tries each release once:
+if an update fails, the next release is a new try. Updates the app starts are written to the log
+(`update: started from the web`, `automatic update: started`).
+
+Not for Unraid's own Docker manager (it updates the container from its Docker page) or for an
+install that follows `main`.
+
 ## Stable or main
 
 `ARRMADA_CHANNEL` in `.env` says what an update brings:
