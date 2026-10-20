@@ -1,4 +1,4 @@
-import { req, type SetupState } from "./api";
+import { req, type AuthUser, type SetupState } from "./api";
 
 // First-run calls: the Getting started checklist (the Dashboard card and the wizard's last
 // step). They live here rather than in api.ts so they only download with the admin pages
@@ -31,6 +31,15 @@ export interface SetupChecklist {
 }
 
 export const setupApi = {
+  /**
+   * Starts the wizard's setup session on a fresh install (no account yet). The token only
+   * ever travels in an HttpOnly cookie; it authorises the wizard's own calls until the
+   * first admin exists or two hours pass.
+   */
+  startSession: () => req<{ expires_at: string }>("/api/v1/setup/session", { method: "POST" }),
+  /** The wizard's last step: makes the first admin, ends setup and signs them in. */
+  createAccount: (username: string, password: string) =>
+    req<{ user: AuthUser }>("/api/v1/setup/account", { method: "POST", body: JSON.stringify({ username, password }) }),
   checklist: () => req<SetupChecklist>("/api/v1/setup/checklist"),
   dismissChecklist: () => req<SetupChecklist>("/api/v1/setup/checklist/dismiss", { method: "POST" }),
   /** The setup state plus whether a Prowlarr answers (a check of up to 3 s), for the Indexers step. */
