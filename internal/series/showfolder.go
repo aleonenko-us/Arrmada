@@ -194,9 +194,11 @@ func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir stri
 	j := s.dbJudge(ctx, sr.ID)
 	showDir = filepath.Clean(showDir)
 	recorded := map[string]bool{}
+	recordedDirs := map[string]bool{}
 	if paths, err := s.repo.EpisodeFilePaths(ctx, sr.ID); err == nil {
 		for _, p := range paths {
 			recorded[filepath.Clean(p)] = true
+			recordedDirs[filepath.Dir(filepath.Clean(p))] = true
 		}
 	}
 	return func(path string) bool {
@@ -209,7 +211,14 @@ func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir stri
 		}
 		rel := parser.Parse(filepath.Base(path))
 		key := parser.TitleKey(rel.Title)
-		return key == "" || j.titles[key] || FitRelease(rel, sr).OK
+		if key == "" {
+			// A name without a title ("S01E01.mkv", "01.mkv") could be anyone's: only one
+			// beside the show's own recorded files counts — never one in another folder,
+			// such as a Season 1 folder of another show next to the show's S01. A show with
+			// no files yet reads its own folder as before.
+			return len(recorded) == 0 || recordedDirs[filepath.Dir(path)]
+		}
+		return j.titles[key] || FitRelease(rel, sr).OK
 	}
 }
 

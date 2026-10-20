@@ -148,6 +148,52 @@ func TestRevCRescanReadsAFlatShow(t *testing.T) {
 	}
 }
 
+// (ops7-follow-*) Untitled files ("S01E01.mkv") in a Season 1 folder beside the show's own
+// S01 could be anyone's: a rescan never claims them — not when the show's S01 is on a share
+// that's away, nor when one of its files is gone — and the duplicate check never lists them.
+func TestRevCUntitledFilesBesideTheShowsSeasonFolder(t *testing.T) {
+	paths := func(h *lifecycleHarness) string {
+		var out []string
+		for ep := 1; ep <= 2; ep++ {
+			out = append(out, h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, ep).Path)
+		}
+		return strings.Join(out, ";")
+	}
+	t.Run("share away", func(t *testing.T) {
+		h, tv := rbSetup(t, []rbFile{
+			{rel: "Kids/S01/S01E01.mkv", tracked: [2]int{1, 1}, missing: true},
+			{rel: "Kids/S01/S01E02.mkv", tracked: [2]int{1, 2}, missing: true},
+			{rel: "Kids/Season 1/S01E01.mkv"},
+			{rel: "Kids/Season 1/S01E02.mkv"},
+		})
+		before := paths(h)
+		_ = h.c.RescanSeries(h.ctx, h.seriesID)
+		if after := paths(h); after != before {
+			t.Errorf("records changed: %s -> %s", before, after)
+		}
+		rbExists(t, tv, "Kids/Season 1/S01E01.mkv", "Kids/Season 1/S01E02.mkv")
+	})
+	t.Run("one file gone, two candidates", func(t *testing.T) {
+		h, tv := rbSetup(t, []rbFile{
+			{rel: "Kids/S01/S01E01.mkv", tracked: [2]int{1, 1}, missing: true},
+			{rel: "Kids/S01/S01E02.mkv", tracked: [2]int{1, 2}},
+			{rel: "Kids/Season 1/S01E01.mkv"},
+			{rel: "Kids/Season 01/S01E01.mkv"},
+		})
+		dups := rcDupPaths(t, h)
+		for _, rel := range []string{"Kids/Season 1/S01E01.mkv", "Kids/Season 01/S01E01.mkv"} {
+			if dups[filepath.Join(tv, filepath.FromSlash(rel))] {
+				t.Errorf("the duplicate check lists %s", rel)
+			}
+		}
+		_ = h.c.RescanSeries(h.ctx, h.seriesID)
+		if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 1); strings.Contains(cur.Path, "Season") {
+			t.Errorf("rescan claimed %s", cur.Path)
+		}
+		rbExists(t, tv, "Kids/Season 1/S01E01.mkv", "Kids/Season 01/S01E01.mkv")
+	})
+}
+
 // (ops6-st-loose-video) A video loose in a show kept in season folders, named like one of
 // its episodes, is never offered as a duplicate to delete.
 func TestRevCLooseVideoInASeasonFolderedShow(t *testing.T) {
