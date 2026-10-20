@@ -1,4 +1,4 @@
-import { ServerMark } from "./marks";
+import { JellyfinMark, ServerMark } from "./marks";
 import { SERVER_FILL, SERVER_INK, SERVER_LABEL, type MediaServerKind } from "./servers";
 
 const BADGE_SIZE = {
@@ -37,6 +37,26 @@ export function ServerTile({ server, size = 40, muted }: { server: MediaServerKi
       }}
     >
       <ServerMark server={server} size={Math.round(size * 0.55)} />
+    </span>
+  );
+}
+
+// Each server's own colour for its mark on a dark tile: Plex's amber, Jellyfin's gradient
+// (drawn by the mark itself) and Emby's green.
+const TILE_INK: Record<MediaServerKind, string> = { plex: "#e5a00d", jellyfin: "#00a4dc", emby: "#52b54b" };
+
+// ServerChoiceTile is the picture on a "which media server" choice: the server's mark in its
+// brand colour on a dark tile, the way each is usually drawn, so it reads on a light or a
+// dark page. (ServerTile is the brand fill with its ink on top.)
+export function ServerChoiceTile({ server, size = 40 }: { server: MediaServerKind; size?: number }) {
+  const mark = Math.round(size * (server === "jellyfin" ? 0.7 : 0.62));
+  return (
+    <span
+      aria-hidden="true"
+      className="grid flex-none place-items-center rounded-xl"
+      style={{ width: size, height: size, background: "#16181d", color: TILE_INK[server], boxShadow: "inset 0 0 0 1px rgba(255,255,255,.08)" }}
+    >
+      {server === "jellyfin" ? <JellyfinMark size={mark} gradient /> : <ServerMark server={server} size={mark} />}
     </span>
   );
 }

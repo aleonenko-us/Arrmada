@@ -11,7 +11,7 @@ import { ProwlarrPanel } from "../components/connections/ProwlarrPanel";
 import { useMe } from "../lib/me";
 import { setupApi } from "../lib/setupApi";
 import { Button, StatusChip, useConfirm, useToast } from "../ui";
-import { ServerTile } from "../components/brand/ServerBadge";
+import { ServerChoiceTile } from "../components/brand/ServerBadge";
 import { PlexConnect } from "./settings/PlexConnection";
 import { JellyfinConnect } from "./settings/JellyfinConnection";
 
@@ -61,9 +61,9 @@ const CHOICE_TILE = 36;
 function ChoiceIcon({ id }: { id: ServerChoice }) {
   if (id === "both") {
     return (
-      <span className="flex items-center" aria-hidden="true">
-        <ServerTile server="plex" size={CHOICE_TILE} />
-        <span className="-ml-3 rounded-xl" style={{ boxShadow: "0 0 0 2px var(--panel-2)" }}><ServerTile server="jellyfin" size={CHOICE_TILE} /></span>
+      <span className="flex items-center gap-1.5" aria-hidden="true">
+        <ServerChoiceTile server="plex" size={CHOICE_TILE} />
+        <ServerChoiceTile server="jellyfin" size={CHOICE_TILE} />
       </span>
     );
   }
@@ -74,7 +74,7 @@ function ChoiceIcon({ id }: { id: ServerChoice }) {
       </span>
     );
   }
-  return <ServerTile server={id} size={CHOICE_TILE} />;
+  return <ServerChoiceTile server={id} size={CHOICE_TILE} />;
 }
 const usesPlex = (c: ServerChoice | null) => c === "plex" || c === "both";
 const usesJellyfin = (c: ServerChoice | null) => c === "jellyfin" || c === "both";
@@ -573,13 +573,13 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
 
           <fieldset className="m-0 min-w-0 border-0 p-0">
             <legend className="mb-1.5 p-0 text-base font-semibold">Which media server do you use?</legend>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {SERVER_CHOICES.map((c) => {
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
+              {SERVER_CHOICES.map((c, i) => {
                 const on = choice === c.id;
                 return (
                   <label
                     key={c.id}
-                    className="flex min-h-[112px] cursor-pointer flex-col items-start gap-2 rounded-xl p-4 focus-within:outline focus-within:outline-2"
+                    className={`flex min-h-[112px] cursor-pointer flex-col items-start gap-2 rounded-xl p-4 focus-within:outline focus-within:outline-2 ${i < 3 ? "sm:col-span-2" : "sm:col-span-3"} ${i === SERVER_CHOICES.length - 1 && SERVER_CHOICES.length % 2 === 1 ? "col-span-2" : ""}`}
                     style={{
                       border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
                       background: on ? "var(--accent-soft)" : "var(--panel-2)",
@@ -604,7 +604,7 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
 
           {usesPlex(choice) && (
             <section aria-labelledby="setup-plex-title" className="mt-5 flex flex-col gap-1">
-              <h2 id="setup-plex-title" className="m-0 flex items-center gap-2 text-md font-bold"><ServerTile server="plex" size={22} /> Plex</h2>
+              <h2 id="setup-plex-title" className="m-0 flex items-center gap-2 text-md font-bold"><ServerChoiceTile server="plex" size={22} /> Plex</h2>
               <p className="m-0 text-sm text-ink-dim">Sign in with Plex and Arrmada finds your own server — never one someone else shared with you.</p>
               {state.plex_connected && (
                 <p role="status" className="m-0 text-base font-semibold" style={{ color: "var(--good-text)" }}>
@@ -631,7 +631,7 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
 
           {usesJellyfin(choice) && (
             <section aria-labelledby="setup-jellyfin-title" className="mt-6 flex flex-col gap-1">
-              <h2 id="setup-jellyfin-title" className="m-0 flex items-center gap-2 text-md font-bold"><ServerTile server="jellyfin" size={22} /> Jellyfin</h2>
+              <h2 id="setup-jellyfin-title" className="m-0 flex items-center gap-2 text-md font-bold"><ServerChoiceTile server="jellyfin" size={22} /> Jellyfin</h2>
               <p className="m-0 text-sm text-ink-dim">Its address and an API key made in Jellyfin (Dashboard → API Keys). Both are tested before they're saved, and the key is never shown again.</p>
               {state.jellyfin_connected && (
                 <p role="status" className="m-0 text-base font-semibold" style={{ color: "var(--good-text)" }}>
@@ -652,7 +652,7 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
 
           {usesEmby(choice) && (
             <section aria-labelledby="setup-emby-title" className="mt-6 flex flex-col gap-1">
-              <h2 id="setup-emby-title" className="m-0 text-md font-bold">Emby</h2>
+              <h2 id="setup-emby-title" className="m-0 flex items-center gap-2 text-md font-bold"><ServerChoiceTile server="emby" size={22} /> Emby</h2>
               <p className="m-0 text-sm text-ink-dim">Its address and an API key made in Emby. Both are tested before they're saved. Emby has no sign-in for Arrmada, so the account is made with an email and password.</p>
               {state.emby_connected && <p role="status" className="m-0 text-base font-semibold" style={{ color: "var(--good-text)" }}>✓ Connected</p>}
               <EmbyConnect testFirst onChanged={() => void load()} />
