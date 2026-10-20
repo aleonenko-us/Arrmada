@@ -340,6 +340,15 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
   pointed to.
 - Movies: deleting a movie no longer takes a subtitle named for another film in the same
   folder whose video is missing ("Movie.Directors.Cut.en.srt" beside "Movie.mkv").
+- Movies: **Move to folder** could take a whole folder that wasn't the film's own. A film
+  sitting loose in a folder such as `Movies/Marvel` took everything in `Marvel` with it,
+  including films Arrmada doesn't track and the folder's artwork. Onto another drive, those
+  originals then went to the recycle bin. A film's folder now moves only when it's clearly
+  the film's own: named for the film, not reached through a link, with nothing in it but the
+  film's files, its subtitles, and artwork or `.nfo` files named for it. If the folder holds
+  anything else, the move is refused and the dialog says why. Use **Organize** to give the film
+  a folder of its own first. The Move dialog now lists every file that will move before you
+  press Move, and the move never takes more than that list. TV shows move as before.
 - Audio languages: a profile with Italian as Must no longer grabs MULTi or Dual Audio releases
   that don't name Italian (#58). Release names that write FRA, DEU, NLD, ESP, JAP or VFB (in
   capitals, outside an episode title) are read as French, German, Dutch, Spanish, Japanese

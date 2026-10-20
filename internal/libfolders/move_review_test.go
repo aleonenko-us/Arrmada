@@ -56,7 +56,7 @@ func TestCancelledCopyIsDeletedNotBinned(t *testing.T) {
 	src := filmFixture(t, f)
 	bin := filepath.Join(f.base, "bin")
 	m, _ := f.mover(t, bin)
-	m.rename = exdevFor(src)
+	m.Rename = exdevFor(src)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	p := progressFunc(func(_ float64, msg string) {
@@ -80,7 +80,7 @@ func TestCopyRefusedWithoutRoom(t *testing.T) {
 	kids := f.add(t, MediaMovie, "kids", RuleKids)
 	src := filmFixture(t, f)
 	m, _ := f.mover(t, filepath.Join(f.base, "bin"))
-	m.rename = exdevFor(src)
+	m.Rename = exdevFor(src)
 	m.free = func(string) (uint64, bool) { return 1 << 20, true } // 1 MB
 	if _, err := m.Move(context.Background(), MediaMovie, 1, kids.ID, nil); !errors.Is(err, ErrNoRoom) {
 		t.Fatalf("move = %v, want no room", err)
@@ -100,7 +100,7 @@ func TestLeftoverStagingIsClearedByTheNextMove(t *testing.T) {
 	// Something that only looks similar is never touched.
 	keep := writeFile(t, filepath.Join(kids.Path, "arrmada-moving-notes.txt"), "mine")
 	m, _ := f.mover(t, filepath.Join(f.base, "bin"))
-	m.rename = exdevFor(src)
+	m.Rename = exdevFor(src)
 	if _, err := m.Move(context.Background(), MediaMovie, 1, kids.ID, nil); err != nil {
 		t.Fatal(err)
 	}

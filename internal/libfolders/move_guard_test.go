@@ -24,7 +24,7 @@ func TestMoveRefusesWhenTheOriginalChangesMidCopy(t *testing.T) {
 	kids := f.add(t, MediaMovie, "kids", RuleKids)
 	src := filmFixture(t, f)
 	m, _ := f.mover(t, filepath.Join(f.base, "bin"))
-	m.rename = func(oldpath, newpath string) error {
+	m.Rename = func(oldpath, newpath string) error {
 		if oldpath == src {
 			return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: syscall.EXDEV}
 		}

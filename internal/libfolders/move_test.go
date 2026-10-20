@@ -45,7 +45,10 @@ func (f *fixture) mover(t *testing.T, bin string) (*Mover, *scans) {
 	sc := &scans{}
 	return &Mover{
 		DB: f.st.DB(), Folders: f.svc, Bin: library.SingleBin(bin), Scan: sc.add, ShowFolder: showFolder,
-		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		// Every film folder here is its own; the movies package's real rules
+		// (MoveFolderCheck) are tested there, against these moves (move_layout_test.go).
+		OwnFolder: func(context.Context, int64, string) string { return "" },
+		Log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}, sc
 }
 
@@ -168,7 +171,7 @@ func TestMoveCopiesAcrossFilesystems(t *testing.T) {
 	m, _ := f.mover(t, bin)
 	// The title folder's own rename fails like a rename between two mounts does; the
 	// copy's rename into place (same drive) is real.
-	m.rename = func(oldpath, newpath string) error {
+	m.Rename = func(oldpath, newpath string) error {
 		if oldpath == src {
 			return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: syscall.EXDEV}
 		}
@@ -206,7 +209,7 @@ func TestMoveCopyFailureLeavesTheOriginals(t *testing.T) {
 	kids := f.add(t, MediaMovie, "kids", RuleKids)
 	src := filmFixture(t, f)
 	m, _ := f.mover(t, filepath.Join(f.base, "bin"))
-	m.rename = func(oldpath, newpath string) error {
+	m.Rename = func(oldpath, newpath string) error {
 		if oldpath == src {
 			return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: syscall.EXDEV}
 		}
