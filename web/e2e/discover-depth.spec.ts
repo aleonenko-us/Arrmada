@@ -39,6 +39,15 @@ test.describe("browse grids on a desktop", () => {
     await api.quiet();
     await expect(page.getByRole("checkbox", { name: "Hide in library" })).toBeChecked();
     await expect(page.getByRole("button", { name: "View details for Anchor Point" })).toHaveCount(0);
+    // It's a setting: leaving Discover and coming back without it in the address keeps it.
+    await page.goto("/discover?q=harbour");
+    await api.quiet();
+    await expect(page.getByRole("checkbox", { name: "Hide in library" })).toBeChecked();
+    await expect(page).toHaveURL(/hide_in_library=1/);
+    await page.getByRole("checkbox", { name: "Hide in library" }).uncheck();
+    await page.goto("/discover?q=harbour");
+    await api.quiet();
+    await expect(page.getByRole("checkbox", { name: "Hide in library" })).not.toBeChecked();
   });
 
   // REQ-19: a row's See all opens its whole list, which keeps loading past 20 titles.

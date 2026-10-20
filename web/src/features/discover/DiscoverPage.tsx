@@ -16,6 +16,8 @@ import { MyRequestsRow } from "./RequestsRow";
 import { BrowseTab, DiscoverTab } from "./tabs";
 import { Page } from "../../ui/Page";
 
+const HIDE_IN_LIBRARY_KEY = "discover.hideInLibrary";
+
 // Discover is the requester's home: tabs (Discover, Movies, Series, Books), the omnibox,
 // the rows, and whatever is open over them at its own address. Its parts live beside it in
 // features/discover; pages/Discover.tsx re-exports it so the route table doesn't change.
@@ -121,11 +123,24 @@ export function Discover({ chrome = true }: { chrome?: boolean }) {
 
   const hideInLibrary = params.get("hide_in_library") === "1";
   const ctx: RowCtx = { doRequest, isRequested, canRequest, hideInLibrary, flash: toast };
-  const setHideInLibrary = (checked: boolean) => setParams((p) => {
-    const next = new URLSearchParams(p);
-    if (checked) next.set("hide_in_library", "1"); else next.delete("hide_in_library");
-    return next;
-  }, { replace: true });
+  const setHideInLibrary = (checked: boolean) => {
+    try { localStorage.setItem(HIDE_IN_LIBRARY_KEY, checked ? "1" : "0"); } catch { /* storage blocked */ }
+    setParams((p) => {
+      const next = new URLSearchParams(p);
+      if (checked) next.set("hide_in_library", "1"); else next.delete("hide_in_library");
+      return next;
+    }, { replace: true });
+  };
+  // "Hide in library" is a setting, not a one-off filter: coming back to Discover (or
+  // following a link without it) keeps it on once it was turned on. The address still
+  // carries it, so the tabs and browse pages that read it see the same choice.
+  const hideMissing = !params.has("hide_in_library");
+  useEffect(() => {
+    if (!hideMissing) return;
+    let on = false;
+    try { on = localStorage.getItem(HIDE_IN_LIBRARY_KEY) === "1"; } catch { /* storage blocked */ }
+    if (on) setParams((p) => { const next = new URLSearchParams(p); next.set("hide_in_library", "1"); return next; }, { replace: true });
+  }, [hideMissing, setParams]);
 
   // A title's own address (/discover/movie/603) opens its sheet over the page. Discover
   // stays mounted underneath, so its rows, what loaded and the scroll position survive,
