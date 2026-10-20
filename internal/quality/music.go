@@ -50,7 +50,7 @@ func MusicPresets() []MusicPreset {
 			FormatScores: map[string]int{
 				"FLAC-24": 130, "FLAC": 120, "ALAC": 110, "WAV": 100,
 			},
-			MinFormatScore: 1, UpgradesEnabled: true,
+			MinFormatScore: 1, UpgradesEnabled: false,
 		},
 		{
 			Name:        "Lossless, or the best MP3",
@@ -59,7 +59,7 @@ func MusicPresets() []MusicPreset {
 				"FLAC-24": 130, "FLAC": 120, "ALAC": 110, "WAV": 100,
 				"MP3-320": 60, "MP3-V0": 55, "AAC-256": 45, "MP3-256": 40, "MP3-V2": 30,
 			},
-			MinFormatScore: 1, UpgradesEnabled: true,
+			MinFormatScore: 1, UpgradesEnabled: false,
 		},
 		{
 			Name:        "High-quality lossy",
@@ -67,7 +67,7 @@ func MusicPresets() []MusicPreset {
 			FormatScores: map[string]int{
 				"MP3-320": 60, "MP3-V0": 55, "AAC-256": 45, "MP3-256": 40, "MP3-V2": 30, "OPUS": 25,
 			},
-			MinFormatScore: 1, UpgradesEnabled: true,
+			MinFormatScore: 1, UpgradesEnabled: false,
 		},
 		{
 			Name:        "Any quality",
@@ -77,7 +77,7 @@ func MusicPresets() []MusicPreset {
 				"MP3-320": 60, "MP3-V0": 55, "AAC-256": 45, "MP3-256": 40,
 				"MP3-V2": 30, "OPUS": 25, "OGG": 20, "MP3-192": 15, "MP3-128": 5,
 			},
-			MinFormatScore: 1, UpgradesEnabled: true,
+			MinFormatScore: 1, UpgradesEnabled: false,
 		},
 	}
 }

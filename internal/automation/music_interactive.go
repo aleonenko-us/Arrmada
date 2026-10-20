@@ -134,15 +134,27 @@ func albumWhy(r albumRelease, mode albumMode) []string {
 	return why
 }
 
-// ErrGrabInFlight is a manual grab of a release already grabbed for the album and not
-// imported or closed yet.
-var ErrGrabInFlight = errors.New("that release is already downloading for this album")
+// ErrGrabInFlight is a manual grab refused because a grab for the album is already in
+// flight; errors.Is matches every GrabInFlightError, whose text says which.
+var ErrGrabInFlight = errors.New("a grab for this album is already in flight")
+
+// GrabInFlightError is why a manual grab was refused, in words.
+type GrabInFlightError struct{ Why string }
+
+func (e *GrabInFlightError) Error() string        { return e.Why }
+func (e *GrabInFlightError) Is(target error) bool { return target == ErrGrabInFlight }
 
 // GrabForAlbum grabs a release a person chose in interactive search for one album. It is
 // recorded against the album, so the import matches the download against it (the matcher
 // still decides which file is which track and holds anything doubtful for Reviews), and
-// marked as the person's choice.
-func (c *Coordinator) GrabForAlbum(ctx context.Context, albumID int64, indexerName, downloadURL, title string) error {
+// marked as the person's choice. infoHash is the release's, when its listing gave one.
+//
+// It refuses (GrabInFlightError) while the same release is downloading or waiting in
+// Reviews for the album, while an upgrade is downloading for it (a second copy would race
+// it for the same tracks), and while another grab or search of the album is under way:
+// the album's claim is held across the check and the grab, so a double click or a second
+// tab can't both get through.
+func (c *Coordinator) GrabForAlbum(ctx context.Context, albumID int64, indexerName, downloadURL, title, infoHash string) error {
 	if c.music == nil {
 		return music.ErrNotFound
 	}
@@ -157,21 +169,67 @@ func (c *Coordinator) GrabForAlbum(ctx context.Context, albumID int64, indexerNa
 	if err != nil {
 		return err
 	}
-	// The same release already on its way for this album: a second copy would only race it.
-	pending, err := c.pendingMusicGrabTitles(ctx, al.ID)
-	if err != nil {
-		return err
+	release, ok := c.claims.claim(albumKey(al.ID))
+	if !ok {
+		return &GrabInFlightError{Why: "this album is being searched or grabbed right now — try again in a moment"}
 	}
-	if pending[normTitle(title)] {
-		return ErrGrabInFlight
+	defer release()
+	if why, err := c.albumGrabBlocked(ctx, al.ID, title, infoHash); err != nil {
+		return err
+	} else if why != "" {
+		return &GrabInFlightError{Why: why}
 	}
 	hash, err := c.grabMusic(ctx, indexerName, downloadURL, title, musicCategory)
 	if err != nil {
 		return err
 	}
-	c.recordMusicGrab(ctx, "music", al.ID, title, indexerName, a.QualityProfile, hash)
-	c.markGrabManual(ctx, hash)
+	if id := c.recordMusicGrab(ctx, "music", al.ID, title, indexerName, a.QualityProfile, hash); id > 0 {
+		// By the row, not the hash: a grab whose client gave no hash is still marked.
+		c.markGrabManualID(ctx, id)
+	}
 	c.music.AddEvent(ctx, a.ID, "grabbed", fmt.Sprintf("Grabbed %q by hand from %s: %s", al.Title, indexerName, title))
 	c.log.Info("music: grabbed by hand", "artist", a.Name, "album", al.Title, "release", title)
 	return nil
+}
+
+// albumGrabBlocked says why a manual grab of a release for an album must wait ("" when
+// it needn't): the album's grabs still in flight (downloading, or held in Reviews, however
+// old), matched by info hash when both are known, else by normalized title; and any
+// upgrade still downloading for it.
+func (c *Coordinator) albumGrabBlocked(ctx context.Context, albumID int64, title, infoHash string) (string, error) {
+	rows, err := c.db.QueryContext(ctx, `SELECT title, info_hash, status, decided_mode, manual FROM grabs
+		WHERE media_type = 'music' AND movie_id = ? AND `+inFlightWhere+` ORDER BY id DESC`, albumID)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	want := normTitle(title)
+	for rows.Next() {
+		var t, hash, status, mode string
+		var manual int
+		if err := rows.Scan(&t, &hash, &status, &mode, &manual); err != nil {
+			return "", err
+		}
+		same := normTitle(t) == want
+		if hash != "" && infoHash != "" {
+			same = strings.EqualFold(hash, infoHash)
+		}
+		switch {
+		case same && status == grabStatusHeld:
+			return "that release is already waiting in Reviews for this album", nil
+		case same:
+			return "that release is already downloading for this album", nil
+		case mode == decidedUpgrade && manual == 0 && status == grabStatusGrabbed:
+			return fmt.Sprintf("an upgrade is already downloading for this album (%s)", t), nil
+		}
+	}
+	return "", rows.Err()
+}
+
+// markGrabManualID flags one grab row as the person's own choice.
+func (c *Coordinator) markGrabManualID(ctx context.Context, id int64) {
+	if _, err := c.db.ExecContext(ctx, `UPDATE grabs SET manual = 1 WHERE id = ?`, id); err != nil {
+		c.log.Warn("music: couldn't mark a grab as chosen by hand", "grab", id, "err", err)
+	}
+	c.grabsChanged()
 }

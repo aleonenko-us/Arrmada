@@ -949,8 +949,9 @@ func discOfFolder(name string) int {
 // recordMusicGrab records a grab so the pending guard, seed rules and stall fail-over can
 // see it: an album ("music", the album id) or a discography (mediaMusicArtist, the artist
 // id). stall_minutes comes from the profile — writing a literal 0 is what made the book
-// stall fail-over dead code for months.
-func (c *Coordinator) recordMusicGrab(ctx context.Context, mediaType string, id int64, title, indexerName, profile, infoHash string) {
+// stall fail-over dead code for months. It returns the grab row's id (0 when it couldn't
+// be recorded).
+func (c *Coordinator) recordMusicGrab(ctx context.Context, mediaType string, id int64, title, indexerName, profile, infoHash string) int64 {
 	defer c.grabsChanged()
 	notesFrom(ctx).grabbed(title) // the search attempt this grab came from, if any
 	// Same profile the album was chosen under (musicProfile), so the stall window matches.
@@ -959,17 +960,19 @@ func (c *Coordinator) recordMusicGrab(ctx context.Context, mediaType string, id 
 	// An upgrade grab says so (decided_mode 'upgrade'): its import mustn't move the album
 	// to another edition (importMusicDownload).
 	key, mode := pickOf(ctx, title)
-	_, err := c.db.ExecContext(ctx,
+	res, err := c.db.ExecContext(ctx,
 		`INSERT INTO grabs (movie_id, version_id, title, indexer, quality_profile, stall_minutes, seed_enabled, seed_ratio, seed_hours, media_type, info_hash, decided_by, decided_mode, transport)
 		 VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, title, indexerName, profile, c.quality.StallMinutes(ctx, profile),
 		boolToInt(seedEnabled), seedRatio, seedHours, mediaType, infoHash, key, mode, transport)
 	if err != nil {
 		c.log.Warn("music: recording the grab failed", "kind", mediaType, "id", id, "err", err)
-		return
+		return 0
 	}
 	c.noteHashless(mediaType, title, infoHash)
 	c.noteHandoff(ctx, mediaType, id, title, infoHash)
+	rowID, _ := res.LastInsertId()
+	return rowID
 }
 
 // pendingMusicGrabTitles returns releases already grabbed for this album and not yet

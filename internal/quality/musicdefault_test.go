@@ -26,6 +26,11 @@ func TestEnsureDefaultMusicProfileSeedsOnce(t *testing.T) {
 	if FallbackMusicProfile().UpgradesEnabled {
 		t.Error("the fallback profile must never upgrade")
 	}
+	for _, p := range MusicPresets() {
+		if p.UpgradesEnabled {
+			t.Errorf("preset %q starts with upgrades on; the owner turns them on", p.Name)
+		}
+	}
 	if got := s.DefaultProfile(ctx, MediaMusic); got == "" {
 		t.Fatal("the seeded profile should be the music default (no more silent 'Any quality')")
 	}

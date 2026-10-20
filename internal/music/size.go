@@ -25,13 +25,17 @@ const (
 var (
 	// reVideoRes is a picture resolution: on its own, proof of a video.
 	reVideoRes = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:2160p|1080[pi]|720p|576p|480p|4k\s?uhd|uhd\s?blu-?ray)(?:$|[^a-z0-9])`)
-	// reVideoDisc is a video disc's own structure or container: also proof.
-	reVideoDisc = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:dvd[59]|video_ts|bdmv|m2ts|mkv)(?:$|[^a-z0-9])`)
-	// reVideoCodec is a video codec, and reVideoRip a video source or rip. Either alone
-	// isn't proof (a band can be called HEVC; Blu-ray audio is ripped too, as "BDRip FLAC"
-	// or a "Remux"), so it takes both together.
+	// reVideoDisc is a video disc's own structure or container, or a source only video
+	// comes from (WEB-DL, WEBRip, DVDRip, HDTV, BRRip, BDRemux): also proof. Plain "WEB" is
+	// how music sold online is tagged, so it isn't one.
+	reVideoDisc = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:dvd[59]|video_ts|bdmv|m2ts|mkv|web-?dl|webrip|dvdrip|hdtv|brrip|bdremux)(?:$|[^a-z0-9])`)
+	// reVideoCodec is a video codec, and reVideoRip a source Blu-ray audio shares with
+	// video ("BDRip FLAC", a "Remux", "Blu-ray"). Either alone isn't proof (a band can be
+	// called HEVC), so it takes both together.
 	reVideoCodec = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:x\.?26[45]|h\.?26[45]|hevc|avc1?|xvid|divx|vc-?1)(?:$|[^a-z0-9])`)
-	reVideoRip   = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:web-?dl|webrip|bdrip|brrip|bdremux|remux|dvdrip|hdtv|blu-?ray)(?:$|[^a-z0-9])`)
+	reVideoRip   = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:bdrip|remux|blu-?ray)(?:$|[^a-z0-9])`)
+	// reHiRes24 marks hi-res audio: 24-bit, or a high sample rate up to DXD.
+	reHiRes24 = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:24\s?-?bits?|24b|24[-/ ](?:44|48|88|96|176|192|352|384)(?:\.\d)?|dxd|352\.?8|384\s?khz|192\s?khz|176\.4|hi-?res)(?:$|[^a-z0-9])`)
 	// reBigAudio marks an audio release far bigger than its stereo tier: Blu-ray, DVD-Audio
 	// and SACD rips (hi-res, often 5.1 beside the stereo), and multichannel mixes.
 	reBigAudio = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:bd-?a|bd-?audio|blu-?ray(?:\s?audio)?|bd|bdrip|dvd-?a|dvd-?audio|sacd|5\.1|7\.1|mch|multi-?channel|surround|atmos)(?:$|[^a-z0-9])`)
@@ -82,6 +86,9 @@ var tierFloorMBPerMin = map[Quality]float64{QualityOpus: 0.45, QualityOGG: 0.6}
 const (
 	sizeFloor   = 0.35
 	sizeCeiling = 4.0
+	// losslessFloor is lossless's floor: a mono or quiet 16-bit FLAC compresses to a fifth
+	// of a typical one.
+	losslessFloor = 0.2
 	// bigAudioCeiling is the ceiling for a release named as Blu-ray, DVD-Audio, SACD or
 	// multichannel audio: several mixes of hi-res audio in one release.
 	bigAudioCeiling = 12.0
@@ -165,15 +172,20 @@ func ReleaseSane(name string, categories []int, sizeBytes int64, tier Quality, l
 	if IsLosslessQuality(tier) {
 		high = minutes * tierMBPerMin[QualityFLAC24] * sizeCeiling
 	}
-	if reBigAudio.MatchString(name) {
+	if reBigAudio.MatchString(name) || (IsLosslessQuality(tier) && reHiRes24.MatchString(name)) {
+		// Disc rips, multichannel, and hi-res up to DXD (352.8 kHz, ~70 MB a minute).
 		high = minutes * tierMBPerMin[QualityFLAC24] * bigAudioCeiling
+	}
+	floor := sizeFloor
+	if IsLosslessQuality(tier) {
+		floor = losslessFloor
 	}
 	if reExtras.MatchString(name) {
 		high += extrasMB
 	}
 	got := float64(sizeBytes) / (1 << 20)
 	switch {
-	case listing.Discs < manyDiscs && got < minutes*floorRate*sizeFloor:
+	case listing.Discs < manyDiscs && got < minutes*floorRate*floor:
 		return false, SaneSize, fmt.Sprintf("%s is too small for %d minutes of %s", sizeWords(sizeBytes), int(minutes+0.5), tier)
 	case got > high:
 		return false, SaneSize, fmt.Sprintf("%s is too big for %d minutes of %s", sizeWords(sizeBytes), int(minutes+0.5), tier)

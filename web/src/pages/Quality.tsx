@@ -199,7 +199,8 @@ function emptyProfile(media: string): StoredProfile {
     rejected: [...EXECUTABLE_TYPES], // reject executables by default (malware safety)
     min_seeders: 0,
     stall_minutes: 0,
-    upgrades_enabled: true,
+    // Music starts with upgrades off: replacing albums a library holds is the owner's call.
+    upgrades_enabled: media !== "music",
     upgrade_min_percent: 0,
     upgrade_trigger: "any",
     ideal: media === "movie" || media === "series" ? {} : undefined,
@@ -1448,7 +1449,7 @@ function MusicBuilder({ initial, ladder, presets, onCancel, onSaved }: { initial
     else next[tier] = canonical[tier];
     patch({ format_scores: next, min_format_score: 1 });
   };
-  const applyPreset = (p: MusicPreset) => patch({ format_scores: { ...p.format_scores }, min_format_score: p.min_format_score, upgrades_enabled: p.upgrades_enabled, name: sp.name || p.name });
+  const applyPreset = (p: MusicPreset) => patch({ format_scores: { ...p.format_scores }, min_format_score: p.min_format_score, name: sp.name || p.name });
   const top = ladder.find((t) => on(t));
   const kept = ladder.filter((t) => on(t)).length;
 

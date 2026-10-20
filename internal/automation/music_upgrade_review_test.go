@@ -1,12 +1,17 @@
 package automation
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/tristenlammi/arrmada/internal/download"
 	"github.com/tristenlammi/arrmada/internal/indexer"
+	"github.com/tristenlammi/arrmada/internal/music"
 )
 
 // musicGrab is the in-flight music grab for album id (the stall check's view of it).
@@ -68,55 +73,119 @@ func TestMusicUpgradeGrabSurvivesTheStallCheck(t *testing.T) {
 	}
 }
 
-// The same for a person's own grab of a complete album; an ordinary grab made before
-// another download completed the album is still closed as before.
+// The same for a person's own grab of a complete album, even one whose client gave no
+// info hash (it is marked by its row); an ordinary grab of an album that reads complete is
+// still closed as before, however the album got there.
 func TestMusicStallCheckOnACompleteAlbum(t *testing.T) {
 	h := musicTestCoord(t)
 	ref := musicProfileRef(t, h, "Lossless, or the best MP3", losslessOrMP3, true)
 	a := h.addArtist(t, "Radiohead", ref, []string{"OK Computer", "Kid A"}, nil, "1997-05-21")
 	okc := holdAlbum(t, h, h.album(t, a.ID, "OK Computer"), "MP3-320", 320, 0)
-	if err := h.c.GrabForAlbum(h.ctx, okc.ID, "Test", "magnet:x", "Radiohead - OK Computer (1997) [FLAC]"); err != nil {
+	h.c.musicGrabFn = func(context.Context, string, string, string, string) (string, error) { return "", nil } // hashless
+	if err := h.c.GrabForAlbum(h.ctx, okc.ID, "Test", "magnet:x", "Radiohead - OK Computer (1997) [FLAC]", ""); err != nil {
 		t.Fatal(err)
 	}
 	g := musicGrab(t, h.c, okc.ID)
+	if g.InfoHash != "" {
+		t.Fatalf("want a hashless grab, got %q", g.InfoHash)
+	}
 	h.c.detectStalledMusic(h.ctx, g, downloading(g), &stallTick{left: 3})
-	if s := grabStatusOf(t, h.c, g.ID); s != grabStatusGrabbed {
-		t.Fatalf("a person's grab still downloading was closed as %q", s)
+	if s := grabStatusOf(t, h.c, g.ID); s == grabStatusDismissed {
+		t.Fatalf("a person's hashless grab was dismissed by the stall check")
 	}
 
-	// Kid A: grabbed while missing, then completed by another download.
-	kid := h.album(t, a.ID, "Kid A")
+	// Kid A: an ordinary grab, and the album reads complete (here made after the files,
+	// as when unwanting a track or an edition switch completes it without a new file).
+	kid := holdAlbum(t, h, h.album(t, a.ID, "Kid A"), "FLAC", 0, 0)
 	h.c.recordMusicGrab(h.ctx, "music", kid.ID, "Radiohead - Kid A (2000) [FLAC]", "Test", ref, fmt.Sprintf("%040d", 99))
-	if _, err := h.c.db.Exec(`UPDATE grabs SET grabbed_at = datetime('now', '-1 hour') WHERE movie_id = ?`, kid.ID); err != nil {
-		t.Fatal(err)
-	}
-	holdAlbum(t, h, kid, "FLAC", 0, 0)
 	kg := musicGrab(t, h.c, kid.ID)
 	h.c.detectStalledMusic(h.ctx, kg, downloading(kg), &stallTick{left: 3})
 	if s := grabStatusOf(t, h.c, kg.ID); s != grabStatusDismissed {
-		t.Errorf("a grab overtaken by another download = %q, want dismissed as before", s)
+		t.Errorf("an ordinary grab of a complete album = %q, want dismissed as before", s)
 	}
 }
 
-// Review fix: a manual grab of a release already on its way for the album is refused.
-func TestGrabForAlbumRefusesARepeat(t *testing.T) {
+// insertMusicGrab writes a grab row for an album directly.
+func insertMusicGrab(t *testing.T, h *musicHarness, albumID int64, title, status, mode, age string) {
+	t.Helper()
+	if _, err := h.c.db.Exec(`INSERT INTO grabs (movie_id, title, media_type, info_hash, status, decided_mode, grabbed_at)
+		VALUES (?, ?, 'music', '', ?, ?, datetime('now', ?))`, albumID, title, status, mode, age); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Review fix: a manual grab is refused exactly while a grab for the album is in flight
+// (downloading or in Reviews, however old), with words that say which; a release
+// dismissed or removed before can be grabbed again.
+func TestGrabForAlbumInFlightRules(t *testing.T) {
+	title := "Radiohead - OK Computer (1997) [FLAC]"
+	for _, tc := range []struct {
+		name, status, mode, age, other string
+		refused                        string // "" = grabbed
+	}{
+		{"downloading for two days", grabStatusGrabbed, "", "-2 days", "", "already downloading"},
+		{"waiting in Reviews", grabStatusHeld, "", "-40 days", "", "waiting in Reviews"},
+		{"dismissed last week", grabStatusDismissed, "", "-7 days", "", ""},
+		{"removed yesterday", grabStatusRemoved, "", "-1 day", "", ""},
+		{"an upgrade downloading", grabStatusGrabbed, decidedUpgrade, "-1 hour", "Radiohead - OK Computer (1997) [FLAC 24bit]", "an upgrade is already downloading"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := musicTestCoord(t)
+			a := h.addArtist(t, "Radiohead", "", []string{"OK Computer"}, nil, "1997-05-21")
+			al := h.album(t, a.ID, "OK Computer")
+			existing := title
+			if tc.other != "" {
+				existing = tc.other
+			}
+			insertMusicGrab(t, h, al.ID, existing, tc.status, tc.mode, tc.age)
+			err := h.c.GrabForAlbum(h.ctx, al.ID, "Test", "magnet:x", title, "")
+			if tc.refused == "" {
+				if err != nil || len(h.grabs) != 1 {
+					t.Fatalf("err %v grabs %v, want it grabbed", err, h.grabs)
+				}
+				return
+			}
+			if !errors.Is(err, ErrGrabInFlight) || !strings.Contains(err.Error(), tc.refused) || len(h.grabs) != 0 {
+				t.Fatalf("err %v grabs %v, want refused: %q", err, h.grabs, tc.refused)
+			}
+		})
+	}
+}
+
+// Review fix: two grabs of one release at once (a double click, two tabs) give one grab.
+func TestGrabForAlbumConcurrent(t *testing.T) {
 	h := musicTestCoord(t)
 	a := h.addArtist(t, "Radiohead", "", []string{"OK Computer"}, nil, "1997-05-21")
 	al := h.album(t, a.ID, "OK Computer")
-	title := "Radiohead - OK Computer (1997) [FLAC]"
-	if err := h.c.GrabForAlbum(h.ctx, al.ID, "Test", "magnet:x", title); err != nil {
-		t.Fatal(err)
+	var mu sync.Mutex
+	var grabs int
+	h.c.musicGrabFn = func(context.Context, string, string, string, string) (string, error) {
+		time.Sleep(50 * time.Millisecond) // the client takes a moment
+		mu.Lock()
+		defer mu.Unlock()
+		grabs++
+		return fmt.Sprintf("%040d", grabs), nil
 	}
-	if err := h.c.GrabForAlbum(h.ctx, al.ID, "Test", "magnet:x", title); !errors.Is(err, ErrGrabInFlight) {
-		t.Fatalf("second grab: %v, want ErrGrabInFlight", err)
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i := range errs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = h.c.GrabForAlbum(h.ctx, al.ID, "Test", "magnet:x", "Radiohead - OK Computer (1997) [FLAC]", "")
+		}(i)
 	}
-	if len(h.grabs) != 1 {
-		t.Errorf("grabs %v, want one", h.grabs)
+	wg.Wait()
+	if grabs != 1 {
+		t.Fatalf("grabs %d (errors %v), want exactly one", grabs, errs)
+	}
+	if (errs[0] == nil) == (errs[1] == nil) || !(errors.Is(errs[0], ErrGrabInFlight) || errors.Is(errs[1], ErrGrabInFlight)) {
+		t.Errorf("errors %v, want one grab and one refusal", errs)
 	}
 }
 
 // Review fix: an artist's Search now searches at most artistSearchCap albums and leaves the
-// rest to the sweep, and stops when indexers keep failing.
+// rest to the sweep; a second click moves on to the albums not searched yet.
 func TestSearchArtistNowIsCapped(t *testing.T) {
 	h := musicTestCoord(t)
 	var titles []string
@@ -131,24 +200,88 @@ func TestSearchArtistNowIsCapped(t *testing.T) {
 	if res.Albums != artistSearchCap || res.Left != 5 || len(h.queries) != artistSearchCap {
 		t.Fatalf("searched %d (queries %d), left %d; want %d searched and 5 left", res.Albums, len(h.queries), res.Left, artistSearchCap)
 	}
+	first := map[string]bool{}
+	for _, q := range h.queries {
+		first[q] = true
+	}
+	h.queries = nil
+	if _, err := h.c.SearchArtistNow(h.ctx, a.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	fresh := 0
+	for _, q := range h.queries[:5] {
+		if !first[q] {
+			fresh++
+		}
+	}
+	if fresh != 5 {
+		t.Errorf("the second click's first searches %v, want the 5 albums the first left", h.queries[:5])
+	}
 }
 
-func TestSearchArtistNowStopsOnFailingIndexers(t *testing.T) {
+// Review fix: one indexer paused or failing while others answer doesn't stop the run; no
+// indexer answering twice in a row does.
+func TestSearchArtistNowAndFailingIndexers(t *testing.T) {
 	h := musicTestCoord(t)
 	a := h.addArtist(t, "Radiohead", "", []string{"A", "B", "C", "D", "E"}, nil, "2001-01-01")
 	h.releases = func(indexer.SearchQuery) (indexer.SearchResult, error) {
-		// One of two indexers times out on every search.
-		return indexer.SearchResult{Asked: 2, Errors: map[string]string{"Flaky": "timeout"}}, nil
+		return indexer.SearchResult{Asked: 2, Releases: []indexer.Release{rel("Muse - Absolution (2003) [FLAC]")},
+			Errors: map[string]string{"Flaky": "timeout"}, Skipped: map[string]string{"Paused": "backing off"}}, nil
 	}
 	res, err := h.c.SearchArtistNow(h.ctx, a.ID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.Stopped || res.Albums != artistSearchFailStreak || res.Left != 5-artistSearchFailStreak {
-		t.Fatalf("result %+v, want it stopped after %d searches", res, artistSearchFailStreak)
+	if res.Stopped || res.Albums != 5 {
+		t.Fatalf("one indexer down: %+v, want all 5 searched", res)
 	}
-	if len(h.queries) != artistSearchFailStreak {
-		t.Errorf("queries %d, want %d", len(h.queries), artistSearchFailStreak)
+
+	h2 := musicTestCoord(t)
+	a2 := h2.addArtist(t, "Radiohead", "", []string{"A", "B", "C", "D", "E"}, nil, "2001-01-01")
+	h2.releases = func(indexer.SearchQuery) (indexer.SearchResult, error) {
+		return indexer.SearchResult{Asked: 2, Errors: map[string]string{"One": "timeout", "Two": "refused"}}, nil
+	}
+	res, err = h2.c.SearchArtistNow(h2.ctx, a2.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Stopped || res.Albums != artistSearchFailStreak || res.Left != 5-artistSearchFailStreak || len(h2.queries) != artistSearchFailStreak {
+		t.Fatalf("full outage: %+v (queries %d), want it stopped after %d", res, len(h2.queries), artistSearchFailStreak)
+	}
+}
+
+// Review fix: a stalled upgrade's replacement waits while another grab for the album is in
+// flight, and when the six-hour upgrade budget is used.
+func TestReplaceUpgradeHoldsBack(t *testing.T) {
+	setup := func(t *testing.T) (*musicHarness, music.Artist, music.Album) {
+		h := musicTestCoord(t)
+		ref := musicProfileRef(t, h, "Lossless, or the best MP3", losslessOrMP3, true)
+		a := h.addArtist(t, "Radiohead", ref, []string{"OK Computer"}, nil, "1997-05-21")
+		al := holdAlbum(t, h, h.album(t, a.ID, "OK Computer"), "MP3-320", 320, 0)
+		h.releases = found(rel("Radiohead - OK Computer (1997) [FLAC]"))
+		return h, a, al
+	}
+	stalled := map[string]bool{normTitle("Radiohead - OK Computer (1997) [ALAC] stalled"): true}
+
+	h, a, al := setup(t)
+	insertMusicGrab(t, h, al.ID, "Radiohead - OK Computer (1997) [ALAC] stalled", grabStatusGrabbed, decidedUpgrade, "-1 hour")
+	if out := h.c.replaceUpgrade(h.ctx, a, al, stalled); out.Code != outcomeGrabbed {
+		t.Fatalf("only the stalled grab in flight: %+v, want a replacement", out)
+	}
+
+	h, a, al = setup(t)
+	insertMusicGrab(t, h, al.ID, "Radiohead - OK Computer (1997) [ALAC] stalled", grabStatusGrabbed, decidedUpgrade, "-1 hour")
+	insertMusicGrab(t, h, al.ID, "Radiohead - OK Computer (1997) [FLAC 24bit]", grabStatusGrabbed, "", "-1 hour")
+	if out := h.c.replaceUpgrade(h.ctx, a, al, stalled); out.Code != "" || len(h.grabs) != 0 {
+		t.Fatalf("another grab in flight: %+v grabs %v, want nothing", out, h.grabs)
+	}
+
+	h, a, al = setup(t)
+	h.c.SetUpgradeBudget(func(context.Context) int { return 2 })
+	insertMusicGrab(t, h, al.ID, "Radiohead - OK Computer (1997) [ALAC] stalled", grabStatusFailed, decidedUpgrade, "-1 hour")
+	insertMusicGrab(t, h, al.ID+100, "Something else [FLAC]", grabStatusImported, decidedUpgrade, "-2 hours")
+	if out := h.c.replaceUpgrade(h.ctx, a, al, stalled); out.Code != "" || len(h.grabs) != 0 {
+		t.Fatalf("budget used: %+v grabs %v, want nothing", out, h.grabs)
 	}
 }
 

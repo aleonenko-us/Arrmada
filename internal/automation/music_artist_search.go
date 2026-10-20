@@ -32,7 +32,7 @@ type ArtistSearch struct {
 // every indexer for every album at once.
 const artistSearchCap = musicSweepCap
 
-// artistSearchFailStreak is how many searches in a row with an indexer failing end the run.
+// artistSearchFailStreak is how many searches in a row no indexer could answer end the run.
 const artistSearchFailStreak = 2
 
 // Message words the result for the page's toast.
@@ -72,8 +72,8 @@ func (r ArtistSearch) Message() string {
 // one at a time, the way Search now does for one album (each its own recorded attempt),
 // at most artistSearchCap of them (never searched first, then the longest-waiting); the
 // rest are the sweep's. Albums already downloading or being searched are left alone, and
-// indexers failing (every one at once, or any two searches in a row with one failing) stop
-// the run rather than searching the rest into the failure. Complete albums aren't searched:
+// two searches in a row that no indexer could answer stop the run rather than searching
+// the rest into an outage. Complete albums aren't searched:
 // an artist's Search now fetches what's missing; upgrades are the upgrade sweep's. Whether
 // the indexers treat it as a person's search is up to ctx (indexer.WithInteractive):
 // the add dialog's search is background work. progress, when set, is told after each.
@@ -112,17 +112,17 @@ func (c *Coordinator) SearchArtistNow(ctx context.Context, artistID int64, progr
 			return res, ctx.Err()
 		}
 		out, err := c.SearchAlbumNow(ctx, al.ID)
-		failing := err != nil || len(out.IndexerErrors) > 0
+		// Failing means nobody could answer: every indexer asked failed, or none could be
+		// asked. One indexer paused or erroring while the others answer is a normal search.
+		outage := out.Reason == ReasonIndexersFailed || out.Reason == ReasonIndexersPaused ||
+			out.Reason == ReasonNoIndexers || indexer.IsOutage(err)
 		switch {
 		case errors.Is(err, ErrAlreadySearching), out.Reason == ReasonAlreadyDownloading:
 			res.Busy++
-			failing = false
-		case out.Reason == ReasonIndexersFailed || out.Reason == ReasonIndexersPaused || indexer.IsOutage(err):
+		case outage:
 			res.Albums++
 			res.Failed++
-			res.Stopped, res.Left = true, res.Left+len(todo)-i-1
-			c.log.Warn("music: no indexer could answer — stopping the artist's search", "album", al.Title, "err", err)
-			return res, nil
+			streak++
 		case err != nil:
 			res.Albums++
 			res.Failed++
@@ -134,21 +134,39 @@ func (c *Coordinator) SearchArtistNow(ctx context.Context, artistID int64, progr
 				res.Titles = append(res.Titles, out.GrabbedTitles...)
 			}
 		}
-		if failing {
-			streak++
-		} else {
+		if !outage || out.Returned > 0 || out.Grabbed > 0 {
 			streak = 0
+		}
+		if !errors.Is(err, ErrAlreadySearching) {
+			// Stamped like the sweep's searches, so the next Search now (or sweep) moves on
+			// to the albums not searched yet instead of starting over with these.
+			c.stampArtistSearch(ctx, al, out.Grabbed > 0)
 		}
 		if progress != nil {
 			progress(i+1, len(todo))
 		}
 		if streak >= artistSearchFailStreak && i < len(todo)-1 {
 			res.Stopped, res.Left = true, res.Left+len(todo)-i-1
-			c.log.Warn("music: indexers kept failing — stopping the artist's search", "album", al.Title, "errors", out.IndexerErrors)
+			c.log.Warn("music: no indexer could answer twice in a row — stopping the artist's search", "album", al.Title, "err", err)
 			return res, nil
 		}
 	}
 	return res, nil
+}
+
+// stampArtistSearch records an artist search of one album the way the sweep would: a grab
+// clears its backoff; anything else only stamps the time (a person's search doesn't count
+// against the album).
+func (c *Coordinator) stampArtistSearch(ctx context.Context, al music.Album, grabbed bool) {
+	var err error
+	if grabbed {
+		err = c.music.ResetSearchMisses(ctx, al.ID)
+	} else {
+		err = c.music.TouchSearch(ctx, al.ID)
+	}
+	if err != nil {
+		c.log.Warn("music: stamping the search time failed", "album", al.Title, "err", err)
+	}
 }
 
 // albumSearchedEvent puts an album search on its artist's History when its result differs

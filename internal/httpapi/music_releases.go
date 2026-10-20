@@ -57,7 +57,7 @@ func (a *api) handleGrabAlbum(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	err := a.deps.Automation.GrabForAlbum(r.Context(), id, ref.Indexer, ref.DownloadURL, ref.Title)
+	err := a.deps.Automation.GrabForAlbum(r.Context(), id, ref.Indexer, ref.DownloadURL, ref.Title, ref.InfoHash)
 	switch {
 	case errors.Is(err, automation.ErrModuleOff):
 		a.writeError(w, http.StatusNotFound, musicOffMessage)

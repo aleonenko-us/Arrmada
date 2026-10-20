@@ -128,7 +128,7 @@ func TestManualAlbumGrabImportsIntoTheAlbum(t *testing.T) {
 	r.tagAll(files, okcTitles)
 	hash := hashFor(name)
 	r.h.c.musicGrabFn = func(context.Context, string, string, string, string) (string, error) { return hash, nil }
-	if err := r.h.c.GrabForAlbum(r.h.ctx, r.album.ID, "Fake", "magnet:?xt=x", name); err != nil {
+	if err := r.h.c.GrabForAlbum(r.h.ctx, r.album.ID, "Fake", "magnet:?xt=x", name, ""); err != nil {
 		t.Fatal(err)
 	}
 	var manual int

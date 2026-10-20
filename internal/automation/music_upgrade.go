@@ -2,7 +2,6 @@ package automation
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
@@ -282,31 +281,20 @@ func (c *Coordinator) musicGrabWasUpgrade(ctx context.Context, hash, name string
 	return byName
 }
 
-// completedUnderGrab reports whether an album that reads complete was completed by another
-// download while grab g was in flight, which is when the stall check may close g as no
-// longer needed. Not for an upgrade the sweep grabbed or a person's own grab, and not for
-// a grab made after the album was already complete: those were meant for a complete album,
-// and closing one as 'dismissed' would keep its files forever, let a second upgrade be
-// grabbed beside it, and lose it before its import. Unreadable facts keep the old rule.
-func (c *Coordinator) completedUnderGrab(ctx context.Context, g grab, al music.Album) bool {
+// completedUnderGrab reports whether grab g of an album that now reads complete is one the
+// stall check may close as no longer needed: any grab except an upgrade the sweep grabbed
+// or a person's own grab. Those were meant for a complete album, and closing one as
+// 'dismissed' would keep its files forever, let a second upgrade be grabbed beside it, and
+// lose it before its import. (An album also completes without a new file: unwanting a
+// track, an edition switch, a shorter listing; so no timestamp is trusted here.) An
+// unreadable row keeps the old rule.
+func (c *Coordinator) completedUnderGrab(ctx context.Context, g grab, _ music.Album) bool {
 	var mode string
 	var manual int
 	if err := c.db.QueryRowContext(ctx, `SELECT decided_mode, manual FROM grabs WHERE id = ?`, g.ID).Scan(&mode, &manual); err != nil {
 		return true
 	}
-	if mode == decidedUpgrade || manual != 0 {
-		return false
-	}
-	var last sql.NullString
-	if err := c.db.QueryRowContext(ctx,
-		`SELECT MAX(added_at) FROM music_track_files WHERE album_id = ? AND release_track_id IS NOT NULL`, al.ID).Scan(&last); err != nil {
-		return true
-	}
-	grabbed, completed := parseTime(g.GrabbedAt), parseTime(last.String)
-	if grabbed.IsZero() || completed.IsZero() {
-		return true
-	}
-	return !grabbed.After(completed)
+	return mode != decidedUpgrade && manual == 0
 }
 
 // replaceUpgrade is the fail-over search for a stalled grab of a complete album: another
@@ -324,9 +312,41 @@ func (c *Coordinator) replaceUpgrade(ctx context.Context, a music.Artist, al mus
 	if !ok || len(music.UpgradeTiers(held, sp.FormatScores)) == 0 {
 		return albumOutcome{}
 	}
+	// Another grab for the album still in flight (besides the stalled one being replaced):
+	// that one may bring the upgrade, so nothing is grabbed beside it.
+	acqs, err := c.Active(ctx, "music", al.ID)
+	if err != nil {
+		return albumOutcome{Code: outcomeUnreadable, Detail: err.Error()}
+	}
+	for _, acq := range acqs {
+		if !exclude[normTitle(acq.Title)] {
+			return albumOutcome{}
+		}
+	}
+	// And the upgrade budget: no more upgrade grabs in any six hours than one sweep may make.
+	if full, err := c.upgradeBudgetUsed(ctx); err != nil {
+		return albumOutcome{Code: outcomeUnreadable, Detail: err.Error()}
+	} else if full {
+		c.log.Info("music: upgrade budget used — a stalled upgrade waits for the next sweep", "album", al.Title)
+		return albumOutcome{}
+	}
 	// The grab must be recorded as an upgrade, which the search's collector carries.
 	ctx, _ = withSearchNotes(ctx)
 	return c.upgradeAlbumSearch(ctx, a, al, held, nil, exclude)
+}
+
+// upgradeBudgetUsed reports whether the music upgrade grabs of the last six hours (one
+// upgrade sweep's interval) already reach the per-sweep upgrade budget, for an upgrade
+// grabbed outside the sweep (a stall fail-over's replacement).
+func (c *Coordinator) upgradeBudgetUsed(ctx context.Context) (bool, error) {
+	max := c.newSweepBudget(ctx).max
+	if max <= 0 {
+		return false, nil
+	}
+	var n int
+	err := c.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM grabs WHERE media_type = 'music' AND decided_mode = ?
+		AND grabbed_at > datetime('now', '-6 hours')`, decidedUpgrade).Scan(&n)
+	return n >= max, err
 }
 
 // upgradeEditionHold is the review an upgrade's import becomes instead of moving the album
