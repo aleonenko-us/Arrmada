@@ -585,6 +585,43 @@ type Importer struct {
 	seriesIDsFn func(seriesTitle string, year int) SeriesIDs
 	// copyReport hears this import's copies (Using); nil for every other importer.
 	copyReport CopyReport
+	// seasonDirs picks the season folder an episode import goes into (WithSeasonDirs);
+	// nil = the scheme's, joining an existing one.
+	seasonDirs SeasonDirChooser
+}
+
+// SeasonDirChooser is the season folder an episode of season goes into inside the show
+// folder showDir, given the folder the scheme would use (def): def itself, another folder,
+// or an error that refuses the import.
+type SeasonDirChooser func(showDir string, season int, def string) (string, error)
+
+// WithSeasonDirs is a copy of the importer whose episode imports put each episode in the
+// season folder choose picks.
+func (im *Importer) WithSeasonDirs(choose SeasonDirChooser) *Importer {
+	if im == nil {
+		return im
+	}
+	c := *im
+	c.seasonDirs = choose
+	return &c
+}
+
+// importTarget is episodeTargetIn for an import (never a rename): the scheme's path, with
+// its season folder replaced by the chooser's when one is set.
+func (im *Importer) importTarget(seriesFolder, title string, year, season, episode int, rel parser.Release, ext string) (string, error) {
+	target := im.episodeTargetIn(seriesFolder, title, year, season, episode, rel, ext, false)
+	if im.seasonDirs == nil {
+		return target, nil
+	}
+	def := filepath.Dir(target)
+	dir, err := im.seasonDirs(filepath.Dir(def), season, def)
+	if err != nil {
+		return "", err
+	}
+	if dir == "" {
+		dir = def
+	}
+	return filepath.Join(dir, filepath.Base(target)), nil
 }
 
 // RootFuncs resolve each library folder at the moment it's needed. They're read on every
@@ -1166,7 +1203,10 @@ func (im *Importer) ImportEpisodeIntoWith(seriesFolder, seriesTitle string, year
 	if err := im.checkRoot(im.tvDir()); err != nil {
 		return nil, false, err
 	}
-	target := im.episodeTargetIn(seriesFolder, seriesTitle, year, rel.Season, ep, rel, ext, false)
+	target, err := im.importTarget(seriesFolder, seriesTitle, year, rel.Season, ep, rel, ext)
+	if err != nil {
+		return nil, false, err
+	}
 	if err := insideRoot(target, im.tvDir()); err != nil {
 		return nil, false, err
 	}
@@ -1207,7 +1247,10 @@ func (im *Importer) ImportEpisodeAs(seriesFolder, seriesTitle string, year, seas
 	if err := im.checkRoot(im.tvDir()); err != nil {
 		return nil, false, err
 	}
-	target := im.episodeTargetIn(seriesFolder, seriesTitle, year, season, episode, rel, ext, false)
+	target, err := im.importTarget(seriesFolder, seriesTitle, year, season, episode, rel, ext)
+	if err != nil {
+		return nil, false, err
+	}
 	if err := insideRoot(target, im.tvDir()); err != nil {
 		return nil, false, err
 	}

@@ -175,6 +175,44 @@ func TestRevESeasonFolderInTheTVFolder(t *testing.T) {
 	}
 }
 
+// A new episode joins the season folder the show already has, whatever it's called, and
+// never makes a parallel "Season 1" beside it; while that folder is away the import is
+// refused rather than put in a new one. A season the show has no folder for gets the
+// scheme's.
+func TestRevESeasonFolderJoinedWhateverItsName(t *testing.T) {
+	for _, name := range []string{"Stagione 1", "Staffel 01", "Series 1", "Saison 1", "Season 01 (2014)", "S01"} {
+		t.Run(name, func(t *testing.T) {
+			h, tv := rbSetup(t, []rbFile{
+				{rel: "Show/" + name + "/Show - S01E01.mkv", tracked: [2]int{1, 1}},
+			})
+			s, _ := h.c.series.Get(h.ctx, h.seriesID)
+			const rel = "Show.S01E02.1080p.WEB-DL-GRP"
+			dl := h.download(t, rel, rel+".mkv")
+			if _, _, _, failed := h.c.importSeriesInto(h.ctx, s, dl, forceAll); failed != 0 {
+				t.Fatalf("import failed")
+			}
+			if cur := h.c.series.CurrentEpisodeFile(h.ctx, h.seriesID, 1, 2); filepath.Dir(cur.Path) != filepath.Join(tv, "Show", name) {
+				t.Errorf("S01E02 at %q, want in %s", cur.Path, name)
+			}
+			noDir(t, filepath.Join(tv, "Show", "Season 1"), "a parallel season folder")
+		})
+	}
+	t.Run("season folder away", func(t *testing.T) {
+		h, tv := rbSetup(t, []rbFile{
+			{rel: "Show/S01/Show - S01E01.mkv", tracked: [2]int{1, 1}, missing: true},
+			{rel: "Show/S02/Show - S02E01.mkv", tracked: [2]int{2, 1}},
+		})
+		s, _ := h.c.series.Get(h.ctx, h.seriesID)
+		const rel = "Show.S01E02.1080p.WEB-DL-GRP"
+		dl := h.download(t, rel, rel+".mkv")
+		if placed, _, _, _ := h.c.importSeriesInto(h.ctx, s, dl, forceAll); len(placed) != 0 {
+			t.Errorf("imported %v while S01 is away", placed)
+		}
+		noDir(t, filepath.Join(tv, "Show", "Season 1"), "a parallel season folder")
+		noDir(t, filepath.Join(tv, "Show", "S01"), "the away season folder, made anew")
+	})
+}
+
 // A show of 2,000 episodes in 20 season folders is judged, and its files filtered, in
 // linear time: every folder is checked once per lookup.
 func TestRevEBigShowIsJudgedInLinearTime(t *testing.T) {

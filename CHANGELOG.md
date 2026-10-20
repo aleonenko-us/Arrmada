@@ -283,8 +283,10 @@ Arrmada is pre-1.0 (v0.x), so a minor version can change behaviour. The format f
 
 - **Shows with `S01`-style season folders work fully again** (#56). A show stored as
   `<TV folder>/Show/S12/` (an `S{season00}` season folder template, `Stagione 1`, `Saison 1`…)
-  is read as living in `Show`, as v0.3.2 couldn't: new episodes go into the existing season
-  folder, a new season gets its own folder inside `Show` named by your template, and
+  is read as living in `Show`, as v0.3.2 couldn't: new episodes go into the season folder
+  the show already has for that season, whatever it's called (never a new `Season 1`
+  beside a `Stagione 1`; while that folder is unreachable, the download waits instead), a
+  new season gets its own folder inside `Show` named by your template, and
   **Refresh & rescan**, **Rename**, the duplicate check and **Move to folder** work again.
   Shows that v0.3.2 refused for their season folders' names read normally after the update,
   with nothing to do; one whose folder also holds another show still waits in Needs you.

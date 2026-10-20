@@ -28,7 +28,9 @@ func (c *Coordinator) seriesPlacement(ctx context.Context, s series.Series) (*li
 	if info.Unknown {
 		return nil, "", &series.ShowFolderError{Title: s.Title, Why: info.Why}
 	}
-	imp := c.imp.InTV(c.series.ImportDirOf(ctx, s, info)).Using(ctx)
+	// An episode joins the season folder the show already has for it, whatever it's called
+	// ("Stagione 1", "S12"), and never makes a parallel one while that folder is away.
+	imp := c.imp.InTV(c.series.ImportDirOf(ctx, s, info)).Using(ctx).WithSeasonDirs(c.series.SeasonDirChooser(ctx, s.ID))
 	folder := ""
 	if info.Path != "" {
 		folder = filepath.Base(info.Path)

@@ -1518,6 +1518,27 @@ func (r *Repo) EpisodeFilePath(ctx context.Context, seriesID int64, season, epis
 	return path, err
 }
 
+// SeasonFilePaths is every distinct on-disk file the series' episodes of one season
+// point at.
+func (r *Repo) SeasonFilePaths(ctx context.Context, seriesID int64, season int) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT DISTINCT file_path FROM episodes WHERE series_id = ? AND season_number = ? AND has_file = 1 AND file_path <> '' ORDER BY file_path`,
+		seriesID, season)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // EpisodeFilePaths is every distinct on-disk file the series' episodes point at, for
 // working out which folder the show lives in (ShowFolderOf).
 func (r *Repo) EpisodeFilePaths(ctx context.Context, seriesID int64) ([]string, error) {

@@ -222,6 +222,54 @@ func (s *Service) EpisodeFileFilter(ctx context.Context, sr Series, showDir stri
 	}
 }
 
+// SeasonDirChooser picks, for an episode import of show seriesID, the season folder in its
+// show folder (library.SeasonDirChooser):
+//
+//   - the folder the scheme names, or an existing one it joins ("Season 01", "S12"), when
+//     that is there — as every release did;
+//   - otherwise the one folder in the show folder all of that season's recorded files are
+//     in, whatever it's called ("Stagione 1", "Staffel 01", "Series 1"), so a new episode
+//     goes next to the others rather than into a new "Season 1" beside them;
+//   - refused when that folder is gone (a share that's away, a season folder deleted by
+//     hand): a parallel season folder is never made in its place.
+//
+// A season the show has no files of (or whose files are in several folders, or loose in
+// the show folder) gets the scheme's folder.
+func (s *Service) SeasonDirChooser(ctx context.Context, seriesID int64) func(showDir string, season int, def string) (string, error) {
+	return func(showDir string, season int, def string) (string, error) {
+		if fi, err := os.Stat(def); err == nil && fi.IsDir() {
+			return def, nil
+		}
+		paths, err := s.repo.SeasonFilePaths(ctx, seriesID, season)
+		if err != nil || len(paths) == 0 {
+			return def, nil
+		}
+		showDir = filepath.Clean(showDir)
+		d := filepath.Dir(filepath.Clean(paths[0]))
+		for _, p := range paths {
+			if filepath.Dir(filepath.Clean(p)) != d {
+				return def, nil
+			}
+		}
+		if filepath.Dir(d) != showDir {
+			return def, nil // loose in the show folder, or somewhere else: the scheme decides
+		}
+		fi, err := os.Stat(d)
+		switch {
+		case err == nil && fi.IsDir():
+			return d, nil
+		case errors.Is(err, fs.ErrNotExist):
+			return "", fmt.Errorf("%w: season %d's folder %s isn't there (a share that's away, or a folder removed by hand) — rescan the show once it's back", ErrSeasonFolderAway, season, d)
+		default:
+			return "", fmt.Errorf("%w: season %d's folder %s can't be read: %v", ErrSeasonFolderAway, season, d, err)
+		}
+	}
+}
+
+// ErrSeasonFolderAway is an episode import refused because the season's folder, where the
+// show's other episodes of that season are, isn't there.
+var ErrSeasonFolderAway = errors.New("the season's folder isn't there")
+
 // ShowFoldersOf answers, for each episode file of show seriesID, the folder of the show it
 // is in: the folder ShowFolderOf would count it towards, else where it is (ShowFolderFor).
 // For Move to folder, which moves a show's folders whole.
