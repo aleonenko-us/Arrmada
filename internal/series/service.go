@@ -45,9 +45,6 @@ type Service struct {
 	log     *slog.Logger
 	scene   SceneMapper // TheXEM client (nil → scene mapping falls back to air-date gaps)
 
-	muUnmatched   sync.Mutex
-	lastUnmatched []UnmatchedFolder // folders the last scan couldn't identify, for manual pick
-
 	sceneMu    sync.Mutex
 	sceneCache map[int64]map[string]int // series id → scene "S-E" → absolute (in-memory)
 
@@ -107,6 +104,12 @@ type UnmatchedFolder struct {
 	Title      string                  `json:"title"`
 	Year       int                     `json:"year"`
 	Candidates []metadata.SeriesResult `json:"candidates"`
+	// Reason is why the folder needs you (the Reason* codes) and Detail says so in plain
+	// words. SeriesID is the show a folder was added as when it got no episodes from it
+	// (ReasonNoEpisodes), or the one that already took its place (ReasonDuplicate).
+	Reason   string `json:"reason,omitempty"`
+	Detail   string `json:"detail,omitempty"`
+	SeriesID int64  `json:"series_id,omitempty"`
 }
 
 // SetRecycleDir points episode-file deletion at the recycle bin (matching movies). ""
@@ -1852,6 +1855,7 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 		os.DirEntry
 	}
 	var shows []showDir
+	addedHere := map[int]scannedShow{} // the shows this scan added, by TMDB id
 	for _, root := range roots {
 		entries, err := os.ReadDir(root)
 		if err != nil {
@@ -1891,75 +1895,105 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 		if err := ctx.Err(); err != nil {
 			// Cancelled, or out of time: stop, rather than file every folder left as
 			// "needs review" because its search couldn't run.
+			s.recordUnmatched(ctx, res.Unmatched, nil)
 			return res, fmt.Errorf("the scan stopped after %d of %d show folders: %w", i, len(shows), err)
 		}
 		root := e.root
 		folder := filepath.Join(root, e.Name())
 		videos, _ := library.FindVideos(folder)
 		if len(videos) == 0 {
-			continue // no episode files here
+			// Nothing to catalog, which is worth saying: an empty folder left by a failed
+			// move looks the same in the list as a show that wasn't found.
+			s.log.Info("series scan: no episode files in folder — nothing to import", "folder", folder)
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: e.Name(), Reason: ReasonNoVideo,
+				Detail: "No episode files were found in this folder, so there is nothing to import."})
+			continue
 		}
 		rel := parser.Parse(e.Name())
 		if rel.Title == "" {
+			s.log.Info("series scan: couldn't read a title from the folder name — skipped", "folder", folder)
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: e.Name(), Reason: ReasonNoResults,
+				Detail: "Arrmada couldn't read a show title from this folder's name. Search for the show to match it by hand."})
 			continue
 		}
-		results, err := s.meta.SearchSeries(ctx, rel.Title)
-		match, ok := metadata.SeriesResult{}, false
-		if err == nil && len(results) > 0 {
-			match, ok = bestSeriesMatch(results, rel.Title, rel.Year)
-		}
-		if !ok && err == nil {
-			// A folder named in one of the owner's extra title languages ("Haus des
-			// Geldes"): asked again in those languages, exactly one show must be named so.
-			if id, found := s.localizedScanMatch(ctx, rel.Title, rel.Year); found {
-				match, ok = metadata.SeriesResult{TMDBID: id}, true
-			}
-		}
+		match, ok, results, err := s.scanMatch(ctx, rel)
 		if err := ctx.Err(); err != nil {
 			// The lookup was cut short, which says nothing about the folder: stop here
 			// rather than file it as needing review.
+			s.recordUnmatched(ctx, res.Unmatched, nil)
 			return res, fmt.Errorf("the scan stopped after %d of %d show folders: %w", i, len(shows), err)
 		}
 		if !ok && (err != nil || len(results) == 0) {
-			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year})
+			detail := fmt.Sprintf("TMDB found nothing called “%s”. Search under another name, or add the show yourself.", rel.Title)
+			if err != nil {
+				detail = fmt.Sprintf("The TMDB search for “%s” failed (%v). Scan again, or search for the show yourself.", rel.Title, err)
+			}
+			s.log.Info("series scan: no TMDB match for folder", "folder", folder, "title", rel.Title, "err", err)
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year, Reason: ReasonNoResults, Detail: detail})
 			continue
 		}
 		if !ok {
 			// No confident match — surface the top candidates for a manual pick.
-			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year, Candidates: topSeries(results, 6)})
+			s.log.Info("series scan: no confident TMDB match for folder", "folder", folder, "title", rel.Title, "candidates", len(results))
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year, Candidates: topSeries(results, 6),
+				Reason: ReasonAmbiguous, Detail: fmt.Sprintf("TMDB has several shows that could be “%s” and none is clearly the one. Pick the right match.", rel.Title)})
 			continue
 		}
 		if have[match.TMDBID] {
+			if first, dup := addedHere[match.TMDBID]; dup {
+				// Two folders that are the same show: the first took it, and this one's files
+				// were not read. That is the owner's call, not something to skip quietly.
+				s.log.Info("series scan: folder is a show another folder already became — left alone", "folder", folder, "first", first.folder)
+				res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year, Reason: ReasonDuplicate, SeriesID: first.id,
+					Detail: fmt.Sprintf("This looks like the same show as “%s”, which is already added from another folder, so its files were not read. Open that show to see which files it has.", first.folder)})
+				continue
+			}
+			s.log.Info("series scan: folder is already in the library — skipped", "folder", folder, "tmdb_id", match.TMDBID)
 			res.Skipped++
 			continue
 		}
 		// Once matched, the show is added and its episode files marked as one step, even if
 		// the scan is stopped meanwhile: a show added without its files would be skipped by
 		// every later scan (it's "already in the library") and never get them.
-		if err := s.importSeriesFolder(context.WithoutCancel(ctx), folder, videos, match.TMDBID); err != nil {
-			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year})
+		added, marked, err := s.importSeriesFolder(context.WithoutCancel(ctx), folder, videos, match.TMDBID)
+		if err != nil {
+			s.log.Warn("series scan: couldn't add the show for folder", "folder", folder, "err", err)
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: rel.Title, Year: rel.Year, Reason: ReasonImportFailed,
+				Detail: fmt.Sprintf("The show was found but couldn't be added: %v. Pick it again to retry.", err)})
 			continue
 		}
 		have[match.TMDBID] = true
+		addedHere[match.TMDBID] = scannedShow{id: added.ID, folder: e.Name()}
 		res.Imported++
+		if marked == 0 {
+			s.log.Warn("series scan: imported a show but none of its files matched an episode", "folder", folder, "title", added.Title)
+			res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: added.Title, Year: rel.Year, Reason: ReasonNoEpisodes, SeriesID: added.ID,
+				Detail: noEpisodesDetail(added.Title, videos)})
+		}
 	}
 	report(len(shows))
-	// A folder that couldn't be read keeps the needs-review rows its last scan left, and so
-	// does every other folder when this scan was of one folder only.
-	keep := append([]UnmatchedFolder(nil), res.Unmatched...)
-	for _, u := range s.LastUnmatched() {
-		kept := rootOverride != "" && filepath.Clean(u.Root) != filepath.Clean(rootOverride)
+	// The list is what this scan saw in the folders it read; a folder it couldn't read
+	// keeps the rows its last scan left, and so does every folder it wasn't asked to scan.
+	var readRoots []string
+	for _, root := range roots {
+		failed := false
 		for _, f := range res.FailedFolders {
-			if filepath.Clean(u.Root) == filepath.Clean(f.Root) {
-				kept = true
+			if filepath.Clean(f.Root) == filepath.Clean(root) {
+				failed = true
 			}
 		}
-		if kept {
-			keep = append(keep, u)
+		if !failed {
+			readRoots = append(readRoots, root)
 		}
 	}
-	s.setLastUnmatched(keep)
+	s.recordUnmatched(ctx, res.Unmatched, readRoots)
 	return res, nil
+}
+
+// scannedShow is a show this scan added, and the folder it came from.
+type scannedShow struct {
+	id     int64
+	folder string
 }
 
 // importSeriesFolder adds a series by TMDB id (unmonitored, unset profile — an
@@ -1967,7 +2001,7 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 //
 // Only the files a rescan would read are marked (EpisodeFileFilter, without Plex extras
 // folders): never another show's folder inside dir, nor a file named as another show's.
-func (s *Service) importSeriesFolder(ctx context.Context, dir string, videos []library.FoundVideo, tmdbID int) error {
+func (s *Service) importSeriesFolder(ctx context.Context, dir string, videos []library.FoundVideo, tmdbID int) (Series, int, error) {
 	// The show belongs to the TV folder its files were found in, whatever the rules say.
 	var folderID *int64
 	if s.folders != nil && len(videos) > 0 {
@@ -1976,7 +2010,7 @@ func (s *Service) importSeriesFolder(ctx context.Context, dir string, videos []l
 	}
 	added, err := s.AddWith(ctx, tmdbID, "n/a", AddOptions{Monitored: false, Preset: PresetNone, FolderID: folderID})
 	if err != nil {
-		return err
+		return Series{}, 0, err
 	}
 	keep := func(string) bool { return true }
 	if full, err := s.Get(ctx, added.ID); err == nil {
@@ -1998,7 +2032,7 @@ func (s *Service) importSeriesFolder(ctx context.Context, dir string, videos []l
 	}
 	s.AddEvent(ctx, added.ID, "imported", fmt.Sprintf("Found during library scan: %d episode files", marked))
 	s.log.Info("series scan: imported", "title", added.Title, "episodes", marked)
-	return nil
+	return added, marked, nil
 }
 
 // ImportFolderAs catalogs a specific library folder as the chosen TMDB series —
@@ -2017,10 +2051,10 @@ func (s *Service) ImportFolderAs(ctx context.Context, rootOverride, folder strin
 	if len(videos) == 0 {
 		return fmt.Errorf("no episode files found in %q", folder)
 	}
-	if err := s.importSeriesFolder(ctx, filepath.Join(root, folder), videos, tmdbID); err != nil {
+	if _, _, err := s.importSeriesFolder(ctx, filepath.Join(root, folder), videos, tmdbID); err != nil {
 		return err
 	}
-	s.dropUnmatched(root, folder)
+	s.dropUnmatched(ctx, root, folder)
 	return nil
 }
 
@@ -2029,33 +2063,6 @@ func topSeries(results []metadata.SeriesResult, n int) []metadata.SeriesResult {
 		return results[:n]
 	}
 	return results
-}
-
-func (s *Service) setLastUnmatched(u []UnmatchedFolder) {
-	s.muUnmatched.Lock()
-	s.lastUnmatched = u
-	s.muUnmatched.Unlock()
-}
-
-// LastUnmatched returns the folders the most recent scan couldn't identify.
-func (s *Service) LastUnmatched() []UnmatchedFolder {
-	s.muUnmatched.Lock()
-	defer s.muUnmatched.Unlock()
-	return append([]UnmatchedFolder(nil), s.lastUnmatched...)
-}
-
-// dropUnmatched takes one folder of one TV folder (root) off the list; the same name in
-// another TV folder stays.
-func (s *Service) dropUnmatched(root, folder string) {
-	s.muUnmatched.Lock()
-	defer s.muUnmatched.Unlock()
-	out := s.lastUnmatched[:0]
-	for _, u := range s.lastUnmatched {
-		if u.Folder != folder || (u.Root != "" && filepath.Clean(u.Root) != filepath.Clean(root)) {
-			out = append(out, u)
-		}
-	}
-	s.lastUnmatched = out
 }
 
 // bestSeriesMatch resolves a scanned folder to a search result, requiring a

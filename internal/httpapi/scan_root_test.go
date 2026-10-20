@@ -185,7 +185,7 @@ func TestScanOneFolderScansOnlyIt(t *testing.T) {
 	_, mgr := s.user(t, "mgr@example.com", auth.RoleManager)
 	run := func(body string) jobs.Job { return s.runScan(t, mgr, "/api/v1/series/scan", body) }
 	run("")
-	if got := len(s.deps.Series.LastUnmatched()); got != 2 {
+	if got := len(seriesUnmatched(t, s)); got != 2 {
 		t.Fatalf("after the full scan %d folders need review, want 2 (one per folder)", got)
 	}
 	sparseVideo(t, filepath.Join(s.anime.Path, "Second Show (2022)", "Second Show - S01E01.mkv"))
@@ -197,7 +197,7 @@ func TestScanOneFolderScansOnlyIt(t *testing.T) {
 		t.Errorf("job %+v, result %+v; want Anime's two shows only", job, sum)
 	}
 	roots := map[string]int{}
-	for _, u := range s.deps.Series.LastUnmatched() {
+	for _, u := range seriesUnmatched(t, s) {
 		roots[filepath.Clean(u.Root)]++
 	}
 	if roots[filepath.Clean(s.anime.Path)] != 2 || roots[filepath.Clean(s.deps.Config.TVDir)] != 1 || len(roots) != 2 {
@@ -326,7 +326,7 @@ func TestQueuedFolderScanRechecksTheFolder(t *testing.T) {
 	if _, err := specs[1].Fn(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "can't be found") {
 		t.Errorf("Anime scan = %v, want it failed as missing", err)
 	}
-	if n := len(s.deps.Series.LastUnmatched()); n != 0 {
+	if n := len(seriesUnmatched(t, s)); n != 0 {
 		t.Errorf("%d folders need review after scans that never ran", n)
 	}
 }
@@ -369,4 +369,13 @@ func TestDeadShareIsNotResponding(t *testing.T) {
 	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "isn't responding") {
 		t.Errorf("scan of a dead share: HTTP %d %s, want 409", rec.Code, rec.Body)
 	}
+}
+
+func seriesUnmatched(t *testing.T, s scanRootServer) []series.UnmatchedFolder {
+	t.Helper()
+	list, err := s.deps.Series.LastUnmatched(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return list
 }

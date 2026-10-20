@@ -120,10 +120,3 @@ func noEpisodesDetail(title string, videos []library.FoundVideo) string {
 	}
 	return fmt.Sprintf("Added as “%s”, but none of its %s matched an episode of it. The folder may hold a different show, or number its episodes differently from TMDB. Open the show to check.", title, files)
 }
-
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}

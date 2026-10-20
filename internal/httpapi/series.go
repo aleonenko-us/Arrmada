@@ -755,7 +755,12 @@ func (a *api) handleScanSeriesLibrary(w http.ResponseWriter, r *http.Request) {
 // handleSeriesUnmatched returns the folders the last scan couldn't identify, each
 // with candidate matches to choose from.
 func (a *api) handleSeriesUnmatched(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, http.StatusOK, map[string]any{"unmatched": a.deps.Series.LastUnmatched()})
+	list, err := a.deps.Series.LastUnmatched(r.Context())
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "could not read the folders that need review")
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]any{"unmatched": list})
 }
 
 // handleSeriesImportFolder catalogs one library folder as an explicitly chosen

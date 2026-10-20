@@ -55,7 +55,6 @@ func TestSeriesScanStoppedPartWayLeavesNoHalfState(t *testing.T) {
 	defer cancel()
 	svc := NewService(st.DB(), stopDuringAdd{shelf, cancel}, "", log)
 	svc.SetRootFunc(func() string { return tv })
-	svc.setLastUnmatched(first.LastUnmatched())
 
 	_, err = svc.ScanLibrary(ctx, "", nil)
 	if !errors.Is(err, context.Canceled) {
@@ -71,7 +70,7 @@ func TestSeriesScanStoppedPartWayLeavesNoHalfState(t *testing.T) {
 	if _, err := svc.GetByTMDB(context.Background(), 2); err == nil {
 		t.Error("a show after the stop was added")
 	}
-	if got := svc.LastUnmatched(); len(got) != 1 || got[0].Folder != "Unknown Thing" {
+	if got, _ := svc.LastUnmatched(context.Background()); len(got) != 1 || got[0].Folder != "Unknown Thing" {
 		t.Errorf("needs-review list = %+v, want the full scan's, untouched", got)
 	}
 }
