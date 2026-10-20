@@ -34,7 +34,8 @@ describe("Getting started card", () => {
     const todo = await screen.findByRole("link", { name: /Add an indexer \(to do\)/ });
     expect(todo.getAttribute("href")).toBe("/settings/connections#search");
     expect(screen.getByRole("link", { name: /Add your TMDB key \(done\)/ })).toBeTruthy();
-    expect(screen.getByText(/1 to go/)).toBeTruthy();
+    expect(screen.getByText(/One step to go · 1 of 2 done/)).toBeTruthy();
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("1");
   });
 
   it("stays gone once everything is done", async () => {
