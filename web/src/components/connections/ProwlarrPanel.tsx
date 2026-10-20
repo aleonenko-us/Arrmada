@@ -93,7 +93,7 @@ export function ProwlarrPanel({ onSynced }: { onSynced: () => void }) {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder={keyMoved ? "Enter the key for the new address" : hasKey ? "•••••••• (leave blank to reuse)" : `${bundled ? `Bundled Prowlarr (port ${port})` : "Prowlarr"} → Settings → General`}
-            autoComplete="off"
+            autoComplete="new-password"
           />
           {keyMoved && <span className="text-xs" style={{ color: "var(--accent-text)" }}>New address: enter its API key. The saved key is only sent to the address it was saved for.</span>}
         </label>

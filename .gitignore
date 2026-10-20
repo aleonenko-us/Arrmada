@@ -64,3 +64,4 @@ docker-compose.override.yml.bak
 /.nas-config/
 /.claude/
 /.dev-fresh/
+/.dev-media/

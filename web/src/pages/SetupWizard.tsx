@@ -521,7 +521,7 @@ export function SetupWizard({ onDone, rerun = false, firstRun = false, onSignedI
                           onChange={(e) => setKeys({ ...keys, [f.id]: e.target.value })}
                           placeholder={s?.configured ? "Leave blank to keep it" : f.placeholder}
                           // new-password: browsers never fill the admin's own Arrmada login in here.
-                          autoComplete={f.id === "opensubtitles_password" ? "new-password" : "off"}
+                          autoComplete={f.id === "opensubtitles_username" ? "off" : "new-password"}
                           className="block w-full rounded-lg px-3 py-2 font-mono text-sm"
                           style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
                         />
@@ -856,7 +856,7 @@ function KeyField({ id, status, label, badge, note, value, onChange, onBlur }: {
         onChange={(e) => { const p = pasting.current; pasting.current = false; onChange(e.target.value, p); }}
         onBlur={onBlur ? (e) => onBlur(e.target.value) : undefined}
         placeholder={status?.configured ? "Leave blank to keep the saved key" : "Paste the key"}
-        autoComplete="off"
+        autoComplete="new-password"
         className="block w-full rounded-lg px-3 py-2 font-mono text-sm"
         style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }}
       />

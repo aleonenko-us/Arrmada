@@ -347,7 +347,7 @@ function ConnCard({ conn, preset, catalog, isNew, readOnly, onChange, onCancel }
         <div className={`mt-2 ${input}`} style={inputStyle}>{conn.url_hint || "—"}</div>
       ) : (
         <>
-          <input aria-label="Link" type="password" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={placeholder} className={`mt-2 ${input}`} style={inputStyle} autoComplete="off" />
+          <input aria-label="Link" type="password" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={placeholder} className={`mt-2 ${input}`} style={inputStyle} autoComplete="new-password" />
           <p className="mt-1 text-xs text-ink-faint">
             An <a href="https://github.com/caronc/apprise/wiki" target="_blank" rel="noreferrer" style={{ color: "var(--accent-text)" }}>Apprise link</a> — e.g. <code>discord://id/token</code>, <code>tgram://token/chatid</code>, <code>ntfy://topic</code>, <code>mailtos://user:pass@host</code>.
           </p>

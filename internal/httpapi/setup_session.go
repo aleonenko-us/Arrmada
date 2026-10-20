@@ -343,7 +343,13 @@ func (a *api) setupPathRoots(ctx context.Context) []string {
 // doubled slashes and trailing slashes can't step out).
 func underAny(p string, roots []string) bool {
 	if !filepath.IsAbs(p) {
-		return false
+		// A plain install's own defaults are relative ("library/movies"): judge them where
+		// they really are, the same way setupPathRoots does.
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return false
+		}
+		p = abs
 	}
 	p = filepath.Clean(p)
 	for _, root := range roots {

@@ -185,7 +185,7 @@ function KeyRow({ k, ctl }: { k: APIKeyStatus; ctl: KeyControl }) {
           value={draft}
           onChange={(e) => ctl.setDraft(k.id, e.target.value)}
           placeholder={k.configured ? "Enter a new value to replace it" : k.secret ? "Paste your key here" : "Type it here"}
-          autoComplete="off"
+          autoComplete="new-password"
           className="min-w-0 flex-1 basis-[180px] rounded-lg px-3 py-1.5 text-sm"
           style={{ background: "var(--panel)", border: "1px solid var(--line)", color: "var(--ink)" }}
         />

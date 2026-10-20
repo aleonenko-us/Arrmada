@@ -112,7 +112,7 @@ export function TautulliImport() {
         <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://192.168.50.247:8181" className={input} style={inputStyle} autoComplete="off" />
       </Field>
       <Field label="API key">
-        <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={keySaved ? "saved — leave blank to keep it" : "from Tautulli → Settings → Web Interface → API Key"} className={input} style={inputStyle} autoComplete="off" />
+        <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={keySaved ? "saved — leave blank to keep it" : "from Tautulli → Settings → Web Interface → API Key"} className={input} style={inputStyle} autoComplete="new-password" />
       </Field>
       {firstLive > 0 && (
         <label className="flex items-center gap-2 text-sm">

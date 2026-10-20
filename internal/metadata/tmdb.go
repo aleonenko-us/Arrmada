@@ -146,8 +146,12 @@ func (t *TMDB) VerifyKey(ctx context.Context, candidate string) (string, error) 
 	body, err := t.getKey(ctx, key, "/configuration", url.Values{})
 	if errors.Is(err, ErrInvalidKey) {
 		msg := "TMDB rejected the key; use the v3 API key, not the v4 read access token"
-		if strings.HasPrefix(key, "eyJ") {
+		switch {
+		case strings.HasPrefix(key, "eyJ"):
 			msg += " (this looks like a v4 token)"
+		case len(key) != 32:
+			// A browser filling in a saved password lands here: say what a key looks like.
+			msg += fmt.Sprintf(" (a v3 key is 32 letters and numbers; this is %d characters)", len(key))
 		}
 		return "", rejectedKey(msg)
 	}

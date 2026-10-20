@@ -98,7 +98,11 @@ func (a *api) handleTestAPIKey(w http.ResponseWriter, r *http.Request) {
 		a.recordKeyTest(ctx, id, res.Err)
 	}
 	if res.Err != nil {
-		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "detail": connstatus.Friendly(res.Err)})
+		detail := connstatus.Friendly(res.Err)
+		if errors.Is(res.Err, metadata.ErrInvalidKey) {
+			detail = res.Err.Error() // the provider's own words say which key it wants
+		}
+		a.writeJSON(w, http.StatusOK, map[string]any{"ok": false, "detail": detail})
 		return
 	}
 	a.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "detail": res.Detail})

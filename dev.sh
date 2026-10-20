@@ -29,6 +29,14 @@ case "${1:-run}" in
            --fresh)  dir=.dev-fresh; rm -rf "$dir" ;;
            --resume) dir=.dev-fresh ;;
          esac
+         if [ "$dir" = .dev-fresh ]; then
+           # The empty install gets real folders with full paths (the plain-binary defaults
+           # are relative, which setup can't offer), as /storage would be in Docker.
+           media="$PWD/.dev-media"
+           mkdir -p "$media/library/movies" "$media/library/tvshows" "$media/library/ebooks" \
+             "$media/library/audiobooks" "$media/library/music" "$media/downloads"
+           export ARRMADA_LIBRARY_DIR="$media/library" ARRMADA_DOWNLOADS_DIR="$media/downloads"
+         fi
          mkdir -p "$dir"
          ARRMADA_DATA_DIR="$PWD/$dir" ARRMADA_PORT="$PORT" exec ./bin/arrmada ;;
   *)     echo "usage: ./dev.sh [build|run [--fresh]|stop]" >&2; exit 2 ;;

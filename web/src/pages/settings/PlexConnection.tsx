@@ -121,7 +121,7 @@ export function PlexConnect({ onChanged, onError }: { onChanged?: () => void; on
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-semibold">X-Plex-Token</span>
-            <input value={token} onChange={(e) => setToken(e.target.value)} type="password" autoComplete="off" placeholder={tokenMoved ? "enter the token for the new address" : cfg?.token_set ? "•••••••••• (saved — leave blank to keep)" : "paste your token"} className="w-full rounded-lg px-3 py-2 text-md" style={inputStyle} />
+            <input value={token} onChange={(e) => setToken(e.target.value)} type="password" autoComplete="new-password" placeholder={tokenMoved ? "enter the token for the new address" : cfg?.token_set ? "•••••••••• (saved — leave blank to keep)" : "paste your token"} className="w-full rounded-lg px-3 py-2 text-md" style={inputStyle} />
             {tokenMoved && <span className="mt-1 block text-xs" style={{ color: "var(--accent-text)" }}>New address: paste the token again, or sign in with Plex. The saved token is only sent to the address it was saved for.</span>}
             <span className="mt-1 block text-xs text-ink-faint">In Plex web: play an item → ⋯ → Get Info → View XML — the URL ends with <code>X-Plex-Token=…</code></span>
           </label>

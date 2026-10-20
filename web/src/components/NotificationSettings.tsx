@@ -191,7 +191,7 @@ function AppriseSetting() {
       <h3 className="m-0 text-sm font-semibold">Apprise link</h3>
       <div className="mb-1.5 text-xs text-ink-faint">Also send your notices to Discord, ntfy, email or anything else Apprise reaches. Most people don’t need this.{set ? " A link is saved — paste a new one to replace it." : ""}</div>
       <div className="flex gap-1.5">
-        <input type="password" autoComplete="off" aria-label="Your Apprise URL" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={set ? `${status?.hint || "saved"} (saved)` : "ntfy://topic or discord://id/token"} className="min-w-0 flex-1 rounded-lg px-2 py-1.5 font-mono text-xs" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
+        <input type="password" autoComplete="new-password" aria-label="Your Apprise URL" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={set ? `${status?.hint || "saved"} (saved)` : "ntfy://topic or discord://id/token"} className="min-w-0 flex-1 rounded-lg px-2 py-1.5 font-mono text-xs" style={{ background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--ink)" }} />
         <button onClick={() => write(url.trim())} disabled={!url.trim()} className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "var(--accent-ink)" }}>{saved ? "✓" : "Save"}</button>
         {set && <button onClick={() => write("")} className="rounded-lg px-2 py-1 text-xs text-ink-faint">Remove</button>}
       </div>

@@ -111,7 +111,7 @@ export function ArrImport() {
           <input value={url} disabled={!!pv} onChange={(e) => setUrl(e.target.value)} placeholder={app === "radarr" ? "http://192.168.1.10:7878" : "http://192.168.1.10:8989"} className={input} style={inputStyle} autoComplete="off" />
         </Field>
         <Field className="min-w-[220px] flex-1" label="API key">
-          <input type="password" value={key} disabled={!!pv} onChange={(e) => setKey(e.target.value)} placeholder="from Settings → General → API Key" className={input} style={inputStyle} autoComplete="off" />
+          <input type="password" value={key} disabled={!!pv} onChange={(e) => setKey(e.target.value)} placeholder="from Settings → General → API Key" className={input} style={inputStyle} autoComplete="new-password" />
         </Field>
       </div>
       <div className="flex flex-wrap items-center gap-3">

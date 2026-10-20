@@ -168,7 +168,7 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
         )}
         {has("mam_session") && (
           <Labeled label="mam_id session" span2>
-            <input className={field} style={fieldStyle} value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="paste the mam_id session string from MyAnonaMouse" autoComplete="off" required />
+            <input className={field} style={fieldStyle} value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="paste the mam_id session string from MyAnonaMouse" autoComplete="new-password" required />
           </Labeled>
         )}
         {has("url") && (
@@ -178,7 +178,7 @@ function PresetForm({ preset, onBack, onAdded, onSaving }: {
         )}
         {has("api_key") && (
           <Labeled label="API key" span2>
-            <input type="password" className={field} style={fieldStyle} value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" />
+            <input type="password" className={field} style={fieldStyle} value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="new-password" />
           </Labeled>
         )}
       </div>

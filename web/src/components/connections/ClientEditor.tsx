@@ -131,7 +131,7 @@ export function ClientForm({ editing, onSaved }: { editing?: DownloadClient; onS
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={moved ? "enter the API key for the new address" : editing ? "unchanged; leave blank to keep" : undefined}
-                autoComplete="off"
+                autoComplete="new-password"
                 required={!editing}
               />
             </Labeled>
