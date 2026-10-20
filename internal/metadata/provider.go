@@ -170,6 +170,9 @@ type SeriesResult struct {
 	Overview    string  `json:"overview"`
 	PosterURL   string  `json:"poster_url"`
 	VoteAverage float64 `json:"vote_average"`
+	// OriginCountry is where TMDB says the show comes from (ISO 3166 codes: "US", "GB").
+	// Search hits carry it so a folder named "The Office (US)" can be told from the UK one.
+	OriginCountry []string `json:"origin_country,omitempty"`
 }
 
 // SeriesDetails is a full TV series record with its seasons and episodes.

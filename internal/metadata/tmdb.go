@@ -467,6 +467,7 @@ func (s tmdbSeries) toResult() SeriesResult {
 	return SeriesResult{
 		TMDBID: s.ID, Title: s.Name, Year: yearOf(s.FirstAirDate),
 		Overview: s.Overview, PosterURL: poster, VoteAverage: s.VoteAverage,
+		OriginCountry: s.OriginCountry,
 	}
 }
 
