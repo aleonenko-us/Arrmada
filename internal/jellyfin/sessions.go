@@ -70,6 +70,10 @@ type PlayState struct {
 	PlayMethod    string `json:"PlayMethod"` // DirectPlay | DirectStream | Transcode
 	MediaSourceID string `json:"MediaSourceId"`
 	CanSeek       bool   `json:"CanSeek"`
+	// The chosen audio and subtitle streams' Index in the item's MediaStreams (nil = not
+	// reported; subtitles -1 = off).
+	AudioStreamIndex    *int `json:"AudioStreamIndex"`
+	SubtitleStreamIndex *int `json:"SubtitleStreamIndex"`
 }
 
 // Position converts PositionTicks.

@@ -27,6 +27,7 @@ import { QUEUE_CHANGED } from "../lib/queueLive";
 import { hwBadge } from "../lib/plexHw";
 import { ServerBadge, isMediaServer } from "../components/brand";
 import { Page } from "../ui/Page";
+import { HealthLine, StreamDeepDive, qualityLine } from "../features/streams/StreamDeepDive";
 
 // The dashboard fans out over Plex, the download client and the disks, so it isn't
 // free — but it's the page people leave open. A grab, an import, a scan or a stream
@@ -68,6 +69,10 @@ export function Dashboard() {
 
   const dbOK = health?.checks?.database === "ok";
   const streams = data?.streams?.streams ?? [];
+  // The stream whose details are open, by key: the poll refreshes it in place, and it
+  // closes on its own when the stream ends.
+  const [open, setOpen] = useState<string | null>(null);
+  const openStream = streams.find((s) => s.session_key === open);
   // Which media servers Now playing covers: Plex (the default), Jellyfin, or both.
   const bothServers = !!data?.plex_configured && !!data?.jellyfin_configured;
   const serversLabel = bothServers ? "Plex & Jellyfin" : data?.jellyfin_configured && !data?.plex_configured ? "Jellyfin" : "Plex";
@@ -131,10 +136,11 @@ export function Dashboard() {
           <>
             <div className="grid gap-2.5 sm:grid-cols-2">
               {streams.map((s) => (
-                <StreamCard key={s.session_key} s={s} badge={bothServers || s.server === "jellyfin"} />
+                <StreamCard key={s.session_key} s={s} badge={bothServers || s.server === "jellyfin"} onOpen={() => setOpen(s.session_key)} />
               ))}
             </div>
             {data?.streams_note && <p className="m-0 mt-1.5 text-sm text-ink-faint">Not every server answered — {data.streams_note}</p>}
+            {openStream && <StreamDeepDive s={openStream} onClose={() => setOpen(null)} />}
           </>
         )}
 
@@ -319,12 +325,17 @@ function NeedsYou() {
   );
 }
 
-function StreamCard({ s, badge }: { s: InsightsStream; badge?: boolean }) {
+// StreamCard is one live stream: what, who, on what, and how it's going — the file next to
+// what the player gets, and the health line. A click opens the full breakdown.
+function StreamCard({ s, badge, onOpen }: { s: InsightsStream; badge?: boolean; onOpen: () => void }) {
   const transcoding = s.decision === "transcode";
   const hw = hwBadge(s);
   return (
-    <div
-      className="flex gap-3 rounded-xl p-3"
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Playback details for ${s.title}`}
+      className="flex gap-3 rounded-xl p-3 text-left transition-colors hover:bg-[var(--panel-2)]"
       style={{ background: "var(--panel)", border: "1px solid var(--line)" }}
     >
       {s.thumb ? (
@@ -344,12 +355,14 @@ function StreamCard({ s, badge }: { s: InsightsStream; badge?: boolean }) {
           {badge && isMediaServer(s.server) && <ServerBadge server={s.server} />}
           <Pill>{s.user}</Pill>
           <Pill tone={transcoding ? "warn" : "good"}>
-            {transcoding ? `transcode · ${hw?.label ?? "CPU"}` : "direct"}
+            {transcoding ? `transcode · ${hw?.label ?? "CPU"}` : s.decision === "direct_stream" ? "direct stream" : "direct"}
           </Pill>
           {transcoding && hw?.fellBack && <Pill tone="warn">fell back to CPU</Pill>}
           {s.state === "paused" && <Pill>paused</Pill>}
           <span className="text-ink-faint">{s.player}</span>
         </div>
+        <div className="mt-1 truncate font-mono text-xs text-ink-faint" title={qualityLine(s)}>{qualityLine(s)}</div>
+        <HealthLine h={s.health} className="mt-1" />
         <div className="mt-2 h-1 w-full overflow-hidden rounded-full" style={{ background: "var(--panel-2)" }}>
           <div
             className="h-full rounded-full"
@@ -360,7 +373,7 @@ function StreamCard({ s, badge }: { s: InsightsStream; badge?: boolean }) {
           />
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 

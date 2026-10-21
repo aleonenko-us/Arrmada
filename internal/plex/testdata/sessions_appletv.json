@@ -1,0 +1,155 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "Metadata": [
+      {
+        "sessionKey": "41",
+        "ratingKey": "2681",
+        "type": "movie",
+        "title": "The Nightmare Before Christmas",
+        "year": 1993,
+        "duration": 4598633,
+        "viewOffset": 375200,
+        "thumb": "/library/metadata/2681/thumb/1",
+        "User": {
+          "id": "1",
+          "title": "poloniumtacos"
+        },
+        "Player": {
+          "address": "192.168.1.50",
+          "device": "Apple TV",
+          "model": "6,2",
+          "platform": "tvOS",
+          "platformVersion": "26.6",
+          "product": "Plex for Apple TV",
+          "state": "playing",
+          "title": "Apple TV",
+          "vendor": "Apple",
+          "version": "2026.20.0",
+          "local": true,
+          "relayed": false,
+          "secure": true
+        },
+        "Session": {
+          "bandwidth": 3794,
+          "location": "lan"
+        },
+        "TranscodeSession": {
+          "throttled": true,
+          "complete": false,
+          "progress": 8.100000381469727,
+          "size": -1,
+          "speed": 0.0,
+          "error": false,
+          "duration": 4598633,
+          "context": "streaming",
+          "sourceVideoCodec": "hevc",
+          "sourceAudioCodec": "dca",
+          "videoDecision": "transcode",
+          "audioDecision": "transcode",
+          "subtitleDecision": "copy",
+          "protocol": "hls",
+          "container": "mkv",
+          "videoCodec": "hevc",
+          "audioCodec": "opus",
+          "audioChannels": 6,
+          "transcodeHwRequested": true,
+          "transcodeHwDecoding": "nvdec",
+          "transcodeHwEncoding": "nvenc",
+          "transcodeHwDecodingTitle": "Nvidia (NVDEC)",
+          "transcodeHwFullPipeline": true,
+          "transcodeHwEncodingTitle": "Nvidia (NVENC)",
+          "timeStamp": 1792621252.5152324,
+          "maxOffsetAvailable": 450.033,
+          "minOffsetAvailable": 77.99500274658203
+        },
+        "Media": [
+          {
+            "audioProfile": "ma",
+            "hasVoiceActivity": "0",
+            "videoProfile": "main 10",
+            "audioChannels": 6,
+            "audioCodec": "opus",
+            "bitrate": 3612,
+            "container": "mkv",
+            "duration": 4598633,
+            "height": 720,
+            "protocol": "hls",
+            "videoCodec": "hevc",
+            "videoFrameRate": "24p",
+            "videoResolution": "720p",
+            "width": 1200,
+            "selected": true,
+            "Part": [
+              {
+                "audioProfile": "ma",
+                "videoProfile": "main 10",
+                "bitrate": 3612,
+                "container": "mkv",
+                "duration": 4598633,
+                "height": 720,
+                "protocol": "hls",
+                "width": 1200,
+                "decision": "transcode",
+                "selected": true,
+                "Stream": [
+                  {
+                    "bitDepth": 10,
+                    "bitrate": 3153,
+                    "codec": "hevc",
+                    "colorTrc": "smpte2084",
+                    "default": true,
+                    "displayTitle": "4K DoVi/HDR10 (HEVC Main 10)",
+                    "extendedDisplayTitle": "4K DoVi/HDR10 (HEVC Main 10)",
+                    "frameRate": 23.97599983215332,
+                    "height": 720,
+                    "language": "English",
+                    "languageCode": "eng",
+                    "languageTag": "en",
+                    "streamType": 1,
+                    "width": 1200,
+                    "decision": "transcode",
+                    "location": "segments-av"
+                  },
+                  {
+                    "bitrate": 459,
+                    "bitrateMode": "cbr",
+                    "canNormalizeLoudness": "0",
+                    "channels": 6,
+                    "codec": "opus",
+                    "default": true,
+                    "displayTitle": "English (DTS-HD MA 7.1)",
+                    "extendedDisplayTitle": "DTS-HD MA 7.1 (English)",
+                    "language": "English",
+                    "languageCode": "eng",
+                    "languageTag": "en",
+                    "selected": true,
+                    "streamType": 2,
+                    "decision": "transcode",
+                    "location": "segments-av"
+                  },
+                  {
+                    "bitrate": 0,
+                    "canAutoSync": "0",
+                    "codec": "srt",
+                    "displayTitle": "English (SRT)",
+                    "extendedDisplayTitle": "English (SRT)",
+                    "format": "srt",
+                    "language": "English",
+                    "languageCode": "eng",
+                    "languageTag": "en",
+                    "selected": true,
+                    "streamType": 3,
+                    "title": "English (SRT)",
+                    "decision": "copy",
+                    "location": "segments-av"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

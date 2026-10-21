@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { LINKS } from "../lib/links";
@@ -6,7 +6,7 @@ import { useTabParam } from "../lib/useTabParam";
 import { usePoll } from "../lib/usePoll";
 import { hwBadge } from "../lib/plexHw";
 import { TabPanel, Tabs } from "../ui/Tabs";
-import { IconButton, Modal, useToast } from "../ui";
+import { useToast } from "../ui";
 import { type PlexConfig, type PlexStatus, type InsightsActivity, type InsightsServer, type InsightsServerStatus, type InsightsStream, type InsightsStats, type UserEntry, type LibraryStat, type RecentItem, type InsightsGraphs, type NameStat, type Reliability, type BufferGroup } from "../lib/api";
 import { insightsApi } from "../lib/insightsApi";
 import { useSearchParamState } from "../lib/useSearchState";
@@ -14,6 +14,7 @@ import { Page } from "../ui/Page";
 import { ServerMark, SERVER_LABEL } from "../components/brand";
 import { CAUSE, Chip, DECISION, FilterGroup, InsightsCfg, InsightsServers, JellyfinNoBuffering, RowServer, SERVER_FILTERS, ServerChips, StatTile, fmtClock, fmtDate, fmtDur, fmtHours, fmtHoursValue, fmtMbps, fmtStall, geoLabel, dayLabel, bandwidthLabels, ImportedNotice, SetupState, UserLink, Avatar, personPath, serverArg, type Metric, type ServerFilter } from "./insights/shared";
 import { HistoryView } from "./insights/HistoryView";
+import { HealthLine, StreamDeepDive } from "../features/streams/StreamDeepDive";
 import { LibraryView } from "./insights/LibraryView";
 import { InsightsPerson } from "./InsightsPerson";
 import { BarChart, ChartCard, HBarChart, Legend, LineChart } from "./insights/charts";
@@ -289,7 +290,7 @@ function ActivityView({ connected, server }: { connected: boolean; server?: Insi
     <div className="flex flex-col gap-3.5">
       {live}
       <HomeExtras live server={server} />
-      {detail && <DeepDive s={detail} onClose={() => setDetail(null)} />}
+      {detail && <StreamDeepDive s={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }
@@ -484,6 +485,7 @@ function StreamCard({ s, offsetMs, onOpen }: { s: InsightsStream; offsetMs: numb
           {geoLabel(s.geo)} · {fmtMbps(s.bandwidth_kbps)} Mb/s
           {hw && <> · <span style={hw.fellBack ? { color: "var(--avoid-text)" } : undefined} title={hw.fellBack ? "Plex fell back to CPU — hardware transcoding was requested but not used" : s.hw_title || undefined}>{hw.label}{hw.fellBack ? " (fell back)" : ""}</span></>}
         </div>
+        <HealthLine h={s.health} className="mt-1" />
         {/* progress */}
         <div className="mt-auto pt-2">
           <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: "var(--panel-2)" }}>
@@ -496,62 +498,6 @@ function StreamCard({ s, offsetMs, onOpen }: { s: InsightsStream; offsetMs: numb
         </div>
       </div>
     </button>
-  );
-}
-
-function DeepDive({ s, onClose }: { s: InsightsStream; onClose: () => void }) {
-  const d = DECISION[s.decision] ?? DECISION.direct_play;
-  const hw = hwBadge(s);
-  const titleId = useId();
-  return (
-    <Modal onClose={onClose} labelledBy={titleId} size="md">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 id={titleId} className="m-0 truncate text-lg font-bold">{s.title}</h2>
-          <p className="m-0 mt-0.5 flex items-center gap-1.5 text-sm text-ink-dim"><span>{s.subtitle}</span><RowServer server={s.server} /></p>
-        </div>
-        <IconButton label="Close" onClick={onClose} className="text-ink-faint hover:text-[var(--ink)]">✕</IconButton>
-      </div>
-
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="rounded-full px-2.5 py-0.5 font-mono text-2xs font-bold uppercase" style={{ background: d.color, color: "var(--accent-ink)" }}>{d.label}</span>
-        {hw && <span title={s.hw_title || undefined} className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>{hw.label}{s.hw_title && hw.label !== "CPU" && s.server !== "jellyfin" ? ` · ${s.hw_title}` : ""}</span>}
-        {hw?.fellBack && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--avoid)", background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>Fell back to CPU</span>}
-        {s.throttled && <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ border: "1px solid var(--line)", color: "var(--ink-dim)" }}>Throttled</span>}
-      </div>
-
-      {s.reasons && s.reasons.length > 0 && (
-        <div className="mb-3 rounded-lg p-3 text-sm" style={{ background: "var(--avoid-soft)", color: "var(--avoid-text)" }}>
-          <div className="mb-1 text-xs font-bold uppercase tracking-wide">Why it's transcoding</div>
-          <ul className="list-none space-y-0.5 p-0">{s.reasons.map((r, i) => <li key={i}>• {r}</li>)}</ul>
-        </div>
-      )}
-
-      <div className="grid gap-px overflow-hidden rounded-lg text-sm" style={{ background: "var(--line)" }}>
-        <div className="flex items-center justify-between gap-3 px-3 py-2" style={{ background: "var(--panel)" }}>
-          <span className="font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">User</span>
-          <UserLink id={s.user_id} name={s.user} className="text-right text-ink-dim" />
-        </div>
-        <DDRow label="Player" a={`${s.player || "—"} · ${s.platform} · ${s.product}`} />
-        <DDRow label="Location" a={`${geoLabel(s.geo)}${s.ip ? ` · ${s.ip}` : ""} · ${s.location?.toUpperCase() || "—"}`} />
-        <DDRow label="Bandwidth" a={`${fmtMbps(s.bandwidth_kbps)} Mb/s`} />
-        <DDRow label="Video" a={s.video.src} b={s.video.stream} />
-        <DDRow label="Audio" a={s.audio.src} b={s.audio.stream} />
-        <DDRow label="Container" a={s.container.src} b={s.container.stream} />
-        <DDRow label="Progress" a={`${fmtClock(s.offset_ms)} / ${fmtClock(s.duration_ms)} (${s.progress_pct}%)`} />
-      </div>
-    </Modal>
-  );
-}
-
-function DDRow({ label, a, b }: { label: string; a: string; b?: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2" style={{ background: "var(--panel)" }}>
-      <span className="font-mono text-2xs font-bold uppercase tracking-wide text-ink-faint">{label}</span>
-      <span className="text-right text-ink-dim">
-        {a}{b ? <span style={{ color: "var(--avoid-text)" }}> → {b}</span> : null}
-      </span>
-    </div>
   );
 }
 

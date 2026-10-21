@@ -136,3 +136,30 @@ func TestFlattenGrandparentThumb(t *testing.T) {
 		t.Errorf("a movie has no show fields: %+v", movie)
 	}
 }
+
+// A real capture (an Apple TV on the home network, 4K Dolby Vision with DTS-HD audio,
+// converted on the GPU): while transcoding, Media describes the output, so the source's
+// resolution and codecs come from the stream names and the transcode session.
+func TestFlattenTranscodeSource(t *testing.T) {
+	s := sessionsFrom(t, "sessions_appletv.json")[0]
+	if s.SrcResolution != "4k" || s.StreamResolution != "720p" {
+		t.Errorf("resolution: source %q, sent %q", s.SrcResolution, s.StreamResolution)
+	}
+	if s.SrcVideoCodec != "hevc" || s.SrcAudioCodec != "dca" || s.StreamAudioCodec != "opus" || s.StreamAudioChannels != 6 {
+		t.Errorf("codecs: %+v", s)
+	}
+	if s.SrcVideoTitle != "4K DoVi/HDR10 (HEVC Main 10)" || s.SrcAudioTitle != "English (DTS-HD MA 7.1)" || s.SubTitle != "English (SRT)" {
+		t.Errorf("titles: %q, %q, %q", s.SrcVideoTitle, s.SrcAudioTitle, s.SubTitle)
+	}
+	if s.DeviceModel != "Apple TV 6,2" || s.PlatformVersion != "26.6" || s.SrcBitrate != 0 || s.BufferedSec < 60 {
+		t.Errorf("device %q, os %q, source bitrate %d, buffered %v", s.DeviceModel, s.PlatformVersion, s.SrcBitrate, s.BufferedSec)
+	}
+}
+
+func TestTitleResolution(t *testing.T) {
+	for in, want := range map[string]string{"4K DoVi/HDR10 (HEVC Main 10)": "4k", "1080p (H.264)": "1080", "720p": "720", "1080i (MPEG2)": "1080", "SD (MPEG4)": "sd", "English (AAC)": "", "": ""} {
+		if got := titleResolution(in); got != want {
+			t.Errorf("titleResolution(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -2,6 +2,8 @@ package plex
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/mediaserver"
 )
@@ -59,6 +61,11 @@ type rawSession struct {
 		Title               string `json:"title"`
 		State               string `json:"state"`
 		Local               bool   `json:"local"`
+		Model               string `json:"model"`
+		PlatformVersion     string `json:"platformVersion"`
+		Version             string `json:"version"`
+		Relayed             bool   `json:"relayed"`
+		Secure              bool   `json:"secure"`
 	} `json:"Player"`
 	Session struct {
 		Bandwidth flexInt `json:"bandwidth"`
@@ -86,6 +93,12 @@ type rawSession struct {
 		AudioCodec      string  `json:"audioCodec"`
 		Width           flexInt `json:"width"`
 		Height          flexInt `json:"height"`
+		AudioChannels   flexInt `json:"audioChannels"`
+		// The source's codecs: while transcoding, Media below describes the output.
+		SourceVideoCodec string `json:"sourceVideoCodec"`
+		SourceAudioCodec string `json:"sourceAudioCodec"`
+		// How far (seconds into the item) the converted stream reaches.
+		MaxOffsetAvailable float64 `json:"maxOffsetAvailable"`
 	} `json:"TranscodeSession"`
 	Media []struct {
 		VideoResolution string  `json:"videoResolution"`
@@ -99,11 +112,14 @@ type rawSession struct {
 	} `json:"Media"`
 }
 
-// rawStream is one stream of a session's media part. streamType 1 is video.
+// rawStream is one stream of a session's media part: streamType 1 is video, 2 audio, 3
+// subtitles. displayTitle names the source stream even while it's being converted.
 type rawStream struct {
-	StreamType flexInt `json:"streamType"`
-	BitDepth   flexInt `json:"bitDepth"`
-	Profile    string  `json:"profile"`
+	StreamType   flexInt `json:"streamType"`
+	BitDepth     flexInt `json:"bitDepth"`
+	Profile      string  `json:"profile"`
+	DisplayTitle string  `json:"displayTitle"`
+	Selected     bool    `json:"selected"`
 }
 
 func (m rawSession) flatten() Session {
@@ -118,6 +134,11 @@ func (m rawSession) flatten() Session {
 		Device: m.Player.Device, Platform: m.Player.Platform, Product: m.Player.Product,
 		PlayerName: m.Player.Title, State: m.Player.State, Local: m.Player.Local,
 		Bandwidth: int64(m.Session.Bandwidth), Location: m.Session.Location,
+		PlatformVersion: m.Player.PlatformVersion, AppVersion: m.Player.Version,
+		Relayed: m.Player.Relayed, Secure: m.Player.Secure,
+	}
+	if m.Player.Model != "" {
+		s.DeviceModel = strings.TrimSpace(m.Player.Device + " " + m.Player.Model)
 	}
 	if s.Art == "" {
 		s.Art = m.GrandparentArt
@@ -139,19 +160,75 @@ func (m rawSession) flatten() Session {
 		s.TranscodeProto, s.TranscodeCont = t.Protocol, t.Container
 		s.StreamVideoCodec, s.StreamAudioCodec = t.VideoCodec, t.AudioCodec
 		s.StreamWidth, s.StreamHeight = int(t.Width), int(t.Height)
+		s.StreamAudioChannels = int(t.AudioChannels)
+		if t.MaxOffsetAvailable > 0 {
+			s.BufferedSec = max(0, t.MaxOffsetAvailable-float64(m.ViewOffset)/1000)
+		}
 	}
 	if len(m.Media) > 0 {
 		md := m.Media[0]
 		s.SrcResolution, s.SrcVideoCodec, s.SrcAudioCodec = md.VideoResolution, md.VideoCodec, md.AudioCodec
 		s.SrcContainer, s.SrcBitrate = md.Container, int64(md.Bitrate)
 		if len(md.Part) > 0 {
+			var firstAudio string
 			for _, st := range md.Part[0].Stream {
-				if st.StreamType == 1 {
-					s.SrcVideoBitDepth, s.SrcVideoProfile = int(st.BitDepth), st.Profile
-					break
+				switch st.StreamType {
+				case 1:
+					if s.SrcVideoTitle == "" {
+						s.SrcVideoBitDepth, s.SrcVideoProfile = int(st.BitDepth), st.Profile
+						s.SrcVideoTitle = st.DisplayTitle
+					}
+				case 2:
+					if firstAudio == "" {
+						firstAudio = st.DisplayTitle
+					}
+					if st.Selected && s.SrcAudioTitle == "" {
+						s.SrcAudioTitle = st.DisplayTitle
+					}
+				case 3:
+					if st.Selected && s.SubTitle == "" {
+						s.SubTitle = st.DisplayTitle
+					}
 				}
 			}
+			if s.SrcAudioTitle == "" {
+				s.SrcAudioTitle = firstAudio
+			}
+		}
+		// While transcoding, Media describes what's sent, not the file: the source's codecs
+		// come from the transcode session and its resolution from the video stream's name.
+		if m.TranscodeSession != nil {
+			t := m.TranscodeSession
+			if t.VideoDecision == "transcode" {
+				s.StreamResolution = md.VideoResolution
+				s.SrcResolution = titleResolution(s.SrcVideoTitle)
+			}
+			if t.SourceVideoCodec != "" {
+				s.SrcVideoCodec = t.SourceVideoCodec
+			}
+			if t.SourceAudioCodec != "" {
+				s.SrcAudioCodec = t.SourceAudioCodec
+			}
+			s.SrcBitrate = 0 // the output's, not the file's
 		}
 	}
 	return s
+}
+
+// titleResolution reads the resolution a stream name starts with ("4K DoVi/HDR10 (HEVC
+// Main 10)" → "4k", "1080p (H.264)" → "1080"), or "" when it doesn't say.
+func titleResolution(title string) string {
+	first, _, _ := strings.Cut(strings.TrimSpace(title), " ")
+	switch r := strings.ToLower(first); r {
+	case "4k", "8k", "sd":
+		return r
+	default:
+		if n := strings.TrimSuffix(r, "p"); n != r || strings.HasSuffix(r, "i") {
+			n = strings.TrimSuffix(n, "i")
+			if _, err := strconv.Atoi(n); err == nil {
+				return n
+			}
+		}
+	}
+	return ""
 }

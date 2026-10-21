@@ -238,6 +238,7 @@ func jellyfinSession(js jellyfin.Session, srcKbps int64) (mediaserver.Session, b
 		Address: clientIP(js.RemoteEndPoint), Device: js.DeviceName, PlayerName: js.DeviceName,
 		Product: js.Client, Platform: jellyfinPlatform(js.Client), State: state,
 		SrcContainer: np.Container, SrcBitrate: srcKbps, Bandwidth: srcKbps,
+		AppVersion: js.ApplicationVersion,
 	}
 	if mt == "episode" {
 		out.ShowTitle, out.Index, out.SeasonNum = np.SeriesName, np.IndexNumber, np.ParentIndexNumber
@@ -251,9 +252,17 @@ func jellyfinSession(js jellyfin.Session, srcKbps int64) (mediaserver.Session, b
 	if v := np.VideoStream(); v != nil {
 		out.SrcVideoCodec, out.SrcResolution = v.Codec, streamRes(v.Height)
 		out.SrcVideoBitDepth, out.SrcVideoProfile = v.BitDepth, strings.ToLower(v.Profile)
+		out.SrcVideoTitle = v.DisplayTitle
 	}
-	if a := audioStream(np.MediaStreams); a != nil {
-		out.SrcAudioCodec = a.Codec
+	a := streamAt(np.MediaStreams, js.PlayState.AudioStreamIndex, "Audio")
+	if a == nil {
+		a = audioStream(np.MediaStreams)
+	}
+	if a != nil {
+		out.SrcAudioCodec, out.SrcAudioTitle = a.Codec, a.DisplayTitle
+	}
+	if sub := streamAt(np.MediaStreams, js.PlayState.SubtitleStreamIndex, "Subtitle"); sub != nil {
+		out.SubTitle = sub.DisplayTitle
 	}
 	// TranscodingInfo only exists while a transcode job runs, and then it's what is really
 	// happening, whatever the player said PlayMethod was.
@@ -268,6 +277,7 @@ func jellyfinSession(js jellyfin.Session, srcKbps int64) (mediaserver.Session, b
 		}
 		out.StreamVideoCodec, out.StreamAudioCodec = ti.VideoCodec, ti.AudioCodec
 		out.StreamWidth, out.StreamHeight, out.TranscodeCont = ti.Width, ti.Height, ti.Container
+		out.StreamAudioChannels, out.TranscodeReasons = ti.AudioChannels, ti.TranscodeReasons
 		// The configured hardware: Jellyfin doesn't say whether the GPU took this stream,
 		// so it's shown as "HW (vaapi)", never as Plex's "fell back to CPU".
 		if hw := strings.ToLower(strings.TrimSpace(ti.HardwareAccelerationType)); hw != "" && hw != "none" {
@@ -278,6 +288,19 @@ func jellyfinSession(js jellyfin.Session, srcKbps int64) (mediaserver.Session, b
 		}
 	}
 	return out, true
+}
+
+// streamAt is the item's stream of that type whose Index is idx, or nil.
+func streamAt(streams []jellyfin.MediaStream, idx *int, typ string) *jellyfin.MediaStream {
+	if idx == nil || *idx < 0 {
+		return nil
+	}
+	for i := range streams {
+		if streams[i].Index == *idx && streams[i].Type == typ {
+			return &streams[i]
+		}
+	}
+	return nil
 }
 
 // audioStream is the file's default audio stream, else its first.

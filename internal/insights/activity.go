@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/tristenlammi/arrmada/internal/geoip"
@@ -51,6 +53,28 @@ type Stream struct {
 	HWTitle   string   `json:"hw_title,omitempty"`
 	Throttled bool     `json:"throttled"`
 	Reasons   []string `json:"reasons"` // why it's transcoding (empty for direct play)
+
+	// Subtitles is the subtitle on screen ("English (SRT)"), with "burned in" or
+	// "converted" as its stream when the server does that work; empty when none is on.
+	Subtitles Detail `json:"subtitles"`
+	// Device is the player's hardware and app beyond its name: "Apple TV 6,2 · tvOS 26.6 ·
+	// Plex for Apple TV 2026.20.0".
+	Device  string `json:"device,omitempty"`
+	Relayed bool   `json:"relayed,omitempty"` // through Plex's relay: slow and capped
+	Secure  bool   `json:"secure,omitempty"`
+	// Speed is the transcode's throughput against real time (0 = not reported, or resting
+	// while it's ahead); BufferedSecs how far the converted stream runs past the playhead.
+	Speed        float64 `json:"speed,omitempty"`
+	BufferedSecs int     `json:"buffered_secs,omitempty"`
+	// Health is one line on how the playback is going, for the person checking on it.
+	Health Health `json:"health"`
+}
+
+// Health says how a stream is doing: good, warn (it plays, at a cost) or bad (it stalls,
+// or will).
+type Health struct {
+	Level string `json:"level"`
+	Text  string `json:"text"`
 }
 
 // Detail is a source→stream comparison line for the deep-dive.
@@ -142,22 +166,124 @@ func (s *Service) enrich(p plex.Session) Stream {
 		st.Still = proxyImage(p.Thumb)
 	}
 	st.Subtitle = subtitleFor(p)
-	st.Video = Detail{Src: mediaLabel(p.SrcVideoCodec, p.SrcResolution)}
-	st.Audio = Detail{Src: strings.ToUpper(p.SrcAudioCodec)}
+	st.Video = Detail{Src: firstNonEmpty(p.SrcVideoTitle, mediaLabel(p.SrcVideoCodec, p.SrcResolution))}
+	st.Audio = Detail{Src: firstNonEmpty(p.SrcAudioTitle, strings.ToUpper(p.SrcAudioCodec))}
 	st.Container = Detail{Src: strings.ToUpper(p.SrcContainer)}
+	st.Subtitles = Detail{Src: p.SubTitle}
 	if p.Transcoding {
 		if p.VideoDecision == "transcode" {
-			st.Video.Stream = mediaLabel(p.StreamVideoCodec, streamRes(p.StreamHeight))
+			st.Video.Stream = mediaLabel(p.StreamVideoCodec, outRes(p))
 		}
 		if p.AudioDecision == "transcode" {
-			st.Audio.Stream = strings.ToUpper(p.StreamAudioCodec)
+			st.Audio.Stream = audioLabel(p.StreamAudioCodec, p.StreamAudioChannels)
 		}
 		if p.TranscodeCont != "" {
 			st.Container.Stream = strings.ToUpper(p.TranscodeCont)
 		}
+		if p.SubTitle != "" {
+			switch p.SubDecision {
+			case "burn":
+				st.Subtitles.Stream = "burned in"
+			case "transcode":
+				st.Subtitles.Stream = "converted"
+			}
+		}
+		st.Speed = p.TranscodeSpeed
+		st.BufferedSecs = int(p.BufferedSec)
 	}
+	st.Device = joinNonEmpty(" · ", p.DeviceModel, joinNonEmpty(" ", p.Platform, p.PlatformVersion), joinNonEmpty(" ", p.Product, p.AppVersion))
+	st.Relayed, st.Secure = p.Relayed, p.Secure
 	st.Reasons = transcodeReasons(p)
+	st.Health = health(p)
 	return st
+}
+
+// health is the one-line verdict on a live stream, worst first: stalling, a transcode
+// that can't keep up, the relay, then how much work the server is doing for it.
+func health(p plex.Session) Health {
+	switch {
+	case p.State == "buffering":
+		_, detail := p.BufferCause()
+		return Health{"bad", "Buffering — " + detail}
+	case p.Transcoding && !p.Throttled && p.TranscodeSpeed > 0 && p.TranscodeSpeed < 0.95:
+		return Health{"bad", fmt.Sprintf("The server can't keep up — converting at %.1f× real time, so it will pause to buffer", p.TranscodeSpeed)}
+	case p.Relayed:
+		return Health{"warn", "Going through Plex Relay — slow and capped at low quality. Remote access isn't reaching the server directly"}
+	case p.Transcoding && p.VideoDecision == "transcode":
+		return Health{"warn", "Converting the video" + keepingUp(p)}
+	case p.Transcoding && p.AudioDecision == "transcode":
+		return Health{"good", "Original picture, converted sound" + keepingUp(p)}
+	case p.Transcoding:
+		return Health{"good", "Original video and audio, repackaged for the player" + keepingUp(p)}
+	}
+	return Health{"good", "Playing the original file — no work for the server"}
+}
+
+// keepingUp says how far ahead a transcode is, when the server reports it.
+func keepingUp(p plex.Session) string {
+	switch {
+	case p.BufferedSec >= 60:
+		return fmt.Sprintf(" — keeping up, %s ready ahead", fmtSpan(int(p.BufferedSec)))
+	case p.TranscodeSpeed >= 1:
+		return fmt.Sprintf(" — keeping up at %.1f× real time", p.TranscodeSpeed)
+	case p.Throttled:
+		return " — keeping up"
+	}
+	return ""
+}
+
+// fmtSpan is a short span: "45s", "7 min", "1 h 5 min".
+func fmtSpan(secs int) string {
+	switch {
+	case secs < 60:
+		return fmt.Sprintf("%ds", secs)
+	case secs < 3600:
+		return fmt.Sprintf("%d min", secs/60)
+	case secs%3600/60 == 0:
+		return fmt.Sprintf("%d h", secs/3600)
+	}
+	return fmt.Sprintf("%d h %d min", secs/3600, secs%3600/60)
+}
+
+// outRes is the converted picture's resolution: its height, else the server's label.
+func outRes(p plex.Session) string {
+	if r := streamRes(p.StreamHeight); r != "" {
+		return r
+	}
+	return normRes(p.StreamResolution)
+}
+
+// audioLabel is a codec with its channel layout: "OPUS 5.1", "AAC stereo".
+func audioLabel(codec string, channels int) string {
+	codec = strings.ToUpper(strings.TrimSpace(codec))
+	switch {
+	case channels == 1:
+		return strings.TrimSpace(codec + " mono")
+	case channels == 2:
+		return strings.TrimSpace(codec + " stereo")
+	case channels > 2:
+		return strings.TrimSpace(fmt.Sprintf("%s %d.1", codec, channels-1))
+	}
+	return codec
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func joinNonEmpty(sep string, vals ...string) string {
+	var out []string
+	for _, v := range vals {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return strings.Join(out, sep)
 }
 
 // subtitleFor builds the secondary line: "Show · S1 · E3" for episodes, else the year.
@@ -171,28 +297,127 @@ func subtitleFor(p plex.Session) string {
 	return p.SeasonName
 }
 
-// transcodeReasons explains, in plain English, why a stream is being transcoded.
+// transcodeReasons explains, in plain English, why a stream is being transcoded. Jellyfin
+// says why itself; Plex doesn't, so its reasons are read from what changed.
 func transcodeReasons(p plex.Session) []string {
 	if !p.Transcoding {
 		return nil
 	}
 	var r []string
+	for _, code := range p.TranscodeReasons {
+		if why := jellyfinReason(code); why != "" && !slices.Contains(r, why) {
+			r = append(r, why)
+		}
+	}
+	srcVideo := firstNonEmpty(p.SrcVideoTitle, mediaLabel(p.SrcVideoCodec, p.SrcResolution))
+	srcAudio := firstNonEmpty(audioName(p.SrcAudioTitle), strings.ToUpper(p.SrcAudioCodec))
+	lowered := false
 	if p.VideoDecision == "transcode" {
-		r = append(r, fmt.Sprintf("Converting video (%s → %s)", mediaLabel(p.SrcVideoCodec, p.SrcResolution), mediaLabel(p.StreamVideoCodec, streamRes(p.StreamHeight))))
+		from, to := resRank(p.SrcResolution), resRank(outRes(p))
+		lowered = from > 0 && to > 0 && to < from
+		out := mediaLabel(p.StreamVideoCodec, outRes(p))
+		switch {
+		case lowered && len(p.TranscodeReasons) == 0 && remote(p):
+			r = append(r, fmt.Sprintf("Quality lowered for the remote connection: %s → %s, about %s Mb/s — the app's remote quality setting, or the connection", normRes(p.SrcResolution), outRes(p), mbps(p.Bandwidth)))
+		case lowered && len(p.TranscodeReasons) == 0:
+			r = append(r, fmt.Sprintf("The app's quality is set below the original: %s → %s, about %s Mb/s. On the home network, set its quality to Original (Maximum) to play the file as it is", normRes(p.SrcResolution), outRes(p), mbps(p.Bandwidth)))
+		default:
+			r = append(r, fmt.Sprintf("Converting video (%s → %s)", srcVideo, out))
+		}
 	}
 	if p.AudioDecision == "transcode" {
-		r = append(r, fmt.Sprintf("Converting audio (%s → %s)", strings.ToUpper(p.SrcAudioCodec), strings.ToUpper(p.StreamAudioCodec)))
+		out := audioLabel(p.StreamAudioCodec, p.StreamAudioChannels)
+		if len(p.TranscodeReasons) == 0 && (!lowered || losslessAudio(p.SrcAudioCodec)) {
+			r = append(r, fmt.Sprintf("The player can't play %s — converting the sound to %s", srcAudio, out))
+		} else {
+			r = append(r, fmt.Sprintf("Converting audio (%s → %s)", srcAudio, out))
+		}
 	}
 	switch p.SubDecision {
 	case "burn":
-		r = append(r, "Burning in subtitles")
+		r = append(r, "Burning in subtitles"+paren(p.SubTitle)+" — the player can't show them itself, so the whole picture is converted")
 	case "transcode":
-		r = append(r, "Converting subtitles")
+		r = append(r, "Converting subtitles"+paren(p.SubTitle))
 	}
 	if len(r) == 0 { // both streams copied but still a TranscodeSession → container/protocol remux
 		r = append(r, "Remuxing the container (video & audio copied)")
 	}
 	return r
+}
+
+func remote(p plex.Session) bool {
+	return !p.Local && !strings.EqualFold(p.Location, "lan")
+}
+
+// losslessAudio: the studio formats most players can't decode, so they're converted
+// whatever the quality setting.
+func losslessAudio(codec string) bool {
+	switch strings.ToLower(codec) {
+	case "dca", "dts", "dts-hd", "truehd", "mlp", "flac", "pcm":
+		return true
+	}
+	return false
+}
+
+// audioName is an audio stream's format without its language: "English (DTS-HD MA 7.1)"
+// → "DTS-HD MA 7.1".
+func audioName(title string) string {
+	if i, j := strings.LastIndex(title, "("), strings.LastIndex(title, ")"); i >= 0 && j > i {
+		return title[i+1 : j]
+	}
+	return title
+}
+
+func paren(s string) string {
+	if s == "" {
+		return ""
+	}
+	return " (" + s + ")"
+}
+
+func mbps(kbps int64) string {
+	return strconv.FormatFloat(float64(kbps)/1000, 'f', 1, 64)
+}
+
+// jellyfinReason puts Jellyfin's transcode reason codes in plain English.
+func jellyfinReason(code string) string {
+	switch code {
+	case "ContainerNotSupported":
+		return "The player can't open this file type"
+	case "VideoCodecNotSupported", "VideoCodecTagNotSupported":
+		return "The player can't play this video format"
+	case "VideoProfileNotSupported", "VideoLevelNotSupported", "RefFramesNotSupported":
+		return "The player can't handle this video's encoding settings"
+	case "VideoResolutionNotSupported":
+		return "The player can't show this resolution"
+	case "VideoBitDepthNotSupported":
+		return "The player can't play 10-bit video"
+	case "VideoRangeTypeNotSupported":
+		return "The player can't show this HDR format, so it's converted to SDR"
+	case "VideoFramerateNotSupported":
+		return "The player can't play this frame rate"
+	case "InterlacedVideoNotSupported":
+		return "The player can't play interlaced video"
+	case "AnamorphicVideoNotSupported":
+		return "The player can't play anamorphic video"
+	case "AudioCodecNotSupported", "AudioProfileNotSupported":
+		return "The player can't play this sound format"
+	case "AudioChannelsNotSupported":
+		return "The player can't play this many sound channels"
+	case "AudioSampleRateNotSupported", "AudioBitDepthNotSupported":
+		return "The player can't play this sound's sample rate or depth"
+	case "AudioIsExternal", "SecondaryAudioNotSupported":
+		return "The chosen sound track has to be mixed in by the server"
+	case "SubtitleCodecNotSupported":
+		return "The player can't show these subtitles, so they're burned into the picture"
+	case "ContainerBitrateExceedsLimit", "VideoBitrateNotSupported", "AudioBitrateNotSupported":
+		return "The file's bitrate is over the player's quality limit"
+	case "DirectPlayError":
+		return "Direct play failed on the player"
+	case "UnknownVideoStreamInfo", "UnknownAudioStreamInfo":
+		return "The server couldn't read the file's details"
+	}
+	return ""
 }
 
 func mediaLabel(codec, res string) string {

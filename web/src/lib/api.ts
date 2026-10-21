@@ -2898,7 +2898,16 @@ export interface InsightsStream {
   /** What Plex is really running on the GPU; hw_requested without hw_encode = fell back to CPU.
    *  Jellyfin: hw_transcode with hw_title = its configured acceleration ("vaapi"); it doesn't say more. */
   hw_decode: boolean; hw_encode: boolean; hw_requested: boolean; hw_title?: string;
+  /** The subtitle on screen ("English (SRT)"), with "burned in"/"converted" as its stream when the server does that work. */
+  subtitles?: StreamDetail;
+  /** The player's hardware and app ("Apple TV 6,2 · tvOS 26.6 · Plex for Apple TV 2026.20.0"). */
+  device?: string; relayed?: boolean; secure?: boolean;
+  /** Transcode throughput against real time, and how far the converted stream runs ahead (seconds). */
+  speed?: number; buffered_secs?: number;
+  /** One line on how the playback is going. */
+  health?: StreamHealth;
 }
+export interface StreamHealth { level: "good" | "warn" | "bad"; text: string }
 export interface InsightsActivity {
   streams: InsightsStream[]; bandwidth: { total_kbps: number; lan_kbps: number; wan_kbps: number }; geo_active: boolean;
   /** A connected server that didn't answer, by server, while another did. */

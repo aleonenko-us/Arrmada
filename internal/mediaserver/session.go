@@ -78,11 +78,33 @@ type Session struct {
 	SrcVideoBitDepth int
 	SrcVideoProfile  string
 
+	// The server's names for the playing streams of the source file: "4K DoVi/HDR10 (HEVC
+	// Main 10)", "English (DTS-HD MA 7.1)", "English (SRT)"; "" when not reported (no
+	// subtitle when none is on).
+	SrcVideoTitle string
+	SrcAudioTitle string
+	SubTitle      string
+
+	// The player's hardware and app, beyond its name: "Apple TV 6,2", "tvOS 26.6", the
+	// app's version. Relayed: Plex is carrying the stream through its relay (slow, capped).
+	DeviceModel     string
+	PlatformVersion string
+	AppVersion      string
+	Relayed         bool
+	Secure          bool
+
 	// Transcode target specs (from TranscodeSession; empty when direct playing).
-	StreamVideoCodec string
-	StreamAudioCodec string
-	StreamWidth      int
-	StreamHeight     int
+	// StreamResolution is the converted picture's ("720p") when the height isn't reported.
+	StreamVideoCodec    string
+	StreamAudioCodec    string
+	StreamAudioChannels int
+	StreamWidth         int
+	StreamHeight        int
+	StreamResolution    string
+	// BufferedSec is how far the converted stream runs ahead of the playhead (Plex; 0 =
+	// not reported). TranscodeReasons are Jellyfin's own codes ("AudioCodecNotSupported").
+	BufferedSec      float64
+	TranscodeReasons []string
 }
 
 // BufferCause classifies the likely reason a stream stalled, from the transcode and
