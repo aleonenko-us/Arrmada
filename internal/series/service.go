@@ -1847,8 +1847,10 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 		return res, err
 	}
 	have := make(map[int]bool, len(existing))
+	haveID := make(map[int]int64, len(existing))
 	for _, sr := range existing {
 		have[sr.TMDBID] = true
+		haveID[sr.TMDBID] = sr.ID
 	}
 	type showDir struct {
 		root string
@@ -1948,6 +1950,26 @@ func (s *Service) ScanLibrary(ctx context.Context, rootOverride string, progress
 					Detail: fmt.Sprintf("This looks like the same show as “%s”, which is already added from another folder, so its files were not read. Open that show to see which files it has.", first.folder)})
 				continue
 			}
+			// A show already added without a single file — an earlier scan that couldn't
+			// read its episode numbering (Looney Tunes' year seasons before they were
+			// understood) — would otherwise be skipped by every scan from then on. Its
+			// folder's files are read again now.
+			if id := haveID[match.TMDBID]; id != 0 {
+				if paths, err := s.repo.EpisodeFilePaths(ctx, id); err == nil && len(paths) == 0 {
+					if sr, err := s.Get(ctx, id); err == nil {
+						marked := s.markFolderFiles(ctx, sr, folder, videos)
+						s.AddEvent(ctx, id, "imported", fmt.Sprintf("Found during library scan: %d episode files", marked))
+						s.log.Info("series scan: filled in a show that had no files", "folder", folder, "title", sr.Title, "episodes", marked)
+						addedHere[match.TMDBID] = scannedShow{id: id, folder: e.Name()}
+						res.Imported++
+						if marked == 0 {
+							res.Unmatched = append(res.Unmatched, UnmatchedFolder{Folder: e.Name(), Root: root, Title: sr.Title, Year: rel.Year, Reason: ReasonNoEpisodes, SeriesID: id,
+								Detail: noEpisodesDetail(sr.Title, videos)})
+						}
+						continue
+					}
+				}
+			}
 			s.log.Info("series scan: folder is already in the library — skipped", "folder", folder, "tmdb_id", match.TMDBID)
 			res.Skipped++
 			continue
@@ -2012,10 +2034,21 @@ func (s *Service) importSeriesFolder(ctx context.Context, dir string, videos []l
 	if err != nil {
 		return Series{}, 0, err
 	}
-	keep := func(string) bool { return true }
-	if full, err := s.Get(ctx, added.ID); err == nil {
-		keep = s.EpisodeFileFilter(ctx, full, dir)
+	full, err := s.Get(ctx, added.ID)
+	if err != nil {
+		full = added
 	}
+	marked := s.markFolderFiles(ctx, full, dir, videos)
+	s.AddEvent(ctx, added.ID, "imported", fmt.Sprintf("Found during library scan: %d episode files", marked))
+	s.log.Info("series scan: imported", "title", added.Title, "episodes", marked)
+	return added, marked, nil
+}
+
+// markFolderFiles records the show's episode files found in dir and says how many episodes
+// got one. Only the files a rescan would read are marked (EpisodeFileFilter, without Plex
+// extras folders).
+func (s *Service) markFolderFiles(ctx context.Context, sr Series, dir string, videos []library.FoundVideo) int {
+	keep := s.EpisodeFileFilter(ctx, sr, dir)
 	marked := 0
 	for _, v := range videos {
 		if !keep(v.Path) || library.InExtrasFolder(dir, v.Path) {
@@ -2026,19 +2059,17 @@ func (s *Service) importSeriesFolder(ctx context.Context, dir string, videos []l
 		// numbering and the per-cour positional fallback.
 		// Seasons numbered by year (Looney Tunes: "Season 1931") that the listing doesn't
 		// number that way are read through the episodes' air dates.
-		refs := s.resolveByYear(ctx, added.ID, dir, v.Path, p)
+		refs := s.resolveByYear(ctx, sr.ID, dir, v.Path, p)
 		if len(refs) == 0 {
-			refs = s.ResolveEpisodes(ctx, added.ID, p)
+			refs = s.ResolveEpisodes(ctx, sr.ID, p)
 		}
 		for _, ref := range refs {
-			if s.repo.SetEpisodeFile(ctx, added.ID, ref.Season, ref.Episode, v.Path, v.Size) == nil {
+			if s.repo.SetEpisodeFile(ctx, sr.ID, ref.Season, ref.Episode, v.Path, v.Size) == nil {
 				marked++
 			}
 		}
 	}
-	s.AddEvent(ctx, added.ID, "imported", fmt.Sprintf("Found during library scan: %d episode files", marked))
-	s.log.Info("series scan: imported", "title", added.Title, "episodes", marked)
-	return added, marked, nil
+	return marked
 }
 
 // ImportFolderAs catalogs a specific library folder as the chosen TMDB series —
