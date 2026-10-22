@@ -67,7 +67,7 @@ export function versionBadge(version: string, commit: string, update?: UpdateSta
 
 // The install line: run again on the server, it finds the install and updates it the way
 // its channel says (the latest release, or main compiled there).
-export const INSTALL_LINE = "curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.sh | sh";
+export const INSTALL_LINE = "curl -fsSL https://raw.githubusercontent.com/aleonenko-us/Arrmada/main/install.sh | sh";
 
 // How to turn on the Update now button: the installer's --with-updater option, which adds the
 // updater container (the one thing on the server that gets Docker's socket, so it is opt-in).

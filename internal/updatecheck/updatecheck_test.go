@@ -31,9 +31,9 @@ func (f *fakeGitHub) server(t *testing.T) *httptest.Server {
 		latest, compare := f.latest, f.compare
 		f.mu.Unlock()
 		switch {
-		case r.URL.Path == "/repos/tristenlammi/Arrmada/releases/latest" && latest != nil:
+		case r.URL.Path == "/repos/aleonenko-us/Arrmada/releases/latest" && latest != nil:
 			latest(w, r)
-		case strings.HasPrefix(r.URL.Path, "/repos/tristenlammi/Arrmada/compare/") && compare != nil:
+		case strings.HasPrefix(r.URL.Path, "/repos/aleonenko-us/Arrmada/compare/") && compare != nil:
 			compare(w, r)
 		default:
 			http.NotFound(w, r)
@@ -72,7 +72,7 @@ func (f *fakeGitHub) setCompare(h func(w http.ResponseWriter, r *http.Request)) 
 func release(tag, body string) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"tag_name": tag, "name": "Arrmada " + tag, "html_url": "https://github.com/tristenlammi/Arrmada/releases/tag/" + tag,
+			"tag_name": tag, "name": "Arrmada " + tag, "html_url": "https://github.com/aleonenko-us/Arrmada/releases/tag/" + tag,
 			"body": body, "draft": false, "prerelease": false, "published_at": "2026-10-01T10:00:00Z",
 		})
 	}
@@ -97,7 +97,7 @@ func TestUpdateCheckComparesSemver(t *testing.T) {
 	if st.Latest.Notes != "## What's Changed\n* Faster imports by @someone" {
 		t.Errorf("notes = %q (comment and CRs should be gone)", st.Latest.Notes)
 	}
-	if st.Latest.URL != "https://github.com/tristenlammi/Arrmada/releases/tag/v1.3.0" || st.CheckedAt == nil || st.Problem != "" {
+	if st.Latest.URL != "https://github.com/aleonenko-us/Arrmada/releases/tag/v1.3.0" || st.CheckedAt == nil || st.Problem != "" {
 		t.Errorf("status = %+v", st)
 	}
 	if st.Behind != nil {
@@ -153,7 +153,7 @@ func TestUpdateCheckBehindMain(t *testing.T) {
 	if st.Available || st.Latest == nil || st.Latest.Tag != "v1.3.0" {
 		t.Errorf("status = %+v", st)
 	}
-	if got, _ := asked.Load().(string); got != "/repos/tristenlammi/Arrmada/compare/abc1234...main?per_page=1" {
+	if got, _ := asked.Load().(string); got != "/repos/aleonenko-us/Arrmada/compare/abc1234...main?per_page=1" {
 		t.Errorf("compare asked %q", got)
 	}
 
@@ -385,7 +385,7 @@ func TestUpdateCheckBuildOnStable(t *testing.T) {
 	if st.Channel != ChannelBuild || !st.Available || st.Ahead == nil || *st.Ahead != 0 || st.Behind != nil || st.Problem != "" {
 		t.Fatalf("status = %+v, want v1.3.0 offered to an older build", st)
 	}
-	if got, _ := asked.Load().(string); got != "/repos/tristenlammi/Arrmada/compare/abc1234...v1.3.0?per_page=1" {
+	if got, _ := asked.Load().(string); got != "/repos/aleonenko-us/Arrmada/compare/abc1234...v1.3.0?per_page=1" {
 		t.Errorf("compare asked %q", got)
 	}
 	// The build has 6 commits the release doesn't: newer, nothing offered.
@@ -433,7 +433,7 @@ func TestUpdateCheckMainInstall(t *testing.T) {
 	if st.Channel != ChannelMain || st.Behind == nil || *st.Behind != 3 || st.Available || st.Ahead != nil {
 		t.Fatalf("status = %+v, want 3 behind main and no release offered", st)
 	}
-	if got, _ := asked.Load().(string); got != "/repos/tristenlammi/Arrmada/compare/abc1234...main" {
+	if got, _ := asked.Load().(string); got != "/repos/aleonenko-us/Arrmada/compare/abc1234...main" {
 		t.Errorf("compare asked %q", got)
 	}
 }

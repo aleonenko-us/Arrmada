@@ -18,7 +18,7 @@ import (
 func updateAPI(t *testing.T) *api {
 	t.Helper()
 	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"tag_name":"v1.3.0","html_url":"https://github.com/tristenlammi/Arrmada/releases/tag/v1.3.0","body":"* Faster"}`))
+		_, _ = w.Write([]byte(`{"tag_name":"v1.3.0","html_url":"https://github.com/aleonenko-us/Arrmada/releases/tag/v1.3.0","body":"* Faster"}`))
 	}))
 	t.Cleanup(gh.Close)
 	a := settingsAPI(t)

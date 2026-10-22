@@ -31,8 +31,8 @@ import (
 )
 
 const (
-	// DefaultRepo is where releases are published.
-	DefaultRepo = "tristenlammi/Arrmada"
+	// DefaultRepo is where releases are published: this fork, not the original project.
+	DefaultRepo = "aleonenko-us/Arrmada"
 	// DefaultAPI is GitHub's REST API.
 	DefaultAPI = "https://api.github.com"
 	// KeyEnabled is the setting that switches the check off ("false"); on by default.

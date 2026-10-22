@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Arrmada installer. One line, on the server that will run it:
 #
-#   curl -fsSL https://raw.githubusercontent.com/tristenlammi/Arrmada/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/aleonenko-us/Arrmada/main/install.sh | sh
 #
 # It checks Docker, asks two things (where Arrmada keeps its files, and where your media
 # lives — Enter accepts the suggestion), works out the rest (free ports, the user to run
@@ -42,7 +42,7 @@
 # Nothing secret is asked or written here: API keys and passwords go in the app.
 set -eu
 
-REPO="tristenlammi/Arrmada"
+REPO="aleonenko-us/Arrmada"
 # Overridable for forks (and the installer's own tests); everyone else leaves them be.
 REPO_URL="${ARRMADA_REPO_URL:-https://github.com/$REPO}"
 BRANCH="${ARRMADA_BRANCH:-main}"

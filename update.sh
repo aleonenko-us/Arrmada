@@ -108,7 +108,7 @@ json_num() {
 
 # Where an install downloaded without git (install.sh writes .arrmada-source then) gets
 # its newer files. Overridable for forks and the installer's own tests.
-REPO="tristenlammi/Arrmada"
+REPO="aleonenko-us/Arrmada"
 API_URL="${ARRMADA_API_URL:-https://api.github.com/repos/$REPO}"
 TARBALL_BASE="${ARRMADA_TARBALL_BASE:-https://codeload.github.com/$REPO/tar.gz}"
 
