@@ -103,3 +103,22 @@ test.describe("Subtitles queue", () => {
     await expect(page.getByText(backlog)).toBeVisible();
   });
 });
+
+test.describe("AI backlog with no download source", () => {
+  test.use({ persona: "admin" });
+
+  // A big AI backlog and no OpenSubtitles: the overview says why and points at the setup.
+  test("the overview suggests OpenSubtitles", async ({ page, api }) => {
+    await installExtra(page, api, [
+      { method: "GET", path: "/api/v1/subtitles/jobs", body: { jobs: live, gpu_backlog: 839, gpu_backlog_audio_sec: 0, gpu_eta_sec: 0, rtf: 0 } },
+    ]);
+    await page.goto("/subtitles");
+    const note = page.getByRole("note").filter({ hasText: "839 files are waiting for AI subtitles" });
+    await expect(note).toBeVisible();
+    await note.getByRole("button", { name: "Set up OpenSubtitles" }).click();
+    await expect(page).toHaveURL(/\/settings/);
+    await expect(page.getByText("OpenSubtitles (optional download source)")).toBeVisible();
+    // The AI card has the hold switch, on by default.
+    await expect(page.getByRole("switch", { name: "Pause while someone is watching" })).toBeChecked();
+  });
+});

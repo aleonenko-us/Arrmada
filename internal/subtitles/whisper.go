@@ -56,10 +56,11 @@ type whisperGen struct {
 	// every chunk would cost a model load each time.
 	syclOff    bool
 	syclWhy    string
-	syclProbed bool                    // the one-off device probe has run (sycl.go)
-	syclDev    int                     // the SYCL device index the probe settled on; 0 = whisper's default
-	note       func(level, msg string) // where to report on the switch, when the service wants to hear it
-	log        *slog.Logger            // debug lines (the exact whisper-cli arguments); nil = quiet
+	syclProbed bool                            // the one-off device probe has run (sycl.go)
+	syclDev    int                             // the SYCL device index the probe settled on; 0 = whisper's default
+	note       func(level, msg string)         // where to report on the switch, when the service wants to hear it
+	hold       func(ctx context.Context) error // waits between chunks while the service says so (aiHold); nil = never
+	log        *slog.Logger                    // debug lines (the exact whisper-cli arguments); nil = quiet
 }
 
 // pickBin is the build to run: the oneAPI one while it works, else the portable one.
@@ -387,6 +388,11 @@ func (w *whisperGen) generateWAV(ctx context.Context, ffmpeg, wav, srtPath, lang
 	for i, c := range chunks {
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if w.hold != nil {
+			if err := w.hold(ctx); err != nil {
+				return err
+			}
 		}
 		cwav := fmt.Sprintf("%s-c%d.wav", base, i)
 		outB := fmt.Sprintf("%s-c%d", base, i)

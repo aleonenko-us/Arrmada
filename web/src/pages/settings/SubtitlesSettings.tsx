@@ -36,7 +36,7 @@ export function SubtitlesSettings() {
 const sameLangs = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSaved: (s: SubtitleSettings) => void }) {
-  const save = (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[]; min_score?: number }) => api.updateSubtitleSettings(body).then(onSaved);
+  const save = (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[]; min_score?: number; ai_pause_watching?: boolean }) => api.updateSubtitleSettings(body).then(onSaved);
   const langs = useAutoSave(settings.languages, (v) => save({ languages: v }), {
     equal: sameLangs,
     keepOnError: false,
@@ -44,6 +44,7 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
   });
   const movies = useAutoSave(settings.movies_auto, (v) => save({ movies_auto: v }));
   const series = useAutoSave(settings.series_auto, (v) => save({ series_auto: v }));
+  const pauseWatching = useAutoSave(settings.ai_pause_watching ?? true, (v) => save({ ai_pause_watching: v }));
   const minScore = useAutoSave(String(settings.min_score ?? 60), (v) => save({ min_score: Number(v) }), {
     validate: wholeNumber(0, 100, "The minimum match score"),
   });
@@ -76,7 +77,20 @@ function SubtitlesForm({ settings, onSaved }: { settings: SubtitleSettings; onSa
         </div>
       </div>
 
-      <LocalAI backend={settings.ai_backend} note={settings.ai_note} cpuOnly={settings.ai_cpu_only} />
+      <LocalAI backend={settings.ai_backend} note={settings.ai_note} cpuOnly={settings.ai_cpu_only}>
+        {/* AI subtitles share the box with Plex and Jellyfin: by default they wait while
+            someone watches, stopping between chunks and carrying on afterwards. */}
+        <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--line)" }}>
+          <ToggleRow label="Pause while someone is watching" save={pauseWatching} />
+          <div className="mt-0.5 text-xs text-ink-faint">
+            {settings.watching_known === false
+              ? "Insights isn't monitoring Plex or Jellyfin, so Arrmada can't tell when someone is watching and this does nothing yet."
+              : settings.ai_paused
+              ? "Paused now — someone is watching. It carries on where it stopped when they finish."
+              : "Keeps the server free for streams: a file being transcribed stops within a few minutes and carries on afterwards."}
+          </div>
+        </div>
+      </LocalAI>
 
       <OpenSubtitlesCard settings={settings} onChanged={() => void api.subtitleSettings().then(onSaved).catch(() => {})}>
         {/* Advanced: how close a download's release must be to the file when it wasn't
@@ -142,7 +156,7 @@ function OpenSubtitlesCard({ settings, onChanged, children }: { settings: Subtit
   );
 }
 
-function LocalAI({ backend, note, cpuOnly }: { backend?: string; note?: string; cpuOnly?: boolean }) {
+function LocalAI({ backend, note, cpuOnly, children }: { backend?: string; note?: string; cpuOnly?: boolean; children?: ReactNode }) {
   const toast = useToast();
   const [status, setStatus] = useState<WhisperStatus | null>(null);
   const load = useCallback(() => api.subtitleModels().then(setStatus).catch(() => setStatus(null)), []);
@@ -206,6 +220,7 @@ function LocalAI({ backend, note, cpuOnly }: { backend?: string; note?: string; 
         ))}
       </div>
       <div className="mt-2 text-xs text-ink-faint"><b>turbo</b> transcribes speech in any language into a subtitle in that same language; it can't translate. <b>large-v3</b> is needed to translate foreign audio into English. An audio track with no language tag is listened to first, so turbo covers it when it turns out to be the language you want.</div>
+      {children}
     </div>
   );
 }

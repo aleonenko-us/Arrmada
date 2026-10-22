@@ -190,7 +190,18 @@ func (s *Service) work(ctx context.Context, lane string) {
 	s.mu.Lock()
 	wake := s.laneWakeLocked(laneIndex(lane))
 	s.mu.Unlock()
+	var ranked time.Time
 	for {
+		if lane == LaneGPU {
+			// Out of the way while someone watches, and the backlog in a useful order.
+			if s.aiHold(ctx) != nil {
+				return
+			}
+			if time.Since(ranked) > aiRankEvery {
+				s.rankAILine(ctx)
+				ranked = time.Now()
+			}
+		}
 		job := s.popLane(lane)
 		if job == nil {
 			select {

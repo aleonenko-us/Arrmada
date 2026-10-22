@@ -129,6 +129,9 @@ function SubtitlesPage() {
 }
 
 /* ============================= OVERVIEW ============================= */
+// How many files waiting for the AI make it worth suggesting a download source.
+const AI_BACKLOG_NUDGE = 20;
+
 function Overview({ jobs, backlog, settings, flash, onSettings, onLibrary, onQueued }: {
   jobs: SubtitleJob[]; backlog: SubtitleQueue | null; settings: SubtitleSettings | null; flash: (m: string) => void; onSettings: () => void;
   onLibrary: () => void; onQueued: () => void;
@@ -200,6 +203,18 @@ function Overview({ jobs, backlog, settings, flash, onSettings, onLibrary, onQue
         </div>
       </div>
 
+      {/* Without a download source every file missing a language goes to the AI, one at a
+          time; a free OpenSubtitles account gets most of them in seconds. */}
+      {settings?.provider_state === "not_configured" && (backlog?.gpu_backlog ?? 0) >= AI_BACKLOG_NUDGE && (
+        <div className={card} style={{ ...cardStyle, borderColor: "var(--avoid)" }} role="note">
+          <div className="text-md font-bold">{backlog!.gpu_backlog.toLocaleString()} files are waiting for AI subtitles</div>
+          <div className="mt-0.5 text-sm text-ink-dim">
+            No download source is set up, so each one is transcribed from its audio, one at a time. A free OpenSubtitles account finds most of them in seconds, and the AI only does the rest.
+          </div>
+          <button onClick={onSettings} className="mt-2.5 rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ border: "1px solid var(--accent-line)", color: "var(--accent-text)" }}>Set up OpenSubtitles</button>
+        </div>
+      )}
+
       <AttentionCard flash={flash} onLibrary={onLibrary} onQueued={onQueued} />
 
       {active.length > 0 && (
@@ -207,7 +222,7 @@ function Overview({ jobs, backlog, settings, flash, onSettings, onLibrary, onQue
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <div className="text-md font-bold">Working now</div>
             {/* Whisper works through its own lane; this says how far behind it is. */}
-            {ai && <div className="font-mono text-xs text-ink-faint">{ai}</div>}
+            {ai && <div className="font-mono text-xs text-ink-faint">{ai}{settings?.ai_paused ? " · paused while someone is watching" : ""}</div>}
           </div>
           <div className="mt-2 flex flex-col gap-1.5">{active.map((j) => <ActiveRow key={j.id} j={j} />)}</div>
         </div>

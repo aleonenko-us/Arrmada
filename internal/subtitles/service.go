@@ -53,6 +53,11 @@ type Service struct {
 	bin      library.Bin // where replaced/removed sidecars go (retireSidecar); nil = refuse
 	// libraryChanged hears about the folder of each sidecar change (Plex's scanner; events.go).
 	libraryChanged atomic.Pointer[func(kind, dir string)]
+	// The GPU lane's manners (aiturn.go): who is watching, which movies were asked for,
+	// and whether the lane is holding right now.
+	watch     atomic.Pointer[mediaWatch]
+	requested atomic.Pointer[func(ctx context.Context) map[int]bool]
+	aiHeld    atomic.Bool
 
 	// repair is the one-shot forced-track repair pass (repair.go).
 	repair forcedRepair
@@ -88,6 +93,7 @@ type Service struct {
 	active  map[string]*Job            // queued or running jobs by file and lane, for enqueue's dedupe
 	wake    chan struct{}              // nudges the fast lane's workers when it gains a job
 	wakeGPU chan struct{}              // the same for the GPU lane (made on first use)
+	aiWake  chan struct{}              // cuts a held GPU lane's wait short (aiResume)
 	nextID  int64
 	runs    map[int64]*runHandle // running jobs' stop levers, by job id (Stop button)
 	busy    map[string]*Job      // files a job is working on (Job.key()); no second job may start on one
@@ -130,6 +136,7 @@ func NewService(db *sql.DB, mv *movies.Service, sr *series.Service, set *setting
 	// slow run; surface it as a warning event the first time it happens.
 	s.whisper.note = func(level, msg string) { s.event(level, msg) }
 	s.whisper.log = log
+	s.whisper.hold = s.aiHold
 	return s
 }
 
@@ -156,6 +163,12 @@ type Settings struct {
 	AIBackend     string   `json:"ai_backend"`     // "sycl" | "vulkan" | "cpu" | "" until the first run
 	AINote        string   `json:"ai_note"`        // why the oneAPI build isn't in use, when it was bundled but set aside
 	AICPUOnly     bool     `json:"ai_cpu_only"`    // the bundled whisper has no GPU backend (the ARM image)
+	// AIPauseWatching holds AI subtitles while someone is watching; AIPaused says it is
+	// holding now. WatchingKnown is false when nobody monitors Plex or Jellyfin, so the
+	// hold can't happen.
+	AIPauseWatching bool `json:"ai_pause_watching"`
+	AIPaused        bool `json:"ai_paused"`
+	WatchingKnown   bool `json:"watching_known"`
 	// Download quota, when the provider reports one. OpenSubtitles free accounts get a
 	// small number of downloads a day; once it's spent every download fails until the
 	// reset, and the UI should say that rather than showing a run of failures.
@@ -180,19 +193,22 @@ type Settings struct {
 // GetSettings returns the current configuration + provider status.
 func (s *Service) GetSettings(ctx context.Context) Settings {
 	out := Settings{
-		MoviesAuto:     s.settings.GetBool(ctx, keyMoviesAuto, defaultMoviesAuto),
-		SeriesAuto:     s.settings.GetBool(ctx, keySeriesAuto, defaultSeriesAuto),
-		Languages:      s.languages(ctx),
-		KeepLanguages:  s.keepLanguages(ctx),
-		ProviderReady:  s.provider.Available(),
-		CanDownload:    s.provider.CanDownload(),
-		AIReady:        s.whisper.available(),
-		AIBackend:      s.whisper.Backend(),
-		AINote:         s.whisper.SyclNote(),
-		AICPUOnly:      s.whisper.CPUOnly(),
-		QuotaRemaining: -1,
-		Pending:        s.Pending(),
-		MinScore:       s.minScore(ctx),
+		MoviesAuto:      s.settings.GetBool(ctx, keyMoviesAuto, defaultMoviesAuto),
+		SeriesAuto:      s.settings.GetBool(ctx, keySeriesAuto, defaultSeriesAuto),
+		Languages:       s.languages(ctx),
+		KeepLanguages:   s.keepLanguages(ctx),
+		ProviderReady:   s.provider.Available(),
+		CanDownload:     s.provider.CanDownload(),
+		AIReady:         s.whisper.available(),
+		AIBackend:       s.whisper.Backend(),
+		AINote:          s.whisper.SyclNote(),
+		AICPUOnly:       s.whisper.CPUOnly(),
+		AIPauseWatching: s.aiPauseWatching(ctx),
+		AIPaused:        s.aiHeld.Load(),
+		WatchingKnown:   s.watchingKnown(),
+		QuotaRemaining:  -1,
+		Pending:         s.Pending(),
+		MinScore:        s.minScore(ctx),
 	}
 	s.snap.mu.Lock()
 	out.Stale = s.staleLocked(ctx)

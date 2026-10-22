@@ -1289,6 +1289,22 @@ func main() {
 	// Convert pauses its encodes while someone is watching — which it can only know while
 	// monitoring is on, so its settings page says so when it isn't.
 	convertSvc.SetWatching(insightsSvc.Watching, func() bool { return insightsSvc.MonitoringActive(runCtx) })
+	// AI subtitles hold the same way, and their backlog runs the movies someone asked for
+	// first (the newest 1000 requests).
+	subtitlesSvc.SetWatching(insightsSvc.Watching, func() bool { return insightsSvc.MonitoringActive(runCtx) })
+	subtitlesSvc.SetRequested(func(ctx context.Context) map[int]bool {
+		reqs, err := requestsSvc.Records(ctx, requests.ListFilter{MediaType: "movie", Limit: 1000})
+		if err != nil {
+			return nil
+		}
+		asked := make(map[int]bool, len(reqs))
+		for _, r := range reqs {
+			if r.Status != requests.StatusDeclined {
+				asked[r.TMDBID] = true
+			}
+		}
+		return asked
+	})
 	// convert.done / failed / blocked / stalled (staff-only topics): the live UI and the
 	// admin alerts hear them (internal/notify/convert_digest.go).
 	convertSvc.SetBus(bus)

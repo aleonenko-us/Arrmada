@@ -2613,6 +2613,9 @@ export interface SubtitleSettings {
   ai_backend: string; // "sycl" | "vulkan" | "cpu" | "" until the first run
   ai_note: string; // why the Intel oneAPI build was set aside, when it was ("" otherwise)
   ai_cpu_only?: boolean; // the bundled whisper has no GPU backend (the ARM image)
+  ai_pause_watching?: boolean; // AI subtitles hold while someone is watching
+  ai_paused?: boolean; // holding right now
+  watching_known?: boolean; // Plex/Jellyfin monitoring is on, so the hold can happen
   quota_remaining: number; // -1 = unknown
   quota_reset_at: number; // unix seconds; 0 = not paused
   pending: number;
@@ -3608,7 +3611,7 @@ export const api = {
 
   // Subtitles
   subtitleSettings: () => req<SubtitleSettings>("/api/v1/subtitles/settings"),
-  updateSubtitleSettings: (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[]; min_score?: number }) =>
+  updateSubtitleSettings: (body: { movies_auto?: boolean; series_auto?: boolean; languages?: string[]; min_score?: number; ai_pause_watching?: boolean }) =>
     req<SubtitleSettings>("/api/v1/subtitles/settings", { method: "PUT", body: JSON.stringify(body) }),
   subtitleLibrary: () => req<{ items: SubFileEntry[]; scanning?: boolean; stale?: boolean }>("/api/v1/subtitles/library"),
   subtitleCoverage: () => req<SubtitleCoverage>("/api/v1/subtitles/coverage"),

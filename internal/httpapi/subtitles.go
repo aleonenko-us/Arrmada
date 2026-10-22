@@ -219,9 +219,17 @@ func (a *api) handleUpdateSubtitleSettings(w http.ResponseWriter, r *http.Reques
 		SeriesAuto *bool     `json:"series_auto"`
 		Languages  *[]string `json:"languages"`
 		MinScore   *int      `json:"min_score"`
+		// AIPauseWatching holds AI subtitles while someone is watching.
+		AIPauseWatching *bool `json:"ai_pause_watching"`
 	}
 	if !a.decodeJSON(w, r, &req) {
 		return
+	}
+	if req.AIPauseWatching != nil {
+		if err := a.deps.Subtitles.SetAIPauseWatching(r.Context(), *req.AIPauseWatching); err != nil {
+			a.writeError(w, http.StatusInternalServerError, "could not save subtitle settings")
+			return
+		}
 	}
 	if req.MinScore != nil {
 		if err := a.deps.Subtitles.SetMinScore(r.Context(), *req.MinScore); err != nil {
