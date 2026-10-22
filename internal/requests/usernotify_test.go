@@ -171,3 +171,40 @@ func TestNotifyUsersOncePerRef(t *testing.T) {
 		}
 	}
 }
+
+// The bell shows each title's poster, found from its request by the notice's ref: a
+// movie, a season-scoped show ("series:<tmdb>:r<id>") and a book.
+func TestInboxPosters(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	for _, r := range []Request{
+		{MediaType: "movie", TMDBID: 8069, Title: "Film", PosterURL: "https://image.tmdb.org/t/p/w342/film.jpg"},
+		{MediaType: "series", TMDBID: 456, Title: "Show", PosterURL: "https://image.tmdb.org/t/p/w342/show.jpg"},
+		{MediaType: "book", OLKey: "OL1W", Title: "Book", PosterURL: "https://covers.openlibrary.org/b/id/1-M.jpg"},
+	} {
+		if _, err := s.repo.Create(ctx, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, ref := range []string{"movie:8069", "series:456:r12", "book:OL1W", "movie:999"} {
+		media, _, _ := strings.Cut(ref, ":")
+		if _, err := s.repo.addUserNotification(ctx, 7, "Ready", "", media, ref, int64(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inbox, err := s.repo.listUserNotifications(ctx, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, n := range inbox {
+		got[n.Ref] = n.PosterURL
+	}
+	want := map[string]string{"movie:8069": "https://image.tmdb.org/t/p/w342/film.jpg", "series:456:r12": "https://image.tmdb.org/t/p/w342/show.jpg",
+		"book:OL1W": "https://covers.openlibrary.org/b/id/1-M.jpg", "movie:999": ""}
+	for ref, w := range want {
+		if got[ref] != w {
+			t.Errorf("%s poster = %q, want %q", ref, got[ref], w)
+		}
+	}
+}

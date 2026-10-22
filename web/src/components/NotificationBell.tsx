@@ -164,6 +164,9 @@ export function NotificationBell({ placement = "down" }: { placement?: "down" | 
           <div key={n.id} style={{ borderTop: "1px solid var(--line-soft)", background: n.read ? "transparent" : "var(--accent-soft)" }}>
             <button onClick={() => clickItem(n)} className="flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left">
               <span className="mt-1 h-2 w-2 flex-none rounded-full" style={{ background: n.read ? "transparent" : "var(--accent)" }} />
+              {n.poster_url && (
+                <img src={n.poster_url} alt="" loading="lazy" className="h-[60px] w-[40px] flex-none rounded object-cover" style={{ background: "var(--panel-2)" }} />
+              )}
               <span className="min-w-0">
                 <span className="block text-base font-semibold">{n.title}</span>
                 <span className="block whitespace-pre-line text-sm text-ink-dim">{n.body}</span>

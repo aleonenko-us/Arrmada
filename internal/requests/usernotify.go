@@ -33,6 +33,8 @@ type UserNotification struct {
 	// WatchLinks is the bell's Watch buttons: one per media server that has the title,
 	// the reader's own server first. Filled by the HTTP layer.
 	WatchLinks []mediaserver.WatchLink `json:"watch_links,omitempty"`
+	// PosterURL is the title's poster, from its request ("" when none is known).
+	PosterURL string `json:"poster_url,omitempty"`
 }
 
 // --- inbox + per-user Apprise (repo) ---
@@ -58,8 +60,17 @@ func (r *Repo) addUserNotificationLink(ctx context.Context, userID int64, title,
 }
 
 func (r *Repo) listUserNotifications(ctx context.Context, userID int64) ([]UserNotification, error) {
+	// The poster is the newest request's for the same title: refs are "movie:<tmdb>",
+	// "series:<tmdb>[:r<id>]" (CAST keeps the leading number) or "book:<Open Library key>".
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, title, body, media_type, ref, read, created_at, plex_url, jellyfin_url FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100`, userID)
+		`SELECT n.id, n.title, n.body, n.media_type, n.ref, n.read, n.created_at, n.plex_url, n.jellyfin_url,
+		        COALESCE((SELECT q.poster_url FROM requests q
+		                  WHERE q.poster_url != '' AND CASE
+		                    WHEN n.ref LIKE 'book:%' THEN q.media_type = 'book' AND q.ol_key = substr(n.ref, 6)
+		                    ELSE q.media_type = substr(n.ref, 1, instr(n.ref, ':') - 1)
+		                     AND q.tmdb_id = CAST(substr(n.ref, instr(n.ref, ':') + 1) AS INTEGER) END
+		                  ORDER BY q.id DESC LIMIT 1), '')
+		 FROM user_notifications n WHERE n.user_id = ? ORDER BY n.created_at DESC LIMIT 100`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +79,7 @@ func (r *Repo) listUserNotifications(ctx context.Context, userID int64) ([]UserN
 	for rows.Next() {
 		var n UserNotification
 		var read int
-		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.MediaType, &n.Ref, &read, &n.CreatedAt, &n.PlexURL, &n.JellyfinURL); err != nil {
+		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.MediaType, &n.Ref, &read, &n.CreatedAt, &n.PlexURL, &n.JellyfinURL, &n.PosterURL); err != nil {
 			return nil, err
 		}
 		n.Read = read != 0

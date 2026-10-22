@@ -796,6 +796,8 @@ export interface UserNotification {
   plex_url?: string;
   /** A 'ready' notice's Watch buttons: one per media server that has the title, the reader's own first. */
   watch_links?: WatchLink[];
+  /** The title's poster, from its request (absent when none is known). */
+  poster_url?: string;
 }
 
 export interface CalendarItem {
